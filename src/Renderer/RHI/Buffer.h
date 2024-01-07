@@ -1,0 +1,158 @@
+#pragma once
+#include "vulkan/vulkan.hpp"
+#include "glm/glm.hpp"
+#include "Device.h"
+#include "Command.h"
+
+#include <string>
+
+namespace Renderer
+{
+    //----------BUFFER DATA STRUCTS----------//
+
+    struct Vertex
+    {
+        glm::vec3 position;
+        glm::vec3 normal;
+        glm::vec2 texCoord;
+    };
+
+    struct Image
+    {
+        void* data = NULL;
+        VkDeviceSize size = 0;
+        int width, height, channels = 0;
+    };
+
+    //holds all data for camera, pipelines, and object specific parameters
+    struct UniformBufferObject
+    {
+        //camera
+        glm::mat4 view;
+        glm::mat4 projection;
+        //default pipeline
+        VkSampler sampler;
+        glm::vec3 testVec1;
+        glm::vec3 testVec2;
+    };
+
+    //----------BUFFER DECLARATIONS----------//
+
+    class Buffer
+    {
+    private:
+        VkBuffer stagingBuffer;
+        VmaAllocation stagingAllocation;
+        bool isDestoyed = false;
+        bool stagingCreated = false;
+
+    protected:
+        VmaAllocation allocation;
+
+        Device* devicePtr;
+        Commands* commandsPtr;
+
+        VmaAllocationInfo createStagingBuffer(VkDeviceSize bufferSize);
+        void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size);
+        void copyBufferToImage(VkBuffer src, VkImage dst, Image* imageData);
+        void changeImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout); //mostly from vulkan tutorial
+        void destroyStagingAlloc();
+
+        VkBuffer getStagingBuffer() const { return stagingBuffer; }
+        VmaAllocation getStagingAllocation() const { return stagingAllocation; }
+
+    public:
+        Buffer(Device* device, Commands* commands);
+        virtual ~Buffer();
+    };
+
+    //----------VERTEX BUFFER DECLARATIONS----------//
+
+    class VertexBuffer : public Buffer
+    {
+    private:
+        VkBuffer buffer;
+
+        VmaAllocationInfo createVertexBuffer(VkDeviceSize bufferSize);
+
+    public:
+        VertexBuffer(Device* device, Commands* commands, std::vector<Vertex>* vertices);
+        ~VertexBuffer() override;
+
+        const VkBuffer& getBuffer() const { return buffer; }
+    };
+
+    //----------INDEX BUFFER DECLARATION----------//
+
+    class IndexBuffer : public Buffer
+    {
+    private:
+        VkBuffer buffer;
+        VmaAllocationInfo createIndexBuffer(VkDeviceSize bufferSize);
+        uint32_t indicesLength;
+        
+    public:
+        IndexBuffer(Device* device, Commands* commands, std::vector<uint32_t>* indices);
+        ~IndexBuffer() override;
+
+        const VkBuffer& getBuffer() const { return buffer; }
+        uint32_t getLength() const { return indicesLength; }
+    };
+
+    //----------TEXTURE "BUFFER" DECLARATION----------//
+
+    class Texture : public Buffer
+    {
+    private:
+        VkImage texture;
+        VkImageView textureView;
+        VkSampler sampler;
+
+        VmaAllocationInfo createTexture(Image* imageData);
+        void createTextureView();
+        void createSampler();
+
+    public:
+        Texture(Device* device, Commands* commands, Image* imageData);
+        ~Texture() override;
+
+        VkImage const* getTexturePtr() const { return &texture; }
+        const VkImageView& getTextureView() const { return textureView; }
+        const VkSampler& getTextureSampler() const { return sampler; }
+    };
+
+    //----------UNIFORM BUFFER DECLARATION----------//
+
+    class UniformBuffer : public Buffer
+    {
+    private:
+        VkBuffer buffer;
+        VkDeviceSize size;
+        void* dataPtr;
+
+    public:
+        UniformBuffer(Device *device, Commands *commands, uint32_t size);
+        ~UniformBuffer();
+
+        void updateUniformBuffer(UniformBufferObject* updateData);
+
+        const VkBuffer& getBuffer() { return buffer; }
+    };
+
+    //----------MESH DECLARATION----------//
+
+    class Mesh
+    {
+    private:
+        const VertexBuffer vbo;
+        const IndexBuffer ibo;
+
+    public:
+        Mesh(Device* device, Commands* commands, std::vector<Vertex>* vertices, std::vector<uint32_t>* indices);
+        ~Mesh();
+
+        const VkBuffer& getVertexBuffer() const { return vbo.getBuffer(); };
+        const VkBuffer& getIndexBuffer() const { return ibo.getBuffer(); };
+        uint32_t getIndexBufferSize() const { return ibo.getLength(); }
+    };
+}
