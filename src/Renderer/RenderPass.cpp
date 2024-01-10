@@ -69,33 +69,9 @@ namespace Renderer
         UniformBufferObject uniformData;
         uniformData.view = cameraPtr->getViewMatrix();
         uniformData.projection = cameraPtr->getProjection();
-        uniformData.testVec1 = glm::vec3(0.5f, 0.5f, 0.2f);
-        uniformData.testVec2 = glm::vec3(1.0f, 1.0f, 1.0f);
         descriptorsPtr->updateUniforms(&uniformData);
 
-        //wait for the next frame
-        vkWaitForFences(devicePtr->getDevice(), 1, &(renderingFences.at(currentImage)), VK_TRUE, UINT64_MAX);
-        
-        //get available image
-        checkSwapchain(vkAcquireNextImageKHR(devicePtr->getDevice(),
-            *(swapchainPtr->getSwapchainPtr()),
-            UINT16_MAX,
-            imageSemaphores.at(currentImage),
-            VK_NULL_HANDLE, &currentImage));
-
-        vkResetFences(devicePtr->getDevice(), 1, &(renderingFences.at(currentImage)));
-    }
-
-    void RenderPass::checkSwapchain(VkResult imageResult)
-    {
-        if(imageResult == VK_ERROR_OUT_OF_DATE_KHR)
-        {
-            recreateFlag = true;
-        }
-    }
-
-    void RenderPass::begin(Pipeline const* pipeline)
-    {
+        //begin dynamic render "pass"
         VkCommandBufferBeginInfo commandInfo;
         commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         commandInfo.pNext = NULL;
@@ -183,11 +159,7 @@ namespace Renderer
 
         vkCmdBeginRendering(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage), &renderInfo);
 
-        vkCmdBindPipeline(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage),
-            VK_PIPELINE_BIND_POINT_GRAPHICS, 
-            pipeline->getPipeline());
-        
-        //dynamic viewport and scissor specified in pipeline
+        //dynamic viewport and scissor specified in pipelines
         VkViewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
@@ -198,6 +170,14 @@ namespace Renderer
 
         vkCmdSetViewportWithCount(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage), 1, &viewport);
         vkCmdSetScissorWithCount(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage), 1, &renderArea);
+    }
+
+    void RenderPass::checkSwapchain(VkResult imageResult)
+    {
+        if(imageResult == VK_ERROR_OUT_OF_DATE_KHR)
+        {
+            recreateFlag = true;
+        }
     }
 
     void RenderPass::drawIndexed(const ObjectParameters& objectData)
@@ -234,10 +214,12 @@ namespace Renderer
 
     void RenderPass::bindPipeline(Pipeline const* pipeline)
     {
-        if(pipeline != NULL) //continue to next frame
+        if(pipeline != NULL && this->pipeline != pipeline) //bind new pipeline if the new one is valid and isnt the same
         {
             this->pipeline = pipeline;
-            begin(pipeline);
+            vkCmdBindPipeline(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage),
+            VK_PIPELINE_BIND_POINT_GRAPHICS, 
+            pipeline->getPipeline());
         }
         else //continue with next binding
         {
@@ -247,11 +229,13 @@ namespace Renderer
 
     void RenderPass::bindMaterial(Material const* material)
     {
+        //descriptorsPtr->updateUniforms()
         descriptorsPtr->updateTextures(material->getTextures());
     }
 
-    void RenderPass::submit()
+    void RenderPass::incrementFrameCounter()
     {
+        //end render "pass"
         vkCmdEndRendering(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage));
 
         VkImageMemoryBarrier imageBarrier = {};
@@ -286,7 +270,7 @@ namespace Renderer
 
         vkEndCommandBuffer(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage));
 
-        //submission
+        //submit rendering to GPU
         std::vector<VkPipelineStageFlags> pipelineStages = {
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
         };
@@ -302,11 +286,8 @@ namespace Renderer
         queueSubmitInfo.signalSemaphoreCount = 1;
         queueSubmitInfo.pSignalSemaphores = &(renderSemaphores.at(currentImage));
 
-        vkQueueSubmit(devicePtr->getQueues().graphics[0], 1, &queueSubmitInfo, renderingFences.at(currentImage));
-    }
+        VkResult graphicsResult = vkQueueSubmit(devicePtr->getQueues().graphics[0], 1, &queueSubmitInfo, renderingFences.at(currentImage));
 
-    void RenderPass::incrementFrameCounter()
-    {
         //submit rendered image to swapchain
         VkPresentInfoKHR presentInfo = {};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -320,15 +301,6 @@ namespace Renderer
 
         VkResult queueResult = vkQueuePresentKHR(devicePtr->getQueues().present[0], &presentInfo);
 
-        if (queueResult == VK_ERROR_OUT_OF_DATE_KHR || queueResult == VK_SUBOPTIMAL_KHR) 
-        {
-            recreateFlag = false;
-            vkWaitForFences(devicePtr->getDevice(), renderingFences.size(), renderingFences.data(), VK_TRUE, UINT64_MAX);
-            swapchainPtr->recreate();
-            cameraPtr->updateCameraProjection();
-            return;
-        }
-
         if(currentImage == 0)
         {
             currentImage = 1;
@@ -336,6 +308,25 @@ namespace Renderer
         else
         {
             currentImage = 0;
+        }
+
+        //wait for the next frame
+        vkWaitForFences(devicePtr->getDevice(), 1, &(renderingFences.at(currentImage)), VK_TRUE, UINT64_MAX);
+        
+        //get available image
+        checkSwapchain(vkAcquireNextImageKHR(devicePtr->getDevice(),
+            *(swapchainPtr->getSwapchainPtr()),
+            UINT16_MAX,
+            imageSemaphores.at(currentImage),
+            VK_NULL_HANDLE, &currentImage));
+
+        vkResetFences(devicePtr->getDevice(), 1, &(renderingFences.at(currentImage)));
+
+        if (queueResult == VK_ERROR_OUT_OF_DATE_KHR || queueResult == VK_SUBOPTIMAL_KHR || recreateFlag) 
+        {
+            recreateFlag = false;
+            swapchainPtr->recreate();
+            cameraPtr->updateCameraProjection();
         }
     }
 }

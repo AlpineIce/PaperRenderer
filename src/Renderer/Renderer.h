@@ -59,7 +59,7 @@ namespace Renderer
         void loadPipelines(std::string shadersDir); //loads materials too
         void loadModels(std::string modelsDir);
         void loadMaterials(std::string materialsDir);
-        void createMaterial(PipelineType type, const std::vector<std::string>& textureNames, std::string materialName);
+        void createMaterial(std::string filePath);
         void loadTextures(std::string texturesDir);
         
     public:

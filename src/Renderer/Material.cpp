@@ -2,16 +2,20 @@
 
 namespace Renderer
 {
-    Material::Material(Device* device, PipelineType pipelineType, std::string matName, std::vector<Texture const*> textures)
+    Material::Material(Device* device, PipelineType pipelineType, std::string matName, std::vector<Texture const*> textures, std::vector<glm::vec4> colors)
         :devicePtr(device),
         pipelineType(pipelineType),
         matName(matName),
-        textures(textures)
+        textures(textures),
+        colors(colors)
 
     {
         switch(pipelineType)
         {
             case PipelineType::PBR:
+                break;
+
+            case PipelineType::TexturelessPBR:
                 break;
         }
     }

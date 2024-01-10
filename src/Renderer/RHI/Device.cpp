@@ -5,6 +5,8 @@
 #include "Device.h"
 
 #include <iostream>
+#include <list>
+#include <unordered_map>
 
 namespace Renderer
 {
@@ -119,53 +121,118 @@ namespace Renderer
         queueFamiliesProperties.resize(queueFamilyCount);
         vkGetPhysicalDeviceQueueFamilyProperties(GPU, &queueFamilyCount, queueFamiliesProperties.data());
 
-        bool computeAsGraphics = false;
-        bool transferAsGraphics = false;
-        bool presentAsGraphics = false;
+        //0 = graphics
+        //1 = compute
+        //2 = transfer
+        //3 = present
+                           //type,   list of families with type
+        std::unordered_map<uint32_t, std::list<uint32_t>> queueFamilyMap;
         for(int i = 0; i < queueFamiliesProperties.size(); i++)
         {
             if((queueFamiliesProperties[i].queueFlags & VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT) && (queueFamilies.graphicsFamilyIndex == -1)) //graphics
             {
-                queueFamilies.graphicsFamilyIndex = i;
-                //in case compute needs to be the same as graphics
-                if(queueFamiliesProperties[i].queueFlags & VkQueueFlagBits::VK_QUEUE_COMPUTE_BIT) computeAsGraphics = true;
-                if(queueFamiliesProperties[i].queueFlags & VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT) transferAsGraphics = true;
-                VkBool32 presentSupport;
-                vkGetPhysicalDeviceSurfaceSupportKHR(GPU, i, surface, &presentSupport);
-                if(presentSupport) //present on graphics queue by default
-                {
-                    presentAsGraphics = true;
-                }
-
-                continue;
+                queueFamilyMap[0].push_back(i);
             }
             if((queueFamiliesProperties[i].queueFlags & VkQueueFlagBits::VK_QUEUE_COMPUTE_BIT) && (queueFamilies.computeFamilyIndex == -1)) //compute
             {
-                computeAsGraphics = false;
-                queueFamilies.computeFamilyIndex = i;
-
-                VkBool32 presentSupport;
-                vkGetPhysicalDeviceSurfaceSupportKHR(GPU, i, surface, &presentSupport);
-                if(presentSupport) //present on compute queue if available
-                {
-                    presentAsGraphics = false;
-                    queueFamilies.presentationFamilyIndex = i;
-                }
-
-                continue;
+                queueFamilyMap[1].push_back(i);
             }
             if((queueFamiliesProperties[i].queueFlags & VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT) && (queueFamilies.transferFamilyIndex == -1)) //transfer
             {
-                transferAsGraphics = false;
-                queueFamilies.transferFamilyIndex = i;
-                continue;
-            } 
+                queueFamilyMap[2].push_back(i);
+            }
+
+            VkBool32 presentSupport;
+            vkGetPhysicalDeviceSurfaceSupportKHR(GPU, i, surface, &presentSupport);
+            if(presentSupport) //present on graphics queue by default
+            {
+                queueFamilyMap[3].push_back(i);
+            }
         }
 
-        //do same as graphics queue (no unique available)
-        if(computeAsGraphics) queueFamilies.computeFamilyIndex = queueFamilies.graphicsFamilyIndex;
-        if(transferAsGraphics) queueFamilies.transferFamilyIndex = queueFamilies.graphicsFamilyIndex;
-        if(presentAsGraphics) queueFamilies.presentationFamilyIndex = queueFamilies.graphicsFamilyIndex;
+        //filter graphics queues
+        if(queueFamilyMap[0].size() == 0) throw std::runtime_error("No graphics support from auto-selected GPU");
+        queueFamilies.graphicsFamilyIndex = queueFamilyMap[0].front();
+        for(auto& [type, families] : queueFamilyMap)
+        {
+            if(type == 0) continue;
+
+            int removeFamily = -1;
+            if(families.size() > 1)
+            {
+                for(uint32_t family : families)
+                {
+                    if((int)family == queueFamilies.graphicsFamilyIndex)
+                    {
+                        removeFamily = family;
+                        break;
+                    }
+                }
+            }
+
+            if(removeFamily != -1)
+            {
+                families.remove(removeFamily);
+                continue;
+            }
+        }
+
+        //filter compute queues
+        if(queueFamilyMap[1].size() == 0) throw std::runtime_error("No compute support from auto-selected GPU");
+        queueFamilies.computeFamilyIndex = queueFamilyMap[1].front();
+        for(auto& [type, families] : queueFamilyMap)
+        {
+            if(type == 0 || type == 1) continue;
+
+            int removeFamily = -1;
+            if(families.size() > 1)
+            {
+                for(uint32_t family : families)
+                {
+                    if((int)family == queueFamilies.computeFamilyIndex)
+                    {
+                        removeFamily = family;
+                        break;
+                    }
+                }
+            }
+
+            if(removeFamily != -1)
+            {
+                families.remove(removeFamily);
+                continue;
+            }
+        }
+
+        //filter presentation from leftover transfer
+        if(queueFamilyMap[3].size() == 0) throw std::runtime_error("No presentation support from auto-selected GPU");
+        queueFamilies.presentationFamilyIndex = queueFamilyMap[3].front();
+        for(auto& [type, families] : queueFamilyMap)
+        {
+            if(type == 0 || type == 1 || type == 3) continue;
+
+            int removeFamily = -1;
+            if(families.size() > 1)
+            {
+                for(uint32_t family : families)
+                {
+                    if((int)family == queueFamilies.presentationFamilyIndex)
+                    {
+                        removeFamily = family;
+                        break;
+                    }
+                }
+            }
+
+            if(removeFamily != -1)
+            {
+                families.remove(removeFamily);
+                continue;
+            }
+
+            //transfer gets leftovers (lmao)
+            queueFamilies.transferFamilyIndex = queueFamilyMap[2].front();
+        }
     }
 
     void Device::createQueues(std::vector<VkDeviceQueueCreateInfo>& queuesCreationInfo,
@@ -306,14 +373,23 @@ namespace Renderer
         std::vector<const char*> extensionNames;
         extensionNames.insert(extensionNames.end(), {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-            VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME/*,
             VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
             VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-            VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME*/});
+            VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME});
+
+        VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationFeatures = {};
+        accelerationFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+        accelerationFeatures.pNext = NULL;
+        accelerationFeatures.accelerationStructure = VK_TRUE;
+
+        VkPhysicalDeviceRayTracingPipelineFeaturesKHR  RTfeatures = {};
+        RTfeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
+        RTfeatures.pNext = &accelerationFeatures;
+        RTfeatures.rayTracingPipeline = VK_TRUE;
 
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderFeatures = {};
         dynamicRenderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
-        dynamicRenderFeatures.pNext = NULL;
+        dynamicRenderFeatures.pNext = &RTfeatures;
         dynamicRenderFeatures.dynamicRendering = VK_TRUE;
 
         VkDeviceCreateInfo deviceCreateInfo = {};

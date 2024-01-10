@@ -16,7 +16,10 @@ namespace Renderer
 
     enum PipelineType
     {
-        PBR = 0
+        UNDEFINED = 0,
+        PBR = 1,
+        TexturelessPBR = 2
+
     };
 
     //----------SHADER DECLARATIONS----------//

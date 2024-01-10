@@ -282,7 +282,7 @@ namespace Renderer
         rasterInfo.rasterizerDiscardEnable = VK_FALSE;
         rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
         rasterInfo.lineWidth = 1.0f;
-        rasterInfo.cullMode = VK_CULL_MODE_NONE;
+        rasterInfo.cullMode = VK_CULL_MODE_BACK_BIT;
         rasterInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
         rasterInfo.depthBiasEnable = VK_FALSE;
         rasterInfo.depthBiasConstantFactor = 0.0f;

@@ -40,13 +40,14 @@ namespace Renderer
         forward = glm::vec3(0.0f, 0.0f, 1.0f);
 
         //kinda from stack overflow ngl
-        glm::quat qPitch = glm::angleAxis(translation.pitch, right);
-        glm::quat qYaw = glm::angleAxis(translation.yaw, up);
-        glm::quat qRoll = glm::angleAxis(glm::radians(0.0f), forward);
+        glm::quat qPitch = glm::angleAxis(glm::radians(translation.pitch), -right);
+        glm::quat qYaw = glm::angleAxis(glm::radians(translation.yaw), up);
+        //glm::quat qRoll = glm::angleAxis(glm::radians(0.0f), forward);
 
-        glm::quat qRotation = qPitch * qYaw * qRoll; 
-        glm::mat4 mRotation = glm::mat4_cast(glm::normalize(qRotation));
-        glm::mat4 mTranslation = glm::mat4(glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, -1.0f, 1.0f))); //flip viewport around y axis
+        this->translation.qRotation = qPitch * qYaw;// * qRoll; 
+
+        glm::mat4 mRotation = glm::mat4_cast(glm::normalize(this->translation.qRotation));
+        glm::mat4 mTranslation = glm::mat4(1.0f);
 
         mTranslation = glm::translate(mTranslation, -translation.position);
 

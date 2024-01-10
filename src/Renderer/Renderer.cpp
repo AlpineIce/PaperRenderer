@@ -2,7 +2,10 @@
 #include "stb_image.h"
 #include "Renderer.h"
 
+#include <iostream>
 #include <filesystem>
+#include <sstream>
+#include <fstream>
 
 namespace Renderer
 {
@@ -42,16 +45,26 @@ namespace Renderer
                 shaderFiles.push_back(pipelineShader.path().string());
             }
             
-            renderTree.emplace(std::make_pair<PipelineType, PipelineNode>(PipelineType::PBR, {
-                std::make_shared<RasterPipeline>(
-                    &device,
-                    shaderFiles,
-                    &descriptors,
-                    PipelineType::PBR,
-                    &swapchain), 
-                std::unordered_map<std::string, MaterialNode>()}));
+            PipelineType type = PipelineType::UNDEFINED;
+            if(shadersPath.stem().string().find("TexturelessPBR") != std::string::npos)
+            {
+                type = PipelineType::PBR;
+            }
+            else if(shadersPath.stem().string().find("PBR") != std::string::npos)
+            {
+                type = PipelineType::TexturelessPBR;
+            }
 
-            //create materials associated with pipeline
+            if(type != UNDEFINED)
+            {
+                renderTree[type] = {std::make_shared<RasterPipeline>(
+                        &device,
+                        shaderFiles,
+                        &descriptors,
+                        type,
+                        &swapchain), 
+                    std::unordered_map<std::string, MaterialNode>()};
+            }
         }
     }
 
@@ -62,6 +75,7 @@ namespace Renderer
         {
             if(model.path().filename().string().find(".fbx") != std::string::npos ) //must be a valid .fbx file
             {
+                std::cout << "loading model: " << model.path().stem().string() << std::endl;
                 this->models.insert(std::make_pair(
                     model.path().stem().string(),
                     std::make_shared<Model>(&device, &commands, model.path().string())));
@@ -71,56 +85,142 @@ namespace Renderer
 
     void RenderEngine::loadMaterials(std::string materialsDir)
     {
-        //default material
-        std::vector<std::string> defaultMaterialTextures;
-        createMaterial(PipelineType::PBR, defaultMaterialTextures, "default");
-
-        //base material
-        std::vector<std::string> baseTextures = {
-            "MS_Cup_low_Bone_BaseColor"
-        };
-        createMaterial(PipelineType::PBR, baseTextures, "base");
-
-        //tooth
-        std::vector<std::string> toothTextures = {
-            "MS_Cup_low_Bone_Tooth_BaseColor"
-        };
-        createMaterial(PipelineType::PBR, toothTextures, "tooth");
-
-        //head
-        std::vector<std::string> headTextures = {
-            "MS_Cup_low_Metalic_BaseColor"
-        };
-        createMaterial(PipelineType::PBR, headTextures, "head");
-
-        //gem
-        std::vector<std::string> gemTextures = {
-            "MS_Cup_low_Gem_BaseColor"
-        };
-        createMaterial(PipelineType::PBR, gemTextures, "gem");
-
-        //TODO iterate folder with material files... and create a whole material system... (bruh)
+        //iterate materials path
+        const std::filesystem::path materials(materialsDir);
+        for(const auto& material : std::filesystem::directory_iterator(materials)) //iterate models
+        {
+            if(material.path().filename().string().find(".mat") != std::string::npos ) //must be a valid .fbx file
+            {
+                std::cout << "loading material: " << material.path().stem().string() << std::endl;
+                createMaterial(material.path().string());
+            }
+        }
     }
 
-    void RenderEngine::createMaterial(PipelineType type, const std::vector<std::string>& textureNames, std::string materialName)
+    void RenderEngine::createMaterial(std::string filePath)
     {
-        //fill in textures
-        std::vector<Texture const*> textures;
-        for(std::string name : textureNames)
+        std::ifstream file(filePath);
+        if(file.is_open())
         {
-            textures.push_back(getTextureByName(name));
-        }
-        textures.resize(TEXTURE_ARRAY_SIZE);
+            std::string matName = "UNDEFINED";
+            PipelineType type = UNDEFINED;
+            std::vector<std::string> textureNames(TEXTURE_ARRAY_SIZE);
+            std::vector<glm::vec4> vec4vars(TEXTURE_ARRAY_SIZE);
+            
+            for(std::string line; std::getline(file, line); )
+            {
+                if(line.find("#") != std::string::npos) //material name
+                {
+                    matName = line.substr(line.find("#") + 1, line.length() - line.find("#"));
+                }
 
-        materials.insert(std::make_pair(
-            std::string(materialName),
-            std::make_shared<Material>(&device, PipelineType::PBR, materialName, textures)));
-        
-        //add material node to render tree
-        MaterialNode defaultParams;
-        defaultParams.material = materials.at(materialName).get();
-        
-        renderTree.at(type).materials.insert(std::make_pair(materialName, defaultParams));
+                if(line.find("pipeline") != std::string::npos && line.find("=") != std::string::npos) //pipeline equals
+                {
+                    if(line.find("\"PBR\"") != std::string::npos)
+                    {
+                        type = PipelineType::PBR;
+                    }
+                    else if(line.find("\"TexturelessPBR\"") != std::string::npos)
+                    {
+                        type = PipelineType::TexturelessPBR;
+                    }
+                    else
+                    {
+                        throw std::runtime_error("Unsupported pipeline specified at material: " + filePath);
+                    }
+                }
+                
+                if(line.find("Tex_") != std::string::npos && line.find("=") != std::string::npos)
+                {
+                    if(line.find("diffuse") != std::string::npos)
+                    {
+                        std::string name = line.substr(line.find("=") + 1, line.length() - line.find("="));
+                        textureNames.at(0) = name.substr(name.find("\"") + 1, line.rfind("\"") - line.find("\"") - 1);
+                    }
+                    else if(line.find("metalness") != std::string::npos)
+                    {
+                        std::string name = line.substr(line.find("=") + 1, line.length() - line.find("="));
+                        textureNames.at(1) = name.substr(name.find("\"") + 1, line.rfind("\"") - line.find("\"") - 1);
+                    }
+                    else if(line.find("normal") != std::string::npos)
+                    {
+                        std::string name = line.substr(line.find("=") + 1, line.length() - line.find("="));
+                        textureNames.at(2) = name.substr(name.find("\"") + 1, line.rfind("\"") - line.find("\"") - 1);
+                    }
+                    else if(line.find("roughness") != std::string::npos)
+                    {
+                        std::string name = line.substr(line.find("=") + 1, line.length() - line.find("="));
+                        textureNames.at(3) = name.substr(name.find("\"") + 1, line.rfind("\"") - line.find("\"") - 1);
+                    }
+                }
+                else if(line.find("Color_") != std::string::npos && line.find("=") != std::string::npos)
+                {
+                    if(line.find("diffuse") != std::string::npos)
+                    {
+                        float r, g, b, a;
+                        std::string content = line.substr(line.find("\"(") + 2, line.length() - line.find("\"("));
+                        content = content.substr(0, content.find(")\""));
+                        
+                        std::stringstream ss(content);
+                        ss >> r >> g >> b >> a;
+
+                        vec4vars.at(0) = (glm::vec4(r, g, b, a));
+                    }
+                    else if(line.find("metalness") != std::string::npos)
+                    {
+                        float r, g, b, a;
+                        std::string content = line.substr(line.find("\"(") + 2, line.length() - line.find("\"("));
+                        content = content.substr(0, content.find(")\""));
+                        
+                        std::stringstream ss(content);
+                        ss >> r >> g >> b >> a;
+
+                        vec4vars.at(1) = (glm::vec4(r, g, b, a));
+                    }
+                    else if(line.find("normal") != std::string::npos)
+                    {
+                        float r, g, b, a;
+                        std::string content = line.substr(line.find("\"(") + 2, line.length() - line.find("\"("));
+                        content = content.substr(0, content.find(")\""));
+                        
+                        std::stringstream ss(content);
+                        ss >> r >> g >> b >> a;
+
+                        vec4vars.at(2) = (glm::vec4(r, g, b, a));
+                    }
+                    else if(line.find("roughness") != std::string::npos)
+                    {
+                        float r, g, b, a;
+                        std::string content = line.substr(line.find("\"(") + 2, line.length() - line.find("\"("));
+                        content = content.substr(0, content.find(")\""));
+                        
+                        std::stringstream ss(content);
+                        ss >> r >> g >> b >> a;
+
+                        vec4vars.at(3) = (glm::vec4(r, g, b, a));
+                    }
+                }
+            }
+            if(matName == "UNDEFINED" || type == UNDEFINED) throw std::runtime_error("Not all material parameters specified at " + filePath);
+            
+            std::vector<Texture const*> textures;
+            for(std::string name : textureNames)
+            {
+                textures.push_back(getTextureByName(name));
+            }
+            textures.resize(TEXTURE_ARRAY_SIZE);
+
+            materials.insert(std::make_pair(
+                matName,
+                std::make_shared<Material>(&device, type, matName, textures, vec4vars)));
+
+            MaterialNode matParams;
+            matParams.material = materials.at(matName).get();
+            
+            renderTree.at(type).materials.insert(std::make_pair(matName, matParams));
+        }
+        else throw std::runtime_error("Error opening material file at " + filePath);
+
     }
 
     void RenderEngine::loadTextures(std::string texturesDir)
@@ -131,6 +231,7 @@ namespace Renderer
             if(texture.path().filename().string().find(".png") != std::string::npos ||
                 texture.path().filename().string().find(".jpeg") != std::string::npos) //must be a valid .png/jpg file
             {
+                std::cout << "loading texture: " << texture.path().stem().string() << std::endl;
                 Image imageData = loadImage(texture.path().string());
 
                 this->textures.insert(std::make_pair(
@@ -159,23 +260,24 @@ namespace Renderer
     void RenderEngine::addObject(ModelInstance& object)
     {
         RenderObjectReference returnReferences;
-        for(uint32_t i = 0; i < object.modelPtr->getModelMeshes().size(); i++)
+        if(object.modelPtr != NULL)
         {
-            if(object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)) //make sure a valid material is set
+            for(uint32_t i = 0; i < object.modelPtr->getModelMeshes().size(); i++)
             {
-                PipelineType pipelineType = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)->getPipelineType();
-                std::string matName = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)->getMatName();
-                
-                ObjectParameters treeObject = {
-                    .mesh = object.modelPtr->getModelMeshes().at(i).mesh.get(),
-                    .modelMatrix = &object.modelMatrix
-                };
+                if(object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)) //make sure a valid material is set
+                {
+                    PipelineType pipelineType = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)->getPipelineType();
+                    std::string matName = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)->getMatName();
+                    
+                    ObjectParameters treeObject = {
+                        .mesh = object.modelPtr->getModelMeshes().at(i).mesh.get(),
+                        .modelMatrix = &object.modelMatrix
+                    };
 
-                renderTree.at(pipelineType).materials.at(matName).objects.push_back(treeObject);
-                object.objReference.insert(std::make_pair(i, renderTree.at(pipelineType).materials.at(matName).objects.end()));
-                object.objReference.at(i)--;
-                
-                auto b = 3;
+                    renderTree.at(pipelineType).materials.at(matName).objects.push_back(treeObject);
+                    object.objReference.insert(std::make_pair(i, renderTree.at(pipelineType).materials.at(matName).objects.end()));
+                    object.objReference.at(i)--;
+                }
             }
         }
     }
@@ -209,7 +311,6 @@ namespace Renderer
                     rendering.drawIndexed(*object);
                 }
             }
-            rendering.submit();
         }
 
         rendering.incrementFrameCounter();
@@ -225,7 +326,6 @@ namespace Renderer
             return this->models.at(name).get();
         }
         return NULL;
-        //return this->models.at("Default").get();
     }
 
     Material const* RenderEngine::getMaterialByName(std::string name)
@@ -234,7 +334,7 @@ namespace Renderer
         {
             return this->materials.at(name).get();
         }
-        return this->materials.at("default").get();
+        return NULL;
     }
 
     void RenderEngine::setCamera(Camera* camera)

@@ -48,7 +48,6 @@ namespace Renderer
         Descriptors* descriptorsPtr;
         Camera* cameraPtr = NULL;
         
-        void begin(Pipeline const* pipeline);
         void checkSwapchain(VkResult imageResult);
 
     public:
@@ -72,8 +71,5 @@ namespace Renderer
 
         //change the material
         void bindMaterial(Material const* material);
-
-        //submit
-        void submit();
     };
 }

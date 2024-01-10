@@ -11,6 +11,7 @@ namespace Renderer
         float pitch = 0.0f;
         float yaw = 0.0f;
         glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f);
+        glm::quat qRotation;
     };
 
     struct CameraCreateInfo
@@ -53,5 +54,7 @@ namespace Renderer
 
         const glm::mat4& getViewMatrix() const { return view; }
         const glm::mat4& getProjection() const { return projection; }
+
+        CameraTranslation getTranslation() const { return translation; }
     };
 }

@@ -113,10 +113,10 @@ namespace Renderer
         else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
         {
             barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            barrier.dstAccessMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
 
             sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            destinationStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT; //this may not be the best stage but it works
+            destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         }
         else
         {
@@ -458,10 +458,10 @@ namespace Renderer
         vmaDestroyBuffer(devicePtr->getAllocator(), buffer, allocation);
     }
 
-    void UniformBuffer::updateUniformBuffer(UniformBufferObject* updateData)
+    void UniformBuffer::updateUniformBuffer(void* updateData, uint32_t offset, uint32_t size)
     {
-        memcpy(dataPtr, updateData, sizeof(UniformBufferObject));
-        //vmaFlushAllocation(devicePtr->getAllocator(), allocation, 0, VK_WHOLE_SIZE);
+        memcpy(reinterpret_cast<unsigned char*>(updateData) + offset, updateData, size);
+        vmaFlushAllocation(devicePtr->getAllocator(), allocation, offset, size);
     }
 
     //----------MESH DEFINITIONS----------//

@@ -165,11 +165,17 @@ namespace Renderer
     void Descriptors::writeUniform()
     {
         //view and projection matrix (per frame)
+        VkDescriptorBufferInfo UBOinfos[2];
         VkDescriptorBufferInfo UBOinfo = {};
-        UBOinfo.buffer = UBO->getBuffer();
-        UBOinfo.offset = getOffsetOf(offsetof(UniformBufferObject, view));
-        UBOinfo.range = getOffsetOf(offsetof(UniformBufferObject, testVec1));
+        UBOinfos[0].buffer = UBO->getBuffer();
+        UBOinfos[0].offset = 0;
+        UBOinfos[0].range = getOffsetOf(offsetof(UniformBufferObject, sceneInfo));
         offsets.push_back(0);
+    
+        UBOinfos[1].buffer = UBO->getBuffer();
+        UBOinfos[1].offset = 0;
+        UBOinfos[1].range = getOffsetOf(offsetof(UniformBufferObject, sceneInfo) - offsetof(UniformBufferObject, sceneInfo);
+        offsets.push_back(getOffsetOf(offsetof(UniformBufferObject, PBR)));
 
         //write set
         VkWriteDescriptorSet uniformWriteInfo = {};
@@ -178,16 +184,16 @@ namespace Renderer
         uniformWriteInfo.dstBinding = 0;
         uniformWriteInfo.dstArrayElement = 0;
         uniformWriteInfo.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-        uniformWriteInfo.descriptorCount = 1;
-        uniformWriteInfo.pBufferInfo = &UBOinfo;
+        uniformWriteInfo.descriptorCount = 2;
+        uniformWriteInfo.pBufferInfo = UBOinfos;
         uniformWriteInfo.pImageInfo = NULL;
         uniformWriteInfo.pTexelBufferView = NULL;
 
         vkUpdateDescriptorSets(devicePtr->getDevice(), 1, &uniformWriteInfo, 0, nullptr);
     }
 
-    void Descriptors::updateUniforms(UniformBufferObject *uploadData)
+    void Descriptors::updateUBO(void* updateData, uint32_t offset, uint32_t size)
     {
-        UBO->updateUniformBuffer(uploadData);
+        UBO->updateUniformBuffer(updateData, offset, size);
     }
 }

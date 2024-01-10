@@ -24,18 +24,6 @@ namespace Renderer
         int width, height, channels = 0;
     };
 
-    //holds all data for camera, pipelines, and object specific parameters
-    struct UniformBufferObject
-    {
-        //camera
-        glm::mat4 view;
-        glm::mat4 projection;
-        //default pipeline
-        VkSampler sampler;
-        glm::vec3 testVec1;
-        glm::vec3 testVec2;
-    };
-
     //----------BUFFER DECLARATIONS----------//
 
     class Buffer
@@ -134,7 +122,7 @@ namespace Renderer
         UniformBuffer(Device *device, Commands *commands, uint32_t size);
         ~UniformBuffer();
 
-        void updateUniformBuffer(UniformBufferObject* updateData);
+        void updateUniformBuffer(void* updateData, uint32_t offset, uint32_t size);
 
         const VkBuffer& getBuffer() { return buffer; }
     };
