@@ -61,7 +61,7 @@ namespace Renderer
 
     //----------COMPUTE PIPELINE DEFINITIONS---------//
 
-    ComputePipeline::ComputePipeline(Device *device, Descriptors* descriptors, std::string shaderLocation)
+    ComputePipeline::ComputePipeline(Device *device, DescriptorAllocator* descriptors, std::string shaderLocation)
     {/*
         shader = std::make_shared<Shader>(devicePtr, shaderLocation);
 
@@ -114,13 +114,14 @@ namespace Renderer
     //----------PIPELINE DEFINITIONS---------//
 
     VkPipelineCache Pipeline::cache;
+    VkDescriptorSetLayout Pipeline::globalDescriptorLayout;
 
-    Pipeline::Pipeline(Device *device, std::vector<std::string> &shaderFiles, Descriptors *descriptors)
-        : devicePtr(device),
-          descriptorsPtr(descriptors)
+    Pipeline::Pipeline(Device *device, Commands* commands, std::vector<std::string> &shaderFiles, DescriptorAllocator *descriptors)
+        :devicePtr(device),
+        commandsPtr(commands),
+        descriptorsPtr(descriptors)
     {
         createShaders(shaderFiles);
-        createPipelineLayout();
     }
 
     Pipeline::~Pipeline()
@@ -145,6 +146,35 @@ namespace Renderer
         vkDestroyPipelineCache(device->getDevice(), cache, nullptr);
     }
 
+    void Pipeline::createGlobalDescriptorLayout(Device *device)
+    {
+        VkDescriptorSetLayoutBinding uniformDescriptor = {};
+        uniformDescriptor.binding = 0;
+        uniformDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uniformDescriptor.descriptorCount = 1;
+        uniformDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        uniformDescriptor.pImmutableSamplers = NULL;
+        
+        //descriptor info
+        VkDescriptorSetLayoutCreateInfo descriptorInfo = {};
+        descriptorInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        descriptorInfo.pNext = NULL;
+        descriptorInfo.flags = 0;
+        descriptorInfo.bindingCount = 1;
+        descriptorInfo.pBindings = &uniformDescriptor;
+
+        VkResult result = vkCreateDescriptorSetLayout(device->getDevice(), &descriptorInfo, nullptr, &globalDescriptorLayout);
+        if(result != VK_SUCCESS)
+        {
+            throw std::runtime_error("Failed to create descriptor set layout");
+        }
+    }
+
+    void Pipeline::destroyGlobalDescriptorLayout(Device *device)
+    {
+        vkDestroyDescriptorSetLayout(device->getDevice(), globalDescriptorLayout, nullptr);
+    }
+
     void Pipeline::createShaders(std::vector<std::string>& shaderFiles)
     {
         for(const std::string& shaderFile : shaderFiles)
@@ -165,63 +195,39 @@ namespace Renderer
         }
     }
 
-    void Pipeline::createPipelineLayout()
-    {
-        pushConstantRange.offset = 0;
-        pushConstantRange.size = sizeof(glm::mat4x4); //64 byte model matrix
-        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; //TODO RT STAGE FLAG
-
-        VkPipelineLayoutCreateInfo layoutInfo = {};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        layoutInfo.pNext = NULL;
-        layoutInfo.flags = 0;
-        layoutInfo.setLayoutCount = 1;
-        layoutInfo.pSetLayouts = descriptorsPtr->getSetLayoutPtr();
-        layoutInfo.pushConstantRangeCount = 1;
-        layoutInfo.pPushConstantRanges = &pushConstantRange;
-
-        VkResult result = vkCreatePipelineLayout(devicePtr->getDevice(), &layoutInfo, nullptr, &pipelineLayout);
-        if(result != VK_SUCCESS)
-        {
-            throw std::runtime_error("Pipeline layout creation failed");
-        }
-    }
-
     //----------RASTER PIPELINE DEFINITIONS---------//
 
-    RasterPipeline::RasterPipeline(Device* device, std::vector<std::string>& shaderFiles, Descriptors* descriptors, PipelineType pipelineType, Swapchain* swapchain)
-        :Pipeline(device, shaderFiles, descriptors)
+    RasterPipeline::RasterPipeline(Device* device, Commands* commands, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors, PipelineType pipelineType, Swapchain* swapchain)
+        :Pipeline(device, commands, shaderFiles, descriptors)
     {
-        switch(pipelineType)
-        {
-            case PBR: //VEC3VEC3VEC2
-                vertexDescription.binding = 0;
-                vertexDescription.stride = sizeof(Vertex);
-                vertexDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-                //vertex position
-                vertexAttributes.push_back(VkVertexInputAttributeDescription{
-                    .location = 0,
-                    .binding = 0,
-                    .format = VK_FORMAT_R32G32B32_SFLOAT, //vec3
-                    .offset = offsetof(Vertex, position)
-                });
-                //normals
-                vertexAttributes.push_back(VkVertexInputAttributeDescription{
-                    .location = 1,
-                    .binding = 0,
-                    .format = VK_FORMAT_R32G32B32_SFLOAT, //vec3
-                    .offset = offsetof(Vertex, normal)
-                });
-                //texture Coordinates
-                vertexAttributes.push_back(VkVertexInputAttributeDescription{
-                    .location = 2,
-                    .binding = 0,
-                    .format = VK_FORMAT_R32G32_SFLOAT, //vec2
-                    .offset = offsetof(Vertex, texCoord)
-                });
+        this->pipelineType = pipelineType;
+        materialUBO = std::make_shared<UniformBuffer>(devicePtr, commandsPtr, (uint32_t)sizeof(PBRpipelineUniforms));
+        createDescriptorLayout();
 
-                break;
-        }
+        vertexDescription.binding = 0;
+        vertexDescription.stride = sizeof(Vertex);
+        vertexDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        //vertex position
+        vertexAttributes.push_back(VkVertexInputAttributeDescription{
+            .location = 0,
+            .binding = 0,
+            .format = VK_FORMAT_R32G32B32_SFLOAT, //vec3
+            .offset = offsetof(Vertex, position)
+        });
+        //normals
+        vertexAttributes.push_back(VkVertexInputAttributeDescription{
+            .location = 1,
+            .binding = 0,
+            .format = VK_FORMAT_R32G32B32_SFLOAT, //vec3
+            .offset = offsetof(Vertex, normal)
+        });
+        //texture Coordinates
+        vertexAttributes.push_back(VkVertexInputAttributeDescription{
+            .location = 2,
+            .binding = 0,
+            .format = VK_FORMAT_R32G32_SFLOAT, //vec2
+            .offset = offsetof(Vertex, texCoord)
+        });
 
         //pipeline info from here on
         VkPipelineRenderingCreateInfo renderingInfo = {};
@@ -380,12 +386,74 @@ namespace Renderer
 
     RasterPipeline::~RasterPipeline()
     {
+        vkDestroyDescriptorSetLayout(devicePtr->getDevice(), descriptorLayout, nullptr);
+    }
+
+    void RasterPipeline::createDescriptorLayout()
+    {
+        std::vector<VkDescriptorSetLayoutBinding> descriptors;
+
+        //material uniforms
+        VkDescriptorSetLayoutBinding uniformDescriptor = {};
+        uniformDescriptor.binding = 0;
+        uniformDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uniformDescriptor.descriptorCount = 1;
+        uniformDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        uniformDescriptor.pImmutableSamplers = NULL;
+        descriptors.push_back(uniformDescriptor);
+
+        //material textures
+        if(pipelineType == PBR)
+        {
+            VkDescriptorSetLayoutBinding textureDescriptor = {};
+            textureDescriptor.binding = 1;
+            textureDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            textureDescriptor.descriptorCount = TEXTURE_ARRAY_SIZE;
+            textureDescriptor.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            textureDescriptor.pImmutableSamplers = NULL;
+            descriptors.push_back(textureDescriptor);
+        }
+        
+        //descriptor info
+        VkDescriptorSetLayoutCreateInfo descriptorInfo = {};
+        descriptorInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        descriptorInfo.pNext = NULL;
+        descriptorInfo.flags = 0;
+        descriptorInfo.bindingCount = descriptors.size();
+        descriptorInfo.pBindings = descriptors.data();
+
+        VkResult result = vkCreateDescriptorSetLayout(devicePtr->getDevice(), &descriptorInfo, nullptr, &descriptorLayout);
+        if(result != VK_SUCCESS)
+        {
+            throw std::runtime_error("Failed to create descriptor set layout");
+        }
+        VkDescriptorSetLayout descriptorLayouts[2] = {globalDescriptorLayout, descriptorLayout};
+
+        //push constants
+        pushConstantRange.offset = 0;
+        pushConstantRange.size = sizeof(glm::mat4x4); //64 byte model matrix
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; //TODO RT STAGE FLAG
+
+        VkPipelineLayoutCreateInfo layoutInfo = {};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layoutInfo.pNext = NULL;
+        layoutInfo.flags = 0;
+        layoutInfo.setLayoutCount = 2;
+        layoutInfo.pSetLayouts = descriptorLayouts;
+        layoutInfo.pushConstantRangeCount = 1;
+        layoutInfo.pPushConstantRanges = &pushConstantRange;
+
+        VkResult result2 = vkCreatePipelineLayout(devicePtr->getDevice(), &layoutInfo, nullptr, &pipelineLayout);
+        if(result2 != VK_SUCCESS)
+        {
+            throw std::runtime_error("Pipeline layout creation failed");
+        }
     }
 
     //----------RT PIPELINE DEFINITTIONS----------//
 
-    RTPipeline::RTPipeline(Device *device, std::vector<std::string>& shaderFiles, Descriptors* descriptors)
-        :Pipeline(device, shaderFiles, descriptors)
+    RTPipeline::RTPipeline(Device *device, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors)
+        :Pipeline(device, NULL, shaderFiles, descriptors)
     {
     }
 

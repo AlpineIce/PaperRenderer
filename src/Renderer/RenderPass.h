@@ -38,6 +38,7 @@ namespace Renderer
         std::vector<VkSemaphore> imageSemaphores;
         std::vector<VkSemaphore> renderSemaphores;
         std::vector<VkFence> renderingFences;
+        UniformBuffer globalUBO;
         uint32_t currentImage;
         bool recreateFlag = false;
 
@@ -45,13 +46,13 @@ namespace Renderer
         Device* devicePtr;
         Commands* commandsPtr;
         Pipeline const* pipeline = NULL; //changes per frame
-        Descriptors* descriptorsPtr;
+        DescriptorAllocator* descriptorsPtr;
         Camera* cameraPtr = NULL;
         
         void checkSwapchain(VkResult imageResult);
 
     public:
-        RenderPass(Swapchain* swapchain, Device* device, Commands* commands, Descriptors* descriptors);
+        RenderPass(Swapchain* swapchain, Device* device, Commands* commands, DescriptorAllocator* descriptors);
         ~RenderPass();
 
         //set camera

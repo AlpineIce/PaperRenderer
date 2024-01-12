@@ -48,17 +48,18 @@ namespace Renderer
             PipelineType type = PipelineType::UNDEFINED;
             if(shadersPath.stem().string().find("TexturelessPBR") != std::string::npos)
             {
-                type = PipelineType::PBR;
+                type = PipelineType::TexturelessPBR;
             }
             else if(shadersPath.stem().string().find("PBR") != std::string::npos)
             {
-                type = PipelineType::TexturelessPBR;
+                type = PipelineType::PBR;
             }
 
             if(type != UNDEFINED)
             {
                 renderTree[type] = {std::make_shared<RasterPipeline>(
                         &device,
+                        &commands,
                         shaderFiles,
                         &descriptors,
                         type,
@@ -201,7 +202,7 @@ namespace Renderer
                     }
                 }
             }
-            if(matName == "UNDEFINED" || type == UNDEFINED) throw std::runtime_error("Not all material parameters specified at " + filePath);
+            if(matName == "UNDEFINED" || renderTree.count(type) == 0) throw std::runtime_error("Not all material parameters specified at " + filePath);
             
             std::vector<Texture const*> textures;
             for(std::string name : textureNames)
@@ -212,7 +213,7 @@ namespace Renderer
 
             materials.insert(std::make_pair(
                 matName,
-                std::make_shared<Material>(&device, type, matName, textures, vec4vars)));
+                std::make_shared<Material>(&device, renderTree.at(type).pipeline.get(), matName, textures, vec4vars)));
 
             MaterialNode matParams;
             matParams.material = materials.at(matName).get();

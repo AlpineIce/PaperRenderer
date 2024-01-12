@@ -11,64 +11,26 @@ namespace Renderer
 
     const uint32_t TEXTURE_ARRAY_SIZE = 8;
     const uint32_t MAX_POINT_LIGHTS = 8;
-
-    struct UniformBufferObject
-    {
-        struct Globals
-        {
-            glm::mat4 view;
-            glm::mat4 projection;
-        } globals;
-
-        struct SceneInfo
-        {
-            glm::vec3 pointLights[MAX_POINT_LIGHTS];
-            glm::vec2 sunDirection;
-        } sceneInfo;
-        
-        struct PBRpipeline
-        {
-            VkSampler textures[TEXTURE_ARRAY_SIZE];
-        } PBR;
-
-        struct TexturelessPBRpipeline
-        {
-            glm::vec4 inColors;
-        } texturelessPBR;
-    };
     
-    class Descriptors
+    class DescriptorAllocator
     {
     private:
-        
-        VkDescriptorPool descriptorPool;
-        VkDescriptorSetLayout descriptorLayout;
-        VkDescriptorSet descriptorSet;
-        std::shared_ptr<UniformBuffer> UBO;
-        std::vector<uint32_t> offsets;
+        std::vector<std::vector<VkDescriptorPool>> descriptorPools;
+        std::vector<VkDescriptorPool*> currentPools;
+        std::shared_ptr<Texture> defaultTexture;
 
         Device* devicePtr;
         Commands* commandsPtr;
-        std::shared_ptr<Texture> defaultTexture;
 
-        uint32_t getOffsetOf(uint32_t bytesSize);
-
-        void createLayout();
-        void createDescriptorPool();
-        void allocateDescriptors();
-        void writeUniform();
+        VkDescriptorPool allocateDescriptorPool();
 
     public:
-        Descriptors(Device* device, Commands* commands);
-        ~Descriptors();
+        DescriptorAllocator(Device* device, Commands* commands);
+        ~DescriptorAllocator();
 
-        void updateUBO(void* updateData, uint32_t offset, uint32_t size);
-        void updateTextures(std::vector<Texture const*> textures);
-        void addUniform(uint32_t size);
-
-        VkDescriptorSetLayout const* getSetLayoutPtr() const { return &descriptorLayout; }
-        VkDescriptorSet const* getDescriptorSetPtr() const { return &descriptorSet; }
-        std::vector<uint32_t> getOffsets() const { return offsets; }
-
+        VkDescriptorSet allocateDescriptorSet(VkDescriptorSetLayout setLayout, uint32_t frameIndex);
+        void writeUniform(const VkBuffer& buffer, uint32_t size, uint32_t offset, uint32_t binding, VkDescriptorType type, const VkDescriptorSet& set);
+        void writeImageArray(std::vector<Texture const*> textures, uint32_t binding, const VkDescriptorSet& set);
+        void refreshPools(uint32_t frameIndex);
     };
 }

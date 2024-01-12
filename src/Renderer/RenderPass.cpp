@@ -3,11 +3,12 @@
 
 namespace Renderer
 {
-    RenderPass::RenderPass(Swapchain* swapchain, Device* device, Commands* commands, Descriptors* descriptors)
+    RenderPass::RenderPass(Swapchain* swapchain, Device* device, Commands* commands, DescriptorAllocator* descriptors)
         :swapchainPtr(swapchain),
         devicePtr(device),
         commandsPtr(commands),
         descriptorsPtr(descriptors),
+        globalUBO(device, commands, sizeof(GlobalDescriptor)),
         currentImage(0)
     {
         //synchronization objects
@@ -43,6 +44,9 @@ namespace Renderer
 
             vkCreateFence(devicePtr->getDevice(), &fenceInfo, nullptr, &fence);
         }
+
+        //setup global (per frame) descriptor set
+        Pipeline::createGlobalDescriptorLayout(devicePtr);
     }
 
     RenderPass::~RenderPass()
@@ -61,17 +65,26 @@ namespace Renderer
         {
             vkDestroyFence(devicePtr->getDevice(), fence, nullptr);
         }
+
+        Pipeline::destroyGlobalDescriptorLayout(devicePtr);
     }
 
     void RenderPass::startNewFrame()
     {
-        //update uniform buffer for next frame
-        UniformBufferObject uniformData;
-        uniformData.view = cameraPtr->getViewMatrix();
-        uniformData.projection = cameraPtr->getProjection();
-        descriptorsPtr->updateUniforms(&uniformData);
+        vkWaitForFences(devicePtr->getDevice(), 1, &(renderingFences.at(currentImage)), VK_TRUE, UINT64_MAX);
 
-        //begin dynamic render "pass"
+        descriptorsPtr->refreshPools(currentImage);
+        
+        //get available image
+        checkSwapchain(vkAcquireNextImageKHR(devicePtr->getDevice(),
+            *(swapchainPtr->getSwapchainPtr()),
+            UINT16_MAX,
+            imageSemaphores.at(currentImage),
+            VK_NULL_HANDLE, &currentImage));
+
+        vkResetFences(devicePtr->getDevice(), 1, &(renderingFences.at(currentImage)));
+
+        //command buffer
         VkCommandBufferBeginInfo commandInfo;
         commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         commandInfo.pNext = NULL;
@@ -82,6 +95,7 @@ namespace Renderer
         vkResetCommandBuffer(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage), 0);
         vkBeginCommandBuffer(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage), &commandInfo);
 
+        //dynamic rendering info
         VkClearValue clearValue = {};
         clearValue.color = {0.0f, 0.0f, 0.0, 1.0f};
 
@@ -201,14 +215,6 @@ namespace Renderer
 
         vkCmdBindVertexBuffers(drawBuffer, 0, 1, &objectData.mesh->getVertexBuffer(), offset);
         vkCmdBindIndexBuffer(drawBuffer, objectData.mesh->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-        vkCmdBindDescriptorSets(drawBuffer,
-            VK_PIPELINE_BIND_POINT_GRAPHICS,
-            pipeline->getLayout(),
-            0,
-            1,
-            descriptorsPtr->getDescriptorSetPtr(),
-            descriptorsPtr->getOffsets().size(),
-            descriptorsPtr->getOffsets().data());
         vkCmdDrawIndexed(drawBuffer, objectData.mesh->getIndexBufferSize(), 1, 0, 0, 0);
     }
 
@@ -218,8 +224,28 @@ namespace Renderer
         {
             this->pipeline = pipeline;
             vkCmdBindPipeline(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage),
-            VK_PIPELINE_BIND_POINT_GRAPHICS, 
-            pipeline->getPipeline());
+                VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                pipeline->getPipeline());
+
+            //update uniform data
+            GlobalDescriptor uniformData;
+            uniformData.view = cameraPtr->getViewMatrix();
+            uniformData.projection = cameraPtr->getProjection();
+
+            globalUBO.updateUniformBuffer(&uniformData, 0, sizeof(GlobalDescriptor));
+
+            VkDescriptorSet globalDescriptorSet = descriptorsPtr->allocateDescriptorSet(Pipeline::getGlobalDescriptorLayout(), currentImage);
+            descriptorsPtr->writeUniform(globalUBO.getBuffer(), sizeof(GlobalDescriptor), 0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, globalDescriptorSet);
+
+            vkCmdBindDescriptorSets(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage),
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                this->pipeline->getLayout(),
+                0, //material bind point
+                1,
+                &globalDescriptorSet,
+                0,
+                0);
+
         }
         else //continue with next binding
         {
@@ -229,8 +255,8 @@ namespace Renderer
 
     void RenderPass::bindMaterial(Material const* material)
     {
-        //descriptorsPtr->updateUniforms()
-        descriptorsPtr->updateTextures(material->getTextures());
+        VkCommandBuffer drawBuffer = commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage);
+        material->updateUniforms(descriptorsPtr, drawBuffer, currentImage);
     }
 
     void RenderPass::incrementFrameCounter()
@@ -309,18 +335,6 @@ namespace Renderer
         {
             currentImage = 0;
         }
-
-        //wait for the next frame
-        vkWaitForFences(devicePtr->getDevice(), 1, &(renderingFences.at(currentImage)), VK_TRUE, UINT64_MAX);
-        
-        //get available image
-        checkSwapchain(vkAcquireNextImageKHR(devicePtr->getDevice(),
-            *(swapchainPtr->getSwapchainPtr()),
-            UINT16_MAX,
-            imageSemaphores.at(currentImage),
-            VK_NULL_HANDLE, &currentImage));
-
-        vkResetFences(devicePtr->getDevice(), 1, &(renderingFences.at(currentImage)));
 
         if (queueResult == VK_ERROR_OUT_OF_DATE_KHR || queueResult == VK_SUBOPTIMAL_KHR || recreateFlag) 
         {

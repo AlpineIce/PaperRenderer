@@ -43,7 +43,7 @@ namespace Renderer
         Window window;
         Swapchain swapchain;
         Commands commands;
-        Descriptors descriptors;
+        DescriptorAllocator descriptors;
         RenderPass rendering;
 
         //render tree stores all pipelines, their child materials, with their child RenderObject pointers

@@ -22,6 +22,28 @@ namespace Renderer
 
     };
 
+    struct GlobalDescriptor
+    {
+        glm::mat4 view;
+        glm::mat4 projection;
+
+        struct SceneInfo
+        {
+            glm::vec3 pointLights[MAX_POINT_LIGHTS];
+            glm::vec2 sunDirection;
+        } sceneInfo;
+    };
+
+    struct PBRpipelineUniforms
+    {
+        glm::vec3 bruh;
+    };
+
+    struct TexturelessPBRpipelineUniforms
+    {
+        glm::vec4 inColors[TEXTURE_ARRAY_SIZE] = {glm::vec4(0.0f)};
+    };
+
     //----------SHADER DECLARATIONS----------//
 
     class Shader
@@ -49,7 +71,7 @@ namespace Renderer
         std::shared_ptr<Shader> shader;
 
     public:
-        ComputePipeline(Device *device, Descriptors* descriptors, std::string shaderLocation);
+        ComputePipeline(Device *device, DescriptorAllocator* descriptors, std::string shaderLocation);
         ~ComputePipeline();
         
     };
@@ -59,26 +81,38 @@ namespace Renderer
     {
     protected:
         std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders; //shared ptr because i give up lmao
+        std::shared_ptr<UniformBuffer> materialUBO;
         VkPipeline pipeline;
-        VkPushConstantRange pushConstantRange;
         VkPipelineLayout pipelineLayout;
+        VkPushConstantRange pushConstantRange;
+        VkDescriptorSetLayout descriptorLayout;
+        
+        PipelineType pipelineType = UNDEFINED;
         
         static VkPipelineCache cache;
+        static VkDescriptorSetLayout globalDescriptorLayout;
+        static VkPipelineLayout globalPipelineLayout;
 
-        Descriptors* descriptorsPtr;
+        DescriptorAllocator* descriptorsPtr;
         Device* devicePtr;
+        Commands* commandsPtr;
 
         void createShaders(std::vector<std::string>& shaderFiles);
-        void createPipelineLayout();
 
     public:
-        Pipeline(Device *device, std::vector<std::string>& shaderFiles, Descriptors* descriptors);
+        Pipeline(Device *device, Commands* commands, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors);
         virtual ~Pipeline();
 
         static void createCache(Device* device);
         static void destroyCache(Device* device);
+        static void createGlobalDescriptorLayout(Device* device);
+        static void destroyGlobalDescriptorLayout(Device* device);
+        static VkDescriptorSetLayout getGlobalDescriptorLayout() { return globalDescriptorLayout; }
 
         VkPipeline getPipeline() const { return pipeline; }
+        PipelineType getPipelineType() const { return pipelineType; }
+        VkDescriptorSetLayout getDescriptorLayout() const { return descriptorLayout; }
+        UniformBuffer* getUBO() const { return materialUBO.get(); }
         VkPipelineLayout getLayout() const { return pipelineLayout; }
         VkPushConstantRange getPushConstantRange() const { return pushConstantRange; }
     };
@@ -88,12 +122,13 @@ namespace Renderer
     {
     private:
         //vertex layout
-        VkVertexInputBindingDescription vertexDescription = {};
         std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+        VkVertexInputBindingDescription vertexDescription = {};
         VertexLayout vertexLayout;
 
+        void createDescriptorLayout();
     public:
-        RasterPipeline(Device* device, std::vector<std::string>& shaderFiles, Descriptors* descriptors, PipelineType pipelineType, Swapchain* swapchain);
+        RasterPipeline(Device* device, Commands* commands, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors, PipelineType pipelineType, Swapchain* swapchain);
         ~RasterPipeline() override;
 
     };
@@ -104,7 +139,7 @@ namespace Renderer
     private:
 
     public:
-        RTPipeline(Device *device, std::vector<std::string>& shaderFiles, Descriptors* descriptors);
+        RTPipeline(Device *device, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors);
         ~RTPipeline() override;
     };
 }

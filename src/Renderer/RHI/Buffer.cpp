@@ -460,7 +460,7 @@ namespace Renderer
 
     void UniformBuffer::updateUniformBuffer(void* updateData, uint32_t offset, uint32_t size)
     {
-        memcpy(reinterpret_cast<unsigned char*>(updateData) + offset, updateData, size);
+        memcpy((unsigned char*)dataPtr + offset, updateData, size);
         vmaFlushAllocation(devicePtr->getAllocator(), allocation, offset, size);
     }
 

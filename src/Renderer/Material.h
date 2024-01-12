@@ -19,7 +19,7 @@ namespace Renderer
     {
     private:
         std::string matName;
-        const PipelineType pipelineType;
+        Pipeline const* pipelinePtr;
         MaterialParameters parameters;
 
         std::vector<Texture const*> textures;
@@ -27,11 +27,13 @@ namespace Renderer
         Device* devicePtr;
 
     public:
-        Material(Device* device, PipelineType pipelineType, std::string matName, std::vector<Texture const*> textures, std::vector<glm::vec4> colors);
+        Material(Device* device, Pipeline* pipeline, std::string matName, std::vector<Texture const*> textures, std::vector<glm::vec4> colors);
         ~Material();
 
+        void updateUniforms(DescriptorAllocator* descriptor, const VkCommandBuffer& command, uint32_t currentFrame) const;
+
         std::string getMatName() const { return matName; }
-        const PipelineType getPipelineType() const { return pipelineType; }
+        const PipelineType getPipelineType() const { return pipelinePtr->getPipelineType(); }
         void setParameters(MaterialParameters parameters) { this->parameters = parameters; }
         MaterialParameters getParameterValues() const { return parameters; }
         std::vector<Texture const*> getTextures() const { return textures; }

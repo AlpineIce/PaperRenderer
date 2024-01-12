@@ -3,132 +3,126 @@
 
 namespace Renderer
 {
-    Descriptors::Descriptors(Device *device, Commands *commands)
+    DescriptorAllocator::DescriptorAllocator(Device *device, Commands *commands)
         :devicePtr(device),
         commandsPtr(commands)
     {
-        //make uniform buffer object
-        UBO = std::make_shared<UniformBuffer>(devicePtr, commandsPtr, getOffsetOf(sizeof(UniformBufferObject)));
+        unsigned char pixel[4] = {(uint8_t)255, 0, (uint8_t)255, (uint8_t)255};
+        Image imageData;
+        imageData.channels = 4;
+        imageData.width = 1;
+        imageData.height = 1;
+        imageData.size = 4;
+        imageData.data = &pixel;
 
-        uint8_t imageData[4] = {255, 0, 255, 255};
-        Image defaultImage = {
-            .data = imageData,
-            .size = 4, //might be the wrong size
-            .width = 1,
-            .height = 1,
-            .channels = 4
-        };
-        defaultTexture = std::make_shared<Texture>(devicePtr, commandsPtr, &defaultImage);
+        defaultTexture = std::make_shared<Texture>(devicePtr, commandsPtr, &imageData);
 
-        createLayout();
-        createDescriptorPool();
-        allocateDescriptors();
+        descriptorPools.resize(Commands::getFrameCount());
+        currentPools.resize(Commands::getFrameCount());
+        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
+        {
+            descriptorPools.at(i).push_back(allocateDescriptorPool());
+            currentPools.at(i) = &(descriptorPools.at(i).back());
+        }
     }
     
-    Descriptors::~Descriptors()
-    {
-        vkDestroyDescriptorPool(devicePtr->getDevice(), descriptorPool, nullptr);
-        vkDestroyDescriptorSetLayout(devicePtr->getDevice(), descriptorLayout, nullptr);
-    }
-
-    void Descriptors::createLayout()
-    {
-        std::vector<VkDescriptorSetLayoutBinding> descriptors;
-
-        //dynamic UBO
-        VkDescriptorSetLayoutBinding uniformDescriptor = {};
-        uniformDescriptor.binding = 0;
-        uniformDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-        uniformDescriptor.descriptorCount = 1;
-        uniformDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        uniformDescriptor.pImmutableSamplers = NULL;
-        descriptors.push_back(uniformDescriptor);
-
-        //texture array
-        VkDescriptorSetLayoutBinding textureDescriptor = {};
-        textureDescriptor.binding = 1;
-        textureDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        textureDescriptor.descriptorCount = TEXTURE_ARRAY_SIZE;
-        textureDescriptor.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        textureDescriptor.pImmutableSamplers = NULL;
-        descriptors.push_back(textureDescriptor);
-
-        //descriptor info
-        VkDescriptorSetLayoutCreateInfo descriptorInfo = {};
-        descriptorInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        descriptorInfo.pNext = NULL;
-        descriptorInfo.flags = 0;
-        descriptorInfo.bindingCount = descriptors.size();
-        descriptorInfo.pBindings = descriptors.data();
-
-        VkResult result = vkCreateDescriptorSetLayout(devicePtr->getDevice(), &descriptorInfo, nullptr, &descriptorLayout);
-        if(result != VK_SUCCESS)
+    DescriptorAllocator::~DescriptorAllocator()
+    {   
+        for(std::vector<VkDescriptorPool>& descriptorPoolSet : descriptorPools)
         {
-            throw std::runtime_error("Failed to create descriptor set layout");
+            for(VkDescriptorPool& pool : descriptorPoolSet)
+            {
+                vkDestroyDescriptorPool(devicePtr->getDevice(), pool, nullptr);
+            }
         }
     }
 
-    uint32_t Descriptors::getOffsetOf(uint32_t bytesSize)
+    VkDescriptorPool DescriptorAllocator::allocateDescriptorPool()
     {
-        //most of this is from https://github.com/SaschaWillems/Vulkan/blob/master/examples/dynamicuniformbuffer/README.md
-        uint32_t minUboAlignment = devicePtr->getGPUProperties().limits.minUniformBufferOffsetAlignment;
-        uint32_t maxUboAlignment = devicePtr->getGPUProperties().limits.maxUniformBufferRange; //debug line
-        if (minUboAlignment > 0)
-        {
-		    return (bytesSize + minUboAlignment - 1) & ~(minUboAlignment - 1);
-	    }
-        else
-        {
-            throw std::runtime_error("uh oh GPU min uniform buffer offset alignment isn't greater than 0");
-            return 0;
-        }
-    }
-
-    void Descriptors::createDescriptorPool()
-    {
-        //UBO descriptor Pool
         std::vector<VkDescriptorPoolSize> poolSizes;
         
         VkDescriptorPoolSize UBOpoolSize = {};
         UBOpoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-        UBOpoolSize.descriptorCount = Commands::getFrameCount();
+        UBOpoolSize.descriptorCount = 1024;
         poolSizes.push_back(UBOpoolSize);
 
         VkDescriptorPoolSize samplerPoolSize = {};
         samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        samplerPoolSize.descriptorCount = Commands::getFrameCount();
+        samplerPoolSize.descriptorCount = 1024;
         poolSizes.push_back(samplerPoolSize);
         
         VkDescriptorPoolCreateInfo poolInfo = {};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         poolInfo.pNext = NULL;
         poolInfo.flags = 0;
-        poolInfo.maxSets = Commands::getFrameCount();
+        poolInfo.maxSets = 2048;
         poolInfo.poolSizeCount = poolSizes.size();
         poolInfo.pPoolSizes = poolSizes.data();
 
-        VkResult result = vkCreateDescriptorPool(devicePtr->getDevice(), &poolInfo, nullptr, &descriptorPool);
+        VkDescriptorPool returnPool;
+        VkResult result = vkCreateDescriptorPool(devicePtr->getDevice(), &poolInfo, nullptr, &returnPool);
         if(result != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to create descriptor pool");
         }
+        
+        return returnPool;
     }
 
-    void Descriptors::allocateDescriptors()
+    VkDescriptorSet DescriptorAllocator::allocateDescriptorSet(VkDescriptorSetLayout setLayout, uint32_t frameIndex)
     {
+        VkDescriptorSet returnSet;
+
         VkDescriptorSetAllocateInfo allocInfo = {};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.pNext = NULL;
-        allocInfo.descriptorPool = descriptorPool;
+        allocInfo.descriptorPool = *(currentPools.at(frameIndex));
         allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &descriptorLayout;
+        allocInfo.pSetLayouts = &setLayout;
 
-        VkResult result = vkAllocateDescriptorSets(devicePtr->getDevice(), &allocInfo, &descriptorSet);
+        VkResult result = vkAllocateDescriptorSets(devicePtr->getDevice(), &allocInfo, &returnSet);
 
-        writeUniform();
+        if(result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL)
+        {
+            descriptorPools.at(frameIndex).push_back(allocateDescriptorPool());
+            currentPools.at(frameIndex) = &(descriptorPools.at(frameIndex).back());
+
+            result = vkAllocateDescriptorSets(devicePtr->getDevice(), &allocInfo, &returnSet);
+            if(result != VK_SUCCESS) throw std::runtime_error("Descriptor allocator failed");
+        }
+
+        return returnSet;
     }
 
-    void Descriptors::updateTextures(std::vector<Texture const*> textures)
+    void DescriptorAllocator::writeUniform(
+        const VkBuffer& buffer,
+        uint32_t size,
+        uint32_t offset,
+        uint32_t binding,
+        VkDescriptorType type,
+        const VkDescriptorSet& set)
+    {
+        VkDescriptorBufferInfo bufferInfo = {};
+        bufferInfo.buffer = buffer;
+        bufferInfo.offset = offset;
+        bufferInfo.range = size;
+
+        //write set
+        VkWriteDescriptorSet uniformWriteInfo = {};
+        uniformWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        uniformWriteInfo.dstSet = set;
+        uniformWriteInfo.dstBinding = binding;
+        uniformWriteInfo.dstArrayElement = 0;
+        uniformWriteInfo.descriptorType = type;
+        uniformWriteInfo.descriptorCount = 1;
+        uniformWriteInfo.pBufferInfo = &bufferInfo;
+        uniformWriteInfo.pImageInfo = NULL;
+        uniformWriteInfo.pTexelBufferView = NULL;
+
+        vkUpdateDescriptorSets(devicePtr->getDevice(), 1, &uniformWriteInfo, 0, nullptr);
+    }
+
+    void DescriptorAllocator::writeImageArray(std::vector<Texture const*> textures, uint32_t binding, const VkDescriptorSet& set)
     {
         textures.resize(8);
         std::vector<VkDescriptorImageInfo> imageInfos(TEXTURE_ARRAY_SIZE);
@@ -142,6 +136,7 @@ namespace Renderer
             }
             else
             {
+                //default texture (pink)
                 imageInfos.at(i).imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                 imageInfos.at(i).imageView = defaultTexture->getTextureView();
                 imageInfos.at(i).sampler = defaultTexture->getTextureSampler();
@@ -150,8 +145,8 @@ namespace Renderer
 
         VkWriteDescriptorSet imageWriteInfo = {};
         imageWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        imageWriteInfo.dstSet = descriptorSet;
-        imageWriteInfo.dstBinding = 1;
+        imageWriteInfo.dstSet = set;
+        imageWriteInfo.dstBinding = binding;
         imageWriteInfo.dstArrayElement = 0;
         imageWriteInfo.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         imageWriteInfo.descriptorCount = TEXTURE_ARRAY_SIZE;
@@ -162,38 +157,13 @@ namespace Renderer
         vkUpdateDescriptorSets(devicePtr->getDevice(), 1, &imageWriteInfo, 0, nullptr);
     }
 
-    void Descriptors::writeUniform()
+    void DescriptorAllocator::refreshPools(uint32_t frameIndex)
     {
-        //view and projection matrix (per frame)
-        VkDescriptorBufferInfo UBOinfos[2];
-        VkDescriptorBufferInfo UBOinfo = {};
-        UBOinfos[0].buffer = UBO->getBuffer();
-        UBOinfos[0].offset = 0;
-        UBOinfos[0].range = getOffsetOf(offsetof(UniformBufferObject, sceneInfo));
-        offsets.push_back(0);
-    
-        UBOinfos[1].buffer = UBO->getBuffer();
-        UBOinfos[1].offset = 0;
-        UBOinfos[1].range = getOffsetOf(offsetof(UniformBufferObject, sceneInfo) - offsetof(UniformBufferObject, sceneInfo);
-        offsets.push_back(getOffsetOf(offsetof(UniformBufferObject, PBR)));
-
-        //write set
-        VkWriteDescriptorSet uniformWriteInfo = {};
-        uniformWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        uniformWriteInfo.dstSet = descriptorSet;
-        uniformWriteInfo.dstBinding = 0;
-        uniformWriteInfo.dstArrayElement = 0;
-        uniformWriteInfo.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-        uniformWriteInfo.descriptorCount = 2;
-        uniformWriteInfo.pBufferInfo = UBOinfos;
-        uniformWriteInfo.pImageInfo = NULL;
-        uniformWriteInfo.pTexelBufferView = NULL;
-
-        vkUpdateDescriptorSets(devicePtr->getDevice(), 1, &uniformWriteInfo, 0, nullptr);
-    }
-
-    void Descriptors::updateUBO(void* updateData, uint32_t offset, uint32_t size)
-    {
-        UBO->updateUniformBuffer(updateData, offset, size);
+        for(VkDescriptorPool& pool : descriptorPools.at(frameIndex))
+        {
+            vkDestroyDescriptorPool(devicePtr->getDevice(), pool, nullptr);
+        }
+        descriptorPools.at(frameIndex).resize(0);
+        descriptorPools.at(frameIndex).push_back(allocateDescriptorPool());
     }
 }
