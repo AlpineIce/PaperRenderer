@@ -95,10 +95,23 @@ namespace Renderer
         VkImage texture;
         VkImageView textureView;
         VkSampler sampler;
+        uint32_t mipmapLevels;
 
         VmaAllocationInfo createTexture(Image* imageData);
+        void generateMipmaps(Image* imageData);
         void createTextureView();
         void createSampler();
+        //monster function
+        void injectMemBarrier(const VkCommandBuffer& command,
+            const VkImage& image,
+            VkAccessFlags srcAccess,
+            VkAccessFlags dstAccess,
+            VkImageLayout srcLayout,
+            VkImageLayout dstLayout,
+            VkPipelineStageFlags srcMask,
+            VkPipelineStageFlags dstMask, 
+            uint32_t baseMipLevel,
+            uint32_t levels);
 
     public:
         Texture(Device* device, Commands* commands, Image* imageData);

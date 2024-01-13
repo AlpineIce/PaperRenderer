@@ -38,7 +38,8 @@ namespace Renderer
         std::vector<VkSemaphore> imageSemaphores;
         std::vector<VkSemaphore> renderSemaphores;
         std::vector<VkFence> renderingFences;
-        UniformBuffer globalUBO;
+        std::vector<std::shared_ptr<UniformBuffer>> globalUBOs;
+        std::vector<GlobalDescriptor> uniformDatas;
         uint32_t currentImage;
         bool recreateFlag = false;
 

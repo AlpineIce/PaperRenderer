@@ -43,7 +43,7 @@ namespace Renderer
         {
             TexturelessPBRpipelineUniforms data;
 
-            memcpy(data.inColors, colors.data(), colors.size());
+            memcpy(data.inColors, colors.data(), colors.size() * sizeof(glm::vec4));
 
             pipelinePtr->getUBO()->updateUniformBuffer(&data, 0, sizeof(TexturelessPBRpipelineUniforms));
 

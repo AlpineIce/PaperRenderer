@@ -107,17 +107,25 @@ namespace Renderer
             barrier.srcAccessMask = 0;
             barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
+            sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        } 
+        else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+        {
+            barrier.srcAccessMask = 0;
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
             sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
             destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         } 
-        else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
         {
             barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            barrier.dstAccessMask = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 
             sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
             destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        }
+        } 
         else
         {
             throw std::invalid_argument("unsupported layout transition!");
@@ -316,10 +324,10 @@ namespace Renderer
         //copy
         changeImageLayout(texture, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
         copyBufferToImage(getStagingBuffer(), texture, imageData);
-        changeImageLayout(texture, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        generateMipmaps(imageData);
 
         //staging buffer destruction
-        destroyStagingAlloc();
+         destroyStagingAlloc();
 
         //create image view and sampler
         createTextureView();
@@ -340,6 +348,8 @@ namespace Renderer
         imageExtent.height = imageData->height;
         imageExtent.depth = 1;
 
+        mipmapLevels = std::floor(std::log2(std::max(imageData->width, imageData->height))) + 1;
+
         VkImageCreateInfo imageInfo = {};
         imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         imageInfo.pNext = NULL;
@@ -347,11 +357,11 @@ namespace Renderer
         imageInfo.imageType = VK_IMAGE_TYPE_2D;
         imageInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
         imageInfo.extent = imageExtent;
-        imageInfo.mipLevels = 1;
+        imageInfo.mipLevels = mipmapLevels;
         imageInfo.arrayLayers = 1;
         imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
         uint32_t queueFamilies[] = {(uint32_t)devicePtr->getQueueFamilies().graphicsFamilyIndex,
                                     (uint32_t)devicePtr->getQueueFamilies().transferFamilyIndex};
@@ -381,12 +391,129 @@ namespace Renderer
         return returnInfo;
     }
 
+    void Texture::generateMipmaps(Image* imageData)
+    {
+        VkCommandBuffer blitBuffer = commandsPtr->getCommandBuffersPtr()->graphics.at(1);
+
+        VkCommandBufferBeginInfo beginInfo = {};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.pNext = NULL;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(blitBuffer, &beginInfo); 
+
+        injectMemBarrier(
+            blitBuffer,
+            texture,
+            VK_ACCESS_TRANSFER_WRITE_BIT,
+            VK_ACCESS_TRANSFER_READ_BIT,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0, 1
+        );
+
+        for(uint32_t i = 1; i < mipmapLevels; i++)
+        {
+            VkImageSubresourceRange subresource = {};
+            subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            subresource.baseMipLevel = i - 1;
+            subresource.levelCount = 1;
+            subresource.baseArrayLayer = 0;
+            subresource.layerCount = 1;
+            
+            VkImageMemoryBarrier barrier = {};
+            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.image = texture;
+            barrier.subresourceRange = subresource;
+
+            injectMemBarrier(
+                blitBuffer,
+                texture,
+                0,
+                VK_ACCESS_TRANSFER_WRITE_BIT,
+                VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                i, 1
+            );
+
+
+            VkImageBlit imageBlit = {};
+            imageBlit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            imageBlit.srcSubresource.layerCount = 1;
+            imageBlit.srcSubresource.mipLevel   = i - 1;
+            imageBlit.srcOffsets[1].x           = int32_t(imageData->width >> (i - 1));
+            imageBlit.srcOffsets[1].y           = int32_t(imageData->height >> (i - 1));
+            imageBlit.srcOffsets[1].z           = 1;
+            imageBlit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            imageBlit.dstSubresource.layerCount = 1;
+            imageBlit.dstSubresource.mipLevel   = i;
+            imageBlit.dstOffsets[1].x           = int32_t(imageData->width >> i);
+            imageBlit.dstOffsets[1].y           = int32_t(imageData->height >> i);
+            imageBlit.dstOffsets[1].z           = 1;
+
+            vkCmdBlitImage(blitBuffer,
+                texture,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                texture,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                1,
+                &imageBlit,
+                VK_FILTER_LINEAR);
+
+            injectMemBarrier(
+                blitBuffer,
+                texture,
+                VK_ACCESS_TRANSFER_WRITE_BIT,
+                VK_ACCESS_TRANSFER_READ_BIT,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT,
+                i, 1
+            );
+        }
+
+        injectMemBarrier(
+            blitBuffer,
+            texture,
+            VK_ACCESS_TRANSFER_READ_BIT,
+            VK_ACCESS_SHADER_READ_BIT,
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0, mipmapLevels
+        );
+
+        vkEndCommandBuffer(blitBuffer);
+
+        VkSubmitInfo submitInfo = {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &blitBuffer;
+
+        VkResult result = vkQueueSubmit(devicePtr->getQueues().graphics.at(0), 1, &submitInfo, VK_NULL_HANDLE);
+
+        vkQueueWaitIdle(devicePtr->getQueues().graphics.at(0));
+        vkResetCommandBuffer(blitBuffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+    }
+
     void Texture::createTextureView()
     {
         VkImageSubresourceRange subresource = {};
         subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         subresource.baseMipLevel = 0;
-        subresource.levelCount = 1;
+        subresource.levelCount = mipmapLevels;
         subresource.baseArrayLayer = 0;
         subresource.layerCount = 1;
 
@@ -426,7 +553,48 @@ namespace Renderer
 
         VkResult result = vkCreateSampler(devicePtr->getDevice(), &samplerInfo, nullptr, &sampler);
     }
-    
+
+    void Texture::injectMemBarrier(
+        const VkCommandBuffer &command,
+        const VkImage &image,
+        VkAccessFlags srcAccess,
+        VkAccessFlags dstAccess,
+        VkImageLayout srcLayout,
+        VkImageLayout dstLayout,
+        VkPipelineStageFlags srcMask,
+        VkPipelineStageFlags dstMask, 
+        uint32_t baseMipLevel,
+        uint32_t levels)
+    {
+        VkImageSubresourceRange subresource = {};
+        subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        subresource.baseMipLevel = baseMipLevel;
+        subresource.levelCount = levels;
+        subresource.baseArrayLayer = 0;
+        subresource.layerCount = 1;
+        
+        VkImageMemoryBarrier barrier = {};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.srcAccessMask = srcAccess;
+        barrier.dstAccessMask = dstAccess;
+        barrier.oldLayout = srcLayout;
+        barrier.newLayout = dstLayout;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = image;
+        barrier.subresourceRange = subresource;
+
+        vkCmdPipelineBarrier(
+            command,
+            srcMask, 
+            dstMask,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &barrier
+        );
+    }
+
     //----------UNIFORM BUFFER DEFINITIONS----------//
 
     UniformBuffer::UniformBuffer(Device *device, Commands *commands, uint32_t size)

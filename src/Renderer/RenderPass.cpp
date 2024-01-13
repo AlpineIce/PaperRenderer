@@ -8,7 +8,6 @@ namespace Renderer
         devicePtr(device),
         commandsPtr(commands),
         descriptorsPtr(descriptors),
-        globalUBO(device, commands, sizeof(GlobalDescriptor)),
         currentImage(0)
     {
         //synchronization objects
@@ -44,9 +43,16 @@ namespace Renderer
 
             vkCreateFence(devicePtr->getDevice(), &fenceInfo, nullptr, &fence);
         }
-
+        
         //setup global (per frame) descriptor set
         Pipeline::createGlobalDescriptorLayout(devicePtr);
+
+        //global uniforms
+        uniformDatas.resize(Commands::getFrameCount());
+        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
+        {
+            globalUBOs.push_back(std::make_shared<UniformBuffer>(device, commands, (uint32_t)sizeof(GlobalDescriptor)));
+        }
     }
 
     RenderPass::~RenderPass()
@@ -83,6 +89,10 @@ namespace Renderer
             VK_NULL_HANDLE, &currentImage));
 
         vkResetFences(devicePtr->getDevice(), 1, &(renderingFences.at(currentImage)));
+
+        //update uniform data
+        uniformDatas.at(currentImage).view = cameraPtr->getViewMatrix();
+        uniformDatas.at(currentImage).projection = cameraPtr->getProjection();
 
         //command buffer
         VkCommandBufferBeginInfo commandInfo;
@@ -227,15 +237,11 @@ namespace Renderer
                 VK_PIPELINE_BIND_POINT_GRAPHICS, 
                 pipeline->getPipeline());
 
-            //update uniform data
-            GlobalDescriptor uniformData;
-            uniformData.view = cameraPtr->getViewMatrix();
-            uniformData.projection = cameraPtr->getProjection();
-
-            globalUBO.updateUniformBuffer(&uniformData, 0, sizeof(GlobalDescriptor));
+            //update global uniform
+            globalUBOs.at(currentImage)->updateUniformBuffer(&uniformDatas.at(currentImage), 0, sizeof(GlobalDescriptor));
 
             VkDescriptorSet globalDescriptorSet = descriptorsPtr->allocateDescriptorSet(Pipeline::getGlobalDescriptorLayout(), currentImage);
-            descriptorsPtr->writeUniform(globalUBO.getBuffer(), sizeof(GlobalDescriptor), 0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, globalDescriptorSet);
+            descriptorsPtr->writeUniform(globalUBOs.at(currentImage)->getBuffer(), sizeof(GlobalDescriptor), 0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, globalDescriptorSet);
 
             vkCmdBindDescriptorSets(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage),
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -327,6 +333,15 @@ namespace Renderer
 
         VkResult queueResult = vkQueuePresentKHR(devicePtr->getQueues().present[0], &presentInfo);
 
+        
+
+        if (queueResult == VK_ERROR_OUT_OF_DATE_KHR || queueResult == VK_SUBOPTIMAL_KHR || recreateFlag) 
+        {
+            recreateFlag = false;
+            swapchainPtr->recreate();
+            cameraPtr->updateCameraProjection();
+        }
+
         if(currentImage == 0)
         {
             currentImage = 1;
@@ -334,13 +349,6 @@ namespace Renderer
         else
         {
             currentImage = 0;
-        }
-
-        if (queueResult == VK_ERROR_OUT_OF_DATE_KHR || queueResult == VK_SUBOPTIMAL_KHR || recreateFlag) 
-        {
-            recreateFlag = false;
-            swapchainPtr->recreate();
-            cameraPtr->updateCameraProjection();
         }
     }
 }

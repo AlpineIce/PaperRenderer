@@ -113,6 +113,8 @@ namespace Renderer
                 if(line.find("#") != std::string::npos) //material name
                 {
                     matName = line.substr(line.find("#") + 1, line.length() - line.find("#"));
+
+                    continue;
                 }
 
                 if(line.find("pipeline") != std::string::npos && line.find("=") != std::string::npos) //pipeline equals
@@ -129,6 +131,8 @@ namespace Renderer
                     {
                         throw std::runtime_error("Unsupported pipeline specified at material: " + filePath);
                     }
+
+                    continue;
                 }
                 
                 if(line.find("Tex_") != std::string::npos && line.find("=") != std::string::npos)
@@ -153,6 +157,8 @@ namespace Renderer
                         std::string name = line.substr(line.find("=") + 1, line.length() - line.find("="));
                         textureNames.at(3) = name.substr(name.find("\"") + 1, line.rfind("\"") - line.find("\"") - 1);
                     }
+
+                    continue;
                 }
                 else if(line.find("Color_") != std::string::npos && line.find("=") != std::string::npos)
                 {
@@ -200,6 +206,8 @@ namespace Renderer
 
                         vec4vars.at(3) = (glm::vec4(r, g, b, a));
                     }
+
+                    continue;
                 }
             }
             if(matName == "UNDEFINED" || renderTree.count(type) == 0) throw std::runtime_error("Not all material parameters specified at " + filePath);
