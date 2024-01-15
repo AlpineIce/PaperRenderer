@@ -3,7 +3,7 @@
 
 namespace Renderer
 {
-    DescriptorAllocator::DescriptorAllocator(Device *device, Commands *commands)
+    DescriptorAllocator::DescriptorAllocator(Device *device, CmdBufferAllocator *commands)
         :devicePtr(device),
         commandsPtr(commands)
     {
@@ -17,9 +17,9 @@ namespace Renderer
 
         defaultTexture = std::make_shared<Texture>(devicePtr, commandsPtr, &imageData);
 
-        descriptorPools.resize(Commands::getFrameCount());
-        currentPools.resize(Commands::getFrameCount());
-        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
+        descriptorPools.resize(CmdBufferAllocator::getFrameCount());
+        currentPools.resize(CmdBufferAllocator::getFrameCount());
+        for(uint32_t i = 0; i < CmdBufferAllocator::getFrameCount(); i++)
         {
             descriptorPools.at(i).push_back(allocateDescriptorPool());
             currentPools.at(i) = &(descriptorPools.at(i).back());

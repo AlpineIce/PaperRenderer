@@ -21,13 +21,13 @@ namespace Renderer
         std::vector<ModelMesh> meshes;
 
         Device* devicePtr;
-        Commands* commandsPtr;
+        CmdBufferAllocator* commandsPtr;
 
         void processNode(aiNode* node, const aiScene* scene);
         void processMesh(aiMesh* mesh, const aiScene* scene);
     public:
         Model(const Model& model);
-        Model(Device* device, Commands* commands, std::string directory);
+        Model(Device* device, CmdBufferAllocator* commands, std::string directory);
         ~Model();
 
         const std::vector<ModelMesh>& getModelMeshes() const { return meshes; }

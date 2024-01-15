@@ -27,7 +27,6 @@ namespace Renderer
         
         Device* devicePtr;
         Window* windowPtr;
-        bool hdrEnabled;
         bool vsync;
 
         void buildSwapchain();
@@ -35,7 +34,7 @@ namespace Renderer
         void createDepthBuffer();
 
     public:
-        Swapchain(Device* device, Window* window, bool hdrEnabled, bool enableVsync);
+        Swapchain(Device* device, Window* window, bool enableVsync);
         ~Swapchain();
 
         void recreate();

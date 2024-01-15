@@ -37,7 +37,7 @@ namespace Renderer
     private:
         std::vector<VkSemaphore> imageSemaphores;
         std::vector<VkSemaphore> renderSemaphores;
-        std::vector<VkFence> renderingFences;
+        std::vector<std::list<QueueReturn>> renderFences;
         std::vector<std::shared_ptr<UniformBuffer>> globalUBOs;
         std::vector<GlobalDescriptor> uniformDatas;
         uint32_t currentImage;
@@ -45,7 +45,7 @@ namespace Renderer
 
         Swapchain* swapchainPtr;
         Device* devicePtr;
-        Commands* commandsPtr;
+        CmdBufferAllocator* commandsPtr;
         Pipeline const* pipeline = NULL; //changes per frame
         DescriptorAllocator* descriptorsPtr;
         Camera* cameraPtr = NULL;
@@ -53,25 +53,25 @@ namespace Renderer
         void checkSwapchain(VkResult imageResult);
 
     public:
-        RenderPass(Swapchain* swapchain, Device* device, Commands* commands, DescriptorAllocator* descriptors);
+        RenderPass(Swapchain* swapchain, Device* device, CmdBufferAllocator* commands, DescriptorAllocator* descriptors);
         ~RenderPass();
 
         //set camera
         void setCamera(Camera* camera) { this->cameraPtr = camera; }
 
         //start new frame
-        void startNewFrame();
+        VkCommandBuffer startNewFrame();
 
         //end frame
-        void incrementFrameCounter();
+        void incrementFrameCounter(const VkCommandBuffer& cmdBuffer);
         
         //index render triangles on previously bound pipeline with specific material parameters
-        void drawIndexed(const ObjectParameters& objectData);
+        void drawIndexed(const ObjectParameters& objectData, const VkCommandBuffer& cmdBuffer);
 
         //change the rendering pipeline
-        void bindPipeline(Pipeline const* pipeline);
+        void bindPipeline(Pipeline const* pipeline, const VkCommandBuffer& cmdBuffer);
 
         //change the material
-        void bindMaterial(Material const* material);
+        void bindMaterial(Material const* material, const VkCommandBuffer& cmdBuffer);
     };
 }

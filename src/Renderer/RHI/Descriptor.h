@@ -10,7 +10,7 @@ namespace Renderer
     //----------DYNAMIC UBO STRUCTS----------//
 
     const uint32_t TEXTURE_ARRAY_SIZE = 8;
-    const uint32_t MAX_POINT_LIGHTS = 8;
+    const uint32_t MAX_POINT_LIGHTS = 4;
     
     class DescriptorAllocator
     {
@@ -20,12 +20,12 @@ namespace Renderer
         std::shared_ptr<Texture> defaultTexture;
 
         Device* devicePtr;
-        Commands* commandsPtr;
+        CmdBufferAllocator* commandsPtr;
 
         VkDescriptorPool allocateDescriptorPool();
 
     public:
-        DescriptorAllocator(Device* device, Commands* commands);
+        DescriptorAllocator(Device* device, CmdBufferAllocator* commands);
         ~DescriptorAllocator();
 
         VkDescriptorSet allocateDescriptorSet(VkDescriptorSetLayout setLayout, uint32_t frameIndex);

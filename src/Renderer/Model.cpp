@@ -7,7 +7,7 @@ namespace Renderer
 
     }
 
-    Model::Model(Device* device, Commands* commands, std::string directory)
+    Model::Model(Device* device, CmdBufferAllocator* commands, std::string directory)
         :devicePtr(device),
         commandsPtr(commands)
     {

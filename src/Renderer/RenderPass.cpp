@@ -3,7 +3,7 @@
 
 namespace Renderer
 {
-    RenderPass::RenderPass(Swapchain* swapchain, Device* device, Commands* commands, DescriptorAllocator* descriptors)
+    RenderPass::RenderPass(Swapchain* swapchain, Device* device, CmdBufferAllocator* commands, DescriptorAllocator* descriptors)
         :swapchainPtr(swapchain),
         devicePtr(device),
         commandsPtr(commands),
@@ -33,23 +33,14 @@ namespace Renderer
             vkCreateSemaphore(devicePtr->getDevice(), &semaphoreInfo, nullptr, &semaphore);
         }
         
-        renderingFences.resize(commandsPtr->getFrameCount());
-        for(VkFence& fence : renderingFences)
-        {
-            VkFenceCreateInfo fenceInfo;
-            fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-            fenceInfo.pNext = NULL;
-            fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-            vkCreateFence(devicePtr->getDevice(), &fenceInfo, nullptr, &fence);
-        }
+        renderFences.resize(commandsPtr->getFrameCount());
         
         //setup global (per frame) descriptor set
         Pipeline::createGlobalDescriptorLayout(devicePtr);
 
         //global uniforms
-        uniformDatas.resize(Commands::getFrameCount());
-        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
+        uniformDatas.resize(CmdBufferAllocator::getFrameCount());
+        for(uint32_t i = 0; i < CmdBufferAllocator::getFrameCount(); i++)
         {
             globalUBOs.push_back(std::make_shared<UniformBuffer>(device, commands, (uint32_t)sizeof(GlobalDescriptor)));
         }
@@ -67,32 +58,73 @@ namespace Renderer
             vkDestroySemaphore(devicePtr->getDevice(), semaphore, nullptr);
         }
 
-        for(VkFence& fence : renderingFences)
+        for(std::list<QueueReturn>& queueReturns : renderFences)
         {
-            vkDestroyFence(devicePtr->getDevice(), fence, nullptr);
+            for(std::list<Renderer::QueueReturn>::iterator result = queueReturns.begin(); result != queueReturns.end(); result++)
+            {
+                commandsPtr->waitForQueue(*result);
+            }
+            renderFences.at(currentImage).clear();
         }
+        
 
         Pipeline::destroyGlobalDescriptorLayout(devicePtr);
     }
 
-    void RenderPass::startNewFrame()
+    VkCommandBuffer RenderPass::startNewFrame()
     {
-        vkWaitForFences(devicePtr->getDevice(), 1, &(renderingFences.at(currentImage)), VK_TRUE, UINT64_MAX);
+        std::list<QueueReturn>& queueReturns = renderFences.at(currentImage);
+        for(std::list<Renderer::QueueReturn>::iterator result = queueReturns.begin(); result != queueReturns.end(); result++)
+        {
+            commandsPtr->waitForQueue(*result);
+        }
+        renderFences.at(currentImage).clear();
 
         descriptorsPtr->refreshPools(currentImage);
-        
+
         //get available image
         checkSwapchain(vkAcquireNextImageKHR(devicePtr->getDevice(),
             *(swapchainPtr->getSwapchainPtr()),
             UINT16_MAX,
             imageSemaphores.at(currentImage),
             VK_NULL_HANDLE, &currentImage));
-
-        vkResetFences(devicePtr->getDevice(), 1, &(renderingFences.at(currentImage)));
-
+    
         //update uniform data
-        uniformDatas.at(currentImage).view = cameraPtr->getViewMatrix();
-        uniformDatas.at(currentImage).projection = cameraPtr->getProjection();
+
+        double time = glfwGetTime();
+
+        AmbientLight ambient = {};
+        ambient.color = glm::vec4(1.0f, 1.0f, 1.0f, 0.02f);
+
+        DirectLight sun = {};
+        sun.direction = glm::vec4(0.0f, -1.0f, 0.0f, 1.0f);
+        sun.color = glm::vec4(1.0f, 1.0f, 1.0f, 0.0f);
+
+        LightInfo lightInfo = {};
+        lightInfo.ambient = ambient;
+        lightInfo.camPos = glm::vec4(cameraPtr->getTranslation().position, 0.0f);
+        lightInfo.sun = sun;
+
+        lightInfo.pointLights[0] = {
+            .position = glm::vec4(-cos(time) * 10.0f, -5.0f, -sin(time) * 10.0f, 1.0f),
+            .color = glm::vec4(1.0f, 1.0f, 1.0f, 10.0f)
+        };
+        lightInfo.pointLights[1] = {
+            .position = glm::vec4(-sin(time) * 10.0f, -5.0f, -cos(time) * 10.0f, 1.0f),
+            .color = glm::vec4(1.0f, 1.0f, 1.0f, 10.0f)
+        };
+        lightInfo.pointLights[2] = {
+            .position = glm::vec4(sin(time) * 10.0f, -5.0f, cos(time) * 10.0f, 1.0f),
+            .color = glm::vec4(1.0f, 1.0f, 1.0f, 10.0f)
+        };
+        lightInfo.pointLights[3] = {
+            .position = glm::vec4(cos(time) * 10.0f, -5.0f, sin(time) * 10.0f, 1.0f),
+            .color = glm::vec4(1.0f, 1.0f, 1.0f, 10.0f)
+        };
+
+        uniformDatas.at(currentImage).cameraData.view = cameraPtr->getViewMatrix();
+        uniformDatas.at(currentImage).cameraData.projection = cameraPtr->getProjection();
+        uniformDatas.at(currentImage).lightInfo = lightInfo;
 
         //command buffer
         VkCommandBufferBeginInfo commandInfo;
@@ -102,8 +134,8 @@ namespace Renderer
         commandInfo.pInheritanceInfo = NULL;
 
         //begin recording
-        vkResetCommandBuffer(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage), 0);
-        vkBeginCommandBuffer(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage), &commandInfo);
+        VkCommandBuffer graphicsCmdBuffer = commandsPtr->getCommandBuffer(CmdPoolType::GRAPHICS);
+        vkBeginCommandBuffer(graphicsCmdBuffer, &commandInfo);
 
         //dynamic rendering info
         VkClearValue clearValue = {};
@@ -170,7 +202,7 @@ namespace Renderer
         };
 
         vkCmdPipelineBarrier(
-            commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage), 
+            graphicsCmdBuffer, 
             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
             0,
@@ -181,7 +213,7 @@ namespace Renderer
             1,
             &imageBarrier);
 
-        vkCmdBeginRendering(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage), &renderInfo);
+        vkCmdBeginRendering(graphicsCmdBuffer, &renderInfo);
 
         //dynamic viewport and scissor specified in pipelines
         VkViewport viewport{};
@@ -192,8 +224,10 @@ namespace Renderer
         viewport.minDepth = 0.0f;
         viewport.maxDepth = 1.0f;
 
-        vkCmdSetViewportWithCount(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage), 1, &viewport);
-        vkCmdSetScissorWithCount(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage), 1, &renderArea);
+        vkCmdSetViewportWithCount(graphicsCmdBuffer, 1, &viewport);
+        vkCmdSetScissorWithCount(graphicsCmdBuffer, 1, &renderArea);
+
+        return graphicsCmdBuffer;
     }
 
     void RenderPass::checkSwapchain(VkResult imageResult)
@@ -204,10 +238,8 @@ namespace Renderer
         }
     }
 
-    void RenderPass::drawIndexed(const ObjectParameters& objectData)
+    void RenderPass::drawIndexed(const ObjectParameters& objectData, const VkCommandBuffer& cmdBuffer)
     {
-        
-        VkCommandBuffer drawBuffer = commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage);
         VkDeviceSize offset[1] = {0};
 
         //update push constants
@@ -216,26 +248,24 @@ namespace Renderer
         std::vector<glm::mat4> pushData(1);
         pushData[0] = *(objectData.modelMatrix);
 
-        vkCmdPushConstants(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage),
+        vkCmdPushConstants(cmdBuffer,
             pipeline->getLayout(),
             VK_SHADER_STAGE_VERTEX_BIT,
             pipeline->getPushConstantRange().offset,
             pipeline->getPushConstantRange().size, 
             pushData.data());
 
-        vkCmdBindVertexBuffers(drawBuffer, 0, 1, &objectData.mesh->getVertexBuffer(), offset);
-        vkCmdBindIndexBuffer(drawBuffer, objectData.mesh->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-        vkCmdDrawIndexed(drawBuffer, objectData.mesh->getIndexBufferSize(), 1, 0, 0, 0);
+        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &objectData.mesh->getVertexBuffer(), offset);
+        vkCmdBindIndexBuffer(cmdBuffer, objectData.mesh->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
+        vkCmdDrawIndexed(cmdBuffer, objectData.mesh->getIndexBufferSize(), 1, 0, 0, 0);
     }
 
-    void RenderPass::bindPipeline(Pipeline const* pipeline)
+    void RenderPass::bindPipeline(Pipeline const* pipeline, const VkCommandBuffer& cmdBuffer)
     {
         if(pipeline != NULL && this->pipeline != pipeline) //bind new pipeline if the new one is valid and isnt the same
         {
             this->pipeline = pipeline;
-            vkCmdBindPipeline(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage),
-                VK_PIPELINE_BIND_POINT_GRAPHICS, 
-                pipeline->getPipeline());
+            vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipeline());
 
             //update global uniform
             globalUBOs.at(currentImage)->updateUniformBuffer(&uniformDatas.at(currentImage), 0, sizeof(GlobalDescriptor));
@@ -243,7 +273,7 @@ namespace Renderer
             VkDescriptorSet globalDescriptorSet = descriptorsPtr->allocateDescriptorSet(Pipeline::getGlobalDescriptorLayout(), currentImage);
             descriptorsPtr->writeUniform(globalUBOs.at(currentImage)->getBuffer(), sizeof(GlobalDescriptor), 0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, globalDescriptorSet);
 
-            vkCmdBindDescriptorSets(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage),
+            vkCmdBindDescriptorSets(cmdBuffer,
                 VK_PIPELINE_BIND_POINT_GRAPHICS,
                 this->pipeline->getLayout(),
                 0, //material bind point
@@ -259,16 +289,15 @@ namespace Renderer
         }
     }
 
-    void RenderPass::bindMaterial(Material const* material)
+    void RenderPass::bindMaterial(Material const* material, const VkCommandBuffer& cmdBuffer)
     {
-        VkCommandBuffer drawBuffer = commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage);
-        material->updateUniforms(descriptorsPtr, drawBuffer, currentImage);
+        material->updateUniforms(descriptorsPtr, cmdBuffer, currentImage);
     }
 
-    void RenderPass::incrementFrameCounter()
+    void RenderPass::incrementFrameCounter(const VkCommandBuffer& cmdBuffer)
     {
         //end render "pass"
-        vkCmdEndRendering(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage));
+        vkCmdEndRendering(cmdBuffer);
 
         VkImageMemoryBarrier imageBarrier = {};
         imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -289,7 +318,7 @@ namespace Renderer
         };
 
         vkCmdPipelineBarrier(
-            commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage), 
+            cmdBuffer, 
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 
             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
             0,
@@ -300,7 +329,7 @@ namespace Renderer
             1,
             &imageBarrier);
 
-        vkEndCommandBuffer(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage));
+        vkEndCommandBuffer(cmdBuffer);
 
         //submit rendering to GPU
         std::vector<VkPipelineStageFlags> pipelineStages = {
@@ -314,11 +343,11 @@ namespace Renderer
         queueSubmitInfo.pWaitSemaphores = &(imageSemaphores.at(currentImage));
         queueSubmitInfo.pWaitDstStageMask = pipelineStages.data(); //only one semaphore, one stage
         queueSubmitInfo.commandBufferCount = 1;
-        queueSubmitInfo.pCommandBuffers = &(commandsPtr->getCommandBuffersPtr()->graphics.at(currentImage));
+        queueSubmitInfo.pCommandBuffers = &cmdBuffer;
         queueSubmitInfo.signalSemaphoreCount = 1;
         queueSubmitInfo.pSignalSemaphores = &(renderSemaphores.at(currentImage));
 
-        VkResult graphicsResult = vkQueueSubmit(devicePtr->getQueues().graphics[0], 1, &queueSubmitInfo, renderingFences.at(currentImage));
+        renderFences.at(currentImage).push_back(commandsPtr->submitQueue(queueSubmitInfo, CmdPoolType::GRAPHICS));
 
         //submit rendered image to swapchain
         VkPresentInfoKHR presentInfo = {};
@@ -331,15 +360,49 @@ namespace Renderer
         presentInfo.pImageIndices = &currentImage;
         presentInfo.pResults = NULL;
 
-        VkResult queueResult = vkQueuePresentKHR(devicePtr->getQueues().present[0], &presentInfo);
+        QueueReturn presentResult = commandsPtr->submitPresentQueue(presentInfo);
+        //renderFences.at(currentImage).push_back(presentResult);  DONT NEED
 
-        
-
-        if (queueResult == VK_ERROR_OUT_OF_DATE_KHR || queueResult == VK_SUBOPTIMAL_KHR || recreateFlag) 
+        if (presentResult.result == VK_ERROR_OUT_OF_DATE_KHR || presentResult.result == VK_SUBOPTIMAL_KHR || recreateFlag) 
         {
+            std::list<QueueReturn>& queueReturns = renderFences.at(currentImage);
+            for(std::list<Renderer::QueueReturn>::iterator result = queueReturns.begin(); result != queueReturns.end(); result++)
+            {
+                commandsPtr->waitForQueue(*result);
+            }
+            renderFences.at(currentImage).clear();
+
             recreateFlag = false;
             swapchainPtr->recreate();
             cameraPtr->updateCameraProjection();
+
+            for(VkSemaphore& semaphore : imageSemaphores)
+            {
+                vkDestroySemaphore(devicePtr->getDevice(), semaphore, nullptr);
+            }
+            for(VkSemaphore& semaphore : renderSemaphores)
+            {
+                vkDestroySemaphore(devicePtr->getDevice(), semaphore, nullptr);
+            }
+
+            for(VkSemaphore& semaphore : imageSemaphores)
+            {
+                VkSemaphoreCreateInfo semaphoreInfo;
+                semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+                semaphoreInfo.pNext = NULL;
+                semaphoreInfo.flags = 0;
+
+                vkCreateSemaphore(devicePtr->getDevice(), &semaphoreInfo, nullptr, &semaphore);
+            }
+            for(VkSemaphore& semaphore : renderSemaphores)
+            {
+                VkSemaphoreCreateInfo semaphoreInfo;
+                semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+                semaphoreInfo.pNext = NULL;
+                semaphoreInfo.flags = 0;
+
+                vkCreateSemaphore(devicePtr->getDevice(), &semaphoreInfo, nullptr, &semaphore);
+            }
         }
 
         if(currentImage == 0)

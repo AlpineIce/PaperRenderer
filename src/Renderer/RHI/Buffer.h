@@ -38,7 +38,7 @@ namespace Renderer
         VmaAllocation allocation;
 
         Device* devicePtr;
-        Commands* commandsPtr;
+        CmdBufferAllocator* commandsPtr;
 
         VmaAllocationInfo createStagingBuffer(VkDeviceSize bufferSize);
         void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size);
@@ -50,7 +50,7 @@ namespace Renderer
         VmaAllocation getStagingAllocation() const { return stagingAllocation; }
 
     public:
-        Buffer(Device* device, Commands* commands);
+        Buffer(Device* device, CmdBufferAllocator* commands);
         virtual ~Buffer();
     };
 
@@ -64,7 +64,7 @@ namespace Renderer
         VmaAllocationInfo createVertexBuffer(VkDeviceSize bufferSize);
 
     public:
-        VertexBuffer(Device* device, Commands* commands, std::vector<Vertex>* vertices);
+        VertexBuffer(Device* device, CmdBufferAllocator* commands, std::vector<Vertex>* vertices);
         ~VertexBuffer() override;
 
         const VkBuffer& getBuffer() const { return buffer; }
@@ -80,7 +80,7 @@ namespace Renderer
         uint32_t indicesLength;
         
     public:
-        IndexBuffer(Device* device, Commands* commands, std::vector<uint32_t>* indices);
+        IndexBuffer(Device* device, CmdBufferAllocator* commands, std::vector<uint32_t>* indices);
         ~IndexBuffer() override;
 
         const VkBuffer& getBuffer() const { return buffer; }
@@ -114,7 +114,7 @@ namespace Renderer
             uint32_t levels);
 
     public:
-        Texture(Device* device, Commands* commands, Image* imageData);
+        Texture(Device* device, CmdBufferAllocator* commands, Image* imageData);
         ~Texture() override;
 
         VkImage const* getTexturePtr() const { return &texture; }
@@ -132,7 +132,7 @@ namespace Renderer
         void* dataPtr;
 
     public:
-        UniformBuffer(Device *device, Commands *commands, uint32_t size);
+        UniformBuffer(Device *device, CmdBufferAllocator *commands, uint32_t size);
         ~UniformBuffer();
 
         void updateUniformBuffer(void* updateData, uint32_t offset, uint32_t size);
@@ -149,7 +149,7 @@ namespace Renderer
         const IndexBuffer ibo;
 
     public:
-        Mesh(Device* device, Commands* commands, std::vector<Vertex>* vertices, std::vector<uint32_t>* indices);
+        Mesh(Device* device, CmdBufferAllocator* commands, std::vector<Vertex>* vertices, std::vector<uint32_t>* indices);
         ~Mesh();
 
         const VkBuffer& getVertexBuffer() const { return vbo.getBuffer(); };

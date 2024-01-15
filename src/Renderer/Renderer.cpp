@@ -14,7 +14,7 @@ namespace Renderer
         device(creationInfo.appName),
         window(WindowInformation(creationInfo.resX, creationInfo.resY, false), creationInfo.appName, &device),
         commands(&device),
-        swapchain(&device, &window, false, false),
+        swapchain(&device, &window, false),
         descriptors(&device, &commands),
         rendering(&swapchain, &device, &commands, &descriptors)
     {
@@ -307,22 +307,23 @@ namespace Renderer
 
     void RenderEngine::drawAllReferences()
     {
-        rendering.startNewFrame();
+        VkCommandBuffer cmdBuffer = rendering.startNewFrame();
 
         for(const auto& [pipelineType, pipelineNode] : renderTree) //pipeline
         {
-            rendering.bindPipeline(pipelineNode.pipeline.get());
+            rendering.bindPipeline(pipelineNode.pipeline.get(), cmdBuffer);
             for(const auto& [materialName, materialNode] : pipelineNode.materials) //material
             {
-                rendering.bindMaterial(materialNode.material);
+                if(materialNode.objects.size() == 0) continue;
+                rendering.bindMaterial(materialNode.material, cmdBuffer);
                 for(auto object = materialNode.objects.begin(); object != materialNode.objects.end(); object++) //object
                 {
-                    rendering.drawIndexed(*object);
+                    rendering.drawIndexed(*object, cmdBuffer);
                 }
             }
         }
 
-        rendering.incrementFrameCounter();
+        rendering.incrementFrameCounter(cmdBuffer);
         glfwPollEvents();
     }
 

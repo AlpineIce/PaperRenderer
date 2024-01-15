@@ -51,7 +51,7 @@ namespace Renderer
         void setClipSpace(float near, float far);
         void updateCameraProjection(); //updates projection to match window extent
         void updateCameraView(const CameraTranslation& newTranslation);
-
+        
         const glm::mat4& getViewMatrix() const { return view; }
         const glm::mat4& getProjection() const { return projection; }
 

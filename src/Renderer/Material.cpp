@@ -33,11 +33,19 @@ namespace Renderer
         if(pipelinePtr->getPipelineType() == PBR)
         {
             PBRpipelineUniforms data;
-            data.bruh = glm::vec3(0.5f, 0.5f, 0.5f);
+            data.bruh = glm::vec4(0.5f, 0.5f, 1.0f, 1.0f);
 
             pipelinePtr->getUBO()->updateUniformBuffer(&data, 0, sizeof(PBRpipelineUniforms));
 
             descriptor->writeImageArray(textures, 1, materialDescriptorSet);
+
+            descriptor->writeUniform(
+            pipelinePtr->getUBO()->getBuffer(),
+            sizeof(PBRpipelineUniforms),
+            0,
+            0,
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            materialDescriptorSet);
         }
         else if(pipelinePtr->getPipelineType() == TexturelessPBR)
         {
@@ -47,16 +55,16 @@ namespace Renderer
 
             pipelinePtr->getUBO()->updateUniformBuffer(&data, 0, sizeof(TexturelessPBRpipelineUniforms));
 
-        }
-        
-        descriptor->writeUniform(
+            descriptor->writeUniform(
             pipelinePtr->getUBO()->getBuffer(),
-            sizeof(PBRpipelineUniforms),
+            sizeof(TexturelessPBRpipelineUniforms),
             0,
             0,
             VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             materialDescriptorSet);
 
+        }
+        
         vkCmdBindDescriptorSets(command,
             VK_PIPELINE_BIND_POINT_GRAPHICS,
             pipelinePtr->getLayout(),

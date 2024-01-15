@@ -42,7 +42,7 @@ namespace Renderer
         Device device;
         Window window;
         Swapchain swapchain;
-        Commands commands;
+        CmdBufferAllocator commands;
         DescriptorAllocator descriptors;
         RenderPass rendering;
 

@@ -4,7 +4,7 @@ namespace Renderer
 {
     //-----------BASE BUFFER DEFINITIONS----------//
 
-    Buffer::Buffer(Device* device, Commands* commands)
+    Buffer::Buffer(Device* device, CmdBufferAllocator* commands)
         :devicePtr(device),
         commandsPtr(commands)
     {
@@ -32,18 +32,19 @@ namespace Renderer
         bufferInfo.pQueueFamilyIndices = NULL;
 
         VmaAllocationCreateInfo allocCreateInfo = {};
-        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
         allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
         VmaAllocationInfo returnInfo;
         VkResult result = vmaCreateBuffer(devicePtr->getAllocator(), &bufferInfo, &allocCreateInfo, &stagingBuffer, &stagingAllocation, &returnInfo);
+        vmaMapMemory(devicePtr->getAllocator(), stagingAllocation, &(returnInfo.pMappedData));
 
         return returnInfo;
     }
 
     void Buffer::copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size)
     {
-        VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffersPtr()->transfer.at(0); //note theres only 1 transfer cmd buffer
+        VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffer(CmdPoolType::TRANSFER); //note theres only 1 transfer cmd buffer
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -66,15 +67,13 @@ namespace Renderer
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &transferBuffer;
 
-        VkResult result = vkQueueSubmit(devicePtr->getQueues().transfer.at(0), 1, &submitInfo, VK_NULL_HANDLE);
-
-        vkQueueWaitIdle(devicePtr->getQueues().transfer.at(0));
-        vkResetCommandBuffer(transferBuffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+        QueueReturn result = commandsPtr->submitQueue(submitInfo, CmdPoolType::TRANSFER);
+        commandsPtr->waitForQueue(result);
     }
 
     void Buffer::changeImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
     {
-        VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffersPtr()->transfer.at(0); //note theres only 1 transfer cmd buffer
+        VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffer(CmdPoolType::TRANSFER); //note theres only 1 transfer cmd buffer
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -146,16 +145,14 @@ namespace Renderer
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &transferBuffer;
-
-        VkResult result = vkQueueSubmit(devicePtr->getQueues().transfer.at(0), 1, &submitInfo, VK_NULL_HANDLE);
-
-        vkQueueWaitIdle(devicePtr->getQueues().transfer.at(0));
-        vkResetCommandBuffer(transferBuffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+        
+        QueueReturn result = commandsPtr->submitQueue(submitInfo, CmdPoolType::TRANSFER);
+        commandsPtr->waitForQueue(result);
     }
 
     void Buffer::copyBufferToImage(VkBuffer src, VkImage dst, Image* imageData)
     {
-        VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffersPtr()->transfer.at(0); //note theres only 1 transfer cmd buffer
+        VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffer(CmdPoolType::TRANSFER);
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -192,10 +189,8 @@ namespace Renderer
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &transferBuffer;
 
-        VkResult result = vkQueueSubmit(devicePtr->getQueues().transfer.at(0), 1, &submitInfo, VK_NULL_HANDLE);
-
-        vkQueueWaitIdle(devicePtr->getQueues().transfer.at(0));
-        vkResetCommandBuffer(transferBuffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+        QueueReturn result = commandsPtr->submitQueue(submitInfo, CmdPoolType::TRANSFER);
+        commandsPtr->waitForQueue(result);
     }
 
     void Buffer::destroyStagingAlloc()
@@ -203,13 +198,14 @@ namespace Renderer
         if(!isDestoyed)
         {
             isDestoyed = true;
+            vmaUnmapMemory(devicePtr->getAllocator(), stagingAllocation);
             vmaDestroyBuffer(devicePtr->getAllocator(), stagingBuffer, stagingAllocation);
         }
     }
 
     //-----------VERTEX BUFFER DEFINITIONS----------//
 
-    VertexBuffer::VertexBuffer(Device* device, Commands* commands, std::vector<Vertex>* vertices)
+    VertexBuffer::VertexBuffer(Device* device, CmdBufferAllocator* commands, std::vector<Vertex>* vertices)
         :Buffer(device, commands)
     {
         //get size in bytes
@@ -220,6 +216,7 @@ namespace Renderer
 
         //copy data
         memcpy(allocInfo.pMappedData, vertices->data(), bytesSize);
+        vmaFlushAllocation(devicePtr->getAllocator(), getStagingAllocation(), 0, bytesSize);
 
         //then vertex buffer
         VmaAllocationInfo allocInfo2 = createVertexBuffer(bytesSize);
@@ -258,7 +255,7 @@ namespace Renderer
 
     //----------INDEX BUFFER DEFINITIONS----------//
 
-    IndexBuffer::IndexBuffer(Device* device, Commands* commands, std::vector<uint32_t>* indices)
+    IndexBuffer::IndexBuffer(Device* device, CmdBufferAllocator* commands, std::vector<uint32_t>* indices)
         :Buffer(device, commands)
     {
         //get sizes
@@ -270,6 +267,7 @@ namespace Renderer
 
         //copy data
         memcpy(allocInfo.pMappedData, indices->data(), bytesSize);
+        vmaFlushAllocation(devicePtr->getAllocator(), getStagingAllocation(), 0, bytesSize);
 
         //then index buffer
         VmaAllocationInfo allocInfo2 = createIndexBuffer(bytesSize);
@@ -309,7 +307,7 @@ namespace Renderer
 
     //----------TEXTURE "BUFFER" DEFINITIONS----------//
 
-    Texture::Texture(Device* device, Commands* commands, Image* imageData)
+    Texture::Texture(Device* device, CmdBufferAllocator* commands, Image* imageData)
         :Buffer(device, commands)
     {
         //staging buffer
@@ -317,6 +315,7 @@ namespace Renderer
 
         //copy data
         memcpy(allocInfo.pMappedData, imageData->data, imageData->size);
+        vmaFlushAllocation(devicePtr->getAllocator(), getStagingAllocation(), 0, imageData->size);
 
         //create texture
         VmaAllocationInfo allocInfo2 = createTexture(imageData);
@@ -393,7 +392,7 @@ namespace Renderer
 
     void Texture::generateMipmaps(Image* imageData)
     {
-        VkCommandBuffer blitBuffer = commandsPtr->getCommandBuffersPtr()->graphics.at(1);
+        VkCommandBuffer blitBuffer = commandsPtr->getCommandBuffer(CmdPoolType::GRAPHICS);
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -502,10 +501,8 @@ namespace Renderer
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &blitBuffer;
 
-        VkResult result = vkQueueSubmit(devicePtr->getQueues().graphics.at(0), 1, &submitInfo, VK_NULL_HANDLE);
-
-        vkQueueWaitIdle(devicePtr->getQueues().graphics.at(0));
-        vkResetCommandBuffer(blitBuffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+        QueueReturn result = commandsPtr->submitQueue(submitInfo, CmdPoolType::GRAPHICS);
+        commandsPtr->waitForQueue(result);
     }
 
     void Texture::createTextureView()
@@ -547,7 +544,7 @@ namespace Renderer
         samplerInfo.compareEnable = VK_FALSE;
         samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
         samplerInfo.minLod = 0.0f;
-        samplerInfo.maxLod = 0.0f;
+        samplerInfo.maxLod = mipmapLevels;
         samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
         samplerInfo.unnormalizedCoordinates = VK_FALSE;
 
@@ -597,7 +594,7 @@ namespace Renderer
 
     //----------UNIFORM BUFFER DEFINITIONS----------//
 
-    UniformBuffer::UniformBuffer(Device *device, Commands *commands, uint32_t size)
+    UniformBuffer::UniformBuffer(Device *device, CmdBufferAllocator *commands, uint32_t size)
         :Buffer(device, commands),
         dataPtr(NULL),
         size(size)
@@ -613,16 +610,17 @@ namespace Renderer
         bufferInfo.pQueueFamilyIndices = NULL;
 
         VmaAllocationCreateInfo allocCreateInfo = {};
-        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
         allocCreateInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
 
         VmaAllocationInfo allocInfo;
         VkResult result = vmaCreateBuffer(devicePtr->getAllocator(), &bufferInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
-        dataPtr = allocInfo.pMappedData;
+        vmaMapMemory(devicePtr->getAllocator(), allocation, &dataPtr);
     }
 
     UniformBuffer::~UniformBuffer()
     {
+        vmaUnmapMemory(devicePtr->getAllocator(), allocation);
         vmaDestroyBuffer(devicePtr->getAllocator(), buffer, allocation);
     }
 
@@ -634,7 +632,7 @@ namespace Renderer
 
     //----------MESH DEFINITIONS----------//
 
-    Mesh::Mesh(Device* device, Commands* commands, std::vector<Vertex>* vertices, std::vector<uint32_t>* indices)
+    Mesh::Mesh(Device* device, CmdBufferAllocator* commands, std::vector<Vertex>* vertices, std::vector<uint32_t>* indices)
         :vbo(device, commands, vertices),
         ibo(device, commands, indices)
     {

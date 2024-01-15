@@ -22,21 +22,48 @@ namespace Renderer
 
     };
 
-    struct GlobalDescriptor
+    struct CameraData
     {
         glm::mat4 view;
         glm::mat4 projection;
+    };
 
-        struct SceneInfo
-        {
-            glm::vec3 pointLights[MAX_POINT_LIGHTS];
-            glm::vec2 sunDirection;
-        } sceneInfo;
+    struct AmbientLight
+    {
+        glm::vec4 color = glm::vec4(1.0f);
+    };
+    
+    struct DirectLight
+    {
+        glm::vec4 direction = glm::vec4(0.0f, -1.0f, 0.0f, 0.0f);
+        glm::vec4 color = glm::vec4(1.0f);
+        //float softness = 0.0f;
+    };
+
+    struct PointLight
+    {
+        glm::vec4 position = glm::vec4(0.0f);
+        glm::vec4 color = glm::vec4(1.0f);
+        //float radius = 0.0f;
+    };
+
+    struct LightInfo
+    {
+        glm::vec4 camPos;
+        AmbientLight ambient;
+        DirectLight sun;
+        PointLight pointLights[MAX_POINT_LIGHTS];
+    };
+
+    struct GlobalDescriptor
+    {
+        CameraData cameraData;
+        LightInfo lightInfo;
     };
 
     struct PBRpipelineUniforms
     {
-        glm::vec3 bruh;
+        glm::vec4 bruh;
     };
 
     struct TexturelessPBRpipelineUniforms
@@ -95,12 +122,12 @@ namespace Renderer
 
         DescriptorAllocator* descriptorsPtr;
         Device* devicePtr;
-        Commands* commandsPtr;
+        CmdBufferAllocator* commandsPtr;
 
         void createShaders(std::vector<std::string>& shaderFiles);
 
     public:
-        Pipeline(Device *device, Commands* commands, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors);
+        Pipeline(Device *device, CmdBufferAllocator* commands, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors);
         virtual ~Pipeline();
 
         static void createCache(Device* device);
@@ -128,7 +155,7 @@ namespace Renderer
 
         void createDescriptorLayout();
     public:
-        RasterPipeline(Device* device, Commands* commands, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors, PipelineType pipelineType, Swapchain* swapchain);
+        RasterPipeline(Device* device, CmdBufferAllocator* commands, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors, PipelineType pipelineType, Swapchain* swapchain);
         ~RasterPipeline() override;
 
     };

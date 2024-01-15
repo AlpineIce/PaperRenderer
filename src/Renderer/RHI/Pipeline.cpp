@@ -116,7 +116,7 @@ namespace Renderer
     VkPipelineCache Pipeline::cache;
     VkDescriptorSetLayout Pipeline::globalDescriptorLayout;
 
-    Pipeline::Pipeline(Device *device, Commands* commands, std::vector<std::string> &shaderFiles, DescriptorAllocator *descriptors)
+    Pipeline::Pipeline(Device *device, CmdBufferAllocator* commands, std::vector<std::string> &shaderFiles, DescriptorAllocator *descriptors)
         :devicePtr(device),
         commandsPtr(commands),
         descriptorsPtr(descriptors)
@@ -197,11 +197,13 @@ namespace Renderer
 
     //----------RASTER PIPELINE DEFINITIONS---------//
 
-    RasterPipeline::RasterPipeline(Device* device, Commands* commands, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors, PipelineType pipelineType, Swapchain* swapchain)
+    RasterPipeline::RasterPipeline(Device* device, CmdBufferAllocator* commands, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors, PipelineType pipelineType, Swapchain* swapchain)
         :Pipeline(device, commands, shaderFiles, descriptors)
     {
         this->pipelineType = pipelineType;
-        materialUBO = std::make_shared<UniformBuffer>(devicePtr, commandsPtr, (uint32_t)sizeof(PBRpipelineUniforms));
+        if(pipelineType == PBR) materialUBO = std::make_shared<UniformBuffer>(devicePtr, commandsPtr, (uint32_t)sizeof(PBRpipelineUniforms));
+        else materialUBO = std::make_shared<UniformBuffer>(devicePtr, commandsPtr, (uint32_t)sizeof(TexturelessPBRpipelineUniforms));
+        
         createDescriptorLayout();
 
         vertexDescription.binding = 0;

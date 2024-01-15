@@ -2,9 +2,8 @@
 
 namespace Renderer
 {
-    Swapchain::Swapchain(Device *device, Window* window, bool hdrEnabled, bool enableVsync)
+    Swapchain::Swapchain(Device *device, Window* window, bool enableVsync)
         :devicePtr(device),
-        hdrEnabled(hdrEnabled),
         vsync(enableVsync),
         windowPtr(window),
         swapchain(VK_NULL_HANDLE)
@@ -16,32 +15,37 @@ namespace Renderer
         std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
         vkGetPhysicalDeviceSurfaceFormatsKHR(device->getGPU(), *(device->getSurfacePtr()), &formatCount, surfaceFormats.data());
 
+        bool hdrFound = false;
         this->swapchainImageFormat = VK_FORMAT_UNDEFINED;
         for(VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
         {
-            if(!hdrEnabled && surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) //SRGB color space
+            if(surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT) //HDR color space
             {
-                if(surfaceFormat.format == VK_FORMAT_B8G8R8A8_SRGB)
-                {
-                    this->swapchainImageFormat = surfaceFormat.format;
-                    this->imageColorSpace = surfaceFormat.colorSpace;
-
-                    break; //prefer SRGB
-                }
-                else if(surfaceFormat.format == VK_FORMAT_B8G8R8A8_UNORM)
-                {
-                    this->swapchainImageFormat = surfaceFormat.format;
-                    this->imageColorSpace = surfaceFormat.colorSpace;
-                }
-            }
-            if(surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT && hdrEnabled) //HDR color space
-            {
+                hdrFound = true;
                 this->swapchainImageFormat = surfaceFormat.format;
                 this->imageColorSpace = surfaceFormat.colorSpace;
 
-                //TODO NEEDS vkSetHdrMetadataEXT
-
                 break;
+            }
+        }
+
+        if(!hdrFound)
+        {
+            for(VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
+            {
+                if(surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR && !hdrFound) //SRGB color space
+                {
+                    if(surfaceFormat.format == VK_FORMAT_B8G8R8A8_SRGB)
+                    {
+                        this->swapchainImageFormat = surfaceFormat.format;
+                        this->imageColorSpace = surfaceFormat.colorSpace;
+                    }
+                    else if(surfaceFormat.format == VK_FORMAT_B8G8R8A8_UNORM)
+                    {
+                        this->swapchainImageFormat = surfaceFormat.format;
+                        this->imageColorSpace = surfaceFormat.colorSpace;
+                    }
+                }
             }
         }
 
@@ -109,7 +113,7 @@ namespace Renderer
         swapchainInfo.imageFormat = this->swapchainImageFormat;
         swapchainInfo.imageColorSpace = this->imageColorSpace;
         swapchainInfo.imageExtent = this->swapchainExtent;
-        swapchainInfo.imageArrayLayers = 1; //VR support I think???
+        swapchainInfo.imageArrayLayers = 1;
         swapchainInfo.imageUsage = VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
         uint32_t queueFamilies[] = {(uint32_t)devicePtr->getQueueFamilies().graphicsFamilyIndex,
@@ -261,8 +265,8 @@ namespace Renderer
         int width = 0, height = 0;
         glfwGetFramebufferSize(windowPtr->getWindow(), &width, &height);
         while (width == 0 || height == 0) {
-            glfwGetFramebufferSize(windowPtr->getWindow(), &width, &height);
             glfwWaitEvents();
+            glfwGetFramebufferSize(windowPtr->getWindow(), &width, &height);
         }
         
         vkDeviceWaitIdle(devicePtr->getDevice());

@@ -14,29 +14,42 @@ namespace Renderer
         VkCommandPool present;
     };
 
-    struct CommandBuffers
+    struct QueueReturn
     {
-        std::vector<VkCommandBuffer> graphics;
-        std::vector<VkCommandBuffer> compute;
-        std::vector<VkCommandBuffer> transfer;
-        std::vector<VkCommandBuffer> present;
+        std::shared_ptr<VkFence> fence;
+        VkResult result;
+        VkCommandPool pool;
+        std::vector<VkCommandBuffer> commandBuffers;
     };
 
-    class Commands
+    enum CmdPoolType
+    {
+        GRAPHICS = 0,
+        COMPUTE = 1,
+        TRANSFER = 2,
+        PRESENT = 3
+    };
+
+    class CmdBufferAllocator
     {
     private:
         CommandPools commandPools;
-        CommandBuffers commandBuffers;
         static const uint32_t frameCount = 2;
 
         Device* devicePtr;
-    public:
-        Commands(Device* device);
-        ~Commands();
 
-        CommandBuffers* getCommandBuffersPtr() { return &commandBuffers; }
-        CommandPools getCommandPools() const { return commandPools; }
+        void createCommandPools();
+        VkFence getSignaledFence();
+        VkFence getUnsignaledFence();
+    public:
+        CmdBufferAllocator(Device* device);
+        ~CmdBufferAllocator();
+
+        QueueReturn submitQueue(const VkSubmitInfo& submitInfo, CmdPoolType poolType);
+        QueueReturn submitPresentQueue(const VkPresentInfoKHR& submitInfo);
+        void waitForQueue(QueueReturn& info);
+
+        VkCommandBuffer getCommandBuffer(CmdPoolType type);
         static uint32_t getFrameCount() { return frameCount; }
-        
     };
 }
