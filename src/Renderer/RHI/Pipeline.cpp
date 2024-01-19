@@ -61,151 +61,72 @@ namespace Renderer
 
     //----------COMPUTE PIPELINE DEFINITIONS---------//
 
-    ComputePipeline::ComputePipeline(Device *device, DescriptorAllocator* descriptors, std::string shaderLocation)
-    {/*
-        shader = std::make_shared<Shader>(devicePtr, shaderLocation);
-
-        pushConstantRange.offset = 0;
-        pushConstantRange.size = sizeof(glm::mat4x4) * 2;
-        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-        VkPipelineLayoutCreateInfo layoutInfo;
-        layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        layoutInfo.pNext = NULL;
-        layoutInfo.flags = 0;
-        layoutInfo.setLayoutCount = 1;
-        layoutInfo.pSetLayouts = descriptorsPtr->getSetLayoutPtr();
-        layoutInfo.pushConstantRangeCount = 1;
-        layoutInfo.pPushConstantRanges = &pushConstantRange;
-
-        VkResult result = vkCreatePipelineLayout(devicePtr->getDevice(), &layoutInfo, nullptr, &pipelineLayout);
-        if(result != VK_SUCCESS)
+    ComputePipeline::ComputePipeline(const PipelineCreationInfo& creationInfo)
+        :Pipeline(creationInfo)
+    {
+        VkPipelineShaderStageCreateInfo stageInfo;
+        for(const auto& [shaderStage, shader] : shaders)
         {
-            throw std::runtime_error("Pipeline layout creation failed");
+            if(shaderStage == VK_SHADER_STAGE_COMPUTE_BIT)
+            {
+                stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                stageInfo.pNext = NULL,
+                stageInfo.flags = 0,
+                stageInfo.stage = shaderStage,
+                stageInfo.module = shader->getModule(),
+                stageInfo.pName = "main", //use main() function in shaders
+                stageInfo.pSpecializationInfo = NULL;
+            }
         }
 
-        VkPipelineShaderStageCreateInfo pipelineInfo;
-        pipelineInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        VkComputePipelineCreateInfo pipelineInfo = {};
+        pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
         pipelineInfo.pNext = NULL;
         pipelineInfo.flags = 0;
-        pipelineInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-        pipelineInfo.module = shader->getModule();
-        pipelineInfo.pName = "main"; //use main() function in shaders
-        pipelineInfo.pSpecializationInfo = NULL;
-
-        VkComputePipelineCreateInfo creationInfo;
-        creationInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-        creationInfo.pNext = NULL;
-        creationInfo.flags = 0;
-        creationInfo.stage = pipelineInfo;
-        creationInfo.layout = pipelineLayout;
+        pipelineInfo.stage = stageInfo;
+        pipelineInfo.layout = pipelineLayout;
         
-        VkResult result2 = vkCreateComputePipelines(devicePtr->getDevice(), VK_NULL_HANDLE, 1, &creationInfo, nullptr, &pipeline);
+        VkResult result = vkCreateComputePipelines(devicePtr->getDevice(), creationInfo.cache, 1, &pipelineInfo, nullptr, &pipeline);
         if(result != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to create compute pipeline");
-        }*/
+        }
     }
 
     ComputePipeline::~ComputePipeline()
-    {
-    }
-
-    //----------PIPELINE DEFINITIONS---------//
-
-    VkPipelineCache Pipeline::cache;
-    VkDescriptorSetLayout Pipeline::globalDescriptorLayout;
-
-    Pipeline::Pipeline(Device *device, CmdBufferAllocator* commands, std::vector<std::string> &shaderFiles, DescriptorAllocator *descriptors)
-        :devicePtr(device),
-        commandsPtr(commands),
-        descriptorsPtr(descriptors)
-    {
-        createShaders(shaderFiles);
-    }
-
-    Pipeline::~Pipeline()
     {
         vkDestroyPipeline(devicePtr->getDevice(), pipeline, nullptr);
         vkDestroyPipelineLayout(devicePtr->getDevice(), pipelineLayout, nullptr);
     }
 
-    void Pipeline::createCache(Device* device)
+    //----------PIPELINE DEFINITIONS---------//
+
+    Pipeline::Pipeline(const PipelineCreationInfo& creationInfo)
+        :devicePtr(creationInfo.device),
+        descriptorsPtr(creationInfo.descriptors),
+        shaders(creationInfo.shaders),
+        setLayouts(creationInfo.setLayouts),
+        pipelineLayout(creationInfo.pipelineLayout),
+        globalDescriptorLayoutPtr(creationInfo.globalDescriptorLayoutPtr),
+        pipelineType(creationInfo.pipelineType)
     {
-        VkPipelineCacheCreateInfo creationInfo;
-        creationInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-        creationInfo.pNext = NULL;
-        creationInfo.flags = 0;
-        creationInfo.initialDataSize = 0;
-        creationInfo.pInitialData = NULL;
-        vkCreatePipelineCache(device->getDevice(), &creationInfo, nullptr, &cache);
     }
 
-    void Pipeline::destroyCache(Device* device)
+    Pipeline::~Pipeline()
     {
-        vkDestroyPipelineCache(device->getDevice(), cache, nullptr);
-    }
-
-    void Pipeline::createGlobalDescriptorLayout(Device *device)
-    {
-        VkDescriptorSetLayoutBinding uniformDescriptor = {};
-        uniformDescriptor.binding = 0;
-        uniformDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        uniformDescriptor.descriptorCount = 1;
-        uniformDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        uniformDescriptor.pImmutableSamplers = NULL;
-        
-        //descriptor info
-        VkDescriptorSetLayoutCreateInfo descriptorInfo = {};
-        descriptorInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        descriptorInfo.pNext = NULL;
-        descriptorInfo.flags = 0;
-        descriptorInfo.bindingCount = 1;
-        descriptorInfo.pBindings = &uniformDescriptor;
-
-        VkResult result = vkCreateDescriptorSetLayout(device->getDevice(), &descriptorInfo, nullptr, &globalDescriptorLayout);
-        if(result != VK_SUCCESS)
+        for(VkDescriptorSetLayout set : setLayouts)
         {
-            throw std::runtime_error("Failed to create descriptor set layout");
+            vkDestroyDescriptorSetLayout(devicePtr->getDevice(), set, nullptr);
         }
-    }
-
-    void Pipeline::destroyGlobalDescriptorLayout(Device *device)
-    {
-        vkDestroyDescriptorSetLayout(device->getDevice(), globalDescriptorLayout, nullptr);
-    }
-
-    void Pipeline::createShaders(std::vector<std::string>& shaderFiles)
-    {
-        for(const std::string& shaderFile : shaderFiles)
-        {
-            std::string a = shaderFile.substr(shaderFile.size() - sizeof("vert.spv"));
-            if(shaderFile.substr(shaderFile.size() - sizeof("vert.spv") + 1) == std::string("vert.spv"))
-            {
-                shaders.emplace(VK_SHADER_STAGE_VERTEX_BIT, std::make_shared<Shader>(devicePtr, shaderFile));
-            }
-            else if(shaderFile.substr(shaderFile.size() - sizeof("frag.spv") + 1) == std::string("frag.spv"))
-            {
-                shaders.emplace(VK_SHADER_STAGE_FRAGMENT_BIT, std::make_shared<Shader>(devicePtr, shaderFile));
-            }
-            else
-            {
-                throw std::runtime_error("Couldn't find shader stage for " + shaderFile);
-            }
-        }
+        vkDestroyPipeline(devicePtr->getDevice(), pipeline, nullptr);
+        vkDestroyPipelineLayout(devicePtr->getDevice(), pipelineLayout, nullptr);
     }
 
     //----------RASTER PIPELINE DEFINITIONS---------//
 
-    RasterPipeline::RasterPipeline(Device* device, CmdBufferAllocator* commands, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors, PipelineType pipelineType, Swapchain* swapchain)
-        :Pipeline(device, commands, shaderFiles, descriptors)
+    RasterPipeline::RasterPipeline(const PipelineCreationInfo& creationInfo, Swapchain* swapchain)
+        :Pipeline(creationInfo)
     {
-        this->pipelineType = pipelineType;
-        if(pipelineType == PBR) materialUBO = std::make_shared<UniformBuffer>(devicePtr, commandsPtr, (uint32_t)sizeof(PBRpipelineUniforms));
-        else materialUBO = std::make_shared<UniformBuffer>(devicePtr, commandsPtr, (uint32_t)sizeof(TexturelessPBRpipelineUniforms));
-        
-        createDescriptorLayout();
-
         vertexDescription.binding = 0;
         vertexDescription.stride = sizeof(Vertex);
         vertexDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
@@ -358,28 +279,28 @@ namespace Renderer
             shaderStages.push_back(stageInfo);
         }
 
-        VkGraphicsPipelineCreateInfo creationInfo = {};
-        creationInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-        creationInfo.pNext = &renderingInfo;
-        creationInfo.flags = 0;
-        creationInfo.stageCount = shaderStages.size();
-        creationInfo.pStages = shaderStages.data();
-        creationInfo.pVertexInputState = &vertexInputInfo;
-        creationInfo.pInputAssemblyState = &inputAssemblyInfo;
-        creationInfo.pTessellationState = &tessellationInfo;
-        creationInfo.pViewportState = &viewportInfo;
-        creationInfo.pRasterizationState = &rasterInfo;
-        creationInfo.pMultisampleState = &MSAA;
-        creationInfo.pDepthStencilState = &depthStencilInfo;
-        creationInfo.pColorBlendState = &colorInfo;
-        creationInfo.pDynamicState = &dynamicStateInfo;
-        creationInfo.layout = pipelineLayout;
-        creationInfo.renderPass = NULL;
-        creationInfo.subpass = 0;
-        creationInfo.basePipelineHandle = VK_NULL_HANDLE;
-        creationInfo.basePipelineIndex = -1;
+        VkGraphicsPipelineCreateInfo pipelineCreateInfo = {};
+        pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pipelineCreateInfo.pNext = &renderingInfo;
+        pipelineCreateInfo.flags = 0;
+        pipelineCreateInfo.stageCount = shaderStages.size();
+        pipelineCreateInfo.pStages = shaderStages.data();
+        pipelineCreateInfo.pVertexInputState = &vertexInputInfo;
+        pipelineCreateInfo.pInputAssemblyState = &inputAssemblyInfo;
+        pipelineCreateInfo.pTessellationState = &tessellationInfo;
+        pipelineCreateInfo.pViewportState = &viewportInfo;
+        pipelineCreateInfo.pRasterizationState = &rasterInfo;
+        pipelineCreateInfo.pMultisampleState = &MSAA;
+        pipelineCreateInfo.pDepthStencilState = &depthStencilInfo;
+        pipelineCreateInfo.pColorBlendState = &colorInfo;
+        pipelineCreateInfo.pDynamicState = &dynamicStateInfo;
+        pipelineCreateInfo.layout = pipelineLayout;
+        pipelineCreateInfo.renderPass = NULL;
+        pipelineCreateInfo.subpass = 0;
+        pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
+        pipelineCreateInfo.basePipelineIndex = -1;
         
-        VkResult result = vkCreateGraphicsPipelines(devicePtr->getDevice(), VK_NULL_HANDLE, 1, &creationInfo, nullptr, &pipeline);
+        VkResult result = vkCreateGraphicsPipelines(devicePtr->getDevice(), creationInfo.cache, 1, &pipelineCreateInfo, nullptr, &pipeline);
         if(result != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to create a graphics pipeline");
@@ -388,74 +309,12 @@ namespace Renderer
 
     RasterPipeline::~RasterPipeline()
     {
-        vkDestroyDescriptorSetLayout(devicePtr->getDevice(), descriptorLayout, nullptr);
-    }
-
-    void RasterPipeline::createDescriptorLayout()
-    {
-        std::vector<VkDescriptorSetLayoutBinding> descriptors;
-
-        //material uniforms
-        VkDescriptorSetLayoutBinding uniformDescriptor = {};
-        uniformDescriptor.binding = 0;
-        uniformDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        uniformDescriptor.descriptorCount = 1;
-        uniformDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        uniformDescriptor.pImmutableSamplers = NULL;
-        descriptors.push_back(uniformDescriptor);
-
-        //material textures
-        if(pipelineType == PBR)
-        {
-            VkDescriptorSetLayoutBinding textureDescriptor = {};
-            textureDescriptor.binding = 1;
-            textureDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            textureDescriptor.descriptorCount = TEXTURE_ARRAY_SIZE;
-            textureDescriptor.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-            textureDescriptor.pImmutableSamplers = NULL;
-            descriptors.push_back(textureDescriptor);
-        }
-        
-        //descriptor info
-        VkDescriptorSetLayoutCreateInfo descriptorInfo = {};
-        descriptorInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        descriptorInfo.pNext = NULL;
-        descriptorInfo.flags = 0;
-        descriptorInfo.bindingCount = descriptors.size();
-        descriptorInfo.pBindings = descriptors.data();
-
-        VkResult result = vkCreateDescriptorSetLayout(devicePtr->getDevice(), &descriptorInfo, nullptr, &descriptorLayout);
-        if(result != VK_SUCCESS)
-        {
-            throw std::runtime_error("Failed to create descriptor set layout");
-        }
-        VkDescriptorSetLayout descriptorLayouts[2] = {globalDescriptorLayout, descriptorLayout};
-
-        //push constants
-        pushConstantRange.offset = 0;
-        pushConstantRange.size = sizeof(glm::mat4x4); //64 byte model matrix
-        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; //TODO RT STAGE FLAG
-
-        VkPipelineLayoutCreateInfo layoutInfo = {};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        layoutInfo.pNext = NULL;
-        layoutInfo.flags = 0;
-        layoutInfo.setLayoutCount = 2;
-        layoutInfo.pSetLayouts = descriptorLayouts;
-        layoutInfo.pushConstantRangeCount = 1;
-        layoutInfo.pPushConstantRanges = &pushConstantRange;
-
-        VkResult result2 = vkCreatePipelineLayout(devicePtr->getDevice(), &layoutInfo, nullptr, &pipelineLayout);
-        if(result2 != VK_SUCCESS)
-        {
-            throw std::runtime_error("Pipeline layout creation failed");
-        }
     }
 
     //----------RT PIPELINE DEFINITTIONS----------//
 
-    RTPipeline::RTPipeline(Device *device, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors)
-        :Pipeline(device, NULL, shaderFiles, descriptors)
+    RTPipeline::RTPipeline(const PipelineCreationInfo& creationInfo)
+        :Pipeline(creationInfo)
     {
     }
 
@@ -463,4 +322,146 @@ namespace Renderer
     {
     }
 
+    //----------PIPELINE BUILDER DEFINITIONS----------//
+
+    PipelineBuilder::PipelineBuilder(Device *device, DescriptorAllocator *descriptors, Swapchain *swapchain)
+        :devicePtr(device),
+        descriptorsPtr(descriptors),
+        swapchainPtr(swapchain)
+    {
+        VkPipelineCacheCreateInfo creationInfo;
+        creationInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+        creationInfo.pNext = NULL;
+        creationInfo.flags = 0;
+        creationInfo.initialDataSize = 0;
+        creationInfo.pInitialData = NULL;
+        vkCreatePipelineCache(device->getDevice(), &creationInfo, nullptr, &cache);
+
+        //global descriptor set
+        VkDescriptorSetLayoutBinding uniformDescriptor = {};
+        uniformDescriptor.binding = 0;
+        uniformDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uniformDescriptor.descriptorCount = 1;
+        uniformDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        uniformDescriptor.pImmutableSamplers = NULL;
+        
+        //descriptor info
+        VkDescriptorSetLayoutCreateInfo descriptorInfo = {};
+        descriptorInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        descriptorInfo.pNext = NULL;
+        descriptorInfo.flags = 0;
+        descriptorInfo.bindingCount = 1;
+        descriptorInfo.pBindings = &uniformDescriptor;
+
+        VkResult result = vkCreateDescriptorSetLayout(device->getDevice(), &descriptorInfo, nullptr, &globalDescriptorLayout);
+        if(result != VK_SUCCESS)
+        {
+            throw std::runtime_error("Failed to create descriptor set layout");
+        }
+    }
+
+    PipelineBuilder::~PipelineBuilder()
+    {
+        vkDestroyDescriptorSetLayout(devicePtr->getDevice(), globalDescriptorLayout, nullptr);
+        vkDestroyPipelineCache(devicePtr->getDevice(), cache, nullptr);
+    }
+
+    std::shared_ptr<Shader> PipelineBuilder::createShader(const ShaderPair& pair) const
+    {
+        std::string shaderFile = pair.directory;
+
+        return std::make_shared<Shader>(devicePtr, shaderFile);
+    }
+
+    std::vector<VkDescriptorSetLayout> PipelineBuilder::createDescriptorLayouts(const std::vector<DescriptorSet> &descriptorSets) const
+    {
+        std::vector<VkDescriptorSetLayout> setLayouts;
+        for(const DescriptorSet& set : descriptorSets)
+        {
+            VkDescriptorSetLayoutCreateInfo descriptorLayoutInfo = {};
+            descriptorLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            descriptorLayoutInfo.pNext = NULL;
+            descriptorLayoutInfo.flags = 0;
+            descriptorLayoutInfo.bindingCount = set.descriptorBindings.size();
+            descriptorLayoutInfo.pBindings = set.descriptorBindings.data();
+            
+            VkDescriptorSetLayout setLayout;
+            VkResult result = vkCreateDescriptorSetLayout(devicePtr->getDevice(), &descriptorLayoutInfo, nullptr, &setLayout);
+            if(result != VK_SUCCESS) throw std::runtime_error("Failed to create descriptor set layout");
+
+            setLayouts.push_back(setLayout);
+        }
+
+        return setLayouts;
+    }
+
+    VkPipelineLayout PipelineBuilder::createPipelineLayout(const std::vector<VkDescriptorSetLayout>& setLayouts) const
+    {
+        VkPipelineLayoutCreateInfo layoutInfo = {};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layoutInfo.pNext = NULL;
+        layoutInfo.flags = 0;
+        layoutInfo.setLayoutCount = setLayouts.size();
+        layoutInfo.pSetLayouts = setLayouts.data();
+        layoutInfo.pushConstantRangeCount = 0;
+        layoutInfo.pPushConstantRanges = NULL;
+
+        VkPipelineLayout returnLayout;
+        VkResult result = vkCreatePipelineLayout(devicePtr->getDevice(), &layoutInfo, nullptr, &returnLayout);
+        if(result != VK_SUCCESS) throw std::runtime_error("Pipeline layout creation failed");
+
+        return returnLayout;
+    }
+
+    PipelineCreationInfo PipelineBuilder::initPipelineInfo(PipelineBuildInfo info) const
+    {
+        PipelineCreationInfo pipelineInfo = {};
+        pipelineInfo.device = devicePtr;
+        pipelineInfo.descriptors = descriptorsPtr;
+        pipelineInfo.cache = cache;
+        pipelineInfo.pipelineType = info.pipelineType;
+
+        if(info.pipelineType == UNDEFINED) throw std::runtime_error("Pipeline type not specified or not supported");
+
+        std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
+        for(const ShaderPair& pair : info.shaderInfo)
+        {
+            shaders[pair.stage] = createShader(pair);
+        }
+        pipelineInfo.shaders = shaders;
+
+        std::vector<VkDescriptorSetLayout> setLayouts;
+        if(info.useGlobalDescriptor)
+        {
+            pipelineInfo.globalDescriptorLayoutPtr = &globalDescriptorLayout;
+            setLayouts.push_back(globalDescriptorLayout);
+        }
+        else
+        {
+            pipelineInfo.globalDescriptorLayoutPtr = NULL;
+        }
+        std::vector<VkDescriptorSetLayout> localLayouts = createDescriptorLayouts(info.descriptors);
+        setLayouts.insert(setLayouts.end(), localLayouts.begin(), localLayouts.end());
+        pipelineInfo.setLayouts = setLayouts;
+
+        VkPipelineLayout pipelineLayout = createPipelineLayout(setLayouts);
+        pipelineInfo.pipelineLayout = pipelineLayout;
+    
+        return pipelineInfo;
+    }
+
+    std::shared_ptr<ComputePipeline> PipelineBuilder::buildComputePipeline(const PipelineBuildInfo& info) const
+    {
+        return std::make_shared<ComputePipeline>(initPipelineInfo(info));
+    }
+
+    std::shared_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const PipelineBuildInfo& info) const
+    {
+        return std::make_shared<RasterPipeline>(initPipelineInfo(info), swapchainPtr);
+    }
+
+    std::shared_ptr<RTPipeline> PipelineBuilder::buildRTPipeline(const PipelineBuildInfo& info) const
+    {
+        return std::make_shared<RTPipeline>(initPipelineInfo(info));
+    }
 }

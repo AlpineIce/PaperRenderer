@@ -92,59 +92,54 @@ namespace Renderer
 
     //----------PIPELINE DECLARATIONS----------//
 
-    class ComputePipeline
+    struct PipelineCreationInfo
     {
-    private:
-        std::shared_ptr<Shader> shader;
-
-    public:
-        ComputePipeline(Device *device, DescriptorAllocator* descriptors, std::string shaderLocation);
-        ~ComputePipeline();
-        
+        Device *device;
+        DescriptorAllocator* descriptors;
+        VkPipelineCache cache;
+        std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
+        std::vector<VkDescriptorSetLayout> setLayouts;
+        VkDescriptorSetLayout const* globalDescriptorLayoutPtr;
+        VkPipelineLayout pipelineLayout;
+        PipelineType pipelineType;
     };
-
-    //Pipeline base class for raster and RT pipelines
+    
+    //Pipeline base class
     class Pipeline
     {
     protected:
-        std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders; //shared ptr because i give up lmao
-        std::shared_ptr<UniformBuffer> materialUBO;
+        std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
         VkPipeline pipeline;
+        std::vector<VkDescriptorSetLayout> setLayouts;
+        VkDescriptorSetLayout const* globalDescriptorLayoutPtr;
         VkPipelineLayout pipelineLayout;
-        VkPushConstantRange pushConstantRange;
-        VkDescriptorSetLayout descriptorLayout;
-        
-        PipelineType pipelineType = UNDEFINED;
-        
-        static VkPipelineCache cache;
-        static VkDescriptorSetLayout globalDescriptorLayout;
-        static VkPipelineLayout globalPipelineLayout;
+        PipelineType pipelineType;
 
-        DescriptorAllocator* descriptorsPtr;
         Device* devicePtr;
-        CmdBufferAllocator* commandsPtr;
-
-        void createShaders(std::vector<std::string>& shaderFiles);
+        DescriptorAllocator* descriptorsPtr;
+        
 
     public:
-        Pipeline(Device *device, CmdBufferAllocator* commands, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors);
+        Pipeline(const PipelineCreationInfo& creationInfo);
         virtual ~Pipeline();
-
-        static void createCache(Device* device);
-        static void destroyCache(Device* device);
-        static void createGlobalDescriptorLayout(Device* device);
-        static void destroyGlobalDescriptorLayout(Device* device);
-        static VkDescriptorSetLayout getGlobalDescriptorLayout() { return globalDescriptorLayout; }
-
+        
         VkPipeline getPipeline() const { return pipeline; }
-        PipelineType getPipelineType() const { return pipelineType; }
-        VkDescriptorSetLayout getDescriptorLayout() const { return descriptorLayout; }
-        UniformBuffer* getUBO() const { return materialUBO.get(); }
+        std::vector<VkDescriptorSetLayout> getDescriptorSetLayouts() const { return setLayouts; }
+        VkDescriptorSetLayout const* getGlobalDescriptorLayoutPtr() const { return globalDescriptorLayoutPtr; }
         VkPipelineLayout getLayout() const { return pipelineLayout; }
-        VkPushConstantRange getPushConstantRange() const { return pushConstantRange; }
+        PipelineType getPipelineType() const { return pipelineType; }
     };
 
-    //renders cool stuff using raster
+    class ComputePipeline : public Pipeline
+    {
+    private:
+
+    public:
+        ComputePipeline(const PipelineCreationInfo& creationInfo);
+        ~ComputePipeline() override;
+        
+    };
+
     class RasterPipeline : public Pipeline
     {
     private:
@@ -153,20 +148,67 @@ namespace Renderer
         VkVertexInputBindingDescription vertexDescription = {};
         VertexLayout vertexLayout;
 
-        void createDescriptorLayout();
     public:
-        RasterPipeline(Device* device, CmdBufferAllocator* commands, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors, PipelineType pipelineType, Swapchain* swapchain);
+        RasterPipeline(const PipelineCreationInfo& creationInfo, Swapchain* swapchain);
         ~RasterPipeline() override;
 
     };
 
-    //ray tracing pipeline
     class RTPipeline : public Pipeline
     {
     private:
 
     public:
-        RTPipeline(Device *device, std::vector<std::string>& shaderFiles, DescriptorAllocator* descriptors);
+        RTPipeline(const PipelineCreationInfo& creationInfo);
         ~RTPipeline() override;
+    };
+
+    //----------PIPELINE BUILDER DECLARATIONS----------//
+
+    struct ShaderPair
+    {
+        VkShaderStageFlagBits stage;
+        std::string directory;
+    };
+
+    struct DescriptorSet
+    {
+        std::vector<VkDescriptorSetLayoutBinding> descriptorBindings;
+    };
+
+    struct PipelineBuildInfo
+    {
+        std::vector<ShaderPair> shaderInfo;
+        //IMPORTANT descriptor sets must be in order of set binding in this vector
+        bool useGlobalDescriptor = true;
+        std::vector<DescriptorSet> descriptors;
+        PipelineType pipelineType = UNDEFINED;
+    };
+
+    class PipelineBuilder
+    {
+    private:
+        Device* devicePtr;
+        DescriptorAllocator* descriptorsPtr;
+        Swapchain* swapchainPtr;
+
+        VkPipelineCache cache;
+        VkDescriptorSetLayout globalDescriptorLayout;
+        VkPipelineLayout globalPipelineLayout;
+
+        std::shared_ptr<Shader> createShader(const ShaderPair& pair) const;
+        std::vector<VkDescriptorSetLayout> createDescriptorLayouts(const std::vector<DescriptorSet>& descriptorSets) const;
+        VkPipelineLayout createPipelineLayout(const std::vector<VkDescriptorSetLayout>& setLayouts) const;
+        PipelineCreationInfo initPipelineInfo(PipelineBuildInfo info) const;
+
+    public:
+        PipelineBuilder(Device* device, DescriptorAllocator* descriptors, Swapchain* swapchain);
+        ~PipelineBuilder();
+
+        std::shared_ptr<ComputePipeline> buildComputePipeline(const PipelineBuildInfo& info) const;
+        std::shared_ptr<RasterPipeline> buildRasterPipeline(const PipelineBuildInfo& info) const;
+        std::shared_ptr<RTPipeline> buildRTPipeline(const PipelineBuildInfo& info) const;
+
+        VkDescriptorSetLayout getGlobalDescriptorLayout() const { return globalDescriptorLayout; }
     };
 }

@@ -17,7 +17,7 @@
 
 namespace Renderer
 {
-    typedef std::unordered_map<uint32_t, std::list<ObjectParameters>::iterator> RenderObjectReference;
+    typedef std::unordered_map<uint32_t, DrawBufferObject> RenderObjectReference;
     
     struct RendererCreationStruct
     {
@@ -29,7 +29,7 @@ namespace Renderer
     //struct to be used as an instance of a model, used as a reference for rendering, material index corresponds to material slot
     struct ModelInstance
     {
-        RenderObjectReference objReference;
+        RenderObjectReference objRefs;
         glm::mat4 modelMatrix = glm::mat4(1.0f);
         Model const* modelPtr = NULL; //TODO default model
         std::vector<Material const*> materials; //TODO default material
@@ -44,6 +44,7 @@ namespace Renderer
         Swapchain swapchain;
         CmdBufferAllocator commands;
         DescriptorAllocator descriptors;
+        PipelineBuilder pipelineBuilder;
         RenderPass rendering;
 
         //render tree stores all pipelines, their child materials, with their child RenderObject pointers
@@ -56,7 +57,7 @@ namespace Renderer
         std::string appName;
 
         Image loadImage(std::string directory);
-        void loadPipelines(std::string shadersDir); //loads materials too
+        void loadPipelines();
         void loadModels(std::string modelsDir);
         void loadMaterials(std::string materialsDir);
         void createMaterial(std::string filePath);

@@ -34,9 +34,6 @@ namespace Renderer
         }
         
         renderFences.resize(commandsPtr->getFrameCount());
-        
-        //setup global (per frame) descriptor set
-        Pipeline::createGlobalDescriptorLayout(devicePtr);
 
         //global uniforms
         uniformDatas.resize(CmdBufferAllocator::getFrameCount());
@@ -66,9 +63,6 @@ namespace Renderer
             }
             renderFences.at(currentImage).clear();
         }
-        
-
-        Pipeline::destroyGlobalDescriptorLayout(devicePtr);
     }
 
     VkCommandBuffer RenderPass::startNewFrame()
@@ -130,7 +124,7 @@ namespace Renderer
         VkCommandBufferBeginInfo commandInfo;
         commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         commandInfo.pNext = NULL;
-        commandInfo.flags = 0;
+        commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         commandInfo.pInheritanceInfo = NULL;
 
         //begin recording
@@ -238,29 +232,26 @@ namespace Renderer
         }
     }
 
-    void RenderPass::drawIndexed(const ObjectParameters& objectData, const VkCommandBuffer& cmdBuffer)
+    void RenderPass::drawIndexed(const DrawBufferObject& objectData, const VkCommandBuffer& cmdBuffer)
     {
         VkDeviceSize offset[1] = {0};
 
         //update push constants
-        float time = glfwGetTime();
-        
         std::vector<glm::mat4> pushData(1);
         pushData[0] = *(objectData.modelMatrix);
-
-        vkCmdPushConstants(cmdBuffer,
-            pipeline->getLayout(),
-            VK_SHADER_STAGE_VERTEX_BIT,
-            pipeline->getPushConstantRange().offset,
-            pipeline->getPushConstantRange().size, 
-            pushData.data());
 
         vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &objectData.mesh->getVertexBuffer(), offset);
         vkCmdBindIndexBuffer(cmdBuffer, objectData.mesh->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
         vkCmdDrawIndexed(cmdBuffer, objectData.mesh->getIndexBufferSize(), 1, 0, 0, 0);
     }
 
-    void RenderPass::bindPipeline(Pipeline const* pipeline, const VkCommandBuffer& cmdBuffer)
+    void RenderPass::drawIndexedIndirect(const VkCommandBuffer& cmdBuffer, IndirectDrawBuffer* drawBuffer)
+    {
+        drawBuffer->updateBuffers(cmdBuffer, currentImage);
+        drawBuffer->draw(cmdBuffer);
+    }
+
+    void RenderPass::bindPipeline(Pipeline const *pipeline, const VkCommandBuffer &cmdBuffer)
     {
         if(pipeline != NULL && this->pipeline != pipeline) //bind new pipeline if the new one is valid and isnt the same
         {
@@ -268,9 +259,9 @@ namespace Renderer
             vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipeline());
 
             //update global uniform
-            globalUBOs.at(currentImage)->updateUniformBuffer(&uniformDatas.at(currentImage), 0, sizeof(GlobalDescriptor));
+            globalUBOs.at(currentImage)->updateUniformBuffer(&uniformDatas.at(currentImage), sizeof(GlobalDescriptor));
 
-            VkDescriptorSet globalDescriptorSet = descriptorsPtr->allocateDescriptorSet(Pipeline::getGlobalDescriptorLayout(), currentImage);
+            VkDescriptorSet globalDescriptorSet = descriptorsPtr->allocateDescriptorSet(*pipeline->getGlobalDescriptorLayoutPtr(), currentImage);
             descriptorsPtr->writeUniform(globalUBOs.at(currentImage)->getBuffer(), sizeof(GlobalDescriptor), 0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, globalDescriptorSet);
 
             vkCmdBindDescriptorSets(cmdBuffer,

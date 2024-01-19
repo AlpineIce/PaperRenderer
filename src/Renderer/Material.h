@@ -23,11 +23,16 @@ namespace Renderer
         MaterialParameters parameters;
 
         std::vector<Texture const*> textures;
+        std::shared_ptr<UniformBuffer> materialUBO;
         std::vector<glm::vec4> colors;
+
         Device* devicePtr;
+        CmdBufferAllocator* commandsPtr;
+
+        UniformBuffer* getUBO() const { return materialUBO.get(); }
 
     public:
-        Material(Device* device, Pipeline* pipeline, std::string matName, std::vector<Texture const*> textures, std::vector<glm::vec4> colors);
+        Material(Device* device, CmdBufferAllocator* commands, Pipeline* pipeline, std::string matName, std::vector<Texture const*> textures, std::vector<glm::vec4> colors);
         ~Material();
 
         void updateUniforms(DescriptorAllocator* descriptor, const VkCommandBuffer& command, uint32_t currentFrame) const;

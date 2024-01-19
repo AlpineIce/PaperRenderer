@@ -2,6 +2,7 @@
 #include "vulkan/vulkan.hpp"
 #include "RHI/Swapchain.h"
 #include "RHI/Pipeline.h"
+#include "RHI/IndirectDrawBuffer.h"
 #include "Camera.h"
 #include "Material.h"
 
@@ -12,17 +13,13 @@ namespace Renderer
 {
     //leaf node including the mesh and any uniforms/push constants to be set for rendering. 
     //Ownership should be within actors, not the render tree, which includes a pointer instead
-    struct ObjectParameters
-    {
-        Mesh const* mesh;
-        glm::mat4 const* modelMatrix; //should be calculated outside the renderer
-    };
 
     //node for objects corresponding to one material
     struct MaterialNode
     {
         Material const* material;
-        std::list<ObjectParameters> objects; //list because objects can be removed from any point at any time
+        static const uint32_t MAX_COMMANDS = 512; //8^3
+        std::shared_ptr<IndirectDrawBuffer> objectBuffer;
     };
 
     //node for materials corresponding to one pipeline
@@ -66,7 +63,10 @@ namespace Renderer
         void incrementFrameCounter(const VkCommandBuffer& cmdBuffer);
         
         //index render triangles on previously bound pipeline with specific material parameters
-        void drawIndexed(const ObjectParameters& objectData, const VkCommandBuffer& cmdBuffer);
+        void drawIndexed(const DrawBufferObject& objectData, const VkCommandBuffer& cmdBuffer);
+        
+        //indirect indexed rendering
+        void drawIndexedIndirect(const VkCommandBuffer& cmdBuffer, IndirectDrawBuffer* drawBuffer);
 
         //change the rendering pipeline
         void bindPipeline(Pipeline const* pipeline, const VkCommandBuffer& cmdBuffer);

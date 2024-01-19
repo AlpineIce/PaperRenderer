@@ -42,20 +42,25 @@ namespace Renderer
         std::vector<VkDescriptorPoolSize> poolSizes;
         
         VkDescriptorPoolSize UBOpoolSize = {};
-        UBOpoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-        UBOpoolSize.descriptorCount = 1024;
+        UBOpoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        UBOpoolSize.descriptorCount = 256;
         poolSizes.push_back(UBOpoolSize);
+
+        VkDescriptorPoolSize storagePoolSize = {};
+        storagePoolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        storagePoolSize.descriptorCount = 256;
+        poolSizes.push_back(storagePoolSize);
 
         VkDescriptorPoolSize samplerPoolSize = {};
         samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        samplerPoolSize.descriptorCount = 1024;
+        samplerPoolSize.descriptorCount = 256;
         poolSizes.push_back(samplerPoolSize);
         
         VkDescriptorPoolCreateInfo poolInfo = {};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         poolInfo.pNext = NULL;
         poolInfo.flags = 0;
-        poolInfo.maxSets = 2048;
+        poolInfo.maxSets = 256 * 3;
         poolInfo.poolSizeCount = poolSizes.size();
         poolInfo.pPoolSizes = poolSizes.data();
 

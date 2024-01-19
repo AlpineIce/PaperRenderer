@@ -2,7 +2,7 @@
 
 namespace Renderer
 {
-    Material::Material(Device* device, Pipeline* pipeline, std::string matName, std::vector<Texture const*> textures, std::vector<glm::vec4> colors)
+    Material::Material(Device* device, CmdBufferAllocator* commands, Pipeline* pipeline, std::string matName, std::vector<Texture const*> textures, std::vector<glm::vec4> colors)
         :devicePtr(device),
         pipelinePtr(pipeline),
         matName(matName),
@@ -13,10 +13,12 @@ namespace Renderer
         switch(pipelinePtr->getPipelineType())
         {
             case PipelineType::PBR:
+                materialUBO = std::make_shared<UniformBuffer>(devicePtr, commandsPtr, (uint32_t)sizeof(PBRpipelineUniforms));
                 textures.resize(TEXTURE_ARRAY_SIZE);
                 break;
 
             case PipelineType::TexturelessPBR:
+                materialUBO = std::make_shared<UniformBuffer>(devicePtr, commandsPtr, (uint32_t)sizeof(TexturelessPBRpipelineUniforms));
                 colors.resize(TEXTURE_ARRAY_SIZE);
                 break;
         }
@@ -28,19 +30,21 @@ namespace Renderer
 
     void Material::updateUniforms(DescriptorAllocator *descriptor, const VkCommandBuffer& command, uint32_t currentFrame) const
     {
-        VkDescriptorSet materialDescriptorSet = descriptor->allocateDescriptorSet(pipelinePtr->getDescriptorLayout(), currentFrame);
+        //0 is non-global descriptor for material
+        VkDescriptorSet materialDescriptorSet = descriptor->allocateDescriptorSet(pipelinePtr->getDescriptorSetLayouts().at(1), currentFrame);
 
         if(pipelinePtr->getPipelineType() == PBR)
         {
             PBRpipelineUniforms data;
+            
             data.bruh = glm::vec4(0.5f, 0.5f, 1.0f, 1.0f);
 
-            pipelinePtr->getUBO()->updateUniformBuffer(&data, 0, sizeof(PBRpipelineUniforms));
+            materialUBO->updateUniformBuffer(&data, sizeof(PBRpipelineUniforms));
 
             descriptor->writeImageArray(textures, 1, materialDescriptorSet);
 
             descriptor->writeUniform(
-            pipelinePtr->getUBO()->getBuffer(),
+            materialUBO->getBuffer(),
             sizeof(PBRpipelineUniforms),
             0,
             0,
@@ -53,10 +57,10 @@ namespace Renderer
 
             memcpy(data.inColors, colors.data(), colors.size() * sizeof(glm::vec4));
 
-            pipelinePtr->getUBO()->updateUniformBuffer(&data, 0, sizeof(TexturelessPBRpipelineUniforms));
+            materialUBO->updateUniformBuffer(&data, sizeof(TexturelessPBRpipelineUniforms));
 
             descriptor->writeUniform(
-            pipelinePtr->getUBO()->getBuffer(),
+            materialUBO->getBuffer(),
             sizeof(TexturelessPBRpipelineUniforms),
             0,
             0,

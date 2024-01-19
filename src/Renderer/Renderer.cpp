@@ -16,57 +16,104 @@ namespace Renderer
         commands(&device),
         swapchain(&device, &window, false),
         descriptors(&device, &commands),
+        pipelineBuilder(&device, &descriptors, &swapchain),
         rendering(&swapchain, &device, &commands, &descriptors)
     {
-        Pipeline::createCache(&device);
-
-        loadPipelines("resources/pipelines");
-        loadModels("resources/models"); //this function isnt very memory efficient as it just loads everything in the folder
-        loadTextures("resources/textures"); //same deal as the funciton call above too, needs some optimization
-        loadMaterials("resources/materials"); //arguably ok if all materials get loaded
+        loadPipelines();
+        loadModels("resources/models");
+        loadTextures("resources/textures");
+        loadMaterials("resources/materials");
     }
 
     RenderEngine::~RenderEngine()
     {
         vkDeviceWaitIdle(device.getDevice());
-        Pipeline::destroyCache(&device);
     }
 
-    void RenderEngine::loadPipelines(std::string shadersDir)
+    void RenderEngine::loadPipelines()
     {
-        const std::filesystem::path pipelines(shadersDir);
-        for(const auto& pipeline : std::filesystem::directory_iterator(pipelines)) //iterate pipelines
-        {
-            //create pipeline
-            std::vector<std::string> shaderFiles;
-            const std::filesystem::path shadersPath(pipeline.path());
-            for(const auto& pipelineShader : std::filesystem::directory_iterator(shadersPath)) //iterate shaders
-            {
-                shaderFiles.push_back(pipelineShader.path().string());
-            }
-            
-            PipelineType type = PipelineType::UNDEFINED;
-            if(shadersPath.stem().string().find("TexturelessPBR") != std::string::npos)
-            {
-                type = PipelineType::TexturelessPBR;
-            }
-            else if(shadersPath.stem().string().find("PBR") != std::string::npos)
-            {
-                type = PipelineType::PBR;
-            }
+        //----------PBR PIPELINE----------//
 
-            if(type != UNDEFINED)
-            {
-                renderTree[type] = {std::make_shared<RasterPipeline>(
-                        &device,
-                        &commands,
-                        shaderFiles,
-                        &descriptors,
-                        type,
-                        &swapchain), 
-                    std::unordered_map<std::string, MaterialNode>()};
-            }
-        }
+        std::vector<ShaderPair> PBRshaderPairs;
+        ShaderPair pbrVert = {
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .directory = "resources/shaders/PBR_vert.spv"
+        };
+        PBRshaderPairs.push_back(pbrVert);
+        ShaderPair pbrFrag = {
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .directory = "resources/shaders/PBR_frag.spv"
+        };
+        PBRshaderPairs.push_back(pbrFrag);
+
+        //descriptor set 1 (material)
+        DescriptorSet set1Descriptors;
+        
+        VkDescriptorSetLayoutBinding uniformDescriptor = {};
+        uniformDescriptor.binding = 0;
+        uniformDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uniformDescriptor.descriptorCount = 1;
+        uniformDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        set1Descriptors.descriptorBindings.push_back(uniformDescriptor);
+
+        VkDescriptorSetLayoutBinding textureDescriptor = {};
+        textureDescriptor.binding = 1;
+        textureDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        textureDescriptor.descriptorCount = TEXTURE_ARRAY_SIZE;
+        textureDescriptor.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        set1Descriptors.descriptorBindings.push_back(textureDescriptor);
+
+        //descriptor set 2 (object)
+        DescriptorSet set2Descriptors;
+
+        VkDescriptorSetLayoutBinding objDescriptor = {};
+        objDescriptor.binding = 0;
+        objDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        objDescriptor.descriptorCount = 1;
+        objDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        set2Descriptors.descriptorBindings.push_back(objDescriptor);
+
+        std::vector<DescriptorSet> PBRdescriptorSets = {set1Descriptors, set2Descriptors};
+
+        PipelineBuildInfo pbrInfo;
+        pbrInfo.shaderInfo = PBRshaderPairs;
+        pbrInfo.useGlobalDescriptor = true;
+        pbrInfo.descriptors = PBRdescriptorSets;
+        pbrInfo.pipelineType = PBR;
+
+        renderTree[PBR].pipeline = pipelineBuilder.buildRasterPipeline(pbrInfo);
+
+        //----------TEXTURELESS PBR PIPELINE----------//
+
+        std::vector<ShaderPair> texturelessPBRshaderPairs;
+        ShaderPair texlessPBRvert = {
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .directory = "resources/shaders/TexturelessPBR_vert.spv"
+        };
+        texturelessPBRshaderPairs.push_back(texlessPBRvert);
+        ShaderPair texlessPBRfrag = {
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .directory = "resources/shaders/TexturelessPBR_frag.spv"
+        };
+        texturelessPBRshaderPairs.push_back(texlessPBRfrag);
+
+        //descriptor set 1 (material) same as PBR except for textures
+        DescriptorSet TexturelessPBRset1Descriptors;
+        TexturelessPBRset1Descriptors.descriptorBindings.push_back(uniformDescriptor);
+
+        //descriptor set 2 (object) same as PBR
+        DescriptorSet TexturelessPBRset2Descriptors;
+        TexturelessPBRset2Descriptors.descriptorBindings.push_back(objDescriptor);
+
+        std::vector<DescriptorSet> texturelessPBRdescriptorSets = {TexturelessPBRset1Descriptors, TexturelessPBRset2Descriptors};
+
+        PipelineBuildInfo TexturelessPBRInfo;
+        TexturelessPBRInfo.shaderInfo = texturelessPBRshaderPairs;
+        TexturelessPBRInfo.useGlobalDescriptor = true;
+        TexturelessPBRInfo.descriptors = texturelessPBRdescriptorSets;
+        TexturelessPBRInfo.pipelineType = TexturelessPBR;
+
+        renderTree[TexturelessPBR].pipeline = pipelineBuilder.buildRasterPipeline(TexturelessPBRInfo);
     }
 
     void RenderEngine::loadModels(std::string modelsDir)
@@ -221,10 +268,11 @@ namespace Renderer
 
             materials.insert(std::make_pair(
                 matName,
-                std::make_shared<Material>(&device, renderTree.at(type).pipeline.get(), matName, textures, vec4vars)));
+                std::make_shared<Material>(&device, &commands, renderTree.at(type).pipeline.get(), matName, textures, vec4vars)));
 
             MaterialNode matParams;
             matParams.material = materials.at(matName).get();
+            matParams.objectBuffer = std::make_shared<IndirectDrawBuffer>(&device, &commands, &descriptors, renderTree.at(type).pipeline.get(), (uint32_t)(MaterialNode::MAX_COMMANDS));
             
             renderTree.at(type).materials.insert(std::make_pair(matName, matParams));
         }
@@ -268,7 +316,6 @@ namespace Renderer
 
     void RenderEngine::addObject(ModelInstance& object)
     {
-        RenderObjectReference returnReferences;
         if(object.modelPtr != NULL)
         {
             for(uint32_t i = 0; i < object.modelPtr->getModelMeshes().size(); i++)
@@ -278,14 +325,12 @@ namespace Renderer
                     PipelineType pipelineType = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)->getPipelineType();
                     std::string matName = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)->getMatName();
                     
-                    ObjectParameters treeObject = {
+                    object.objRefs[i] = {
                         .mesh = object.modelPtr->getModelMeshes().at(i).mesh.get(),
                         .modelMatrix = &object.modelMatrix
                     };
 
-                    renderTree.at(pipelineType).materials.at(matName).objects.push_back(treeObject);
-                    object.objReference.insert(std::make_pair(i, renderTree.at(pipelineType).materials.at(matName).objects.end()));
-                    object.objReference.at(i)--;
+                    renderTree.at(pipelineType).materials.at(matName).objectBuffer->addElement(object.objRefs.at(i));
                 }
             }
         }
@@ -295,12 +340,12 @@ namespace Renderer
     {
         for(uint32_t i = 0; i < object.modelPtr->getModelMeshes().size(); i++)
         {
-            if(object.objReference.count(i))
+            if(object.objRefs.count(i))
             {
                 PipelineType pipelineType = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)->getPipelineType();
                 std::string matName = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)->getMatName();
 
-                renderTree.at(pipelineType).materials.at(matName).objects.erase(object.objReference.at(i));
+                renderTree.at(pipelineType).materials.at(matName).objectBuffer->removeElement(object.objRefs.at(i));
             }
         }
     }
@@ -314,12 +359,10 @@ namespace Renderer
             rendering.bindPipeline(pipelineNode.pipeline.get(), cmdBuffer);
             for(const auto& [materialName, materialNode] : pipelineNode.materials) //material
             {
-                if(materialNode.objects.size() == 0) continue;
+                if(materialNode.objectBuffer->getDrawCount() == 0) continue;
+
                 rendering.bindMaterial(materialNode.material, cmdBuffer);
-                for(auto object = materialNode.objects.begin(); object != materialNode.objects.end(); object++) //object
-                {
-                    rendering.drawIndexed(*object, cmdBuffer);
-                }
+                rendering.drawIndexedIndirect(cmdBuffer, materialNode.objectBuffer.get());
             }
         }
 
@@ -327,7 +370,7 @@ namespace Renderer
         glfwPollEvents();
     }
 
-    //----------GETTER FUNCTIONS----------//
+    //----------GETTER/SETTER FUNCTIONS----------//
 
     Model const* RenderEngine::getModelByName(std::string name)
     {

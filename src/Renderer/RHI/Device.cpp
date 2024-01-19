@@ -340,15 +340,12 @@ namespace Renderer
 
     void Device::initVma()
     {
-        VmaVulkanFunctions vulkanFunctions = {};
-        vulkanFunctions.vkGetInstanceProcAddr = &vkGetInstanceProcAddr;
-        vulkanFunctions.vkGetDeviceProcAddr = &vkGetDeviceProcAddr;
 
         VmaAllocatorCreateInfo vmaInfo = {};
         vmaInfo.physicalDevice = GPU;
         vmaInfo.device = device;
         vmaInfo.instance = instance;
-        vmaInfo.pVulkanFunctions = &vulkanFunctions;
+        vmaInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
 
         VkResult result = vmaCreateAllocator(&vmaInfo, &allocator);
     }
@@ -377,9 +374,25 @@ namespace Renderer
             VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
             VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME});
 
+        VkPhysicalDeviceBufferDeviceAddressFeatures bufferAddressFeatures = {};
+        bufferAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+        bufferAddressFeatures.pNext = NULL;
+        bufferAddressFeatures.bufferDeviceAddress = VK_TRUE;
+
+        VkPhysicalDeviceShaderDrawParametersFeatures  drawParamFeatures = {};
+        drawParamFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
+        drawParamFeatures.pNext = &bufferAddressFeatures;
+        drawParamFeatures.shaderDrawParameters = VK_TRUE;
+
+        VkPhysicalDeviceFeatures2 features2 = {};
+        features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        features2.pNext = &drawParamFeatures;
+        
+        vkGetPhysicalDeviceFeatures2(GPU, &features2);
+
         VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationFeatures = {};
         accelerationFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
-        accelerationFeatures.pNext = NULL;
+        accelerationFeatures.pNext = &features2;
         accelerationFeatures.accelerationStructure = VK_TRUE;
 
         VkPhysicalDeviceRayTracingPipelineFeaturesKHR  RTfeatures = {};
@@ -401,7 +414,7 @@ namespace Renderer
         deviceCreateInfo.pEnabledFeatures = NULL;
         deviceCreateInfo.enabledExtensionCount = extensionNames.size();
         deviceCreateInfo.ppEnabledExtensionNames = extensionNames.data();
-        deviceCreateInfo.pEnabledFeatures = &gpuFeatures;
+        deviceCreateInfo.pEnabledFeatures = NULL;
 
         VkResult result = vkCreateDevice(GPU, &deviceCreateInfo, NULL, &device);
         if(result != VK_SUCCESS) throw std::runtime_error("Failed to create Vulkan device");

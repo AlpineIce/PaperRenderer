@@ -5,6 +5,7 @@
 #include "Command.h"
 
 #include <string>
+#include <list>
 
 namespace Renderer
 {
@@ -28,30 +29,35 @@ namespace Renderer
 
     class Buffer
     {
-    private:
-        VkBuffer stagingBuffer;
-        VmaAllocation stagingAllocation;
-        bool isDestoyed = false;
-        bool stagingCreated = false;
-
     protected:
+        VkBuffer buffer;
         VmaAllocation allocation;
+        VmaAllocationInfo allocInfo;
+        VkDeviceSize size;
 
         Device* devicePtr;
         CmdBufferAllocator* commandsPtr;
 
-        VmaAllocationInfo createStagingBuffer(VkDeviceSize bufferSize);
         void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size);
-        void copyBufferToImage(VkBuffer src, VkImage dst, Image* imageData);
-        void changeImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout); //mostly from vulkan tutorial
-        void destroyStagingAlloc();
-
-        VkBuffer getStagingBuffer() const { return stagingBuffer; }
-        VmaAllocation getStagingAllocation() const { return stagingAllocation; }
 
     public:
-        Buffer(Device* device, CmdBufferAllocator* commands);
+        Buffer(Device* device, CmdBufferAllocator* commands, VkDeviceSize size);
         virtual ~Buffer();
+
+        const VkBuffer& getBuffer() const { return buffer; }
+    };
+
+    //----------STAGING BUFFER DECLARATIONS----------//
+
+    class StagingBuffer : public Buffer
+    {
+    private:
+        
+    public:
+        StagingBuffer(Device* device, CmdBufferAllocator* commands, VkDeviceSize size);
+        ~StagingBuffer() override;
+
+        void mapData(void* data, VkDeviceSize bytesOffset, VkDeviceSize size);
     };
 
     //----------VERTEX BUFFER DECLARATIONS----------//
@@ -59,15 +65,15 @@ namespace Renderer
     class VertexBuffer : public Buffer
     {
     private:
-        VkBuffer buffer;
+        uint32_t verticesLength;
 
-        VmaAllocationInfo createVertexBuffer(VkDeviceSize bufferSize);
+        void createVertexBuffer();
 
     public:
         VertexBuffer(Device* device, CmdBufferAllocator* commands, std::vector<Vertex>* vertices);
         ~VertexBuffer() override;
 
-        const VkBuffer& getBuffer() const { return buffer; }
+        uint32_t getLength() const { return verticesLength; }
     };
 
     //----------INDEX BUFFER DECLARATION----------//
@@ -75,29 +81,54 @@ namespace Renderer
     class IndexBuffer : public Buffer
     {
     private:
-        VkBuffer buffer;
-        VmaAllocationInfo createIndexBuffer(VkDeviceSize bufferSize);
         uint32_t indicesLength;
+
+        void createIndexBuffer();
         
     public:
         IndexBuffer(Device* device, CmdBufferAllocator* commands, std::vector<uint32_t>* indices);
         ~IndexBuffer() override;
 
-        const VkBuffer& getBuffer() const { return buffer; }
         uint32_t getLength() const { return indicesLength; }
     };
 
-    //----------TEXTURE "BUFFER" DECLARATION----------//
+    //----------MESH & STOREGE BUFFER OBJ DECLARATION----------// (required after vert and ind buffer declaration)
 
-    class Texture : public Buffer
+    class Mesh
+    {
+    private:
+        const VertexBuffer vbo;
+        const IndexBuffer ibo;
+
+    public:
+        Mesh(Device* device, CmdBufferAllocator* commands, std::vector<Vertex>* vertices, std::vector<uint32_t>* indices);
+        ~Mesh();
+
+        const VkBuffer& getVertexBuffer() const { return vbo.getBuffer(); };
+        uint32_t getVertexBufferSize() const { return vbo.getLength(); }
+        const VkBuffer& getIndexBuffer() const { return ibo.getBuffer(); };
+        uint32_t getIndexBufferSize() const { return ibo.getLength(); }
+    };
+
+    //----------TEXTURE DECLARATION----------//
+
+    class Texture
     {
     private:
         VkImage texture;
         VkImageView textureView;
         VkSampler sampler;
         uint32_t mipmapLevels;
+        VkDeviceSize size;
+        VmaAllocation allocation;
+        VmaAllocationInfo allocInfo;
 
-        VmaAllocationInfo createTexture(Image* imageData);
+        Device* devicePtr;
+        CmdBufferAllocator* commandsPtr;
+
+        void copyBufferToImage(VkBuffer src, VkImage dst, Image* imageData);
+        void changeImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout); //mostly from vulkan tutorial
+        void createTexture(Image* imageData);
         void generateMipmaps(Image* imageData);
         void createTextureView();
         void createSampler();
@@ -115,7 +146,7 @@ namespace Renderer
 
     public:
         Texture(Device* device, CmdBufferAllocator* commands, Image* imageData);
-        ~Texture() override;
+        ~Texture();
 
         VkImage const* getTexturePtr() const { return &texture; }
         const VkImageView& getTextureView() const { return textureView; }
@@ -127,33 +158,30 @@ namespace Renderer
     class UniformBuffer : public Buffer
     {
     private:
-        VkBuffer buffer;
-        VkDeviceSize size;
         void* dataPtr;
 
     public:
-        UniformBuffer(Device *device, CmdBufferAllocator *commands, uint32_t size);
-        ~UniformBuffer();
+        UniformBuffer(Device *device, CmdBufferAllocator *commands, VkDeviceSize size);
+        ~UniformBuffer() override;
 
-        void updateUniformBuffer(void* updateData, uint32_t offset, uint32_t size);
-
-        const VkBuffer& getBuffer() { return buffer; }
+        void updateUniformBuffer(void* updateData, VkDeviceSize size);
     };
 
-    //----------MESH DECLARATION----------//
+    //----------STORAGE BUFFER DECLARATION----------//
 
-    class Mesh
+    class StorageBuffer : public Buffer
     {
     private:
-        const VertexBuffer vbo;
-        const IndexBuffer ibo;
+        VkBuffer buffer;
+        void* dataPtr;
+
+        void createStorageBuffer();
 
     public:
-        Mesh(Device* device, CmdBufferAllocator* commands, std::vector<Vertex>* vertices, std::vector<uint32_t>* indices);
-        ~Mesh();
+        StorageBuffer(Device *device, CmdBufferAllocator *commands, VkDeviceSize size);
+        ~StorageBuffer() override;
 
-        const VkBuffer& getVertexBuffer() const { return vbo.getBuffer(); };
-        const VkBuffer& getIndexBuffer() const { return ibo.getBuffer(); };
-        uint32_t getIndexBufferSize() const { return ibo.getLength(); }
+        void setDataFromStaging(const StagingBuffer& stagingBuffer, VkDeviceSize size);
+        const VkBuffer& getBuffer() const { return buffer; }
     };
 }

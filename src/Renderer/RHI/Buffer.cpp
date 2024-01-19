@@ -4,42 +4,16 @@ namespace Renderer
 {
     //-----------BASE BUFFER DEFINITIONS----------//
 
-    Buffer::Buffer(Device* device, CmdBufferAllocator* commands)
+    Buffer::Buffer(Device* device, CmdBufferAllocator* commands, VkDeviceSize size)
         :devicePtr(device),
-        commandsPtr(commands)
+        commandsPtr(commands),
+        size(size)
     {
     }
 
     Buffer::~Buffer()
     {
-        if(stagingCreated)
-        {
-            destroyStagingAlloc();
-        }
-    }
-
-    VmaAllocationInfo Buffer::createStagingBuffer(VkDeviceSize bufferSize)
-    {
-        stagingCreated = true;
-        VkBufferCreateInfo bufferInfo = {};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.pNext = NULL;
-        bufferInfo.flags = 0;
-        bufferInfo.size = bufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        bufferInfo.queueFamilyIndexCount = 0;
-        bufferInfo.pQueueFamilyIndices = NULL;
-
-        VmaAllocationCreateInfo allocCreateInfo = {};
-        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-        allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
-
-        VmaAllocationInfo returnInfo;
-        VkResult result = vmaCreateBuffer(devicePtr->getAllocator(), &bufferInfo, &allocCreateInfo, &stagingBuffer, &stagingAllocation, &returnInfo);
-        vmaMapMemory(devicePtr->getAllocator(), stagingAllocation, &(returnInfo.pMappedData));
-
-        return returnInfo;
+        vmaDestroyBuffer(devicePtr->getAllocator(), buffer, allocation);
     }
 
     void Buffer::copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size)
@@ -71,7 +45,141 @@ namespace Renderer
         commandsPtr->waitForQueue(result);
     }
 
-    void Buffer::changeImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
+    //-----------STAGING BUFFER DEFINITIONS----------//
+
+    StagingBuffer::StagingBuffer(Device* device, CmdBufferAllocator* commands, VkDeviceSize size)
+        :Buffer(device, commands, size)
+    {
+        VkBufferCreateInfo bufferInfo = {};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.pNext = NULL;
+        bufferInfo.flags = 0;
+        bufferInfo.size = size;
+        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        bufferInfo.queueFamilyIndexCount = 0;
+        bufferInfo.pQueueFamilyIndices = NULL;
+
+        VmaAllocationCreateInfo allocCreateInfo = {};
+        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+        allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
+
+        VkResult result = vmaCreateBuffer(devicePtr->getAllocator(), &bufferInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
+        vmaMapMemory(devicePtr->getAllocator(), allocation, &(allocInfo.pMappedData));
+    }
+
+    StagingBuffer::~StagingBuffer()
+    {
+        vmaUnmapMemory(devicePtr->getAllocator(), allocation);
+    }
+
+    void StagingBuffer::mapData(void *data, VkDeviceSize bytesOffset, VkDeviceSize size)
+    {
+        memcpy((char*)allocInfo.pMappedData + bytesOffset, data, size);
+        vmaFlushAllocation(devicePtr->getAllocator(), allocation, bytesOffset, size);
+    }
+
+    //-----------VERTEX BUFFER DEFINITIONS----------//
+
+    VertexBuffer::VertexBuffer(Device* device, CmdBufferAllocator* commands, std::vector<Vertex>* vertices)
+        :Buffer(device, commands, vertices->size() * sizeof(Vertex)),
+        verticesLength(vertices->size())
+    {
+        StagingBuffer stagingBuffer(devicePtr, commandsPtr, this->size);
+        stagingBuffer.mapData(vertices->data(), 0, this->size);
+
+        createVertexBuffer();
+        copyBuffer(stagingBuffer.getBuffer(), this->buffer, this->size);
+    }
+
+    VertexBuffer::~VertexBuffer()
+    {
+    }
+
+    void VertexBuffer::createVertexBuffer()
+    {
+        VkBufferCreateInfo bufferInfo = {};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.pNext = NULL;
+        bufferInfo.flags = 0;
+        bufferInfo.size = size;
+        bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        bufferInfo.queueFamilyIndexCount = 0;
+        bufferInfo.pQueueFamilyIndices = NULL;
+
+        VmaAllocationCreateInfo allocCreateInfo = {};
+        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+        allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
+
+        VkResult result = vmaCreateBuffer(devicePtr->getAllocator(), &bufferInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
+    }
+
+    //----------INDEX BUFFER DEFINITIONS----------//
+
+    IndexBuffer::IndexBuffer(Device* device, CmdBufferAllocator* commands, std::vector<uint32_t>* indices)
+        :Buffer(device, commands, indices->size() * sizeof(uint32_t)),
+        indicesLength(indices->size())
+    {
+        StagingBuffer stagingBuffer(devicePtr, commandsPtr, this->size);
+        stagingBuffer.mapData(indices->data(), 0, this->size);
+
+        createIndexBuffer();
+        copyBuffer(stagingBuffer.getBuffer(), this->buffer, this->size);
+    }
+
+    IndexBuffer::~IndexBuffer()
+    {
+    }
+
+    void IndexBuffer::createIndexBuffer()
+    {
+        
+        VkBufferCreateInfo bufferInfo = {};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.pNext = NULL;
+        bufferInfo.flags = 0;
+        bufferInfo.size = size;
+        bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        bufferInfo.queueFamilyIndexCount = 0;
+        bufferInfo.pQueueFamilyIndices = NULL;
+
+        VmaAllocationCreateInfo allocCreateInfo = {};
+        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+        allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
+
+        VkResult result = vmaCreateBuffer(devicePtr->getAllocator(), &bufferInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
+    }
+
+    //----------TEXTURE "BUFFER" DEFINITIONS----------//
+
+    Texture::Texture(Device* device, CmdBufferAllocator* commands, Image* imageData)
+        :devicePtr(device),
+        commandsPtr(commands),
+        size(imageData->size)
+    {
+        StagingBuffer stagingBuffer(devicePtr, commandsPtr, this->size);
+        stagingBuffer.mapData(imageData->data, 0, this->size);
+
+        createTexture(imageData);
+    
+        changeImageLayout(texture, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        copyBufferToImage(stagingBuffer.getBuffer(), texture, imageData);
+
+        generateMipmaps(imageData);
+        createTextureView();
+        createSampler();
+    }
+
+    Texture::~Texture()
+    {
+        vkDestroySampler(devicePtr->getDevice(), sampler, nullptr);
+        vkDestroyImageView(devicePtr->getDevice(), textureView, nullptr);
+        vmaDestroyImage(devicePtr->getAllocator(), texture, allocation);
+    }
+
+    void Texture::changeImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
     {
         VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffer(CmdPoolType::TRANSFER); //note theres only 1 transfer cmd buffer
 
@@ -150,7 +258,7 @@ namespace Renderer
         commandsPtr->waitForQueue(result);
     }
 
-    void Buffer::copyBufferToImage(VkBuffer src, VkImage dst, Image* imageData)
+    void Texture::copyBufferToImage(VkBuffer src, VkImage dst, Image* imageData)
     {
         VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffer(CmdPoolType::TRANSFER);
 
@@ -192,155 +300,8 @@ namespace Renderer
         QueueReturn result = commandsPtr->submitQueue(submitInfo, CmdPoolType::TRANSFER);
         commandsPtr->waitForQueue(result);
     }
-
-    void Buffer::destroyStagingAlloc()
-    {
-        if(!isDestoyed)
-        {
-            isDestoyed = true;
-            vmaUnmapMemory(devicePtr->getAllocator(), stagingAllocation);
-            vmaDestroyBuffer(devicePtr->getAllocator(), stagingBuffer, stagingAllocation);
-        }
-    }
-
-    //-----------VERTEX BUFFER DEFINITIONS----------//
-
-    VertexBuffer::VertexBuffer(Device* device, CmdBufferAllocator* commands, std::vector<Vertex>* vertices)
-        :Buffer(device, commands)
-    {
-        //get size in bytes
-        VkDeviceSize bytesSize = vertices->size() * sizeof(Vertex);
-
-        //staging buffer
-        VmaAllocationInfo allocInfo = createStagingBuffer(bytesSize);
-
-        //copy data
-        memcpy(allocInfo.pMappedData, vertices->data(), bytesSize);
-        vmaFlushAllocation(devicePtr->getAllocator(), getStagingAllocation(), 0, bytesSize);
-
-        //then vertex buffer
-        VmaAllocationInfo allocInfo2 = createVertexBuffer(bytesSize);
-
-        //copy and destroy staging
-        copyBuffer(getStagingBuffer(), buffer, bytesSize);
-        destroyStagingAlloc();
-    }
-
-    VertexBuffer::~VertexBuffer()
-    {
-        vmaDestroyBuffer(devicePtr->getAllocator(), buffer, allocation);
-    }
-
-    VmaAllocationInfo VertexBuffer::createVertexBuffer(VkDeviceSize bufferSize)
-    {
-        VkBufferCreateInfo bufferInfo = {};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.pNext = NULL;
-        bufferInfo.flags = 0;
-        bufferInfo.size = bufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        bufferInfo.queueFamilyIndexCount = 0;
-        bufferInfo.pQueueFamilyIndices = NULL;
-
-        VmaAllocationCreateInfo allocCreateInfo = {};
-        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-        allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
-
-        VmaAllocationInfo returnInfo;
-        VkResult result = vmaCreateBuffer(devicePtr->getAllocator(), &bufferInfo, &allocCreateInfo, &buffer, &allocation, &returnInfo);
-
-        return returnInfo;
-    }
-
-    //----------INDEX BUFFER DEFINITIONS----------//
-
-    IndexBuffer::IndexBuffer(Device* device, CmdBufferAllocator* commands, std::vector<uint32_t>* indices)
-        :Buffer(device, commands)
-    {
-        //get sizes
-        VkDeviceSize bytesSize = indices->size() * sizeof(uint32_t);
-        indicesLength = indices->size();
-
-        //staging buffer
-        VmaAllocationInfo allocInfo = createStagingBuffer(bytesSize);
-
-        //copy data
-        memcpy(allocInfo.pMappedData, indices->data(), bytesSize);
-        vmaFlushAllocation(devicePtr->getAllocator(), getStagingAllocation(), 0, bytesSize);
-
-        //then index buffer
-        VmaAllocationInfo allocInfo2 = createIndexBuffer(bytesSize);
-
-        //copy and destroy staging
-        copyBuffer(getStagingBuffer(), buffer, bytesSize);
-        destroyStagingAlloc();
-    }
-
-    IndexBuffer::~IndexBuffer()
-    {
-        vmaDestroyBuffer(devicePtr->getAllocator(), buffer, allocation);
-    }
-
-    VmaAllocationInfo IndexBuffer::createIndexBuffer(VkDeviceSize bufferSize)
-    {
-        
-        VkBufferCreateInfo bufferInfo = {};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.pNext = NULL;
-        bufferInfo.flags = 0;
-        bufferInfo.size = bufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        bufferInfo.queueFamilyIndexCount = 0;
-        bufferInfo.pQueueFamilyIndices = NULL;
-
-        VmaAllocationCreateInfo allocCreateInfo = {};
-        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-        allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
-
-        VmaAllocationInfo returnInfo;
-        VkResult result = vmaCreateBuffer(devicePtr->getAllocator(), &bufferInfo, &allocCreateInfo, &buffer, &allocation, &returnInfo);
-
-        return returnInfo;
-    }
-
-    //----------TEXTURE "BUFFER" DEFINITIONS----------//
-
-    Texture::Texture(Device* device, CmdBufferAllocator* commands, Image* imageData)
-        :Buffer(device, commands)
-    {
-        //staging buffer
-        VmaAllocationInfo allocInfo = createStagingBuffer(imageData->size);
-
-        //copy data
-        memcpy(allocInfo.pMappedData, imageData->data, imageData->size);
-        vmaFlushAllocation(devicePtr->getAllocator(), getStagingAllocation(), 0, imageData->size);
-
-        //create texture
-        VmaAllocationInfo allocInfo2 = createTexture(imageData);
-
-        //copy
-        changeImageLayout(texture, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-        copyBufferToImage(getStagingBuffer(), texture, imageData);
-        generateMipmaps(imageData);
-
-        //staging buffer destruction
-         destroyStagingAlloc();
-
-        //create image view and sampler
-        createTextureView();
-        createSampler();
-    }
-
-    Texture::~Texture()
-    {
-        vkDestroySampler(devicePtr->getDevice(), sampler, nullptr);
-        vkDestroyImageView(devicePtr->getDevice(), textureView, nullptr);
-        vmaDestroyImage(devicePtr->getAllocator(), texture, allocation);
-    }
-
-    VmaAllocationInfo Texture::createTexture(Image* imageData)
+    
+    void Texture::createTexture(Image* imageData)
     {
         VkExtent3D imageExtent;
         imageExtent.width = imageData->width;
@@ -379,15 +340,11 @@ namespace Renderer
 
         imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-        
         VmaAllocationCreateInfo allocCreateInfo = {};
-        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
         allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
-        VmaAllocationInfo returnInfo;
-        VkResult result = vmaCreateImage(devicePtr->getAllocator(), &imageInfo, &allocCreateInfo, &texture, &allocation, &returnInfo);
-
-        return returnInfo;
+        VkResult result = vmaCreateImage(devicePtr->getAllocator(), &imageInfo, &allocCreateInfo, &texture, &allocation, &allocInfo);
     }
 
     void Texture::generateMipmaps(Image* imageData)
@@ -594,24 +551,23 @@ namespace Renderer
 
     //----------UNIFORM BUFFER DEFINITIONS----------//
 
-    UniformBuffer::UniformBuffer(Device *device, CmdBufferAllocator *commands, uint32_t size)
-        :Buffer(device, commands),
-        dataPtr(NULL),
-        size(size)
+    UniformBuffer::UniformBuffer(Device *device, CmdBufferAllocator *commands, VkDeviceSize size)
+        :Buffer(device, commands, size),
+        dataPtr(NULL)
     {
         VkBufferCreateInfo bufferInfo = {};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.pNext = NULL;
         bufferInfo.flags = 0;
         bufferInfo.size = size;
-        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         bufferInfo.queueFamilyIndexCount = 0;
         bufferInfo.pQueueFamilyIndices = NULL;
 
         VmaAllocationCreateInfo allocCreateInfo = {};
-        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-        allocCreateInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+        allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
         VmaAllocationInfo allocInfo;
         VkResult result = vmaCreateBuffer(devicePtr->getAllocator(), &bufferInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
@@ -621,13 +577,51 @@ namespace Renderer
     UniformBuffer::~UniformBuffer()
     {
         vmaUnmapMemory(devicePtr->getAllocator(), allocation);
-        vmaDestroyBuffer(devicePtr->getAllocator(), buffer, allocation);
     }
 
-    void UniformBuffer::updateUniformBuffer(void* updateData, uint32_t offset, uint32_t size)
+    void UniformBuffer::updateUniformBuffer(void* updateData, VkDeviceSize size)
     {
-        memcpy((unsigned char*)dataPtr + offset, updateData, size);
-        vmaFlushAllocation(devicePtr->getAllocator(), allocation, offset, size);
+        memcpy(dataPtr, updateData, size);
+        vmaFlushAllocation(devicePtr->getAllocator(), allocation, 0, size);
+    }
+
+    //----------STORAGE BUFFER DEFINITIONS----------//
+
+    StorageBuffer::StorageBuffer(Device *device, CmdBufferAllocator *commands, VkDeviceSize size)
+        :Buffer(device, commands, size),
+        dataPtr(NULL)
+    {
+        createStorageBuffer();
+    }
+
+    StorageBuffer::~StorageBuffer()
+    {
+    }
+
+    void StorageBuffer::setDataFromStaging(const StagingBuffer &stagingBuffer, VkDeviceSize size)
+    {
+        copyBuffer(stagingBuffer.getBuffer(), buffer, size);
+    }
+
+    void StorageBuffer::createStorageBuffer()
+    {
+        VkBufferCreateInfo bufferInfo = {};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.pNext = NULL;
+        bufferInfo.flags = 0;
+        bufferInfo.size = size;
+        bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
+                           VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;// | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        bufferInfo.queueFamilyIndexCount = 0;
+        bufferInfo.pQueueFamilyIndices = NULL;
+
+        VmaAllocationCreateInfo allocCreateInfo = {};
+        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+        allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
+
+        VmaAllocationInfo allocInfo;
+        VkResult result = vmaCreateBuffer(devicePtr->getAllocator(), &bufferInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
     }
 
     //----------MESH DEFINITIONS----------//
@@ -636,12 +630,9 @@ namespace Renderer
         :vbo(device, commands, vertices),
         ibo(device, commands, indices)
     {
-
     }
 
     Mesh::~Mesh()
     {
-
     }
-
 }
