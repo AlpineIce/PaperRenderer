@@ -116,6 +116,10 @@ namespace Renderer
     {
         for(VkDescriptorSetLayout set : setLayouts)
         {
+            if(set == *globalDescriptorLayoutPtr)
+            {
+                continue;
+            }
             vkDestroyDescriptorSetLayout(devicePtr->getDevice(), set, nullptr);
         }
         vkDestroyPipeline(devicePtr->getDevice(), pipeline, nullptr);

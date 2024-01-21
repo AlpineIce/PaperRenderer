@@ -7,16 +7,20 @@ namespace Renderer
     Buffer::Buffer(Device* device, CmdBufferAllocator* commands, VkDeviceSize size)
         :devicePtr(device),
         commandsPtr(commands),
-        size(size)
+        size(size),
+        buffer(VK_NULL_HANDLE)
     {
     }
 
     Buffer::~Buffer()
     {
-        vmaDestroyBuffer(devicePtr->getAllocator(), buffer, allocation);
+        if(buffer != VK_NULL_HANDLE)
+        {
+            vmaDestroyBuffer(devicePtr->getAllocator(), buffer, allocation);
+        }
     }
 
-    void Buffer::copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size)
+    QueueReturn Buffer::copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size, bool useFence)
     {
         VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffer(CmdPoolType::TRANSFER); //note theres only 1 transfer cmd buffer
 
@@ -36,13 +40,22 @@ namespace Renderer
 
         vkEndCommandBuffer(transferBuffer);
 
+        VkSemaphore semaphore;
+        VkSemaphoreCreateInfo semaphoreInfo;
+        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        semaphoreInfo.pNext = NULL;
+        semaphoreInfo.flags = 0;
+
+        vkCreateSemaphore(devicePtr->getDevice(), &semaphoreInfo, nullptr, &semaphore);
+
         VkSubmitInfo submitInfo = {};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &transferBuffer;
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = &semaphore;
 
-        QueueReturn result = commandsPtr->submitQueue(submitInfo, CmdPoolType::TRANSFER);
-        commandsPtr->waitForQueue(result);
+        return commandsPtr->submitQueue(submitInfo, CmdPoolType::TRANSFER, useFence);
     }
 
     //-----------STAGING BUFFER DEFINITIONS----------//
@@ -89,7 +102,7 @@ namespace Renderer
         stagingBuffer.mapData(vertices->data(), 0, this->size);
 
         createVertexBuffer();
-        copyBuffer(stagingBuffer.getBuffer(), this->buffer, this->size);
+        copyBuffer(stagingBuffer.getBuffer(), this->buffer, this->size, true);
     }
 
     VertexBuffer::~VertexBuffer()
@@ -125,7 +138,7 @@ namespace Renderer
         stagingBuffer.mapData(indices->data(), 0, this->size);
 
         createIndexBuffer();
-        copyBuffer(stagingBuffer.getBuffer(), this->buffer, this->size);
+        copyBuffer(stagingBuffer.getBuffer(), this->buffer, this->size, true);
     }
 
     IndexBuffer::~IndexBuffer()
@@ -134,7 +147,6 @@ namespace Renderer
 
     void IndexBuffer::createIndexBuffer()
     {
-        
         VkBufferCreateInfo bufferInfo = {};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.pNext = NULL;
@@ -163,10 +175,10 @@ namespace Renderer
         stagingBuffer.mapData(imageData->data, 0, this->size);
 
         createTexture(imageData);
-    
+
         changeImageLayout(texture, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
         copyBufferToImage(stagingBuffer.getBuffer(), texture, imageData);
-
+        
         generateMipmaps(imageData);
         createTextureView();
         createSampler();
@@ -254,8 +266,7 @@ namespace Renderer
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &transferBuffer;
         
-        QueueReturn result = commandsPtr->submitQueue(submitInfo, CmdPoolType::TRANSFER);
-        commandsPtr->waitForQueue(result);
+        commandsPtr->submitQueue(submitInfo, CmdPoolType::TRANSFER, true);
     }
 
     void Texture::copyBufferToImage(VkBuffer src, VkImage dst, Image* imageData)
@@ -296,9 +307,10 @@ namespace Renderer
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &transferBuffer;
+        submitInfo.signalSemaphoreCount = 0;
+        submitInfo.pSignalSemaphores = NULL;
 
-        QueueReturn result = commandsPtr->submitQueue(submitInfo, CmdPoolType::TRANSFER);
-        commandsPtr->waitForQueue(result);
+        commandsPtr->submitQueue(submitInfo, CmdPoolType::TRANSFER, true);
     }
     
     void Texture::createTexture(Image* imageData)
@@ -458,8 +470,7 @@ namespace Renderer
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &blitBuffer;
 
-        QueueReturn result = commandsPtr->submitQueue(submitInfo, CmdPoolType::GRAPHICS);
-        commandsPtr->waitForQueue(result);
+        commandsPtr->submitQueue(submitInfo, CmdPoolType::GRAPHICS, true);
     }
 
     void Texture::createTextureView()
@@ -588,8 +599,7 @@ namespace Renderer
     //----------STORAGE BUFFER DEFINITIONS----------//
 
     StorageBuffer::StorageBuffer(Device *device, CmdBufferAllocator *commands, VkDeviceSize size)
-        :Buffer(device, commands, size),
-        dataPtr(NULL)
+        :Buffer(device, commands, size)
     {
         createStorageBuffer();
     }
@@ -598,9 +608,9 @@ namespace Renderer
     {
     }
 
-    void StorageBuffer::setDataFromStaging(const StagingBuffer &stagingBuffer, VkDeviceSize size)
+    QueueReturn StorageBuffer::setDataFromStaging(const StagingBuffer &stagingBuffer, VkDeviceSize size)
     {
-        copyBuffer(stagingBuffer.getBuffer(), buffer, size);
+        return copyBuffer(stagingBuffer.getBuffer(), buffer, size, false);
     }
 
     void StorageBuffer::createStorageBuffer()

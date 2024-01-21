@@ -12,27 +12,8 @@ namespace Renderer
     {
         //synchronization objects
         imageSemaphores.resize(commandsPtr->getFrameCount());
-        for(VkSemaphore& semaphore : imageSemaphores)
-        {
-            VkSemaphoreCreateInfo semaphoreInfo;
-            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-            semaphoreInfo.pNext = NULL;
-            semaphoreInfo.flags = 0;
-
-            vkCreateSemaphore(devicePtr->getDevice(), &semaphoreInfo, nullptr, &semaphore);
-        }
-
-        renderSemaphores.resize(commandsPtr->getFrameCount());
-        for(VkSemaphore& semaphore : renderSemaphores)
-        {
-            VkSemaphoreCreateInfo semaphoreInfo;
-            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-            semaphoreInfo.pNext = NULL;
-            semaphoreInfo.flags = 0;
-
-            vkCreateSemaphore(devicePtr->getDevice(), &semaphoreInfo, nullptr, &semaphore);
-        }
         
+        preRenderFences.resize(commandsPtr->getFrameCount());
         renderFences.resize(commandsPtr->getFrameCount());
 
         //global uniforms
@@ -45,44 +26,38 @@ namespace Renderer
 
     RenderPass::~RenderPass()
     {
-        for(VkSemaphore& semaphore : imageSemaphores)
+        renderFences.at(currentImage).clear();
+        renderFences.at(currentImage).clear();
+
+        for(VkSemaphore semaphore: imageSemaphores)
         {
             vkDestroySemaphore(devicePtr->getDevice(), semaphore, nullptr);
-        }
-
-        for(VkSemaphore& semaphore : renderSemaphores)
-        {
-            vkDestroySemaphore(devicePtr->getDevice(), semaphore, nullptr);
-        }
-
-        for(std::list<QueueReturn>& queueReturns : renderFences)
-        {
-            for(std::list<Renderer::QueueReturn>::iterator result = queueReturns.begin(); result != queueReturns.end(); result++)
-            {
-                commandsPtr->waitForQueue(*result);
-            }
-            renderFences.at(currentImage).clear();
         }
     }
 
     VkCommandBuffer RenderPass::startNewFrame()
     {
-        std::list<QueueReturn>& queueReturns = renderFences.at(currentImage);
-        for(std::list<Renderer::QueueReturn>::iterator result = queueReturns.begin(); result != queueReturns.end(); result++)
+        for(auto result = preRenderFences.at(currentImage).begin(); result != preRenderFences.at(currentImage).end(); result++)
         {
-            commandsPtr->waitForQueue(*result);
+            result->get()->waitForFence();
         }
-        renderFences.at(currentImage).clear();
 
-        descriptorsPtr->refreshPools(currentImage);
+        for(auto result = renderFences.at(currentImage).begin(); result != renderFences.at(currentImage).end(); result++)
+        {
+            result->get()->waitForFence();
+        }
 
+        vkDestroySemaphore(devicePtr->getDevice(), imageSemaphores.at(currentImage), nullptr);
+        imageSemaphores.at(currentImage) = commandsPtr->getSemaphore();
+        
         //get available image
         checkSwapchain(vkAcquireNextImageKHR(devicePtr->getDevice(),
             *(swapchainPtr->getSwapchainPtr()),
-            UINT16_MAX,
+            UINT32_MAX,
             imageSemaphores.at(currentImage),
             VK_NULL_HANDLE, &currentImage));
-    
+        
+        descriptorsPtr->refreshPools(currentImage);
         //update uniform data
 
         double time = glfwGetTime();
@@ -207,6 +182,9 @@ namespace Renderer
             1,
             &imageBarrier);
 
+        renderFences.at(currentImage).clear();
+        preRenderFences.at(currentImage).clear();
+
         vkCmdBeginRendering(graphicsCmdBuffer, &renderInfo);
 
         //dynamic viewport and scissor specified in pipelines
@@ -247,8 +225,11 @@ namespace Renderer
 
     void RenderPass::drawIndexedIndirect(const VkCommandBuffer& cmdBuffer, IndirectDrawBuffer* drawBuffer)
     {
-        drawBuffer->updateBuffers(cmdBuffer, currentImage);
-        drawBuffer->draw(cmdBuffer);
+        std::vector<QueueReturn> pushFences = std::move(drawBuffer->draw(cmdBuffer, currentImage));
+        for(int i = 0; i < pushFences.size(); i++)
+        {
+            preRenderFences.at(currentImage).push_back(std::make_shared<QueueReturn>(std::move(pushFences[i])));
+        }
     }
 
     void RenderPass::bindPipeline(Pipeline const *pipeline, const VkCommandBuffer &cmdBuffer)
@@ -327,73 +308,55 @@ namespace Renderer
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
         };
 
+        std::vector<VkSemaphore> waitSemaphores;
+        
+        waitSemaphores.push_back(imageSemaphores.at(currentImage));
+        if(preRenderFences.size())
+        {
+            for(auto fence = preRenderFences.at(currentImage).begin(); fence != preRenderFences.at(currentImage).end(); fence++)
+            {
+                for(VkSemaphore& semaphore : fence->get()->getSemaphores())
+                {
+                    waitSemaphores.push_back(semaphore);
+                    pipelineStages.push_back(VK_PIPELINE_STAGE_TRANSFER_BIT);
+                }
+            }
+        }
+        
+        VkSemaphore graphicsSemapore = commandsPtr->getSemaphore();
         VkSubmitInfo queueSubmitInfo = {};
         queueSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         queueSubmitInfo.pNext = NULL;
-        queueSubmitInfo.waitSemaphoreCount = 1;
-        queueSubmitInfo.pWaitSemaphores = &(imageSemaphores.at(currentImage));
+        queueSubmitInfo.waitSemaphoreCount = waitSemaphores.size();
+        queueSubmitInfo.pWaitSemaphores = waitSemaphores.data();
         queueSubmitInfo.pWaitDstStageMask = pipelineStages.data(); //only one semaphore, one stage
         queueSubmitInfo.commandBufferCount = 1;
         queueSubmitInfo.pCommandBuffers = &cmdBuffer;
         queueSubmitInfo.signalSemaphoreCount = 1;
-        queueSubmitInfo.pSignalSemaphores = &(renderSemaphores.at(currentImage));
+        queueSubmitInfo.pSignalSemaphores = &graphicsSemapore;
 
-        renderFences.at(currentImage).push_back(commandsPtr->submitQueue(queueSubmitInfo, CmdPoolType::GRAPHICS));
+        QueueReturn graphicsResult = commandsPtr->submitQueue(queueSubmitInfo, CmdPoolType::GRAPHICS, true);
+        renderFences.at(currentImage).push_back(std::make_shared<QueueReturn>(std::move(graphicsResult)));
 
         //submit rendered image to swapchain
         VkPresentInfoKHR presentInfo = {};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         presentInfo.pNext = NULL;
         presentInfo.waitSemaphoreCount = 1;
-        presentInfo.pWaitSemaphores = &(renderSemaphores.at(currentImage));
+        presentInfo.pWaitSemaphores = &graphicsSemapore;
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = swapchainPtr->getSwapchainPtr();
         presentInfo.pImageIndices = &currentImage;
         presentInfo.pResults = NULL;
 
         QueueReturn presentResult = commandsPtr->submitPresentQueue(presentInfo);
-        //renderFences.at(currentImage).push_back(presentResult);  DONT NEED
+        renderFences.at(currentImage).push_back(std::make_shared<QueueReturn>(std::move(presentResult)));
 
-        if (presentResult.result == VK_ERROR_OUT_OF_DATE_KHR || presentResult.result == VK_SUBOPTIMAL_KHR || recreateFlag) 
+        if (presentResult.getSubmitResult() == VK_ERROR_OUT_OF_DATE_KHR || presentResult.getSubmitResult() == VK_SUBOPTIMAL_KHR || recreateFlag) 
         {
-            std::list<QueueReturn>& queueReturns = renderFences.at(currentImage);
-            for(std::list<Renderer::QueueReturn>::iterator result = queueReturns.begin(); result != queueReturns.end(); result++)
-            {
-                commandsPtr->waitForQueue(*result);
-            }
-            renderFences.at(currentImage).clear();
-
             recreateFlag = false;
             swapchainPtr->recreate();
             cameraPtr->updateCameraProjection();
-
-            for(VkSemaphore& semaphore : imageSemaphores)
-            {
-                vkDestroySemaphore(devicePtr->getDevice(), semaphore, nullptr);
-            }
-            for(VkSemaphore& semaphore : renderSemaphores)
-            {
-                vkDestroySemaphore(devicePtr->getDevice(), semaphore, nullptr);
-            }
-
-            for(VkSemaphore& semaphore : imageSemaphores)
-            {
-                VkSemaphoreCreateInfo semaphoreInfo;
-                semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-                semaphoreInfo.pNext = NULL;
-                semaphoreInfo.flags = 0;
-
-                vkCreateSemaphore(devicePtr->getDevice(), &semaphoreInfo, nullptr, &semaphore);
-            }
-            for(VkSemaphore& semaphore : renderSemaphores)
-            {
-                VkSemaphoreCreateInfo semaphoreInfo;
-                semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-                semaphoreInfo.pNext = NULL;
-                semaphoreInfo.flags = 0;
-
-                vkCreateSemaphore(devicePtr->getDevice(), &semaphoreInfo, nullptr, &semaphore);
-            }
         }
 
         if(currentImage == 0)

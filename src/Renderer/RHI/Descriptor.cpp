@@ -19,11 +19,6 @@ namespace Renderer
 
         descriptorPools.resize(CmdBufferAllocator::getFrameCount());
         currentPools.resize(CmdBufferAllocator::getFrameCount());
-        for(uint32_t i = 0; i < CmdBufferAllocator::getFrameCount(); i++)
-        {
-            descriptorPools.at(i).push_back(allocateDescriptorPool());
-            currentPools.at(i) = &(descriptorPools.at(i).back());
-        }
     }
     
     DescriptorAllocator::~DescriptorAllocator()
@@ -43,24 +38,24 @@ namespace Renderer
         
         VkDescriptorPoolSize UBOpoolSize = {};
         UBOpoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        UBOpoolSize.descriptorCount = 256;
+        UBOpoolSize.descriptorCount = 512;
         poolSizes.push_back(UBOpoolSize);
 
         VkDescriptorPoolSize storagePoolSize = {};
         storagePoolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        storagePoolSize.descriptorCount = 256;
+        storagePoolSize.descriptorCount = 512;
         poolSizes.push_back(storagePoolSize);
 
         VkDescriptorPoolSize samplerPoolSize = {};
         samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        samplerPoolSize.descriptorCount = 256;
+        samplerPoolSize.descriptorCount = 512;
         poolSizes.push_back(samplerPoolSize);
         
         VkDescriptorPoolCreateInfo poolInfo = {};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         poolInfo.pNext = NULL;
         poolInfo.flags = 0;
-        poolInfo.maxSets = 256 * 3;
+        poolInfo.maxSets = 512;
         poolInfo.poolSizeCount = poolSizes.size();
         poolInfo.pPoolSizes = poolSizes.data();
 
@@ -170,5 +165,6 @@ namespace Renderer
         }
         descriptorPools.at(frameIndex).resize(0);
         descriptorPools.at(frameIndex).push_back(allocateDescriptorPool());
+        currentPools.at(frameIndex) = &(descriptorPools.at(frameIndex).back());
     }
 }

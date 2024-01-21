@@ -38,7 +38,7 @@ namespace Renderer
         Device* devicePtr;
         CmdBufferAllocator* commandsPtr;
 
-        void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size);
+        QueueReturn copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size, bool useFence);
 
     public:
         Buffer(Device* device, CmdBufferAllocator* commands, VkDeviceSize size);
@@ -172,16 +172,13 @@ namespace Renderer
     class StorageBuffer : public Buffer
     {
     private:
-        VkBuffer buffer;
-        void* dataPtr;
-
         void createStorageBuffer();
 
     public:
         StorageBuffer(Device *device, CmdBufferAllocator *commands, VkDeviceSize size);
         ~StorageBuffer() override;
 
-        void setDataFromStaging(const StagingBuffer& stagingBuffer, VkDeviceSize size);
+        QueueReturn setDataFromStaging(const StagingBuffer& stagingBuffer, VkDeviceSize size);
         const VkBuffer& getBuffer() const { return buffer; }
     };
 }

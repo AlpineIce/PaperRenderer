@@ -272,7 +272,7 @@ namespace Renderer
 
             MaterialNode matParams;
             matParams.material = materials.at(matName).get();
-            matParams.objectBuffer = std::make_shared<IndirectDrawBuffer>(&device, &commands, &descriptors, renderTree.at(type).pipeline.get(), (uint32_t)(MaterialNode::MAX_COMMANDS));
+            matParams.objectBuffer = std::make_shared<IndirectDrawBuffer>(&device, &commands, &descriptors, renderTree.at(type).pipeline.get());
             
             renderTree.at(type).materials.insert(std::make_pair(matName, matParams));
         }
@@ -326,8 +326,8 @@ namespace Renderer
                     std::string matName = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)->getMatName();
                     
                     object.objRefs[i] = {
-                        .mesh = object.modelPtr->getModelMeshes().at(i).mesh.get(),
-                        .modelMatrix = &object.modelMatrix
+                        .modelMatrix = &object.modelMatrix,
+                        .mesh = object.modelPtr->getModelMeshes().at(i).mesh.get()
                     };
 
                     renderTree.at(pipelineType).materials.at(matName).objectBuffer->addElement(object.objRefs.at(i));
@@ -359,7 +359,7 @@ namespace Renderer
             rendering.bindPipeline(pipelineNode.pipeline.get(), cmdBuffer);
             for(const auto& [materialName, materialNode] : pipelineNode.materials) //material
             {
-                if(materialNode.objectBuffer->getDrawCount() == 0) continue;
+                //if(materialNode.objectBuffer->getDrawCount() == 0) continue; potential for optimization
 
                 rendering.bindMaterial(materialNode.material, cmdBuffer);
                 rendering.drawIndexedIndirect(cmdBuffer, materialNode.objectBuffer.get());

@@ -18,7 +18,6 @@ namespace Renderer
     struct MaterialNode
     {
         Material const* material;
-        static const uint32_t MAX_COMMANDS = 512; //8^3
         std::shared_ptr<IndirectDrawBuffer> objectBuffer;
     };
 
@@ -33,8 +32,8 @@ namespace Renderer
     {
     private:
         std::vector<VkSemaphore> imageSemaphores;
-        std::vector<VkSemaphore> renderSemaphores;
-        std::vector<std::list<QueueReturn>> renderFences;
+        std::vector<std::list<std::shared_ptr<QueueReturn>>> preRenderFences;
+        std::vector<std::list<std::shared_ptr<QueueReturn>>> renderFences;
         std::vector<std::shared_ptr<UniformBuffer>> globalUBOs;
         std::vector<GlobalDescriptor> uniformDatas;
         uint32_t currentImage;

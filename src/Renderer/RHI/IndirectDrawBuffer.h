@@ -3,6 +3,8 @@
 #include "Descriptor.h"
 #include "Pipeline.h"
 
+#include <unordered_map>
+
 namespace Renderer
 {
     struct DrawBufferData
@@ -12,39 +14,35 @@ namespace Renderer
 
     struct DrawBufferObject
     {
-        Mesh const* mesh;
         glm::mat4 const* modelMatrix;
-
-        void* heapLocation = NULL;
+        Mesh const* mesh;
         std::list<DrawBufferObject*>::iterator reference;
+    };
+    
+    struct DrawBufferTreeNode
+    {
+        std::vector<StorageBuffer*> drawBuffers; //raw ptr
+        std::vector<StorageBuffer*> dataBuffers; //raw ptr
+        std::list<DrawBufferObject*> objects;
     };
     
     class IndirectDrawBuffer
     {
     private:
-        StorageBuffer drawBuffer;
-        StorageBuffer dataBuffer;
-        VkDeviceSize capacity;
         //VkDeviceAddress GPUaddress;
-        std::list<DrawBufferObject*> storedReferences;
-        void* dataPtr;
-
+        std::unordered_map<Mesh const*, DrawBufferTreeNode> drawCallTree;
+        
         Device* devicePtr;
         CmdBufferAllocator* commandsPtr;
         DescriptorAllocator* descriptorsPtr;
         Pipeline const* pipelinePtr;
 
     public:
-        IndirectDrawBuffer(Device *device, CmdBufferAllocator *commands, DescriptorAllocator* descriptor, Pipeline const* pipeline, uint32_t capacity);
+        IndirectDrawBuffer(Device *device, CmdBufferAllocator *commands, DescriptorAllocator* descriptor, Pipeline const* pipeline);
         ~IndirectDrawBuffer();
 
         void addElement(DrawBufferObject& object);
         void removeElement(DrawBufferObject& object);
-        void updateBuffers(const VkCommandBuffer& cmdBuffer, uint32_t currentFrame);
-        void draw(const VkCommandBuffer& cmdBuffer);
-
-        uint32_t getDrawCount() const { return storedReferences.size(); }
-        const VkBuffer& getDrawBuffer() const { return drawBuffer.getBuffer(); }
-        const VkBuffer& getDataBuffer() const { return dataBuffer.getBuffer(); }
+        std::vector<QueueReturn> draw(const VkCommandBuffer& cmdBuffer, uint32_t currentFrame);
     };
 }

@@ -2,6 +2,59 @@
 
 namespace Renderer
 {
+    //----------QUEUE RETURN DEFINITIONS----------//
+
+    QueueReturn::QueueReturn(QueuePrivateData pData)
+        :pData(pData)
+    {
+    }
+
+    QueueReturn::QueueReturn(QueueReturn &&queueReturn)
+    {
+        shallowCopy(queueReturn.pData);
+        queueReturn.moveInvalidate();
+    }
+
+    QueueReturn::~QueueReturn()
+    {
+        waitForFence();
+        for(VkSemaphore semaphore : pData.semaphores)
+        {
+            if(semaphore != VK_NULL_HANDLE)
+            {
+                vkDestroySemaphore(pData.devicePtr->getDevice(), semaphore, nullptr);
+            }
+        }
+        if(pData.commandBuffers.size())
+        {
+            vkFreeCommandBuffers(pData.devicePtr->getDevice(), pData.pool, pData.commandBuffers.size(), pData.commandBuffers.data());
+        }
+    }
+
+    void QueueReturn::shallowCopy(QueuePrivateData& data)
+    {
+        this->pData = data;
+    }
+
+    void QueueReturn::moveInvalidate()
+    {
+        pData.fence = VK_NULL_HANDLE;
+        pData.semaphores.resize(0);
+        pData.commandBuffers.resize(0);
+    }
+
+    void QueueReturn::waitForFence()
+    {
+        if(pData.fence != VK_NULL_HANDLE)
+        {
+            vkWaitForFences(pData.devicePtr->getDevice(), 1, &pData.fence, VK_TRUE, UINT32_MAX);
+            vkDestroyFence(pData.devicePtr->getDevice(), pData.fence, nullptr);
+            pData.fence = VK_NULL_HANDLE;
+        }
+    }
+
+    //----------CMD BUFFER ALLOCATOR DEFINITIONS----------//
+
     CmdBufferAllocator::CmdBufferAllocator(Device* device)
         :devicePtr(device)
     {
@@ -49,6 +102,20 @@ namespace Renderer
         presentPoolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
         presentPoolInfo.queueFamilyIndex = devicePtr->getQueueFamilies().presentationFamilyIndex;
         vkCreateCommandPool(devicePtr->getDevice(), &presentPoolInfo, nullptr, &(commandPools.present));
+    }
+
+    VkSemaphore CmdBufferAllocator::getSemaphore()
+    {
+        VkSemaphore semaphore;
+
+        VkSemaphoreCreateInfo semaphoreInfo;
+        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        semaphoreInfo.pNext = NULL;
+        semaphoreInfo.flags = 0;
+
+        vkCreateSemaphore(devicePtr->getDevice(), &semaphoreInfo, nullptr, &semaphore);
+
+        return semaphore;
     }
 
     VkFence CmdBufferAllocator::getSignaledFence()
@@ -107,10 +174,18 @@ namespace Renderer
         return returnBuffer;
     }
 
-    QueueReturn CmdBufferAllocator::submitQueue(const VkSubmitInfo &submitInfo, CmdPoolType poolType)
+    QueueReturn CmdBufferAllocator::submitQueue(const VkSubmitInfo &submitInfo, CmdPoolType poolType, bool useFence)
     {
-        std::shared_ptr<VkFence> fence = std::make_shared<VkFence>(getUnsignaledFence());
-
+        VkFence fence;
+        if(useFence)
+        {
+            fence = getUnsignaledFence();
+        }
+        else
+        {
+            fence = VK_NULL_HANDLE;
+        }
+        
         VkCommandPool pool;
         VkQueue queue;
 
@@ -134,31 +209,36 @@ namespace Renderer
                 break;
         }
 
-        VkResult result = vkQueueSubmit(queue, 1, &submitInfo, *fence);
+        VkResult result = vkQueueSubmit(queue, 1, &submitInfo, fence);
 
         std::vector<VkCommandBuffer> cmdBuffers(submitInfo.commandBufferCount);
+        std::vector<VkSemaphore> semaphores(submitInfo.signalSemaphoreCount);
         memcpy(cmdBuffers.data(), submitInfo.pCommandBuffers, sizeof(VkCommandBuffer) * cmdBuffers.size());
+        memcpy(semaphores.data(), submitInfo.pSignalSemaphores, sizeof(VkSemaphore) * semaphores.size());
 
-        return {fence, result, pool, cmdBuffers};
+        QueuePrivateData pData;
+        pData.devicePtr = devicePtr;
+        pData.commandBuffers = cmdBuffers;
+        pData.fence = fence;
+        pData.semaphores = semaphores;
+        pData.pool = pool;
+        pData.result = result;
+
+        return QueueReturn(pData);
     }
 
     QueueReturn CmdBufferAllocator::submitPresentQueue(const VkPresentInfoKHR &submitInfo)
     {
         VkResult result = vkQueuePresentKHR(devicePtr->getQueues().present[0], &submitInfo);
 
-        return {NULL, result, commandPools.present, std::vector<VkCommandBuffer>()};
-    }
+        QueuePrivateData pData;
+        pData.devicePtr = devicePtr;
+        pData.commandBuffers = std::vector<VkCommandBuffer>();
+        pData.fence = VK_NULL_HANDLE;
+        pData.semaphores = std::vector<VkSemaphore>();
+        pData.pool = commandPools.present;
+        pData.result = result;
 
-    void Renderer::CmdBufferAllocator::waitForQueue(QueueReturn& info)
-    {
-        if(info.fence.get())
-        {
-            vkWaitForFences(devicePtr->getDevice(), 1, info.fence.get(), VK_TRUE, UINT32_MAX);
-            vkDestroyFence(devicePtr->getDevice(), *(info.fence.get()), nullptr);
-        }
-        if(info.commandBuffers.size())
-        {
-            vkFreeCommandBuffers(devicePtr->getDevice(), info.pool, info.commandBuffers.size(), info.commandBuffers.data());
-        }
+        return QueueReturn(pData);
     }
 }

@@ -63,7 +63,7 @@ namespace Renderer
         instanceInfo.pNext = NULL;
         instanceInfo.enabledExtensionCount = extensionNames.size();
         instanceInfo.ppEnabledExtensionNames = extensionNames.data();
-        instanceInfo.enabledLayerCount = 0;
+        instanceInfo.enabledLayerCount = layerNames.size();
         instanceInfo.ppEnabledLayerNames = layerNames.data();
 
         //instance creation
