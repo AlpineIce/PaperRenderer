@@ -20,6 +20,30 @@ namespace Renderer
         }
     }
 
+    void Buffer::createBuffer(VkBufferUsageFlags usage, VmaMemoryUsage memUsage, VmaAllocationCreateFlags memFlag)
+    {
+        VkBufferCreateInfo bufferInfo = {};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.pNext = NULL;
+        bufferInfo.flags = 0;
+        bufferInfo.size = this->size;
+        bufferInfo.usage = usage;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        bufferInfo.queueFamilyIndexCount = 0;
+        bufferInfo.pQueueFamilyIndices = NULL;
+
+        VmaAllocationCreateInfo allocCreateInfo = {};
+        allocCreateInfo.flags = memFlag;
+        allocCreateInfo.usage = memUsage;
+
+        VkResult result = vmaCreateBuffer(devicePtr->getAllocator(), &bufferInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
+    }
+
+    QueueReturn Buffer::copyFromBuffer(Buffer &src, bool useFence)
+    {
+        return copyBuffer(src.getBuffer(), this->buffer, this->size, useFence);
+    }
+
     QueueReturn Buffer::copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size, bool useFence)
     {
         VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffer(CmdPoolType::TRANSFER); //note theres only 1 transfer cmd buffer
@@ -56,6 +80,16 @@ namespace Renderer
         submitInfo.pSignalSemaphores = &semaphore;
 
         return commandsPtr->submitQueue(submitInfo, CmdPoolType::TRANSFER, useFence);
+    }
+
+    VkDeviceAddress Buffer::getBufferDeviceAddress() const
+    {
+        VkBufferDeviceAddressInfoKHR deviceAddressInfo = {};
+        deviceAddressInfo.sType  = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        deviceAddressInfo.pNext = NULL;
+        deviceAddressInfo.buffer = buffer;
+
+        return vkGetBufferDeviceAddressKHR(devicePtr->getDevice(), &deviceAddressInfo);
     }
 
     //-----------STAGING BUFFER DEFINITIONS----------//
@@ -116,7 +150,8 @@ namespace Renderer
         bufferInfo.pNext = NULL;
         bufferInfo.flags = 0;
         bufferInfo.size = size;
-        bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
+            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         bufferInfo.queueFamilyIndexCount = 0;
         bufferInfo.pQueueFamilyIndices = NULL;
@@ -152,7 +187,8 @@ namespace Renderer
         bufferInfo.pNext = NULL;
         bufferInfo.flags = 0;
         bufferInfo.size = size;
-        bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
+            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         bufferInfo.queueFamilyIndexCount = 0;
         bufferInfo.pQueueFamilyIndices = NULL;
@@ -508,7 +544,7 @@ namespace Renderer
         samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         samplerInfo.mipLodBias = 0.0f;
         samplerInfo.anisotropyEnable = devicePtr->getGPUFeatures().samplerAnisotropy;
-        samplerInfo.maxAnisotropy = devicePtr->getGPUProperties().limits.maxSamplerAnisotropy;
+        samplerInfo.maxAnisotropy = devicePtr->getGPUProperties().properties.limits.maxSamplerAnisotropy;
         samplerInfo.compareEnable = VK_FALSE;
         samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
         samplerInfo.minLod = 0.0f;
@@ -621,7 +657,7 @@ namespace Renderer
         bufferInfo.flags = 0;
         bufferInfo.size = size;
         bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
-                           VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;// | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+                           VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         bufferInfo.queueFamilyIndexCount = 0;
         bufferInfo.pQueueFamilyIndices = NULL;

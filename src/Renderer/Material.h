@@ -1,5 +1,4 @@
 #pragma once
-#include "vulkan/vulkan.hpp"
 #include "RHI/Device.h"
 #include "RHI/Pipeline.h"
 

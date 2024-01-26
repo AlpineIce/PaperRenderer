@@ -1,11 +1,11 @@
 #pragma once
-#include "vulkan/vulkan.hpp"
 #include "GLFW/glfw3.h"
 
 #include "RHI/Device.h"
 #include "RHI/Window.h"
 #include "RHI/Swapchain.h"
 #include "RHI/Pipeline.h"
+#include "RHI/AccelerationStructure.h"
 #include "RenderPass.h"
 #include "Material.h"
 #include "Model.h"
@@ -45,6 +45,7 @@ namespace Renderer
         CmdBufferAllocator commands;
         DescriptorAllocator descriptors;
         PipelineBuilder pipelineBuilder;
+        AccelerationStructure rtAccelStructure;
         RenderPass rendering;
 
         //render tree stores all pipelines, their child materials, with their child RenderObject pointers
@@ -55,6 +56,7 @@ namespace Renderer
         std::unordered_map<std::string, std::shared_ptr<Texture>> textures;
 
         std::string appName;
+        bool rtEnabled = true;
 
         Image loadImage(std::string directory);
         void loadPipelines();
@@ -62,6 +64,7 @@ namespace Renderer
         void loadMaterials(std::string materialsDir);
         void createMaterial(std::string filePath);
         void loadTextures(std::string texturesDir);
+        void initRT();
         
     public:
         RenderEngine(RendererCreationStruct creationInfo);
@@ -78,6 +81,9 @@ namespace Renderer
 
         //draw all the items in the render tree
         void drawAllReferences();
+
+        bool getRTstatus() const { return rtEnabled; }
+        void setRTstatus(bool newStatus) { this->rtEnabled = newStatus; }
 
         Model const* getModelByName(std::string name);
         Material const* getMaterialByName(std::string name);

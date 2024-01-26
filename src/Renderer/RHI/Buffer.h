@@ -1,11 +1,10 @@
 #pragma once
-#include "vulkan/vulkan.hpp"
 #include "glm/glm.hpp"
 #include "Device.h"
 #include "Command.h"
 
-#include <string>
 #include <list>
+#include <memory>
 
 namespace Renderer
 {
@@ -39,12 +38,15 @@ namespace Renderer
         CmdBufferAllocator* commandsPtr;
 
         QueueReturn copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size, bool useFence);
-
     public:
         Buffer(Device* device, CmdBufferAllocator* commands, VkDeviceSize size);
         virtual ~Buffer();
 
+        void createBuffer(VkBufferUsageFlags usage, VmaMemoryUsage memUsage, VmaAllocationCreateFlags memFlag);
+        QueueReturn copyFromBuffer(Buffer& src, bool useFence);
+
         const VkBuffer& getBuffer() const { return buffer; }
+        VkDeviceAddress getBufferDeviceAddress() const;
     };
 
     //----------STAGING BUFFER DECLARATIONS----------//
@@ -92,7 +94,7 @@ namespace Renderer
         uint32_t getLength() const { return indicesLength; }
     };
 
-    //----------MESH & STOREGE BUFFER OBJ DECLARATION----------// (required after vert and ind buffer declaration)
+    //----------MESH DECLARATION----------//
 
     class Mesh
     {
@@ -104,10 +106,14 @@ namespace Renderer
         Mesh(Device* device, CmdBufferAllocator* commands, std::vector<Vertex>* vertices, std::vector<uint32_t>* indices);
         ~Mesh();
 
-        const VkBuffer& getVertexBuffer() const { return vbo.getBuffer(); };
-        uint32_t getVertexBufferSize() const { return vbo.getLength(); }
-        const VkBuffer& getIndexBuffer() const { return ibo.getBuffer(); };
-        uint32_t getIndexBufferSize() const { return ibo.getLength(); }
+        const VertexBuffer& getVertexBuffer() const { return vbo; };
+        const IndexBuffer& getIndexBuffer() const { return ibo; };
+    };
+
+    struct ModelMesh
+    {
+        std::shared_ptr<Mesh> mesh;
+        uint32_t materialIndex;
     };
 
     //----------TEXTURE DECLARATION----------//

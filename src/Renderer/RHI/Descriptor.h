@@ -1,5 +1,4 @@
 #pragma once
-#include "vulkan/vulkan.hpp"
 #include "Buffer.h"
 
 #include <unordered_map>

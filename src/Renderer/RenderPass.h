@@ -1,5 +1,4 @@
 #pragma once
-#include "vulkan/vulkan.hpp"
 #include "RHI/Swapchain.h"
 #include "RHI/Pipeline.h"
 #include "RHI/IndirectDrawBuffer.h"

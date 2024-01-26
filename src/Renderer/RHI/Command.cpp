@@ -146,30 +146,30 @@ namespace Renderer
 
     VkCommandBuffer CmdBufferAllocator::getCommandBuffer(CmdPoolType type)
     {
-        VkCommandBufferAllocateInfo graphicsBufferInfo = {};
-        graphicsBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        graphicsBufferInfo.pNext = NULL;
-        graphicsBufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        graphicsBufferInfo.commandBufferCount = 1;
+        VkCommandBufferAllocateInfo bufferInfo = {};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        bufferInfo.pNext = NULL;
+        bufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        bufferInfo.commandBufferCount = 1;
 
         switch(type)
         {
             case GRAPHICS:
-                graphicsBufferInfo.commandPool = commandPools.graphics;
+                bufferInfo.commandPool = commandPools.graphics;
                 break;
             case COMPUTE:
-                graphicsBufferInfo.commandPool = commandPools.compute;
+                bufferInfo.commandPool = commandPools.compute;
                 break;
             case TRANSFER:
-                graphicsBufferInfo.commandPool = commandPools.transfer;
+                bufferInfo.commandPool = commandPools.transfer;
                 break;
             case PRESENT:
-                graphicsBufferInfo.commandPool = commandPools.present;
+                bufferInfo.commandPool = commandPools.present;
                 break;
         }
 
         VkCommandBuffer returnBuffer;
-        VkResult result = vkAllocateCommandBuffers(devicePtr->getDevice(), &graphicsBufferInfo, &returnBuffer);
+        VkResult result = vkAllocateCommandBuffers(devicePtr->getDevice(), &bufferInfo, &returnBuffer);
         
         return returnBuffer;
     }

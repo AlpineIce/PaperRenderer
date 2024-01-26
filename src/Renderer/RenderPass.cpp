@@ -218,9 +218,9 @@ namespace Renderer
         std::vector<glm::mat4> pushData(1);
         pushData[0] = *(objectData.modelMatrix);
 
-        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &objectData.mesh->getVertexBuffer(), offset);
-        vkCmdBindIndexBuffer(cmdBuffer, objectData.mesh->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-        vkCmdDrawIndexed(cmdBuffer, objectData.mesh->getIndexBufferSize(), 1, 0, 0, 0);
+        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &objectData.mesh->getVertexBuffer().getBuffer(), offset);
+        vkCmdBindIndexBuffer(cmdBuffer, objectData.mesh->getIndexBuffer().getBuffer(), 0, VK_INDEX_TYPE_UINT32);
+        vkCmdDrawIndexed(cmdBuffer, objectData.mesh->getIndexBuffer().getLength(), 1, 0, 0, 0);
     }
 
     void RenderPass::drawIndexedIndirect(const VkCommandBuffer& cmdBuffer, IndirectDrawBuffer* drawBuffer)

@@ -1,5 +1,4 @@
 #pragma once
-#include "vulkan/vulkan.hpp"
 #include "Descriptor.h"
 #include "Buffer.h"
 #include "Swapchain.h"
@@ -18,7 +17,8 @@ namespace Renderer
     {
         UNDEFINED = 0,
         PBR = 1,
-        TexturelessPBR = 2
+        TexturelessPBR = 2,
+        PathTracing = 3
 
     };
 
@@ -103,7 +103,12 @@ namespace Renderer
         VkPipelineLayout pipelineLayout;
         PipelineType pipelineType;
     };
-    
+
+    struct RTPipelineInfo
+    {
+        uint32_t MAX_RT_RECURSION_DEPTH = 0;
+    };
+
     //Pipeline base class
     class Pipeline
     {
@@ -118,7 +123,6 @@ namespace Renderer
         Device* devicePtr;
         DescriptorAllocator* descriptorsPtr;
         
-
     public:
         Pipeline(const PipelineCreationInfo& creationInfo);
         virtual ~Pipeline();
@@ -157,10 +161,14 @@ namespace Renderer
     class RTPipeline : public Pipeline
     {
     private:
+        RTPipelineInfo rtInfo;
+        VkDeferredOperationKHR deferredOperation;
 
     public:
-        RTPipeline(const PipelineCreationInfo& creationInfo);
+        RTPipeline(const PipelineCreationInfo& creationInfo, const RTPipelineInfo& rtInfo);
         ~RTPipeline() override;
+
+        bool isBuilt();
     };
 
     //----------PIPELINE BUILDER DECLARATIONS----------//
@@ -200,6 +208,7 @@ namespace Renderer
         std::vector<VkDescriptorSetLayout> createDescriptorLayouts(const std::vector<DescriptorSet>& descriptorSets) const;
         VkPipelineLayout createPipelineLayout(const std::vector<VkDescriptorSetLayout>& setLayouts) const;
         PipelineCreationInfo initPipelineInfo(PipelineBuildInfo info) const;
+        RTPipelineInfo initRTinfo() const;
 
     public:
         PipelineBuilder(Device* device, DescriptorAllocator* descriptors, Swapchain* swapchain);

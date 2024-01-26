@@ -9,12 +9,6 @@
 
 namespace Renderer
 {
-    struct ModelMesh
-    {
-        std::shared_ptr<Mesh> mesh;
-        uint32_t materialIndex;
-    };
-    
     class Model
     {
     private:

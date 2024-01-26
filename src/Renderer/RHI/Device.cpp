@@ -1,3 +1,6 @@
+#define VOLK_IMPLEMENTATION
+#define VK_NO_PROTOTYPES
+#include "volk.h"
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE 
@@ -12,6 +15,8 @@ namespace Renderer
 {
     Device::Device(std::string appName)
     {
+        //volk
+        VkResult result = volkInitialize();
         glfwInit();
         createContext(appName);
         findGPU();
@@ -27,7 +32,6 @@ namespace Renderer
     void Device::createContext(std::string appName)
     {
         //----------INSTANCE CREATION----------//
-
 
         //extensions
         unsigned int glfwExtensionCount = 0;
@@ -69,6 +73,8 @@ namespace Renderer
         //instance creation
         VkResult result = vkCreateInstance(&instanceInfo, nullptr, &instance);
         if(result != VK_SUCCESS) throw std::runtime_error("Failed to create Vulkan instance");
+
+        volkLoadInstance(instance);
     }
 
     void Device::findGPU()
@@ -81,10 +87,13 @@ namespace Renderer
         bool deviceFound = false;
         for(VkPhysicalDevice physicalDevice : physicalDevices)
         {
-            VkPhysicalDeviceProperties properties;
-            vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+            VkPhysicalDeviceProperties2 properties;
+            properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+            rtPipelineProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
+            properties.pNext = &rtPipelineProperties;
+            vkGetPhysicalDeviceProperties2(physicalDevice, &properties);
 
-            if(properties.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+            if(properties.properties.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
             {
                 gpuProperties = properties;
                 GPU = physicalDevice;
@@ -94,7 +103,7 @@ namespace Renderer
                 break; //break prefers discrete gpu over integrated if available
             }
 
-            if(properties.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
+            if(properties.properties.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
             {
                 gpuProperties = properties;
                 GPU = physicalDevice;
@@ -105,7 +114,10 @@ namespace Renderer
 
         if(!deviceFound && physicalDevices.size() > 0)
         {
-            vkGetPhysicalDeviceProperties(physicalDevices.at(0), &gpuProperties);
+            gpuProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+            gpuProperties.pNext = &rtPipelineProperties;
+            
+            vkGetPhysicalDeviceProperties2(physicalDevices.at(0), &gpuProperties);
             GPU = physicalDevices.at(0);
             vkGetPhysicalDeviceFeatures(GPU, &gpuFeatures);
         }
@@ -370,6 +382,7 @@ namespace Renderer
         std::vector<const char*> extensionNames;
         extensionNames.insert(extensionNames.end(), {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+            VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
             VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
             VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
             VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME});
@@ -419,6 +432,10 @@ namespace Renderer
         VkResult result = vkCreateDevice(GPU, &deviceCreateInfo, NULL, &device);
         if(result != VK_SUCCESS) throw std::runtime_error("Failed to create Vulkan device");
 
+        //volk
+        volkLoadDevice(device);
+
+        //queues and vma
         retrieveQueues(queueFamiliesProperties);
         initVma();
     }

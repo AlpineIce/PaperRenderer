@@ -44,5 +44,6 @@ namespace Renderer
         void addElement(DrawBufferObject& object);
         void removeElement(DrawBufferObject& object);
         std::vector<QueueReturn> draw(const VkCommandBuffer& cmdBuffer, uint32_t currentFrame);
+        const std::unordered_map<Mesh const*, DrawBufferTreeNode>& getDrawCallTree() const { return drawCallTree; }
     };
 }

@@ -1,5 +1,4 @@
 #pragma once
-#include "vulkan/vulkan.hpp"
 #include "Device.h"
 
 #include <vector>
@@ -38,6 +37,7 @@ namespace Renderer
         QueuePrivateData pData;
 
         void shallowCopy(QueuePrivateData& data);
+        QueueReturn(QueueReturn& queueReturn);
 
     public:
         QueueReturn(QueuePrivateData pData);

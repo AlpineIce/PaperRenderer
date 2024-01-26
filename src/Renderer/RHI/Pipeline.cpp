@@ -272,12 +272,12 @@ namespace Renderer
         for(const auto& [shaderStage, shader] : shaders)
         {
             VkPipelineShaderStageCreateInfo stageInfo = {};
-            stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            stageInfo.pNext = NULL,
-            stageInfo.flags = 0,
-            stageInfo.stage = shaderStage,
-            stageInfo.module = shader->getModule(),
-            stageInfo.pName = "main", //use main() function in shaders
+            stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            stageInfo.pNext = NULL;
+            stageInfo.flags = 0;
+            stageInfo.stage = shaderStage;
+            stageInfo.module = shader->getModule();
+            stageInfo.pName = "main"; //use main() function in shaders
             stageInfo.pSpecializationInfo = NULL;
             
             shaderStages.push_back(stageInfo);
@@ -317,13 +317,120 @@ namespace Renderer
 
     //----------RT PIPELINE DEFINITTIONS----------//
 
-    RTPipeline::RTPipeline(const PipelineCreationInfo& creationInfo)
-        :Pipeline(creationInfo)
+    RTPipeline::RTPipeline(const PipelineCreationInfo& creationInfo, const RTPipelineInfo& rtInfo)
+        :Pipeline(creationInfo),
+        rtInfo(rtInfo)
     {
+        std::vector<VkDynamicState> dynamicStates = {
+            VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
+            VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT
+        };
+        
+        VkPipelineDynamicStateCreateInfo dynamicStateInfo = {};
+        dynamicStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynamicStateInfo.pNext = NULL;
+        dynamicStateInfo.flags = 0;
+        dynamicStateInfo.dynamicStateCount = dynamicStates.size();
+        dynamicStateInfo.pDynamicStates = dynamicStates.data();
+
+        std::vector<VkRayTracingShaderGroupCreateInfoKHR> rtShaderGroups;
+        std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+        uint32_t shaderIndex = 0;
+        for(auto& [shaderStage, shader] : creationInfo.shaders)
+        {
+            VkPipelineShaderStageCreateInfo stageInfo = {};
+            stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            stageInfo.pNext = NULL;
+            stageInfo.flags = 0;
+            stageInfo.stage = shaderStage;
+            stageInfo.module = shader->getModule();
+            stageInfo.pName = "main"; //use main() function in shaders
+            stageInfo.pSpecializationInfo = NULL;
+            
+            shaderStages.push_back(stageInfo);
+
+            VkRayTracingShaderGroupCreateInfoKHR shaderGroup = {};
+            shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+            shaderGroup.pNext = NULL;
+            shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
+            shaderGroup.closestHitShader  = VK_SHADER_UNUSED_KHR;
+            shaderGroup.generalShader = VK_SHADER_UNUSED_KHR;
+            shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+            shaderGroup.pShaderGroupCaptureReplayHandle = NULL;
+
+            switch(shaderStage)
+            {
+                case VK_SHADER_STAGE_ANY_HIT_BIT_KHR:
+                    shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+                    shaderGroup.anyHitShader = shaderIndex;
+                    break;
+                case VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR:
+                    shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
+                    shaderGroup.closestHitShader = shaderIndex;
+                    break;
+                case VK_SHADER_STAGE_RAYGEN_BIT_KHR || VK_SHADER_STAGE_MISS_BIT_KHR:
+                    shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+                    shaderGroup.generalShader = shaderIndex;
+                    break;
+                case VK_SHADER_STAGE_INTERSECTION_BIT_KHR:
+                    shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+                    shaderGroup.intersectionShader = shaderIndex;
+                    break;
+            }
+            rtShaderGroups.push_back(shaderGroup);
+            shaderIndex++;
+        }
+
+        VkRayTracingPipelineCreateInfoKHR pipelineCreateInfo = {};
+        pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
+        pipelineCreateInfo.pNext = NULL;
+        pipelineCreateInfo.flags = 0;
+        pipelineCreateInfo.stageCount = shaderStages.size();
+        pipelineCreateInfo.pStages = shaderStages.data();
+        pipelineCreateInfo.groupCount = rtShaderGroups.size();
+        pipelineCreateInfo.pGroups = rtShaderGroups.data();
+        pipelineCreateInfo.maxPipelineRayRecursionDepth = rtInfo.MAX_RT_RECURSION_DEPTH;
+        pipelineCreateInfo.pLibraryInfo = NULL;
+        pipelineCreateInfo.pLibraryInterface = NULL;
+        pipelineCreateInfo.pDynamicState = &dynamicStateInfo;
+        pipelineCreateInfo.layout = pipelineLayout;
+        pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
+        pipelineCreateInfo.basePipelineIndex = -1;
+
+        vkCreateDeferredOperationKHR(devicePtr->getDevice(), nullptr, &deferredOperation);
+        VkResult result = vkCreateRayTracingPipelinesKHR(devicePtr->getDevice(), deferredOperation, creationInfo.cache, 1, &pipelineCreateInfo, nullptr, &pipeline);
+        if(result != VK_SUCCESS || result != VK_OPERATION_DEFERRED_KHR || result != VK_OPERATION_NOT_DEFERRED_KHR)
+        {
+            throw std::runtime_error("Failed to create a ray tracing pipeline");
+        }
     }
 
     RTPipeline::~RTPipeline()
     {
+    }
+
+    bool RTPipeline::isBuilt()
+    {
+        VkResult result = vkDeferredOperationJoinKHR(devicePtr->getDevice(), deferredOperation);
+        if(result == VK_SUCCESS || result == VK_THREAD_DONE_KHR)
+        {
+            VkResult result2 = vkGetDeferredOperationResultKHR(devicePtr->getDevice(), deferredOperation);
+            if(result2 != VK_SUCCESS)
+            {
+                throw std::runtime_error("Failed to create a ray tracing pipeline");
+            }
+            vkDestroyDeferredOperationKHR(devicePtr->getDevice(), deferredOperation, nullptr);
+
+            return true;
+        }
+        else if(result == VK_THREAD_IDLE_KHR)
+        {
+            return false;
+        }
+        else //VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY
+        {
+            throw std::runtime_error("Failed to create a ray tracing pipeline (likely out of vram)");
+        }
     }
 
     //----------PIPELINE BUILDER DEFINITIONS----------//
@@ -454,6 +561,13 @@ namespace Renderer
         return pipelineInfo;
     }
 
+    RTPipelineInfo PipelineBuilder::initRTinfo() const
+    {
+        RTPipelineInfo rtInfo;
+        rtInfo.MAX_RT_RECURSION_DEPTH = devicePtr->getRTproperties().maxRayRecursionDepth;
+        return rtInfo;
+    }
+
     std::shared_ptr<ComputePipeline> PipelineBuilder::buildComputePipeline(const PipelineBuildInfo& info) const
     {
         return std::make_shared<ComputePipeline>(initPipelineInfo(info));
@@ -466,6 +580,6 @@ namespace Renderer
 
     std::shared_ptr<RTPipeline> PipelineBuilder::buildRTPipeline(const PipelineBuildInfo& info) const
     {
-        return std::make_shared<RTPipeline>(initPipelineInfo(info));
+        return std::make_shared<RTPipeline>(initPipelineInfo(info), initRTinfo());
     }
 }

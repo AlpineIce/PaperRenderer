@@ -85,7 +85,7 @@ namespace Renderer
             {
                 //add draw command
                 VkDrawIndexedIndirectCommand command = {};
-                command.indexCount = (*object)->mesh->getIndexBufferSize();
+                command.indexCount = (*object)->mesh->getIndexBuffer().getLength();
                 command.instanceCount = 1;
                 command.firstIndex = 0;
                 command.vertexOffset = 0;
@@ -123,8 +123,8 @@ namespace Renderer
             //bind vbo and send draw calls
             VkDeviceSize offset[1] = {0};
 
-            vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &((*(node.objects.begin()))->mesh->getVertexBuffer()), offset);
-            vkCmdBindIndexBuffer(cmdBuffer, ((*(node.objects.begin()))->mesh->getIndexBuffer()), 0, VK_INDEX_TYPE_UINT32);
+            vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &((*(node.objects.begin()))->mesh->getVertexBuffer().getBuffer()), offset);
+            vkCmdBindIndexBuffer(cmdBuffer, ((*(node.objects.begin()))->mesh->getIndexBuffer().getBuffer()), 0, VK_INDEX_TYPE_UINT32);
 
             vkCmdDrawIndexedIndirect(cmdBuffer, node.drawBuffers.at(currentFrame)->getBuffer(), 0, node.objects.size(), sizeof(VkDrawIndexedIndirectCommand));
         }

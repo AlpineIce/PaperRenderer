@@ -17,12 +17,15 @@ namespace Renderer
         swapchain(&device, &window, false),
         descriptors(&device, &commands),
         pipelineBuilder(&device, &descriptors, &swapchain),
+        rtAccelStructure(&device, &commands),
         rendering(&swapchain, &device, &commands, &descriptors)
     {
         loadPipelines();
         loadModels("resources/models");
         loadTextures("resources/textures");
         loadMaterials("resources/materials");
+
+        if(rtEnabled) initRT();
     }
 
     RenderEngine::~RenderEngine()
@@ -114,6 +117,41 @@ namespace Renderer
         TexturelessPBRInfo.pipelineType = TexturelessPBR;
 
         renderTree[TexturelessPBR].pipeline = pipelineBuilder.buildRasterPipeline(TexturelessPBRInfo);
+
+        //----------RAY TRACING PIPELINE----------//
+
+        std::vector<ShaderPair> RTshaderPairs;
+        ShaderPair anyHitShader = {
+            .stage = VK_SHADER_STAGE_ANY_HIT_BIT_KHR,
+            .directory = "resources/shaders/RT/RTanyHit.spv"
+        };
+        RTshaderPairs.push_back(anyHitShader);
+        ShaderPair missShader = {
+            .stage = VK_SHADER_STAGE_MISS_BIT_KHR,
+            .directory = "resources/shaders/RT/RTmiss.spv"
+        };
+        RTshaderPairs.push_back(missShader);
+        ShaderPair closestShader = {
+            .stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+            .directory = "resources/shaders/RT/RTclosestHit.spv"
+        };
+        RTshaderPairs.push_back(closestShader);
+        ShaderPair raygenShader = {
+            .stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
+            .directory = "resources/shaders/RT/RTraygen.spv"
+        };
+        RTshaderPairs.push_back(raygenShader);
+        ShaderPair intersectionShader = {
+            .stage = VK_SHADER_STAGE_INTERSECTION_BIT_KHR,
+            .directory = "resources/shaders/RT/RTintersection.spv"
+        };
+        RTshaderPairs.push_back(intersectionShader);
+
+        PipelineBuildInfo rtPipelineInfo;
+        rtPipelineInfo.descriptors = std::vector<DescriptorSet>();
+        rtPipelineInfo.pipelineType = PathTracing;
+        rtPipelineInfo.shaderInfo = RTshaderPairs;
+        rtPipelineInfo.useGlobalDescriptor = true;
     }
 
     void RenderEngine::loadModels(std::string modelsDir)
@@ -300,6 +338,22 @@ namespace Renderer
         }
     }
 
+    void RenderEngine::initRT()
+    {
+        BottomAccelerationStructureData bottomData;
+        for(auto& [name, model] : models)
+        {
+            AccelerationStructureModelReference modelRef;
+            modelRef.modelPointer = model.get();
+            for(const ModelMesh& mesh : model->getModelMeshes())
+            {
+                modelRef.meshes.push_back(&mesh);
+            }
+            bottomData.models.push_back(modelRef);
+        }
+        rtAccelStructure.createBottomLevel(bottomData);
+    }
+
     Image RenderEngine::loadImage(std::string directory)
     {
         Image returnImg;
@@ -354,6 +408,38 @@ namespace Renderer
     {
         VkCommandBuffer cmdBuffer = rendering.startNewFrame();
 
+        //RT pass
+        /*AccelerationData accelData = {};
+        for(const auto& [pipelineType, pipelineNode] : renderTree) //pipeline
+        {
+            for(const auto& [materialName, materialNode] : pipelineNode.materials) //material
+            {
+                for(const auto& [mesh, node] : materialNode.objectBuffer->getDrawCallTree()) //similar objects
+                {
+                    for(auto object = node.objects.begin(); object != node.objects.end(); object++)
+                    {
+                        VkTransformMatrixKHR matrix;
+                        matrix.matrix[0][0] = (*((*object)->modelMatrix))[0][0];
+                        matrix.matrix[0][1] = (*((*object)->modelMatrix))[0][1];
+                        matrix.matrix[0][2] = (*((*object)->modelMatrix))[0][2];
+                        matrix.matrix[0][3] = (*((*object)->modelMatrix))[0][3];
+
+                        matrix.matrix[1][0] = (*((*object)->modelMatrix))[1][0];
+                        matrix.matrix[1][1] = (*((*object)->modelMatrix))[1][1];
+                        matrix.matrix[1][2] = (*((*object)->modelMatrix))[1][2];
+                        matrix.matrix[1][3] = (*((*object)->modelMatrix))[1][3];
+
+                        matrix.matrix[2][0] = (*((*object)->modelMatrix))[2][0];
+                        matrix.matrix[2][1] = (*((*object)->modelMatrix))[2][1];
+                        matrix.matrix[2][2] = (*((*object)->modelMatrix))[2][2];
+                        matrix.matrix[2][3] = (*((*object)->modelMatrix))[2][3];
+                    }
+                }
+            }
+        }
+        rtAccelStructure.buildStructure(accelData);*/
+        
+        //raster pass
         for(const auto& [pipelineType, pipelineNode] : renderTree) //pipeline
         {
             rendering.bindPipeline(pipelineNode.pipeline.get(), cmdBuffer);

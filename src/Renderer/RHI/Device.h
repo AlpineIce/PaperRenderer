@@ -1,11 +1,13 @@
 #pragma once
-#include "vulkan/vulkan.hpp"
+#define VK_NO_PROTOTYPES
+#include "Volk/volk.h"
 #include "vk_mem_alloc.h"
 #include "GLFW/glfw3.h"
 
 #include <vector>
 #include <string>
 #include <map>
+#include <stdexcept>
 
 namespace Renderer
 {
@@ -31,7 +33,8 @@ namespace Renderer
         VmaAllocator allocator;
         VkInstance instance;
         VkPhysicalDevice GPU;
-        VkPhysicalDeviceProperties gpuProperties;
+        VkPhysicalDeviceProperties2 gpuProperties;
+        VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtPipelineProperties = {};
         VkPhysicalDeviceFeatures gpuFeatures;
         QueueFamiliesIndices queueFamilies;
         VkDevice device;
@@ -56,8 +59,9 @@ namespace Renderer
         VmaAllocator getAllocator() const { return allocator; }
         VkInstance getInstance() const { return instance; }
         VkPhysicalDevice getGPU() const { return GPU; }
-        VkPhysicalDeviceProperties getGPUProperties() const { return gpuProperties; }
+        VkPhysicalDeviceProperties2 getGPUProperties() const { return gpuProperties; }
         VkPhysicalDeviceFeatures getGPUFeatures() const { return gpuFeatures; }
+        VkPhysicalDeviceRayTracingPipelinePropertiesKHR getRTproperties() const { return rtPipelineProperties; }
         QueueFamiliesIndices getQueueFamilies() const { return queueFamilies; }
         VkDevice getDevice() const { return device; }
         Queues getQueues() const { return queues; }
