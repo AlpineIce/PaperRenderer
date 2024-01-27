@@ -9,7 +9,7 @@ namespace Renderer
     struct AccelerationStructureModelReference
     {
         std::vector<ModelMesh const*> meshes;
-        void* modelPointer = NULL;
+        void const* modelPointer = NULL;
     };
 
     struct BottomStructure
@@ -23,10 +23,15 @@ namespace Renderer
         std::vector<AccelerationStructureModelReference> models;
     };
 
-    struct AccelerationData
+    struct TopAccelerationInstance
     {
-        int a = 0;
-        //std::vector<BufferPair> bufferPairs;
+        void const* modelPointer = NULL;
+        VkTransformMatrixKHR transform;
+    };
+
+    struct TopAccelerationData
+    {
+        std::vector<TopAccelerationInstance> instances;
     };
 
     class AccelerationStructure
@@ -36,19 +41,18 @@ namespace Renderer
         VkAccelerationStructureKHR topStructure;
         VkDeviceAddress topStructureAddress;
         std::unordered_map<void const*, BottomStructure> bottomStructures;
-        VkDeviceAddress bottomStructureAddress;
         bool isBuilt = false;
 
         Device* devicePtr;
         CmdBufferAllocator* commandsPtr;
 
-        void createTopLevel(const AccelerationData& instancesData);
+        
 
     public:
         AccelerationStructure(Device* device, CmdBufferAllocator* commands);
         ~AccelerationStructure();
 
         void createBottomLevel(const BottomAccelerationStructureData& meshesData);
-        void buildStructure(const AccelerationData& accelData);
+        QueueReturn createTopLevel(const TopAccelerationData& instancesData);
     };
 }

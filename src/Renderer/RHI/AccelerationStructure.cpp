@@ -204,69 +204,62 @@ namespace Renderer
         }
     }
 
-    void AccelerationStructure::createTopLevel(const AccelerationData& instancesData)
+    QueueReturn AccelerationStructure::createTopLevel(const TopAccelerationData& instancesData)
     {
+        //destroy old
+        vkDestroyAccelerationStructureKHR(devicePtr->getDevice(), topStructure, nullptr);
+
         //setup top level geometries
-        /*std::vector<VkAccelerationStructureGeometryKHR> geometries;
-        std::vector<Buffer> instanceBuffers; //keeps buffers in scope for creation
-        for(const BufferPair& pair : instancesData.bufferPairs)
+        std::vector<VkAccelerationStructureInstanceKHR> structureInstances;
+        for(const TopAccelerationInstance& instance : instancesData.instances)
         {
-            std::vector<VkAccelerationStructureInstanceKHR> structureInstances;
-            for(const VkTransformMatrixKHR& matrix : pair.instances)
-            {
-                VkAccelerationStructureInstanceKHR instance = {};
-                instance.transform = matrix;
-                instance.instanceCustomIndex = 0;
-                instance.mask = 0xFF;
-                instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-                instance.accelerationStructureReference = bottomStructureAddress;
-            }
-
-            //create buffers
-            const VkBufferUsageFlags bufferUsageFlags = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-            StagingBuffer instancesStaging(devicePtr, commandsPtr, sizeof(VkAccelerationStructureInstanceKHR) * structureInstances.size());
-            instancesStaging.mapData(structureInstances.data(), 0, sizeof(VkAccelerationStructureInstanceKHR) * structureInstances.size());
-
-            Buffer instancesBuffer(devicePtr, commandsPtr, sizeof(VkAccelerationStructureInstanceKHR) * structureInstances.size());
-            instancesBuffer.createBuffer(bufferUsageFlags, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-            QueueReturn queueReturnData = instancesBuffer.copyFromBuffer(instancesStaging, true);
-            instanceBuffers.push_back(std::move(instancesBuffer));
-
-            //get buffer address
-            VkDeviceOrHostAddressConstKHR instancesAddress;
-            instancesAddress.deviceAddress = instancesBuffer.getBufferDeviceAddress();
-
-            //geometries
-            VkAccelerationStructureGeometryInstancesDataKHR geoInstances = {};
-            geoInstances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
-            geoInstances.pNext = NULL;
-            geoInstances.arrayOfPointers = VK_FALSE;
-            geoInstances.data = instancesAddress;
-
-            VkAccelerationStructureGeometryDataKHR geometry = {};
-            geometry.instances = geoInstances;
-
-            VkAccelerationStructureGeometryKHR structureGeometry = {};
-            structureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
-            structureGeometry.pNext = NULL;
-            structureGeometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR; //TODO TRANSPARENCY
-            structureGeometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
-            structureGeometry.geometry = geometry;
-
-            geometries.push_back(structureGeometry);
+            VkAccelerationStructureInstanceKHR structureInstance = {};
+            structureInstance.transform = instance.transform;
+            structureInstance.instanceCustomIndex = 0;
+            structureInstance.mask = 0xFF;
+            structureInstance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+            structureInstance.accelerationStructureReference = bottomStructures.at(instance.modelPointer).structureBuffer->getBufferDeviceAddress();
         }
-        
-        VkAccelerationStructureKHR srcStructure = topStructure;
+
+        //create buffers
+        const VkBufferUsageFlags bufferUsageFlags = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        StagingBuffer instancesStaging(devicePtr, commandsPtr, sizeof(VkAccelerationStructureInstanceKHR) * structureInstances.size());
+        instancesStaging.mapData(structureInstances.data(), 0, sizeof(VkAccelerationStructureInstanceKHR) * structureInstances.size());
+
+        Buffer instancesBuffer(devicePtr, commandsPtr, sizeof(VkAccelerationStructureInstanceKHR) * structureInstances.size());
+        instancesBuffer.createBuffer(bufferUsageFlags, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+        QueueReturn queueReturnData = instancesBuffer.copyFromBuffer(instancesStaging, false);
+
+        //get buffer address
+        VkDeviceOrHostAddressConstKHR instancesAddress;
+        instancesAddress.deviceAddress = instancesBuffer.getBufferDeviceAddress();
+
+        //geometries
+        VkAccelerationStructureGeometryInstancesDataKHR geoInstances = {};
+        geoInstances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+        geoInstances.pNext = NULL;
+        geoInstances.arrayOfPointers = VK_FALSE;
+        geoInstances.data = instancesAddress;
+
+        VkAccelerationStructureGeometryDataKHR geometry = {};
+        geometry.instances = geoInstances;
+
+        VkAccelerationStructureGeometryKHR structureGeometry = {};
+        structureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+        structureGeometry.pNext = NULL;
+        structureGeometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR; //TODO TRANSPARENCY
+        structureGeometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+        structureGeometry.geometry = geometry;
 
         // Get the size requirements for buffers involved in the acceleration structure build process
         VkAccelerationStructureBuildGeometryInfoKHR buildGeoInfo = {};
-        buildGeoInfo.sType         = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
-        buildGeoInfo.type          = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
-        buildGeoInfo.flags         = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
-        buildGeoInfo.srcAccelerationStructure = srcStructure;
-        buildGeoInfo.dstAccelerationStructure = topStructure;
+        buildGeoInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+        buildGeoInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+        buildGeoInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        buildGeoInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+        buildGeoInfo.srcAccelerationStructure = VK_NULL_HANDLE;
         buildGeoInfo.geometryCount = 1;
-        buildGeoInfo.pGeometries   = geometries.data();
+        buildGeoInfo.pGeometries   = &structureGeometry;
 
         const uint32_t primitiveCount = 1;
 
@@ -294,22 +287,59 @@ namespace Renderer
         accelStructureInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
 
         vkCreateAccelerationStructureKHR(devicePtr->getDevice(), &accelStructureInfo, nullptr, &topStructure);
-        if(srcStructure != VK_NULL_HANDLE)
-        {
-            vkDestroyAccelerationStructureKHR(devicePtr->getDevice(), srcStructure, nullptr);
-        }*/
-    }
+        buildGeoInfo.dstAccelerationStructure = topStructure;
 
-    void AccelerationStructure::buildStructure(const AccelerationData& accelData)
-    {
-        //recreate acceleration structure
+        //build process
+        //scratch buffer
+        Buffer scratchBuffer(devicePtr, commandsPtr, buildSizes.buildScratchSize);
+        scratchBuffer.createBuffer(
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+            VMA_MEMORY_USAGE_AUTO,
+            VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+
+        buildGeoInfo.scratchData.deviceAddress = scratchBuffer.getBufferDeviceAddress();
+
+        VkAccelerationStructureBuildRangeInfoKHR buildRange;
+        buildRange.primitiveCount = 1;
+        buildRange.primitiveOffset = 0;
+        buildRange.firstVertex = 0;
+        buildRange.transformOffset = 0;
+        std::vector<VkAccelerationStructureBuildRangeInfoKHR*> buildRangesPtrArray = {&buildRange};
+
+        VkCommandBuffer cmdBuffer = commandsPtr->getCommandBuffer(CmdPoolType::COMPUTE);
+
+        VkCommandBufferBeginInfo beginInfo = {};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.pNext = NULL;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        beginInfo.pInheritanceInfo = NULL;
         
-        createTopLevel(accelData);
-
-        //build on GPU
+        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
         
+        vkCmdBuildAccelerationStructuresKHR(cmdBuffer, 1, &buildGeoInfo, buildRangesPtrArray.data());
+        
+        vkEndCommandBuffer(cmdBuffer);
 
-        //buildTopLevel(cmdBuffer);
-        //buildTopLevel(cmdBuffer);
+        
+        VkSemaphore signalSemaphore = commandsPtr->getSemaphore();
+        VkSubmitInfo submitInfo = {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.pNext = NULL;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &cmdBuffer;
+        submitInfo.waitSemaphoreCount = queueReturnData.getSemaphores().size();
+        submitInfo.pWaitSemaphores = queueReturnData.getSemaphores().data();
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = &signalSemaphore;
+
+        QueueReturn returnInfo = commandsPtr->submitQueue(submitInfo, CmdPoolType::COMPUTE, false);
+
+        //get top address
+        VkAccelerationStructureDeviceAddressInfoKHR accelerationAddressInfo{};
+        accelerationAddressInfo.sType                 = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+        accelerationAddressInfo.accelerationStructure = topStructure;
+        topStructureAddress = vkGetAccelerationStructureDeviceAddressKHR(devicePtr->getDevice(), &accelerationAddressInfo);
+
+        return returnInfo;
     }
 }
