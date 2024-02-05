@@ -20,10 +20,11 @@ namespace Renderer
         rtAccelStructure(&device, &commands),
         rendering(&swapchain, &device, &commands, &descriptors)
     {
-        loadPipelines();
+        Material::initRendererInfo(&device, &commands, &descriptors, &pipelineBuilder);
         loadModels("resources/models");
         loadTextures("resources/textures");
-        loadMaterials("resources/materials");
+
+        defaultMaterial = std::make_shared<DefaultMaterial>("resources/materials/Default_vert.spv", "resources/materials/Default_frag.spv");
 
         if(rtEnabled) initRT();
     }
@@ -31,92 +32,6 @@ namespace Renderer
     RenderEngine::~RenderEngine()
     {
         vkDeviceWaitIdle(device.getDevice());
-    }
-
-    void RenderEngine::loadPipelines()
-    {
-        //----------PBR PIPELINE----------//
-
-        std::vector<ShaderPair> PBRshaderPairs;
-        ShaderPair pbrVert = {
-            .stage = VK_SHADER_STAGE_VERTEX_BIT,
-            .directory = "resources/shaders/PBR_vert.spv"
-        };
-        PBRshaderPairs.push_back(pbrVert);
-        ShaderPair pbrFrag = {
-            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .directory = "resources/shaders/PBR_frag.spv"
-        };
-        PBRshaderPairs.push_back(pbrFrag);
-
-        //descriptor set 1 (material)
-        DescriptorSet set1Descriptors;
-        
-        VkDescriptorSetLayoutBinding uniformDescriptor = {};
-        uniformDescriptor.binding = 0;
-        uniformDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        uniformDescriptor.descriptorCount = 1;
-        uniformDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        set1Descriptors.descriptorBindings.push_back(uniformDescriptor);
-
-        VkDescriptorSetLayoutBinding textureDescriptor = {};
-        textureDescriptor.binding = 1;
-        textureDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        textureDescriptor.descriptorCount = TEXTURE_ARRAY_SIZE;
-        textureDescriptor.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        set1Descriptors.descriptorBindings.push_back(textureDescriptor);
-
-        //descriptor set 2 (object)
-        DescriptorSet set2Descriptors;
-
-        VkDescriptorSetLayoutBinding objDescriptor = {};
-        objDescriptor.binding = 0;
-        objDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        objDescriptor.descriptorCount = 1;
-        objDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        set2Descriptors.descriptorBindings.push_back(objDescriptor);
-
-        std::vector<DescriptorSet> PBRdescriptorSets = {set1Descriptors, set2Descriptors};
-
-        PipelineBuildInfo pbrInfo;
-        pbrInfo.shaderInfo = PBRshaderPairs;
-        pbrInfo.useGlobalDescriptor = true;
-        pbrInfo.descriptors = PBRdescriptorSets;
-        pbrInfo.pipelineType = PBR;
-
-        renderTree[PBR].pipeline = pipelineBuilder.buildRasterPipeline(pbrInfo);
-
-        //----------TEXTURELESS PBR PIPELINE----------//
-
-        std::vector<ShaderPair> texturelessPBRshaderPairs;
-        ShaderPair texlessPBRvert = {
-            .stage = VK_SHADER_STAGE_VERTEX_BIT,
-            .directory = "resources/shaders/TexturelessPBR_vert.spv"
-        };
-        texturelessPBRshaderPairs.push_back(texlessPBRvert);
-        ShaderPair texlessPBRfrag = {
-            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .directory = "resources/shaders/TexturelessPBR_frag.spv"
-        };
-        texturelessPBRshaderPairs.push_back(texlessPBRfrag);
-
-        //descriptor set 1 (material) same as PBR except for textures
-        DescriptorSet TexturelessPBRset1Descriptors;
-        TexturelessPBRset1Descriptors.descriptorBindings.push_back(uniformDescriptor);
-
-        //descriptor set 2 (object) same as PBR
-        DescriptorSet TexturelessPBRset2Descriptors;
-        TexturelessPBRset2Descriptors.descriptorBindings.push_back(objDescriptor);
-
-        std::vector<DescriptorSet> texturelessPBRdescriptorSets = {TexturelessPBRset1Descriptors, TexturelessPBRset2Descriptors};
-
-        PipelineBuildInfo TexturelessPBRInfo;
-        TexturelessPBRInfo.shaderInfo = texturelessPBRshaderPairs;
-        TexturelessPBRInfo.useGlobalDescriptor = true;
-        TexturelessPBRInfo.descriptors = texturelessPBRdescriptorSets;
-        TexturelessPBRInfo.pipelineType = TexturelessPBR;
-
-        renderTree[TexturelessPBR].pipeline = pipelineBuilder.buildRasterPipeline(TexturelessPBRInfo);
     }
 
     void RenderEngine::loadModels(std::string modelsDir)
@@ -132,155 +47,6 @@ namespace Renderer
                     std::make_shared<Model>(&device, &commands, model.path().string())));
             }
         }
-    }
-
-    void RenderEngine::loadMaterials(std::string materialsDir)
-    {
-        //iterate materials path
-        const std::filesystem::path materials(materialsDir);
-        for(const auto& material : std::filesystem::directory_iterator(materials)) //iterate models
-        {
-            if(material.path().filename().string().find(".mat") != std::string::npos ) //must be a valid .fbx file
-            {
-                std::cout << "loading material: " << material.path().stem().string() << std::endl;
-                createMaterial(material.path().string());
-            }
-        }
-    }
-
-    void RenderEngine::createMaterial(std::string filePath)
-    {
-        std::ifstream file(filePath);
-        if(file.is_open())
-        {
-            std::string matName = "UNDEFINED";
-            PipelineType type = UNDEFINED;
-            std::vector<std::string> textureNames(TEXTURE_ARRAY_SIZE);
-            std::vector<glm::vec4> vec4vars(TEXTURE_ARRAY_SIZE);
-            
-            for(std::string line; std::getline(file, line); )
-            {
-                if(line.find("#") != std::string::npos) //material name
-                {
-                    matName = line.substr(line.find("#") + 1, line.length() - line.find("#"));
-
-                    continue;
-                }
-
-                if(line.find("pipeline") != std::string::npos && line.find("=") != std::string::npos) //pipeline equals
-                {
-                    if(line.find("\"PBR\"") != std::string::npos)
-                    {
-                        type = PipelineType::PBR;
-                    }
-                    else if(line.find("\"TexturelessPBR\"") != std::string::npos)
-                    {
-                        type = PipelineType::TexturelessPBR;
-                    }
-                    else
-                    {
-                        throw std::runtime_error("Unsupported pipeline specified at material: " + filePath);
-                    }
-
-                    continue;
-                }
-                
-                if(line.find("Tex_") != std::string::npos && line.find("=") != std::string::npos)
-                {
-                    if(line.find("diffuse") != std::string::npos)
-                    {
-                        std::string name = line.substr(line.find("=") + 1, line.length() - line.find("="));
-                        textureNames.at(0) = name.substr(name.find("\"") + 1, line.rfind("\"") - line.find("\"") - 1);
-                    }
-                    else if(line.find("metalness") != std::string::npos)
-                    {
-                        std::string name = line.substr(line.find("=") + 1, line.length() - line.find("="));
-                        textureNames.at(1) = name.substr(name.find("\"") + 1, line.rfind("\"") - line.find("\"") - 1);
-                    }
-                    else if(line.find("normal") != std::string::npos)
-                    {
-                        std::string name = line.substr(line.find("=") + 1, line.length() - line.find("="));
-                        textureNames.at(2) = name.substr(name.find("\"") + 1, line.rfind("\"") - line.find("\"") - 1);
-                    }
-                    else if(line.find("roughness") != std::string::npos)
-                    {
-                        std::string name = line.substr(line.find("=") + 1, line.length() - line.find("="));
-                        textureNames.at(3) = name.substr(name.find("\"") + 1, line.rfind("\"") - line.find("\"") - 1);
-                    }
-
-                    continue;
-                }
-                else if(line.find("Color_") != std::string::npos && line.find("=") != std::string::npos)
-                {
-                    if(line.find("diffuse") != std::string::npos)
-                    {
-                        float r, g, b, a;
-                        std::string content = line.substr(line.find("\"(") + 2, line.length() - line.find("\"("));
-                        content = content.substr(0, content.find(")\""));
-                        
-                        std::stringstream ss(content);
-                        ss >> r >> g >> b >> a;
-
-                        vec4vars.at(0) = (glm::vec4(r, g, b, a));
-                    }
-                    else if(line.find("metalness") != std::string::npos)
-                    {
-                        float r, g, b, a;
-                        std::string content = line.substr(line.find("\"(") + 2, line.length() - line.find("\"("));
-                        content = content.substr(0, content.find(")\""));
-                        
-                        std::stringstream ss(content);
-                        ss >> r >> g >> b >> a;
-
-                        vec4vars.at(1) = (glm::vec4(r, g, b, a));
-                    }
-                    else if(line.find("normal") != std::string::npos)
-                    {
-                        float r, g, b, a;
-                        std::string content = line.substr(line.find("\"(") + 2, line.length() - line.find("\"("));
-                        content = content.substr(0, content.find(")\""));
-                        
-                        std::stringstream ss(content);
-                        ss >> r >> g >> b >> a;
-
-                        vec4vars.at(2) = (glm::vec4(r, g, b, a));
-                    }
-                    else if(line.find("roughness") != std::string::npos)
-                    {
-                        float r, g, b, a;
-                        std::string content = line.substr(line.find("\"(") + 2, line.length() - line.find("\"("));
-                        content = content.substr(0, content.find(")\""));
-                        
-                        std::stringstream ss(content);
-                        ss >> r >> g >> b >> a;
-
-                        vec4vars.at(3) = (glm::vec4(r, g, b, a));
-                    }
-
-                    continue;
-                }
-            }
-            if(matName == "UNDEFINED" || renderTree.count(type) == 0) throw std::runtime_error("Not all material parameters specified at " + filePath);
-            
-            std::vector<Texture const*> textures;
-            for(std::string name : textureNames)
-            {
-                textures.push_back(getTextureByName(name));
-            }
-            textures.resize(TEXTURE_ARRAY_SIZE);
-
-            materials.insert(std::make_pair(
-                matName,
-                std::make_shared<Material>(&device, &commands, renderTree.at(type).pipeline.get(), matName, textures, vec4vars)));
-
-            MaterialNode matParams;
-            matParams.material = materials.at(matName).get();
-            matParams.objectBuffer = std::make_shared<IndirectDrawBuffer>(&device, &commands, &descriptors, renderTree.at(type).pipeline.get());
-            
-            renderTree.at(type).materials.insert(std::make_pair(matName, matParams));
-        }
-        else throw std::runtime_error("Error opening material file at " + filePath);
-
     }
 
     void RenderEngine::loadTextures(std::string texturesDir)
@@ -317,41 +83,6 @@ namespace Renderer
             bottomData.models.push_back(modelRef);
         }
         rtAccelStructure.createBottomLevel(bottomData);
-
-        //----------RAY TRACING PIPELINE----------//
-
-        std::vector<ShaderPair> RTshaderPairs;
-        ShaderPair anyHitShader = {
-            .stage = VK_SHADER_STAGE_ANY_HIT_BIT_KHR,
-            .directory = "resources/shaders/RT/RTanyHit.spv"
-        };
-        RTshaderPairs.push_back(anyHitShader);
-        ShaderPair missShader = {
-            .stage = VK_SHADER_STAGE_MISS_BIT_KHR,
-            .directory = "resources/shaders/RT/RTmiss.spv"
-        };
-        RTshaderPairs.push_back(missShader);
-        ShaderPair closestShader = {
-            .stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
-            .directory = "resources/shaders/RT/RTclosestHit.spv"
-        };
-        RTshaderPairs.push_back(closestShader);
-        ShaderPair raygenShader = {
-            .stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
-            .directory = "resources/shaders/RT/RTraygen.spv"
-        };
-        RTshaderPairs.push_back(raygenShader);
-        ShaderPair intersectionShader = {
-            .stage = VK_SHADER_STAGE_INTERSECTION_BIT_KHR,
-            .directory = "resources/shaders/RT/RTintersection.spv"
-        };
-        RTshaderPairs.push_back(intersectionShader);
-
-        PipelineBuildInfo rtPipelineInfo;
-        rtPipelineInfo.descriptors = std::vector<DescriptorSet>();
-        rtPipelineInfo.pipelineType = PathTracing;
-        rtPipelineInfo.shaderInfo = RTshaderPairs;
-        rtPipelineInfo.useGlobalDescriptor = true;
     }
 
     Image RenderEngine::loadImage(std::string directory)
@@ -372,20 +103,33 @@ namespace Renderer
     {
         if(object.modelPtr != NULL)
         {
-            for(uint32_t i = 0; i < object.modelPtr->getModelMeshes().size(); i++)
+            for(uint32_t i = 0; i < object.modelPtr->getModelMeshes().size(); i++) //iterate meshes
             {
-                if(object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)) //make sure a valid material is set
+                MaterialInstance const* materialInstance;
+                if(object.materials.size() - 1 > i) //really bad oopsie
                 {
-                    PipelineType pipelineType = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)->getPipelineType();
-                    std::string matName = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)->getMatName();
-                    
-                    object.objRefs[i] = {
-                        .modelMatrix = &object.modelMatrix,
-                        .mesh = object.modelPtr->getModelMeshes().at(i).mesh.get()
-                    };
-
-                    renderTree.at(pipelineType).materials.at(matName).objectBuffer->addElement(object.objRefs.at(i));
+                    materialInstance = &(defaultMaterial->getDefaultInstance());
                 }
+                else if(object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)) //make sure a valid material is set
+                {
+                    materialInstance = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex);
+                }
+                else //use default material if one isnt selected
+                {
+                    materialInstance = &(defaultMaterial->getDefaultInstance());
+                }
+
+                object.objRefs[i] = {
+                    .modelMatrix = &object.modelMatrix,
+                    .mesh = object.modelPtr->getModelMeshes().at(i).mesh.get()
+                };
+
+                if(!renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer)
+                {
+                    renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer = 
+                        std::make_shared<IndirectDrawBuffer>(&device, &commands, &descriptors, materialInstance->parentMaterial->getRasterPipeline());
+                }
+                renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer->addElement(object.objRefs.at(i));
             }
         }
     }
@@ -396,10 +140,8 @@ namespace Renderer
         {
             if(object.objRefs.count(i))
             {
-                PipelineType pipelineType = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)->getPipelineType();
-                std::string matName = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)->getMatName();
-
-                renderTree.at(pipelineType).materials.at(matName).objectBuffer->removeElement(object.objRefs.at(i));
+                MaterialInstance const* materialInstance = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex);
+                renderTree.at((Material*)materialInstance->parentMaterial).instances.at(materialInstance).objectBuffer->removeElement(object.objRefs.at(i));
             }
         }
     }
@@ -446,17 +188,20 @@ namespace Renderer
         
         
         //raster pass
-        for(const auto& [pipelineType, pipelineNode] : renderTree) //pipeline
+        for(const auto& [material, materialNode] : renderTree) //material
         {
-            rendering.bindPipeline(pipelineNode.pipeline.get(), cmdBuffer);
-            for(const auto& [materialName, materialNode] : pipelineNode.materials) //material
+            rendering.bindMaterial(material, cmdBuffer);
+            
+            for(const auto& [materialInstance, instanceNode] : materialNode.instances) //material instances
             {
                 //if(materialNode.objectBuffer->getDrawCount() == 0) continue; potential for optimization
-
-                rendering.bindMaterial(materialNode.material, cmdBuffer);
-                rendering.drawIndexedIndirect(cmdBuffer, materialNode.objectBuffer.get());
+                
+                rendering.bindMaterialInstance(materialInstance, cmdBuffer);
+                rendering.drawIndexedIndirect(cmdBuffer, instanceNode.objectBuffer.get());
             }
         }
+
+        rendering.composeAttachments(cmdBuffer);
 
         rendering.incrementFrameCounter(cmdBuffer);
         glfwPollEvents();

@@ -176,6 +176,12 @@ namespace Renderer
             buildRangesPtrArray.push_back((VkAccelerationStructureBuildRangeInfoKHR*)buildDataPtr);
         }
 
+        //----------------------------------------------------------------------------------------------------//
+        //----------------------------------------------------------------------------------------------------//
+        //--------------------BIG FAT TODO COMPACT THE BOTTOM LEVEL ACCELERATION STRUCTURE--------------------//
+        //----------------------------------------------------------------------------------------------------//
+        //----------------------------------------------------------------------------------------------------//
+
         VkCommandBuffer cmdBuffer = commandsPtr->getCommandBuffer(CmdPoolType::COMPUTE);
 
         VkCommandBufferBeginInfo beginInfo = {};

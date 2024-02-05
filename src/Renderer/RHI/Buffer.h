@@ -170,7 +170,7 @@ namespace Renderer
         UniformBuffer(Device *device, CmdBufferAllocator *commands, VkDeviceSize size);
         ~UniformBuffer() override;
 
-        void updateUniformBuffer(void* updateData, VkDeviceSize size);
+        void updateUniformBuffer(void const* updateData, VkDeviceSize size);
     };
 
     //----------STORAGE BUFFER DECLARATION----------//

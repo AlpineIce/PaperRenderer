@@ -7,7 +7,7 @@ namespace Renderer
         :devicePtr(device),
         commandsPtr(commands)
     {
-        unsigned char pixel[4] = {(uint8_t)255, 0, (uint8_t)255, (uint8_t)255};
+        unsigned char pixel[4] = {(uint8_t)0, (uint8_t)0, (uint8_t)0, (uint8_t)255};
         Image imageData;
         imageData.channels = 4;
         imageData.width = 1;

@@ -626,7 +626,7 @@ namespace Renderer
         vmaUnmapMemory(devicePtr->getAllocator(), allocation);
     }
 
-    void UniformBuffer::updateUniformBuffer(void* updateData, VkDeviceSize size)
+    void UniformBuffer::updateUniformBuffer(void const* updateData, VkDeviceSize size)
     {
         memcpy(dataPtr, updateData, size);
         vmaFlushAllocation(devicePtr->getAllocator(), allocation, 0, size);

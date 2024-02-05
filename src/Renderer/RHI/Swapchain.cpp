@@ -19,14 +19,14 @@ namespace Renderer
         this->swapchainImageFormat = VK_FORMAT_UNDEFINED;
         for(VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
         {
-            if(surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT) //HDR color space
+            /*if(surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT) //HDR color space
             {
                 hdrFound = true;
                 this->swapchainImageFormat = surfaceFormat.format;
                 this->imageColorSpace = surfaceFormat.colorSpace;
 
                 break;
-            }
+            }*/
         }
 
         if(!hdrFound)
@@ -39,6 +39,7 @@ namespace Renderer
                     {
                         this->swapchainImageFormat = surfaceFormat.format;
                         this->imageColorSpace = surfaceFormat.colorSpace;
+                        break;
                     }
                     else if(surfaceFormat.format == VK_FORMAT_B8G8R8A8_UNORM)
                     {
@@ -79,7 +80,7 @@ namespace Renderer
                 this->presentationMode = presentMode;
                 break;
             }
-        } //immediate mode by default
+        }
 
         buildSwapchain();
     }
@@ -180,26 +181,9 @@ namespace Renderer
         //find depth buffer format
         VkFormatProperties properties;
 
-        vkGetPhysicalDeviceFormatProperties(devicePtr->getGPU(), VK_FORMAT_D32_SFLOAT_S8_UINT, &properties);
-        bool d32s8_support = (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
-
-        vkGetPhysicalDeviceFormatProperties(devicePtr->getGPU(), VK_FORMAT_D32_SFLOAT, &properties);
-        bool d32_support = (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
-
         vkGetPhysicalDeviceFormatProperties(devicePtr->getGPU(), VK_FORMAT_D24_UNORM_S8_UINT, &properties);
-        bool d24s8_support = (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 
-        if(d32s8_support) //commented out beccause no 32 bit support is required
-        {
-            //depthBufferFormat = VK_FORMAT_D32_SFLOAT_S8_UINT;
-            //depthBufferLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-        }
-        else if(d32_support)  //commented out beccause no 32 bit support is required
-        {
-            //depthBufferFormat = VK_FORMAT_D32_SFLOAT;
-            //depthBufferLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-        }
-        if(d24s8_support)
+        if(properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
         {
             depthBufferFormat = VK_FORMAT_D24_UNORM_S8_UINT;
             depthBufferLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;

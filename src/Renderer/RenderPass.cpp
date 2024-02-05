@@ -24,6 +24,75 @@ namespace Renderer
         }
     }
 
+    void RenderPass::checkSwapchain(VkResult imageResult)
+    {
+        if(imageResult == VK_ERROR_OUT_OF_DATE_KHR)
+        {
+            recreateFlag = true;
+        }
+    }
+
+    ImageAttachment RenderPass::createImageAttachment(VkFormat imageFormat)
+    {
+        VkImage returnImage;
+        VkImageView returnView;
+        VmaAllocation returnAllocation;
+
+        VkExtent3D swapchainExtent = {
+            .width = swapchainPtr->getExtent().width,
+            .height = swapchainPtr->getExtent().height,
+            .depth = 1
+        };
+        
+        VkImageCreateInfo imageInfo = {};
+        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.pNext = NULL;
+        imageInfo.flags = 0;
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = imageFormat;
+        imageInfo.extent = swapchainExtent;
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 1;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT; //no MSAA for now
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE; //likely wont be transfered or anything
+        imageInfo.queueFamilyIndexCount = 0;
+        imageInfo.pQueueFamilyIndices = NULL;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        VmaAllocationCreateInfo allocCreateInfo = {};
+        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+        allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
+
+        VmaAllocationInfo allocInfo;
+        VkResult allocResult = vmaCreateImage(devicePtr->getAllocator(), &imageInfo, &allocCreateInfo, &returnImage, &returnAllocation, &allocInfo);
+
+        //create the image view
+        VkImageSubresourceRange subresourceRange;
+        subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        subresourceRange.baseMipLevel = 0;
+        subresourceRange.levelCount = 1;
+        subresourceRange.baseArrayLayer = 0;
+        subresourceRange.layerCount = 1;
+
+        VkImageViewCreateInfo viewInfo = {};
+        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.pNext = NULL;
+        viewInfo.flags = 0;
+        viewInfo.image = returnImage;
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format = imageFormat;
+        viewInfo.subresourceRange = subresourceRange;
+
+        if (vkCreateImageView(devicePtr->getDevice(), &viewInfo, nullptr, &returnView) != VK_SUCCESS) 
+        {
+            throw std::runtime_error("Failed to create a render target image view");
+        }
+
+        return { returnImage, returnView, returnAllocation };
+    }
+
     RenderPass::~RenderPass()
     {
         renderFences.at(currentImage).clear();
@@ -108,7 +177,7 @@ namespace Renderer
 
         //dynamic rendering info
         VkClearValue clearValue = {};
-        clearValue.color = {0.0f, 0.0f, 0.0, 1.0f};
+        clearValue.color = {0.0f, 0.0f, 0.0, 0.0f};
 
         VkClearValue depthClear = {};
         depthClear.depthStencil = {1.0f, 0};
@@ -116,8 +185,11 @@ namespace Renderer
         VkRect2D renderArea = {};
         renderArea.offset = {0, 0};
         renderArea.extent = swapchainPtr->getExtent();
-        
-        //swapchain images
+
+        //----------RENDER TARGETS----------//
+
+        std::vector<VkRenderingAttachmentInfo> renderingAttachments;
+
         VkRenderingAttachmentInfo colorAttachment = {};
         colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         colorAttachment.pNext = NULL;
@@ -126,6 +198,7 @@ namespace Renderer
         colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         colorAttachment.clearValue = clearValue;
+        renderingAttachments.push_back(colorAttachment);
 
         //depth buffer attachment
         VkRenderingAttachmentInfo depthAttachment = {};
@@ -133,7 +206,7 @@ namespace Renderer
         depthAttachment.pNext = NULL;
         depthAttachment.imageView = swapchainPtr->getDepthView();
         depthAttachment.imageLayout = swapchainPtr->getDepthLayout();
-        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; //TODO this may not play nice when using multiple RPs
+        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         depthAttachment.clearValue = depthClear;
         
@@ -148,8 +221,8 @@ namespace Renderer
         renderInfo.renderArea = renderArea;
         renderInfo.layerCount = 1;
         renderInfo.viewMask = 0;
-        renderInfo.colorAttachmentCount = 1;
-        renderInfo.pColorAttachments = &colorAttachment;
+        renderInfo.colorAttachmentCount = renderingAttachments.size();
+        renderInfo.pColorAttachments = renderingAttachments.data();
         renderInfo.pDepthAttachment = &depthAttachment;
         renderInfo.pStencilAttachment = &stencilAttachment;
 
@@ -202,12 +275,9 @@ namespace Renderer
         return graphicsCmdBuffer;
     }
 
-    void RenderPass::checkSwapchain(VkResult imageResult)
+    void RenderPass::composeAttachments(const VkCommandBuffer &cmdBuffer)
     {
-        if(imageResult == VK_ERROR_OUT_OF_DATE_KHR)
-        {
-            recreateFlag = true;
-        }
+
     }
 
     void RenderPass::drawIndexed(const DrawBufferObject& objectData, const VkCommandBuffer& cmdBuffer)
@@ -232,38 +302,14 @@ namespace Renderer
         }
     }
 
-    void RenderPass::bindPipeline(Pipeline const *pipeline, const VkCommandBuffer &cmdBuffer)
+    void RenderPass::bindMaterial(Material const* material, const VkCommandBuffer &cmdBuffer)
     {
-        if(pipeline != NULL && this->pipeline != pipeline) //bind new pipeline if the new one is valid and isnt the same
-        {
-            this->pipeline = pipeline;
-            vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipeline());
-
-            //update global uniform
-            globalUBOs.at(currentImage)->updateUniformBuffer(&uniformDatas.at(currentImage), sizeof(GlobalDescriptor));
-
-            VkDescriptorSet globalDescriptorSet = descriptorsPtr->allocateDescriptorSet(*pipeline->getGlobalDescriptorLayoutPtr(), currentImage);
-            descriptorsPtr->writeUniform(globalUBOs.at(currentImage)->getBuffer(), sizeof(GlobalDescriptor), 0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, globalDescriptorSet);
-
-            vkCmdBindDescriptorSets(cmdBuffer,
-                VK_PIPELINE_BIND_POINT_GRAPHICS,
-                this->pipeline->getLayout(),
-                0, //material bind point
-                1,
-                &globalDescriptorSet,
-                0,
-                0);
-
-        }
-        else //continue with next binding
-        {
-            this->pipeline = pipeline;
-        }
+        material->bindPipeline(cmdBuffer, *globalUBOs.at(currentImage), uniformDatas.at(currentImage), currentImage);
     }
 
-    void RenderPass::bindMaterial(Material const* material, const VkCommandBuffer& cmdBuffer)
+    void RenderPass::bindMaterialInstance(MaterialInstance const* materialInstance, const VkCommandBuffer& cmdBuffer)
     {
-        material->updateUniforms(descriptorsPtr, cmdBuffer, currentImage);
+        materialInstance->bind(cmdBuffer, currentImage);
     }
 
     void RenderPass::incrementFrameCounter(const VkCommandBuffer& cmdBuffer)

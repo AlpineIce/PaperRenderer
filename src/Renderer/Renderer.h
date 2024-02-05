@@ -6,8 +6,8 @@
 #include "RHI/Swapchain.h"
 #include "RHI/Pipeline.h"
 #include "RHI/AccelerationStructure.h"
+#include "Material/Material.h"
 #include "RenderPass.h"
-#include "Material.h"
 #include "Model.h"
 
 #include <string>
@@ -32,8 +32,7 @@ namespace Renderer
         RenderObjectReference objRefs;
         glm::mat4 modelMatrix = glm::mat4(1.0f);
         Model const* modelPtr = NULL; //TODO default model
-        std::vector<Material const*> materials; //TODO default material
-
+        std::vector<MaterialInstance const*> materials;
     };
 
     class RenderEngine
@@ -49,20 +48,18 @@ namespace Renderer
         RenderPass rendering;
 
         //render tree stores all pipelines, their child materials, with their child RenderObject pointers
-        std::unordered_map<PipelineType, PipelineNode> renderTree;
+        std::unordered_map<Material*, MaterialNode> renderTree;
 
         std::unordered_map<std::string, std::shared_ptr<Model>> models;
         std::unordered_map<std::string, std::shared_ptr<Material>> materials;
         std::unordered_map<std::string, std::shared_ptr<Texture>> textures;
+        std::shared_ptr<DefaultMaterial> defaultMaterial;
 
         std::string appName;
         bool rtEnabled = true;
 
         Image loadImage(std::string directory);
-        void loadPipelines();
         void loadModels(std::string modelsDir);
-        void loadMaterials(std::string materialsDir);
-        void createMaterial(std::string filePath);
         void loadTextures(std::string texturesDir);
         void initRT();
         

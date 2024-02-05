@@ -101,7 +101,6 @@ namespace Renderer
         std::vector<VkDescriptorSetLayout> setLayouts;
         VkDescriptorSetLayout const* globalDescriptorLayoutPtr;
         VkPipelineLayout pipelineLayout;
-        PipelineType pipelineType;
     };
 
     struct RTPipelineInfo
@@ -190,7 +189,6 @@ namespace Renderer
         //IMPORTANT descriptor sets must be in order of set binding in this vector
         bool useGlobalDescriptor = true;
         std::vector<DescriptorSet> descriptors;
-        PipelineType pipelineType = UNDEFINED;
     };
 
     class PipelineBuilder

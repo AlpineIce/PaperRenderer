@@ -107,8 +107,7 @@ namespace Renderer
         shaders(creationInfo.shaders),
         setLayouts(creationInfo.setLayouts),
         pipelineLayout(creationInfo.pipelineLayout),
-        globalDescriptorLayoutPtr(creationInfo.globalDescriptorLayoutPtr),
-        pipelineType(creationInfo.pipelineType)
+        globalDescriptorLayoutPtr(creationInfo.globalDescriptorLayoutPtr)
     {
     }
 
@@ -157,12 +156,16 @@ namespace Renderer
         });
 
         //pipeline info from here on
+        std::vector<VkFormat> renderTargetFormats = {
+            *swapchain->getFormatPtr()
+        };
+
         VkPipelineRenderingCreateInfo renderingInfo = {};
         renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
         renderingInfo.pNext = NULL;
         renderingInfo.viewMask = 0;
-        renderingInfo.colorAttachmentCount = 1;
-        renderingInfo.pColorAttachmentFormats = swapchain->getFormatPtr();
+        renderingInfo.colorAttachmentCount = renderTargetFormats.size();
+        renderingInfo.pColorAttachmentFormats = renderTargetFormats.data();
         renderingInfo.depthAttachmentFormat = swapchain->getDepthFormat();
         renderingInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
 
@@ -245,6 +248,8 @@ namespace Renderer
         depthStencilInfo.front = {};
         depthStencilInfo.back = {};
 
+        std::vector<VkPipelineColorBlendAttachmentState> colorAttachments;
+
         VkPipelineColorBlendAttachmentState colorAttachment = {};
         colorAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
         colorAttachment.blendEnable = VK_FALSE;
@@ -254,6 +259,7 @@ namespace Renderer
         colorAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
         colorAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
         colorAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+        colorAttachments.push_back(colorAttachment);
         
         VkPipelineColorBlendStateCreateInfo colorInfo = {};
         colorInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -261,8 +267,8 @@ namespace Renderer
         colorInfo.flags = 0;
         colorInfo.logicOpEnable = VK_FALSE;
         colorInfo.logicOp = VK_LOGIC_OP_COPY;
-        colorInfo.attachmentCount = 1;
-        colorInfo.pAttachments = &colorAttachment;
+        colorInfo.attachmentCount = colorAttachments.size();
+        colorInfo.pAttachments = colorAttachments.data();
         colorInfo.blendConstants[0] = 0.0f;
         colorInfo.blendConstants[1] = 0.0f;
         colorInfo.blendConstants[2] = 0.0f;
@@ -530,9 +536,6 @@ namespace Renderer
         pipelineInfo.device = devicePtr;
         pipelineInfo.descriptors = descriptorsPtr;
         pipelineInfo.cache = cache;
-        pipelineInfo.pipelineType = info.pipelineType;
-
-        if(info.pipelineType == UNDEFINED) throw std::runtime_error("Pipeline type not specified or not supported");
 
         std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
         for(const ShaderPair& pair : info.shaderInfo)

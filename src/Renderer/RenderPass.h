@@ -3,7 +3,7 @@
 #include "RHI/Pipeline.h"
 #include "RHI/IndirectDrawBuffer.h"
 #include "Camera.h"
-#include "Material.h"
+#include "Renderer/Material/Material.h"
 
 #include <list>
 #include <unordered_map>
@@ -14,17 +14,27 @@ namespace Renderer
     //Ownership should be within actors, not the render tree, which includes a pointer instead
 
     //node for objects corresponding to one material
-    struct MaterialNode
+    struct MaterialInstanceNode
     {
-        Material const* material;
         std::shared_ptr<IndirectDrawBuffer> objectBuffer;
     };
 
     //node for materials corresponding to one pipeline
-    struct PipelineNode
+    struct MaterialNode
     {
-        std::shared_ptr<RasterPipeline> pipeline;
-        std::unordered_map<std::string, MaterialNode> materials; //string value for material name
+        std::unordered_map<MaterialInstance const*, MaterialInstanceNode> instances;
+    };
+
+    struct ImageAttachment
+    {
+        VkImage image;
+        VkImageView view;
+        VmaAllocation allocation;
+    };
+
+    struct ImageAttachments
+    {
+        //nothing for now
     };
 
     class RenderPass
@@ -35,6 +45,7 @@ namespace Renderer
         std::vector<std::list<std::shared_ptr<QueueReturn>>> renderFences;
         std::vector<std::shared_ptr<UniformBuffer>> globalUBOs;
         std::vector<GlobalDescriptor> uniformDatas;
+        ImageAttachments renderTargets;
         uint32_t currentImage;
         bool recreateFlag = false;
 
@@ -46,6 +57,7 @@ namespace Renderer
         Camera* cameraPtr = NULL;
         
         void checkSwapchain(VkResult imageResult);
+        ImageAttachment createImageAttachment(VkFormat imageFormat);
 
     public:
         RenderPass(Swapchain* swapchain, Device* device, CmdBufferAllocator* commands, DescriptorAllocator* descriptors);
@@ -57,6 +69,8 @@ namespace Renderer
         //start new frame
         VkCommandBuffer startNewFrame();
 
+        void composeAttachments(const VkCommandBuffer& cmdBuffer);
+
         //end frame
         void incrementFrameCounter(const VkCommandBuffer& cmdBuffer);
         
@@ -67,9 +81,9 @@ namespace Renderer
         void drawIndexedIndirect(const VkCommandBuffer& cmdBuffer, IndirectDrawBuffer* drawBuffer);
 
         //change the rendering pipeline
-        void bindPipeline(Pipeline const* pipeline, const VkCommandBuffer& cmdBuffer);
+        void bindMaterial(Material const* material, const VkCommandBuffer& cmdBuffer);
 
         //change the material
-        void bindMaterial(Material const* material, const VkCommandBuffer& cmdBuffer);
+        void bindMaterialInstance(MaterialInstance const* materialInstance, const VkCommandBuffer& cmdBuffer);
     };
 }
