@@ -45,7 +45,7 @@ namespace Renderer
         //layers
         std::vector<const char*> layerNames;
 #ifndef NDEBUG
-        layerNames.push_back("VK_LAYER_KHRONOS_validation");
+        //layerNames.push_back("VK_LAYER_KHRONOS_validation");
 #endif
 
         std::vector<const char*> extensionNames;
@@ -387,19 +387,25 @@ namespace Renderer
             VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
             VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME});
 
-        VkPhysicalDeviceBufferDeviceAddressFeatures bufferAddressFeatures = {};
-        bufferAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
-        bufferAddressFeatures.pNext = NULL;
-        bufferAddressFeatures.bufferDeviceAddress = VK_TRUE;
+        VkPhysicalDeviceVulkan12Features vulkan12Features = {};
+        vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+        vulkan12Features.pNext = NULL;
+        vulkan12Features.drawIndirectCount = VK_TRUE;
+        vulkan12Features.bufferDeviceAddress = VK_TRUE;
 
         VkPhysicalDeviceShaderDrawParametersFeatures  drawParamFeatures = {};
         drawParamFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
-        drawParamFeatures.pNext = &bufferAddressFeatures;
+        drawParamFeatures.pNext = &vulkan12Features;
         drawParamFeatures.shaderDrawParameters = VK_TRUE;
+
+        VkPhysicalDeviceSynchronization2Features synchro2;
+        synchro2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+        synchro2.pNext = &drawParamFeatures;
+        synchro2.synchronization2 = VK_TRUE;
 
         VkPhysicalDeviceFeatures2 features2 = {};
         features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        features2.pNext = &drawParamFeatures;
+        features2.pNext = &synchro2;
         
         vkGetPhysicalDeviceFeatures2(GPU, &features2);
 
@@ -427,7 +433,6 @@ namespace Renderer
         deviceCreateInfo.pEnabledFeatures = NULL;
         deviceCreateInfo.enabledExtensionCount = extensionNames.size();
         deviceCreateInfo.ppEnabledExtensionNames = extensionNames.data();
-        deviceCreateInfo.pEnabledFeatures = NULL;
 
         VkResult result = vkCreateDevice(GPU, &deviceCreateInfo, NULL, &device);
         if(result != VK_SUCCESS) throw std::runtime_error("Failed to create Vulkan device");

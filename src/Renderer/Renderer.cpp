@@ -18,7 +18,7 @@ namespace Renderer
         descriptors(&device, &commands),
         pipelineBuilder(&device, &descriptors, &swapchain),
         rtAccelStructure(&device, &commands),
-        rendering(&swapchain, &device, &commands, &descriptors)
+        rendering(&swapchain, &device, &commands, &descriptors, &pipelineBuilder)
     {
         Material::initRendererInfo(&device, &commands, &descriptors, &pipelineBuilder);
         loadModels("resources/models");
@@ -106,21 +106,21 @@ namespace Renderer
             for(uint32_t i = 0; i < object.modelPtr->getModelMeshes().size(); i++) //iterate meshes
             {
                 MaterialInstance const* materialInstance;
-                if(object.materials.size() - 1 > i) //really bad oopsie
+                uint32_t materialIndex = object.modelPtr->getModelMeshes().at(i).materialIndex;
+
+                if(object.materials.count(materialIndex))
                 {
-                    materialInstance = &(defaultMaterial->getDefaultInstance());
-                }
-                else if(object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex)) //make sure a valid material is set
-                {
-                    materialInstance = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex);
+                    materialInstance = object.materials.at(materialIndex);
                 }
                 else //use default material if one isnt selected
                 {
                     materialInstance = &(defaultMaterial->getDefaultInstance());
+                    object.materials[materialIndex] = materialInstance;
                 }
 
                 object.objRefs[i] = {
                     .modelMatrix = &object.modelMatrix,
+                    .position = &object.position,
                     .mesh = object.modelPtr->getModelMeshes().at(i).mesh.get()
                 };
 
@@ -140,15 +140,46 @@ namespace Renderer
         {
             if(object.objRefs.count(i))
             {
-                MaterialInstance const* materialInstance = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex);
+                MaterialInstance const* materialInstance;
+                materialInstance = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex);
                 renderTree.at((Material*)materialInstance->parentMaterial).instances.at(materialInstance).objectBuffer->removeElement(object.objRefs.at(i));
             }
         }
     }
 
+    void RenderEngine::addPointLight(PointLightObject& light)
+    {
+        lightingInfo.pointLights.push_back(&light.light);
+        light.lightReference = lightingInfo.pointLights.end()--;
+    }
+
+    void RenderEngine::removePointLight(PointLightObject& light)
+    {
+        lightingInfo.pointLights.erase(light.lightReference);
+    }
+
+    void RenderEngine::setCamera(Camera *camera)
+    {
+        this->rendering.setCamera(camera);
+    }
+
     void RenderEngine::drawAllReferences()
     {
-        VkCommandBuffer cmdBuffer = rendering.startNewFrame();
+        //start command buffer and bind pipeline
+        VkCommandBuffer cullingCmdBuffer = rendering.preProcessing(lightingInfo);
+
+        //draw call culling
+        CullingFrustum cullingFrustum = rendering.createCullingFrustum();
+        for(const auto& [material, materialNode] : renderTree) //material
+        {
+            for(const auto& [materialInstance, instanceNode] : materialNode.instances) //material instances
+            {
+                rendering.drawCallCull(cullingCmdBuffer, cullingFrustum, instanceNode.objectBuffer.get());
+            }
+        }
+        rendering.submitCulling(cullingCmdBuffer);
+
+        VkCommandBuffer cmdBuffer = rendering.beginRendering();
 
         //RT pass
         /*if(rtEnabled)
@@ -185,7 +216,6 @@ namespace Renderer
             }
             rtAccelStructure.createTopLevel(accelData);
         }*/
-        
         
         //raster pass
         for(const auto& [material, materialNode] : renderTree) //material
@@ -225,11 +255,6 @@ namespace Renderer
             return this->materials.at(name).get();
         }
         return NULL;
-    }
-
-    void RenderEngine::setCamera(Camera* camera)
-    {
-        this->rendering.setCamera(camera);
     }
 
     Texture const* RenderEngine::getTextureByName(std::string name)

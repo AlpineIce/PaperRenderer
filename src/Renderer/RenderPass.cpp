@@ -3,24 +3,82 @@
 
 namespace Renderer
 {
-    RenderPass::RenderPass(Swapchain* swapchain, Device* device, CmdBufferAllocator* commands, DescriptorAllocator* descriptors)
+    RenderPass::RenderPass(Swapchain* swapchain, Device* device, CmdBufferAllocator* commands, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder)
         :swapchainPtr(swapchain),
         devicePtr(device),
         commandsPtr(commands),
         descriptorsPtr(descriptors),
+        pipelineBuilderPtr(pipelineBuilder),
         currentImage(0)
     {
         //synchronization objects
+        cullingSemaphores.resize(commandsPtr->getFrameCount());
         imageSemaphores.resize(commandsPtr->getFrameCount());
-        
-        preRenderFences.resize(commandsPtr->getFrameCount());
+        cullingFences.resize(commandsPtr->getFrameCount());
         renderFences.resize(commandsPtr->getFrameCount());
 
         //global uniforms
-        uniformDatas.resize(CmdBufferAllocator::getFrameCount());
+        globalBufferDatas.resize(CmdBufferAllocator::getFrameCount());
         for(uint32_t i = 0; i < CmdBufferAllocator::getFrameCount(); i++)
         {
-            globalUBOs.push_back(std::make_shared<UniformBuffer>(device, commands, (uint32_t)sizeof(GlobalDescriptor)));
+            globalInfoBuffers.push_back(std::make_shared<UniformBuffer>(devicePtr, commandsPtr, (uint32_t)sizeof(CameraData)));
+            pointLightsBuffers.push_back(std::make_shared<StorageBuffer>(devicePtr, commandsPtr, (uint32_t)sizeof(PointLight) * MAX_POINT_LIGHTS));
+            lightingInfoBuffers.push_back(std::make_shared<UniformBuffer>(devicePtr, commandsPtr, (uint32_t)sizeof(ShaderLightingInformation)));
+        }
+
+        //----------PREPROCESS PIPELINE----------//
+
+        std::vector<ShaderPair> shaderPairs = {{
+            .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+            .directory = "resources/compute/IndirectDrawBuild.spv"
+        }};
+        std::vector<Renderer::DescriptorSet> descriptorSets;
+
+        DescriptorSet set0;
+        VkDescriptorSetLayoutBinding drawCountsDescriptor = {};
+        drawCountsDescriptor.binding = 0;
+        drawCountsDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        drawCountsDescriptor.descriptorCount = 1;
+        drawCountsDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        set0.descriptorBindings.push_back(drawCountsDescriptor);
+        descriptorSets.push_back(set0);
+
+        DescriptorSet set1;
+        VkDescriptorSetLayoutBinding inputDataDescriptor = {};
+        inputDataDescriptor.binding = 0;
+        inputDataDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        inputDataDescriptor.descriptorCount = 1;
+        inputDataDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        set1.descriptorBindings.push_back(inputDataDescriptor);
+
+        VkDescriptorSetLayoutBinding inputObjectsDescriptor = {};
+        inputObjectsDescriptor.binding = 1;
+        inputObjectsDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        inputObjectsDescriptor.descriptorCount = 1;
+        inputObjectsDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        set1.descriptorBindings.push_back(inputObjectsDescriptor);
+        descriptorSets.push_back(set1);
+
+        PipelineBuildInfo pipelineInfo;
+        pipelineInfo.descriptors = descriptorSets;
+        pipelineInfo.useGlobalDescriptor = false;
+        pipelineInfo.shaderInfo = shaderPairs;
+        
+        meshPreprocessPipeline = pipelineBuilderPtr->buildComputePipeline(pipelineInfo);
+    }
+
+    RenderPass::~RenderPass()
+    {
+        renderFences.at(currentImage).clear();
+        cullingFences.at(currentImage).clear();
+
+        for(VkSemaphore semaphore: imageSemaphores)
+        {
+            vkDestroySemaphore(devicePtr->getDevice(), semaphore, nullptr);
+        }
+        for(VkSemaphore semaphore: cullingSemaphores)
+        {
+            vkDestroySemaphore(devicePtr->getDevice(), semaphore, nullptr);
         }
     }
 
@@ -30,6 +88,11 @@ namespace Renderer
         {
             recreateFlag = true;
         }
+    }
+    
+    glm::vec4 RenderPass::normalizePlane(glm::vec4 plane)
+    {
+        return plane / glm::length(glm::vec3(plane));
     }
 
     ImageAttachment RenderPass::createImageAttachment(VkFormat imageFormat)
@@ -93,31 +156,23 @@ namespace Renderer
         return { returnImage, returnView, returnAllocation };
     }
 
-    RenderPass::~RenderPass()
+    VkCommandBuffer RenderPass::preProcessing(const LightingInformation& lightingInfo)
     {
-        renderFences.at(currentImage).clear();
-        renderFences.at(currentImage).clear();
-
-        for(VkSemaphore semaphore: imageSemaphores)
-        {
-            vkDestroySemaphore(devicePtr->getDevice(), semaphore, nullptr);
-        }
-    }
-
-    VkCommandBuffer RenderPass::startNewFrame()
-    {
-        for(auto result = preRenderFences.at(currentImage).begin(); result != preRenderFences.at(currentImage).end(); result++)
+        //end last frame
+        for(auto result = renderFences.at(currentImage).begin(); result != renderFences.at(currentImage).end(); result++)
         {
             result->get()->waitForFence();
         }
-
-        for(auto result = renderFences.at(currentImage).begin(); result != renderFences.at(currentImage).end(); result++)
+        for(auto result = cullingFences.at(currentImage).begin(); result != cullingFences.at(currentImage).end(); result++)
         {
             result->get()->waitForFence();
         }
 
         vkDestroySemaphore(devicePtr->getDevice(), imageSemaphores.at(currentImage), nullptr);
         imageSemaphores.at(currentImage) = commandsPtr->getSemaphore();
+
+        renderFences.at(currentImage).clear();
+        cullingFences.at(currentImage).clear();
         
         //get available image
         checkSwapchain(vkAcquireNextImageKHR(devicePtr->getDevice(),
@@ -127,43 +182,58 @@ namespace Renderer
             VK_NULL_HANDLE, &currentImage));
         
         descriptorsPtr->refreshPools(currentImage);
-        //update uniform data
 
-        double time = glfwGetTime();
+        //update global uniform
+        globalBufferDatas.at(currentImage).view = cameraPtr->getViewMatrix();
+        globalBufferDatas.at(currentImage).projection = cameraPtr->getProjection();
+        globalInfoBuffers.at(currentImage)->updateUniformBuffer(&globalBufferDatas.at(currentImage), sizeof(CameraData));
 
-        AmbientLight ambient = {};
-        ambient.color = glm::vec4(1.0f, 1.0f, 1.0f, 0.02f);
+        //fill in point light buffer
+        std::vector<PointLight> pointLights;
+        lightBufferCopySemaphores.resize(0);
+        for(auto light = lightingInfo.pointLights.begin(); light != lightingInfo.pointLights.end(); light++)
+        {
+            pointLights.push_back(**light);
+        }
 
-        DirectLight sun = {};
-        sun.direction = glm::vec4(0.0f, -1.0f, 0.0f, 1.0f);
-        sun.color = glm::vec4(1.0f, 1.0f, 1.0f, 0.0f);
+        StagingBuffer pointLightInfoStaging(devicePtr, commandsPtr, sizeof(PointLight) * MAX_POINT_LIGHTS);
+        pointLightInfoStaging.mapData(pointLights.data(), 0, sizeof(PointLight) * pointLights.size());
+        QueueReturn lightBufferCopyFence = pointLightsBuffers.at(currentImage)->copyFromBuffer(pointLightInfoStaging, false);
 
-        LightInfo lightInfo = {};
-        lightInfo.ambient = ambient;
-        lightInfo.camPos = glm::vec4(cameraPtr->getTranslation().position, 0.0f);
-        lightInfo.sun = sun;
+        lightBufferCopySemaphores = lightBufferCopyFence.getSemaphores();
+        renderFences.at(currentImage).push_back(std::make_shared<QueueReturn>(std::move(lightBufferCopyFence)));
 
-        lightInfo.pointLights[0] = {
-            .position = glm::vec4(-cos(time) * 10.0f, -5.0f, -sin(time) * 10.0f, 1.0f),
-            .color = glm::vec4(1.0f, 1.0f, 1.0f, 10.0f)
-        };
-        lightInfo.pointLights[1] = {
-            .position = glm::vec4(-sin(time) * 10.0f, -5.0f, -cos(time) * 10.0f, 1.0f),
-            .color = glm::vec4(1.0f, 1.0f, 1.0f, 10.0f)
-        };
-        lightInfo.pointLights[2] = {
-            .position = glm::vec4(sin(time) * 10.0f, -5.0f, cos(time) * 10.0f, 1.0f),
-            .color = glm::vec4(1.0f, 1.0f, 1.0f, 10.0f)
-        };
-        lightInfo.pointLights[3] = {
-            .position = glm::vec4(cos(time) * 10.0f, -5.0f, sin(time) * 10.0f, 1.0f),
-            .color = glm::vec4(1.0f, 1.0f, 1.0f, 10.0f)
-        };
+        //lighting information buffer
+        ShaderLightingInformation shaderLightingInfo = {};
+        if(lightingInfo.directLight) shaderLightingInfo.directLight = *lightingInfo.directLight;
+        if(lightingInfo.ambientLight) shaderLightingInfo.ambientLight = *lightingInfo.ambientLight;
+        shaderLightingInfo.pointLightCount = pointLights.size();
+        shaderLightingInfo.camPos = cameraPtr->getTranslation().position;
+        lightingInfoBuffers.at(currentImage)->updateUniformBuffer(&shaderLightingInfo, sizeof(ShaderLightingInformation));
 
-        uniformDatas.at(currentImage).cameraData.view = cameraPtr->getViewMatrix();
-        uniformDatas.at(currentImage).cameraData.projection = cameraPtr->getProjection();
-        uniformDatas.at(currentImage).lightInfo = lightInfo;
+        globalUniformData.globalUBO = globalInfoBuffers.at(currentImage).get();
+        globalUniformData.pointLightsBuffer = pointLightsBuffers.at(currentImage).get();
+        globalUniformData.lightingInfoBuffer = lightingInfoBuffers.at(currentImage).get();
+        globalUniformData.maxPointLights = MAX_POINT_LIGHTS;
 
+        //perform draw call culling
+        VkCommandBufferBeginInfo commandInfo;
+        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        commandInfo.pNext = NULL;
+        commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        commandInfo.pInheritanceInfo = NULL;
+
+        VkCommandBuffer cullingCmdBuffer = commandsPtr->getCommandBuffer(CmdPoolType::COMPUTE);
+        vkBeginCommandBuffer(cullingCmdBuffer, &commandInfo);
+
+        //bind culling pipeline
+        vkCmdBindPipeline(cullingCmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, meshPreprocessPipeline->getPipeline());
+
+        return cullingCmdBuffer;
+    }
+
+    VkCommandBuffer RenderPass::beginRendering()
+    {
         //command buffer
         VkCommandBufferBeginInfo commandInfo;
         commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -175,7 +245,8 @@ namespace Renderer
         VkCommandBuffer graphicsCmdBuffer = commandsPtr->getCommandBuffer(CmdPoolType::GRAPHICS);
         vkBeginCommandBuffer(graphicsCmdBuffer, &commandInfo);
 
-        //dynamic rendering info
+        //----------RENDER TARGETS----------//
+
         VkClearValue clearValue = {};
         clearValue.color = {0.0f, 0.0f, 0.0, 0.0f};
 
@@ -185,8 +256,6 @@ namespace Renderer
         VkRect2D renderArea = {};
         renderArea.offset = {0, 0};
         renderArea.extent = swapchainPtr->getExtent();
-
-        //----------RENDER TARGETS----------//
 
         std::vector<VkRenderingAttachmentInfo> renderingAttachments;
 
@@ -225,10 +294,11 @@ namespace Renderer
         renderInfo.pColorAttachments = renderingAttachments.data();
         renderInfo.pDepthAttachment = &depthAttachment;
         renderInfo.pStencilAttachment = &stencilAttachment;
-
+        
         VkImageMemoryBarrier imageBarrier = {};
         imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         imageBarrier.pNext = NULL;
+        imageBarrier.srcAccessMask = VK_ACCESS_NONE;
         imageBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         imageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         imageBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -255,9 +325,6 @@ namespace Renderer
             1,
             &imageBarrier);
 
-        renderFences.at(currentImage).clear();
-        preRenderFences.at(currentImage).clear();
-
         vkCmdBeginRendering(graphicsCmdBuffer, &renderInfo);
 
         //dynamic viewport and scissor specified in pipelines
@@ -275,36 +342,79 @@ namespace Renderer
         return graphicsCmdBuffer;
     }
 
+    CullingFrustum RenderPass::createCullingFrustum()
+    {
+        glm::mat4 projectionT = transpose(cameraPtr->getProjection());
+        
+		glm::vec4 frustumX = normalizePlane(projectionT[3] + projectionT[0]);
+		glm::vec4 frustumY = normalizePlane(projectionT[3] + projectionT[1]);
+
+        CullingFrustum frustum;
+        frustum.frustum[0] = frustumX.x;
+		frustum.frustum[1] = frustumX.z;
+		frustum.frustum[2] = frustumY.y;
+		frustum.frustum[3] = frustumY.z;
+        frustum.zPlanes = glm::vec2(cameraPtr->getClipNear(), cameraPtr->getClipFar());
+        
+        return frustum;
+    }
+
+    void RenderPass::drawCallCull(const VkCommandBuffer &cmdBuffer, const CullingFrustum& frustumData, IndirectDrawBuffer *drawBuffer)
+    {
+        std::vector<QueueReturn> pushFences = std::move(drawBuffer->performCulling(cmdBuffer, meshPreprocessPipeline.get(), frustumData, cameraPtr->getProjection(), cameraPtr->getViewMatrix(), currentImage));
+        for(int i = 0; i < pushFences.size(); i++)
+        {
+            cullingFences.at(currentImage).push_back(std::make_shared<QueueReturn>(std::move(pushFences[i])));
+        }
+    }
+
+    void RenderPass::submitCulling(const VkCommandBuffer& cmdBuffer)
+    {
+        vkEndCommandBuffer(cmdBuffer);
+
+        std::vector<VkSemaphore> waitSemaphores;
+        std::vector<VkPipelineStageFlags> pipelineStages;
+        if(cullingFences.size())
+        {
+            for(auto fence = cullingFences.at(currentImage).begin(); fence != cullingFences.at(currentImage).end(); fence++)
+            {
+                for(VkSemaphore& semaphore : fence->get()->getSemaphores())
+                {
+                    waitSemaphores.push_back(semaphore);
+                    pipelineStages.push_back(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT); //buffers need to finish transfering before compute shader can run
+                }
+            }
+        }
+        
+        cullingSemaphores.at(currentImage) = commandsPtr->getSemaphore();
+
+        VkSubmitInfo submitInfo = {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.pNext = NULL;
+        submitInfo.waitSemaphoreCount = waitSemaphores.size();
+        submitInfo.pWaitSemaphores = waitSemaphores.data();
+        submitInfo.pWaitDstStageMask = pipelineStages.data();
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &cmdBuffer;
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = &cullingSemaphores.at(currentImage);
+
+        cullingFences.at(currentImage).push_back(std::make_shared<QueueReturn>(std::move(commandsPtr->submitQueue(submitInfo, COMPUTE, false))));
+    }
+
     void RenderPass::composeAttachments(const VkCommandBuffer &cmdBuffer)
     {
 
     }
 
-    void RenderPass::drawIndexed(const DrawBufferObject& objectData, const VkCommandBuffer& cmdBuffer)
-    {
-        VkDeviceSize offset[1] = {0};
-
-        //update push constants
-        std::vector<glm::mat4> pushData(1);
-        pushData[0] = *(objectData.modelMatrix);
-
-        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &objectData.mesh->getVertexBuffer().getBuffer(), offset);
-        vkCmdBindIndexBuffer(cmdBuffer, objectData.mesh->getIndexBuffer().getBuffer(), 0, VK_INDEX_TYPE_UINT32);
-        vkCmdDrawIndexed(cmdBuffer, objectData.mesh->getIndexBuffer().getLength(), 1, 0, 0, 0);
-    }
-
     void RenderPass::drawIndexedIndirect(const VkCommandBuffer& cmdBuffer, IndirectDrawBuffer* drawBuffer)
     {
-        std::vector<QueueReturn> pushFences = std::move(drawBuffer->draw(cmdBuffer, currentImage));
-        for(int i = 0; i < pushFences.size(); i++)
-        {
-            preRenderFences.at(currentImage).push_back(std::make_shared<QueueReturn>(std::move(pushFences[i])));
-        }
+        drawBuffer->draw(cmdBuffer, currentImage);
     }
 
     void RenderPass::bindMaterial(Material const* material, const VkCommandBuffer &cmdBuffer)
     {
-        material->bindPipeline(cmdBuffer, *globalUBOs.at(currentImage), uniformDatas.at(currentImage), currentImage);
+        material->bindPipeline(cmdBuffer, globalUniformData, currentImage);
     }
 
     void RenderPass::bindMaterialInstance(MaterialInstance const* materialInstance, const VkCommandBuffer& cmdBuffer)
@@ -350,23 +460,18 @@ namespace Renderer
         vkEndCommandBuffer(cmdBuffer);
 
         //submit rendering to GPU
+        std::vector<VkSemaphore> waitSemaphores;
         std::vector<VkPipelineStageFlags> pipelineStages = {
+            VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
         };
-
-        std::vector<VkSemaphore> waitSemaphores;
-        
+        waitSemaphores.push_back(cullingSemaphores.at(currentImage));
         waitSemaphores.push_back(imageSemaphores.at(currentImage));
-        if(preRenderFences.size())
+
+        for(VkSemaphore semaphore : lightBufferCopySemaphores)
         {
-            for(auto fence = preRenderFences.at(currentImage).begin(); fence != preRenderFences.at(currentImage).end(); fence++)
-            {
-                for(VkSemaphore& semaphore : fence->get()->getSemaphores())
-                {
-                    waitSemaphores.push_back(semaphore);
-                    pipelineStages.push_back(VK_PIPELINE_STAGE_TRANSFER_BIT);
-                }
-            }
+            pipelineStages.push_back(VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT); //lighting information calculated in fragment shader
+            waitSemaphores.push_back(semaphore);
         }
         
         VkSemaphore graphicsSemapore = commandsPtr->getSemaphore();
@@ -375,7 +480,7 @@ namespace Renderer
         queueSubmitInfo.pNext = NULL;
         queueSubmitInfo.waitSemaphoreCount = waitSemaphores.size();
         queueSubmitInfo.pWaitSemaphores = waitSemaphores.data();
-        queueSubmitInfo.pWaitDstStageMask = pipelineStages.data(); //only one semaphore, one stage
+        queueSubmitInfo.pWaitDstStageMask = pipelineStages.data();
         queueSubmitInfo.commandBufferCount = 1;
         queueSubmitInfo.pCommandBuffers = &cmdBuffer;
         queueSubmitInfo.signalSemaphoreCount = 1;

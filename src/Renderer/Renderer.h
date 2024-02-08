@@ -31,8 +31,9 @@ namespace Renderer
     {
         RenderObjectReference objRefs;
         glm::mat4 modelMatrix = glm::mat4(1.0f);
+        glm::vec3 position = glm::vec3(0.0f);
         Model const* modelPtr = NULL; //TODO default model
-        std::vector<MaterialInstance const*> materials;
+        std::unordered_map<uint32_t, MaterialInstance const*> materials;
     };
 
     class RenderEngine
@@ -48,6 +49,8 @@ namespace Renderer
         RenderPass rendering;
 
         //render tree stores all pipelines, their child materials, with their child RenderObject pointers
+        LightingInformation lightingInfo;
+
         std::unordered_map<Material*, MaterialNode> renderTree;
 
         std::unordered_map<std::string, std::shared_ptr<Model>> models;
@@ -67,11 +70,17 @@ namespace Renderer
         RenderEngine(RendererCreationStruct creationInfo);
         ~RenderEngine();
 
-        //Add an object to the render tree with its corresponding material and pipeline. Returns iterator to tree location which is also used for removing
+        //add/remove objects to render tree
         void addObject(ModelInstance& object);
-
-        //remove an object from the render tree based on a ptr to a tree leaf
         void removeObject(ModelInstance& object);
+
+        //add point lights, returns list reference which is necessary for removal
+        void addPointLight(PointLightObject& light);
+        void setDirectLight(const DirectLight& light) { lightingInfo.directLight = &light; }
+        void setAmbientLight(const AmbientLight& light) { lightingInfo.ambientLight = &light; }
+
+        //remove point light using a previously aquired reference TODO make the light contain the reference
+        void removePointLight(PointLightObject& light);
 
         //overwrite camera pointer used for rendering
         void setCamera(Camera* camera);

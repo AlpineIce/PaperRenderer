@@ -1,0 +1,91 @@
+#version 460
+
+#extension GL_EXT_scalar_block_layout : require
+
+//TODO gl_InstanceIndex instanced stuff
+
+layout (local_size_x = 256) in;
+
+
+//----------INPUT DATA----------//
+
+layout(set = 0, binding = 0) buffer DrawCounts
+{
+    uint counts[];
+} drawCounts;
+
+struct ObjectData
+{
+    mat4 matrix;
+    vec4 position; //w component holds sphere extent
+};
+
+struct DrawCommand //24 bytes
+{
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    int vertexOffset;
+    uint firstInstance;
+    float padding;
+};
+
+struct BufferStride
+{
+    ObjectData inputObject;
+    mat4 outputTransform;
+    DrawCommand inputCommand;
+    DrawCommand outputCommand;
+};
+
+layout(std430, set = 1, binding = 0) uniform InputData 
+{
+    mat4 projection;
+    mat4 view;
+    vec4 frustum; //(left, right, top, bottom)
+    vec2 zPlanes; //(near, far)
+    uint matrixCount;
+    uint drawCountIndex;
+} inputData;
+
+layout(std430, set = 1, binding = 1) buffer Buffers
+{
+    BufferStride data[];
+} dataBuffer;
+
+//----------FUNCTIONS----------//
+
+bool isInBounds(ObjectData object)
+{
+    //grab sphere cull data from the object buffer
+	vec4 sphereBounds = object.position;
+
+	vec3 center = sphereBounds.xyz;
+	center = (inputData.view * vec4(center,1.0)).xyz;
+	float radius = 0.0;//sphereBounds.w;
+
+	bool visible = true;
+
+	//frustrum culling
+	visible = visible && center.z * inputData.frustum.y - abs(center.x) * inputData.frustum.x > -radius;
+	visible = visible && center.z * inputData.frustum.w - abs(center.y) * inputData.frustum.z > -radius;
+    //visible = visible && center.z + radius > inputData.zPlanes.x && center.z - radius < inputData.zPlanes.y;
+
+	return visible;
+}
+
+void main()
+{
+    uint gID = gl_GlobalInvocationID.x;
+    if(gID >= inputData.matrixCount)
+    {
+        return;
+    }
+    else if(isInBounds(dataBuffer.data[gID].inputObject))
+    {
+        //add one into the draw count buffer at location of drawCountIndex, assign the pre-addition value into writeIndex, which will be the index into OutputObjects
+        uint writeIndex = atomicAdd(drawCounts.counts[inputData.drawCountIndex], 1);
+        dataBuffer.data[gID].outputTransform = inputData.projection * inputData.view * dataBuffer.data[gID].inputObject.matrix;
+        dataBuffer.data[writeIndex].outputCommand = dataBuffer.data[gID].inputCommand;
+    }
+}

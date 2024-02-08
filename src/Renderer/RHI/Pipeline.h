@@ -13,64 +13,6 @@ namespace Renderer
         VEC3VEC3VEC2 = 0
     };
 
-    enum PipelineType
-    {
-        UNDEFINED = 0,
-        PBR = 1,
-        TexturelessPBR = 2,
-        PathTracing = 3
-
-    };
-
-    struct CameraData
-    {
-        glm::mat4 view;
-        glm::mat4 projection;
-    };
-
-    struct AmbientLight
-    {
-        glm::vec4 color = glm::vec4(1.0f);
-    };
-    
-    struct DirectLight
-    {
-        glm::vec4 direction = glm::vec4(0.0f, -1.0f, 0.0f, 0.0f);
-        glm::vec4 color = glm::vec4(1.0f);
-        //float softness = 0.0f;
-    };
-
-    struct PointLight
-    {
-        glm::vec4 position = glm::vec4(0.0f);
-        glm::vec4 color = glm::vec4(1.0f);
-        //float radius = 0.0f;
-    };
-
-    struct LightInfo
-    {
-        glm::vec4 camPos;
-        AmbientLight ambient;
-        DirectLight sun;
-        PointLight pointLights[MAX_POINT_LIGHTS];
-    };
-
-    struct GlobalDescriptor
-    {
-        CameraData cameraData;
-        LightInfo lightInfo;
-    };
-
-    struct PBRpipelineUniforms
-    {
-        glm::vec4 bruh;
-    };
-
-    struct TexturelessPBRpipelineUniforms
-    {
-        glm::vec4 inColors[TEXTURE_ARRAY_SIZE] = {glm::vec4(0.0f)};
-    };
-
     //----------SHADER DECLARATIONS----------//
 
     class Shader
@@ -117,7 +59,6 @@ namespace Renderer
         std::vector<VkDescriptorSetLayout> setLayouts;
         VkDescriptorSetLayout const* globalDescriptorLayoutPtr;
         VkPipelineLayout pipelineLayout;
-        PipelineType pipelineType;
 
         Device* devicePtr;
         DescriptorAllocator* descriptorsPtr;
@@ -127,10 +68,9 @@ namespace Renderer
         virtual ~Pipeline();
         
         VkPipeline getPipeline() const { return pipeline; }
-        std::vector<VkDescriptorSetLayout> getDescriptorSetLayouts() const { return setLayouts; }
+        const std::vector<VkDescriptorSetLayout>& getDescriptorSetLayouts() const { return setLayouts; }
         VkDescriptorSetLayout const* getGlobalDescriptorLayoutPtr() const { return globalDescriptorLayoutPtr; }
         VkPipelineLayout getLayout() const { return pipelineLayout; }
-        PipelineType getPipelineType() const { return pipelineType; }
     };
 
     class ComputePipeline : public Pipeline

@@ -95,8 +95,6 @@ namespace Renderer
 
     ComputePipeline::~ComputePipeline()
     {
-        vkDestroyPipeline(devicePtr->getDevice(), pipeline, nullptr);
-        vkDestroyPipelineLayout(devicePtr->getDevice(), pipelineLayout, nullptr);
     }
 
     //----------PIPELINE DEFINITIONS---------//
@@ -115,10 +113,14 @@ namespace Renderer
     {
         for(VkDescriptorSetLayout set : setLayouts)
         {
-            if(set == *globalDescriptorLayoutPtr)
+            if(globalDescriptorLayoutPtr != NULL)
             {
-                continue;
+                if(set == *globalDescriptorLayoutPtr)
+                {
+                    continue;
+                }
             }
+            
             vkDestroyDescriptorSetLayout(devicePtr->getDevice(), set, nullptr);
         }
         vkDestroyPipeline(devicePtr->getDevice(), pipeline, nullptr);
@@ -455,20 +457,41 @@ namespace Renderer
         vkCreatePipelineCache(device->getDevice(), &creationInfo, nullptr, &cache);
 
         //global descriptor set
-        VkDescriptorSetLayoutBinding uniformDescriptor = {};
-        uniformDescriptor.binding = 0;
-        uniformDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        uniformDescriptor.descriptorCount = 1;
-        uniformDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        uniformDescriptor.pImmutableSamplers = NULL;
+        std::vector<VkDescriptorSetLayoutBinding> uniformBindings;
+        //camera data
+        VkDescriptorSetLayoutBinding cameraDescriptor = {};
+        cameraDescriptor.binding = 0;
+        cameraDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        cameraDescriptor.descriptorCount = 1;
+        cameraDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        cameraDescriptor.pImmutableSamplers = NULL;
+        uniformBindings.push_back(cameraDescriptor);
+
+        //point lights
+        VkDescriptorSetLayoutBinding pointLightDescriptor = {};
+        pointLightDescriptor.binding = 1;
+        pointLightDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        pointLightDescriptor.descriptorCount = 1;
+        pointLightDescriptor.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        pointLightDescriptor.pImmutableSamplers = NULL;
+        uniformBindings.push_back(pointLightDescriptor);
+
+        //lighting information
+        VkDescriptorSetLayoutBinding lightingDescriptor = {};
+        lightingDescriptor.binding = 2;
+        lightingDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        lightingDescriptor.descriptorCount = 1;
+        lightingDescriptor.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        lightingDescriptor.pImmutableSamplers = NULL;
+        uniformBindings.push_back(lightingDescriptor);
         
         //descriptor info
         VkDescriptorSetLayoutCreateInfo descriptorInfo = {};
         descriptorInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         descriptorInfo.pNext = NULL;
         descriptorInfo.flags = 0;
-        descriptorInfo.bindingCount = 1;
-        descriptorInfo.pBindings = &uniformDescriptor;
+        descriptorInfo.bindingCount = uniformBindings.size();
+        descriptorInfo.pBindings = uniformBindings.data();
 
         VkResult result = vkCreateDescriptorSetLayout(device->getDevice(), &descriptorInfo, nullptr, &globalDescriptorLayout);
         if(result != VK_SUCCESS)

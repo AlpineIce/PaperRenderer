@@ -25,6 +25,13 @@ namespace Renderer
         std::unordered_map<MaterialInstance const*, MaterialInstanceNode> instances;
     };
 
+    struct LightingInformation
+    {
+        std::list<PointLight const*> pointLights;
+        DirectLight const* directLight = NULL; //this could be easily expaned to support multiple direct lights, but isnt needed
+        AmbientLight const* ambientLight = NULL;
+    };
+
     struct ImageAttachment
     {
         VkImage image;
@@ -40,42 +47,61 @@ namespace Renderer
     class RenderPass
     {
     private:
+        std::vector<VkSemaphore> lightBufferCopySemaphores;
+        std::vector<VkSemaphore> cullingSemaphores;
         std::vector<VkSemaphore> imageSemaphores;
-        std::vector<std::list<std::shared_ptr<QueueReturn>>> preRenderFences;
+        std::vector<std::list<std::shared_ptr<QueueReturn>>> cullingFences;
         std::vector<std::list<std::shared_ptr<QueueReturn>>> renderFences;
-        std::vector<std::shared_ptr<UniformBuffer>> globalUBOs;
-        std::vector<GlobalDescriptor> uniformDatas;
+        std::vector<std::shared_ptr<UniformBuffer>> globalInfoBuffers;
+        std::vector<std::shared_ptr<StorageBuffer>> pointLightsBuffers;
+        std::vector<std::shared_ptr<UniformBuffer>> lightingInfoBuffers;
+        std::vector<CameraData> globalBufferDatas;
+        GlobalUniforms globalUniformData; //only need one per frame
+
+        std::shared_ptr<ComputePipeline> meshPreprocessPipeline;
+
         ImageAttachments renderTargets;
         uint32_t currentImage;
         bool recreateFlag = false;
+        const uint32_t MAX_POINT_LIGHTS = 1024; //id rather not do a new allocation for every addition like for objects
 
         Swapchain* swapchainPtr;
         Device* devicePtr;
         CmdBufferAllocator* commandsPtr;
-        Pipeline const* pipeline = NULL; //changes per frame
         DescriptorAllocator* descriptorsPtr;
+        PipelineBuilder* pipelineBuilderPtr;
         Camera* cameraPtr = NULL;
         
         void checkSwapchain(VkResult imageResult);
+        glm::vec4 normalizePlane(glm::vec4 plane);
         ImageAttachment createImageAttachment(VkFormat imageFormat);
 
     public:
-        RenderPass(Swapchain* swapchain, Device* device, CmdBufferAllocator* commands, DescriptorAllocator* descriptors);
+        RenderPass(Swapchain* swapchain, Device* device, CmdBufferAllocator* commands, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder);
         ~RenderPass();
 
         //set camera
         void setCamera(Camera* camera) { this->cameraPtr = camera; }
 
         //start new frame
-        VkCommandBuffer startNewFrame();
+        VkCommandBuffer preProcessing(const LightingInformation& lightingInfo);
+
+        //creates a frustum from current view matrix
+        CullingFrustum createCullingFrustum();
+
+        //cull draw calls
+        void drawCallCull(const VkCommandBuffer& cmdBuffer, const CullingFrustum& frustumData, IndirectDrawBuffer* drawBuffer);
+
+        //submit culling commands
+        void submitCulling(const VkCommandBuffer& cmdBuffer);
+
+        //begin rendering
+        VkCommandBuffer beginRendering();
 
         void composeAttachments(const VkCommandBuffer& cmdBuffer);
 
         //end frame
         void incrementFrameCounter(const VkCommandBuffer& cmdBuffer);
-        
-        //index render triangles on previously bound pipeline with specific material parameters
-        void drawIndexed(const DrawBufferObject& objectData, const VkCommandBuffer& cmdBuffer);
         
         //indirect indexed rendering
         void drawIndexedIndirect(const VkCommandBuffer& cmdBuffer, IndirectDrawBuffer* drawBuffer);

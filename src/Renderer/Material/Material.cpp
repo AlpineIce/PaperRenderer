@@ -37,24 +37,49 @@ namespace Renderer
         };
     }
 
-    void Material::bindPipeline(const VkCommandBuffer &cmdBuffer, UniformBuffer &globalUBO, const GlobalDescriptor &globalData, uint32_t currentImage) const
+    void Material::bindPipeline(const VkCommandBuffer &cmdBuffer, GlobalUniforms& uniforms, uint32_t currentImage) const
     {
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
 
-        //update global uniform
-        globalUBO.updateUniformBuffer(&globalData, sizeof(globalData));
-
         VkDescriptorSet globalDescriptorSet = rendererInfo.descriptorsPtr->allocateDescriptorSet(*rasterPipeline->getGlobalDescriptorLayoutPtr(), currentImage);
-        rendererInfo.descriptorsPtr->writeUniform(globalUBO.getBuffer(), sizeof(globalData), 0, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, globalDescriptorSet);
+
+        //global data
+        rendererInfo.descriptorsPtr->writeUniform(
+            uniforms.globalUBO->getBuffer(),
+            sizeof(CameraData),
+            0,
+            0,
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            globalDescriptorSet);
+
+        //point light data
+        rendererInfo.descriptorsPtr->writeUniform(
+            uniforms.pointLightsBuffer->getBuffer(),
+            sizeof(PointLight) * uniforms.maxPointLights,
+            0,
+            1,
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            globalDescriptorSet);
+
+        //lighting data
+        rendererInfo.descriptorsPtr->writeUniform(
+            uniforms.lightingInfoBuffer->getBuffer(),
+            sizeof(ShaderLightingInformation),
+            0,
+            2,
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            globalDescriptorSet);
 
         vkCmdBindDescriptorSets(cmdBuffer,
             VK_PIPELINE_BIND_POINT_GRAPHICS,
             rasterPipeline->getLayout(),
-            0, //material bind point
+            0, //pipeline bind point
             1,
             &globalDescriptorSet,
             0,
             0);
+
+        
     }
 
     void Material::updateUniforms(void const* uniforms, VkDeviceSize uniformsSize, const std::vector<Renderer::Texture const*>& textures, const VkCommandBuffer &cmdBuffer, uint32_t currentImage) const

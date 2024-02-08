@@ -1,6 +1,8 @@
 #pragma once
 #include "Renderer/RHI/Device.h"
 #include "Renderer/RHI/Pipeline.h"
+#include "Renderer/Light.h"
+#include "Renderer/Camera.h"
 
 #include <memory>
 
@@ -13,6 +15,15 @@ namespace Renderer
         CmdBufferAllocator* commandsPtr;
         DescriptorAllocator* descriptorsPtr;
         PipelineBuilder* pipelineBuilderPtr;
+    };
+
+    struct GlobalUniforms
+    {
+        UniformBuffer* globalUBO;
+        StorageBuffer* pointLightsBuffer;
+        UniformBuffer* lightingInfoBuffer;
+        uint32_t maxPointLights;
+        glm::vec3 camPos;
     };
 
     //material base
@@ -37,7 +48,7 @@ namespace Renderer
             float gamma;
         };
 
-        void bindPipeline(const VkCommandBuffer& cmdBuffer, UniformBuffer& globalUBO, const GlobalDescriptor& globalData, uint32_t currentImage) const;
+        void bindPipeline(const VkCommandBuffer& cmdBuffer, GlobalUniforms& uniforms, uint32_t currentImage) const;
         virtual void updateUniforms(void const* uniforms, VkDeviceSize uniformsSize, const std::vector<Renderer::Texture const*>& textures, const VkCommandBuffer& cmdBuffer, uint32_t currentImage) const;
         static void initRendererInfo(Device* device, CmdBufferAllocator* commands, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder);
 

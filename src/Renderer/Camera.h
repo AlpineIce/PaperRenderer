@@ -6,6 +6,13 @@
 
 namespace Renderer
 {
+    //struct for uniform buffer
+    struct CameraData
+    {
+        glm::mat4 view;
+        glm::mat4 projection;
+    };
+
     struct CameraTranslation
     {
         float pitch = 0.0f;
@@ -54,6 +61,8 @@ namespace Renderer
         
         const glm::mat4& getViewMatrix() const { return view; }
         const glm::mat4& getProjection() const { return projection; }
+        const float getClipNear() const { return clipNear; }
+        const float getClipFar() const { return clipFar; }
 
         CameraTranslation getTranslation() const { return translation; }
     };

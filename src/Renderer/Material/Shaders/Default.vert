@@ -1,5 +1,7 @@
 #version 460
 
+#extension GL_EXT_scalar_block_layout : require
+
 layout(location = 0) in vec3 vertexPosition;
 layout(location = 1) in vec3 vertexNormal;
 layout(location = 2) in vec2 vertexTexCoord;
@@ -8,22 +10,17 @@ layout(location = 0) out vec3 worldPosition;
 layout(location = 1) out vec3 normal;
 layout(location = 2) out vec2 texCoord;
 
-struct CameraData
-{
-    mat4 view;
-    mat4 projection;
-};
-layout(set = 0, binding = 0) uniform GlobalUniform
-{
-    CameraData camera;
-} GU;
-
 struct ObjectData
 {
     mat4 model;
+    vec4 position;
+    mat4 objectTransform;
+    vec4 PADDING3;
+    vec4 PADDING4;
+    vec4 PADDING5;
 };
 
-layout(std140, set = 2, binding = 0) readonly buffer ObjectBuffer
+layout(std430, set = 2, binding = 0) readonly buffer ObjectBuffer
 {
     ObjectData data[];
 } objBuffer;
@@ -35,5 +32,5 @@ void main()
     
     worldPosition = vec3(objBuffer.data[gl_BaseInstance].model * vec4(vertexPosition, 1.0)).xyz;
 
-    gl_Position = GU.camera.projection * GU.camera.view * objBuffer.data[gl_BaseInstance].model *  vec4(vertexPosition, 1.0);
+    gl_Position = objBuffer.data[gl_BaseInstance].objectTransform *  vec4(vertexPosition, 1.0);
 }
