@@ -20,7 +20,6 @@ namespace Renderer
     struct GlobalUniforms
     {
         UniformBuffer* globalUBO;
-        StorageBuffer* pointLightsBuffer;
         UniformBuffer* lightingInfoBuffer;
         uint32_t maxPointLights;
         glm::vec3 camPos;
@@ -48,7 +47,7 @@ namespace Renderer
             float gamma;
         };
 
-        void bindPipeline(const VkCommandBuffer& cmdBuffer, GlobalUniforms& uniforms, uint32_t currentImage) const;
+        void bindPipeline(const VkCommandBuffer &cmdBuffer, const StorageBuffer& lightingBuffer, uint32_t lightingBufferOffset, uint32_t lightCount, const UniformBuffer& lightingData, uint32_t currentImage) const;
         virtual void updateUniforms(void const* uniforms, VkDeviceSize uniformsSize, const std::vector<Renderer::Texture const*>& textures, const VkCommandBuffer& cmdBuffer, uint32_t currentImage) const;
         static void initRendererInfo(Device* device, CmdBufferAllocator* commands, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder);
 

@@ -24,6 +24,12 @@ namespace Renderer
         int width, height, channels = 0;
     };
 
+    struct SemaphorePair
+    {
+        VkSemaphore semaphore;
+        VkPipelineStageFlagBits2 stage;
+    };
+
     //----------BUFFER DECLARATIONS----------//
 
     class Buffer
@@ -37,15 +43,16 @@ namespace Renderer
         Device* devicePtr;
         CmdBufferAllocator* commandsPtr;
 
-        QueueReturn copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size, bool useFence);
+        void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence);
     public:
         Buffer(Device* device, CmdBufferAllocator* commands, VkDeviceSize size);
         virtual ~Buffer();
 
         void createBuffer(VkBufferUsageFlags usage, VmaMemoryUsage memUsage, VmaAllocationCreateFlags memFlag);
-        QueueReturn copyFromBuffer(Buffer& src, bool useFence);
+        void copyFromBuffer(Buffer& src, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence);
 
         const VkBuffer& getBuffer() const { return buffer; }
+        VkDeviceSize getAllocatedSize() const { return size; }
         VkDeviceAddress getBufferDeviceAddress() const;
     };
 
@@ -67,6 +74,7 @@ namespace Renderer
     class VertexBuffer : public Buffer
     {
     private:
+        VkSemaphore creationSemaphore;
         uint32_t verticesLength;
 
         void createVertexBuffer();
@@ -83,6 +91,7 @@ namespace Renderer
     class IndexBuffer : public Buffer
     {
     private:
+        VkSemaphore creationSemaphore;
         uint32_t indicesLength;
 
         void createIndexBuffer();
@@ -135,10 +144,10 @@ namespace Renderer
         Device* devicePtr;
         CmdBufferAllocator* commandsPtr;
 
-        void copyBufferToImage(VkBuffer src, VkImage dst, Image* imageData);
-        void changeImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout); //mostly from vulkan tutorial
+        VkSemaphore changeImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout); //mostly from vulkan tutorial
+        VkSemaphore copyBufferToImage(VkBuffer src, VkImage dst, Image* imageData, const VkSemaphore& waitSemaphore);
         void createTexture(Image* imageData);
-        void generateMipmaps(Image* imageData);
+        void generateMipmaps(Image* imageData, const VkSemaphore& waitSemaphore);
         void createTextureView();
         void createSampler();
         //monster function
@@ -187,7 +196,7 @@ namespace Renderer
         StorageBuffer(Device *device, CmdBufferAllocator *commands, VkDeviceSize size);
         ~StorageBuffer() override;
 
-        QueueReturn setDataFromStaging(const StagingBuffer& stagingBuffer, VkDeviceSize size);
+        void setDataFromStaging(const StagingBuffer& stagingBuffer, VkDeviceSize size, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence);
         const VkBuffer& getBuffer() const { return buffer; }
     };
 }

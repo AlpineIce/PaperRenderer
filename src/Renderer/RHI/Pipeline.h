@@ -40,8 +40,7 @@ namespace Renderer
         DescriptorAllocator* descriptors;
         VkPipelineCache cache;
         std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
-        std::vector<VkDescriptorSetLayout> setLayouts;
-        VkDescriptorSetLayout const* globalDescriptorLayoutPtr;
+        std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
         VkPipelineLayout pipelineLayout;
     };
 
@@ -56,8 +55,7 @@ namespace Renderer
     protected:
         std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
         VkPipeline pipeline;
-        std::vector<VkDescriptorSetLayout> setLayouts;
-        VkDescriptorSetLayout const* globalDescriptorLayoutPtr;
+        std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
         VkPipelineLayout pipelineLayout;
 
         Device* devicePtr;
@@ -68,8 +66,7 @@ namespace Renderer
         virtual ~Pipeline();
         
         VkPipeline getPipeline() const { return pipeline; }
-        const std::vector<VkDescriptorSetLayout>& getDescriptorSetLayouts() const { return setLayouts; }
-        VkDescriptorSetLayout const* getGlobalDescriptorLayoutPtr() const { return globalDescriptorLayoutPtr; }
+        const std::unordered_map<uint32_t, VkDescriptorSetLayout>& getDescriptorSetLayouts() const { return setLayouts; }
         VkPipelineLayout getLayout() const { return pipelineLayout; }
     };
 
@@ -120,31 +117,28 @@ namespace Renderer
 
     struct DescriptorSet
     {
-        std::vector<VkDescriptorSetLayoutBinding> descriptorBindings;
+        uint32_t setNumber;
+        std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> descriptorBindings;
     };
 
     struct PipelineBuildInfo
     {
         std::vector<ShaderPair> shaderInfo;
-        //IMPORTANT descriptor sets must be in order of set binding in this vector
-        bool useGlobalDescriptor = true;
-        std::vector<DescriptorSet> descriptors;
+        std::unordered_map<uint32_t, DescriptorSet> descriptors;
     };
 
     class PipelineBuilder
     {
     private:
+        VkPipelineCache cache;
+
         Device* devicePtr;
         DescriptorAllocator* descriptorsPtr;
         Swapchain* swapchainPtr;
 
-        VkPipelineCache cache;
-        VkDescriptorSetLayout globalDescriptorLayout;
-        VkPipelineLayout globalPipelineLayout;
-
         std::shared_ptr<Shader> createShader(const ShaderPair& pair) const;
-        std::vector<VkDescriptorSetLayout> createDescriptorLayouts(const std::vector<DescriptorSet>& descriptorSets) const;
-        VkPipelineLayout createPipelineLayout(const std::vector<VkDescriptorSetLayout>& setLayouts) const;
+        std::unordered_map<uint32_t, VkDescriptorSetLayout> createDescriptorLayouts(const std::unordered_map<uint32_t, DescriptorSet>& descriptorSets) const;
+        VkPipelineLayout createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts) const;
         PipelineCreationInfo initPipelineInfo(PipelineBuildInfo info) const;
         RTPipelineInfo initRTinfo() const;
 
@@ -155,7 +149,5 @@ namespace Renderer
         std::shared_ptr<ComputePipeline> buildComputePipeline(const PipelineBuildInfo& info) const;
         std::shared_ptr<RasterPipeline> buildRasterPipeline(const PipelineBuildInfo& info) const;
         std::shared_ptr<RTPipeline> buildRTPipeline(const PipelineBuildInfo& info) const;
-
-        VkDescriptorSetLayout getGlobalDescriptorLayout() const { return globalDescriptorLayout; }
     };
 }

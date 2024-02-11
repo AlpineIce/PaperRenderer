@@ -39,12 +39,19 @@ namespace Renderer
         VkResult result = vmaCreateBuffer(devicePtr->getAllocator(), &bufferInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
     }
 
-    QueueReturn Buffer::copyFromBuffer(Buffer &src, bool useFence)
+    void Buffer::copyFromBuffer(Buffer &src, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence)
     {
-        return copyBuffer(src.getBuffer(), this->buffer, this->size, useFence);
+        if(this->size <= src.getAllocatedSize())
+        {
+            copyBuffer(src.getBuffer(), this->buffer, this->size, waitPairs, signalPairs, fence);
+        }
+        else
+        {
+            copyBuffer(src.getBuffer(), this->buffer, src.getAllocatedSize(), waitPairs, signalPairs, fence);
+        }
     }
 
-    QueueReturn Buffer::copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size, bool useFence)
+    void Buffer::copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence)
     {
         VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffer(CmdPoolType::TRANSFER); //note theres only 1 transfer cmd buffer
 
@@ -64,22 +71,50 @@ namespace Renderer
 
         vkEndCommandBuffer(transferBuffer);
 
-        VkSemaphore semaphore;
-        VkSemaphoreCreateInfo semaphoreInfo;
-        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-        semaphoreInfo.pNext = NULL;
-        semaphoreInfo.flags = 0;
+        VkCommandBufferSubmitInfo cmdBufferSubmitInfo = {};
+        cmdBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        cmdBufferSubmitInfo.pNext = NULL;
+        cmdBufferSubmitInfo.commandBuffer = transferBuffer;
+        cmdBufferSubmitInfo.deviceMask = 0;
 
-        vkCreateSemaphore(devicePtr->getDevice(), &semaphoreInfo, nullptr, &semaphore);
+        std::vector<VkSemaphoreSubmitInfo> semaphoreWaitInfos;
+        for(const SemaphorePair& pair : waitPairs)
+        {
+            VkSemaphoreSubmitInfo semaphoreInfo = {};
+            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+            semaphoreInfo.pNext = NULL;
+            semaphoreInfo.semaphore = pair.semaphore;
+            semaphoreInfo.stageMask = pair.stage;
+            semaphoreInfo.deviceIndex = 0;
 
-        VkSubmitInfo submitInfo = {};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &transferBuffer;
-        submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores = &semaphore;
+            semaphoreWaitInfos.push_back(semaphoreInfo);
+        }
 
-        return commandsPtr->submitQueue(submitInfo, CmdPoolType::TRANSFER, useFence);
+        std::vector<VkSemaphoreSubmitInfo> semaphoreSignalInfos;
+        for(const SemaphorePair& pair : signalPairs)
+        {
+            VkSemaphoreSubmitInfo semaphoreInfo = {};
+            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+            semaphoreInfo.pNext = NULL;
+            semaphoreInfo.semaphore = pair.semaphore;
+            semaphoreInfo.stageMask = pair.stage;
+            semaphoreInfo.deviceIndex = 0;
+
+            semaphoreSignalInfos.push_back(semaphoreInfo);
+        }
+        
+        VkSubmitInfo2 submitInfo = {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        submitInfo.pNext = NULL;
+        submitInfo.flags = 0;
+        submitInfo.waitSemaphoreInfoCount = semaphoreWaitInfos.size();
+        submitInfo.pWaitSemaphoreInfos = semaphoreWaitInfos.data();
+        submitInfo.commandBufferInfoCount = 1;
+        submitInfo.pCommandBufferInfos = &cmdBufferSubmitInfo;
+        submitInfo.signalSemaphoreInfoCount = semaphoreSignalInfos.size();
+        submitInfo.pSignalSemaphoreInfos = semaphoreSignalInfos.data();
+
+        vkQueueSubmit2(devicePtr->getQueues().transfer.at(0), 1, &submitInfo, fence);
     }
 
     VkDeviceAddress Buffer::getBufferDeviceAddress() const
@@ -136,11 +171,19 @@ namespace Renderer
         stagingBuffer.mapData(vertices->data(), 0, this->size);
 
         createVertexBuffer();
-        copyBuffer(stagingBuffer.getBuffer(), this->buffer, this->size, true);
+        creationSemaphore = commandsPtr->getSemaphore();
+
+        SemaphorePair pair = {
+            .semaphore = creationSemaphore,
+            .stage = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT
+        };
+        std::vector<SemaphorePair> pairs = { pair };
+        copyBuffer(stagingBuffer.getBuffer(), this->buffer, this->size, std::vector<SemaphorePair>(), pairs, VK_NULL_HANDLE);
     }
 
     VertexBuffer::~VertexBuffer()
     {
+        vkDestroySemaphore(devicePtr->getDevice(), creationSemaphore, nullptr);
     }
 
     void VertexBuffer::createVertexBuffer()
@@ -173,11 +216,18 @@ namespace Renderer
         stagingBuffer.mapData(indices->data(), 0, this->size);
 
         createIndexBuffer();
-        copyBuffer(stagingBuffer.getBuffer(), this->buffer, this->size, true);
+        creationSemaphore = commandsPtr->getSemaphore();
+        SemaphorePair pair = {
+            .semaphore = creationSemaphore,
+            .stage = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT
+        };
+        std::vector<SemaphorePair> pairs = { pair };
+        copyBuffer(stagingBuffer.getBuffer(), this->buffer, this->size, std::vector<SemaphorePair>(), pairs, VK_NULL_HANDLE);
     }
 
     IndexBuffer::~IndexBuffer()
     {
+        vkDestroySemaphore(devicePtr->getDevice(), creationSemaphore, nullptr);
     }
 
     void IndexBuffer::createIndexBuffer()
@@ -212,10 +262,12 @@ namespace Renderer
 
         createTexture(imageData);
 
-        changeImageLayout(texture, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-        copyBufferToImage(stagingBuffer.getBuffer(), texture, imageData);
+        VkSemaphore layoutChangeSemaphore = changeImageLayout(texture, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        VkSemaphore copySemaphore = copyBufferToImage(stagingBuffer.getBuffer(), texture, imageData, layoutChangeSemaphore);
         
-        generateMipmaps(imageData);
+        generateMipmaps(imageData, copySemaphore);
+        vkDestroySemaphore(devicePtr->getDevice(), layoutChangeSemaphore, nullptr);
+        vkDestroySemaphore(devicePtr->getDevice(), copySemaphore, nullptr);
         createTextureView();
         createSampler();
     }
@@ -227,7 +279,7 @@ namespace Renderer
         vmaDestroyImage(devicePtr->getAllocator(), texture, allocation);
     }
 
-    void Texture::changeImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
+    VkSemaphore Texture::changeImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
     {
         VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffer(CmdPoolType::TRANSFER); //note theres only 1 transfer cmd buffer
 
@@ -297,15 +349,35 @@ namespace Renderer
 
         vkEndCommandBuffer(transferBuffer);
 
-        VkSubmitInfo submitInfo = {};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &transferBuffer;
+        VkCommandBufferSubmitInfo cmdBufferSubmitInfo = {};
+        cmdBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        cmdBufferSubmitInfo.pNext = NULL;
+        cmdBufferSubmitInfo.commandBuffer = transferBuffer;
+        cmdBufferSubmitInfo.deviceMask = 0;
+
+        VkSemaphore signalSemaphore = commandsPtr->getSemaphore();
+        VkSemaphoreSubmitInfo semaphoreSignalInfo = {};
+        semaphoreSignalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        semaphoreSignalInfo.pNext = NULL;
+        semaphoreSignalInfo.semaphore = signalSemaphore;
+        semaphoreSignalInfo.stageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        semaphoreSignalInfo.deviceIndex = 0;
         
-        commandsPtr->submitQueue(submitInfo, CmdPoolType::TRANSFER, true);
+        VkSubmitInfo2 submitInfo = {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        submitInfo.pNext = NULL;
+        submitInfo.flags = 0;
+        submitInfo.commandBufferInfoCount = 1;
+        submitInfo.pCommandBufferInfos = &cmdBufferSubmitInfo;
+        submitInfo.signalSemaphoreInfoCount = 1;
+        submitInfo.pSignalSemaphoreInfos = &semaphoreSignalInfo;
+
+        vkQueueSubmit2(devicePtr->getQueues().transfer.at(0), 1, &submitInfo, VK_NULL_HANDLE);
+
+        return signalSemaphore;
     }
 
-    void Texture::copyBufferToImage(VkBuffer src, VkImage dst, Image* imageData)
+    VkSemaphore Texture::copyBufferToImage(VkBuffer src, VkImage dst, Image* imageData, const VkSemaphore& waitSemaphore)
     {
         VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffer(CmdPoolType::TRANSFER);
 
@@ -339,14 +411,41 @@ namespace Renderer
 
         vkEndCommandBuffer(transferBuffer);
 
-        VkSubmitInfo submitInfo = {};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &transferBuffer;
-        submitInfo.signalSemaphoreCount = 0;
-        submitInfo.pSignalSemaphores = NULL;
+        VkSemaphoreSubmitInfo semaphoreWaitInfo = {};
+        semaphoreWaitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        semaphoreWaitInfo.pNext = NULL;
+        semaphoreWaitInfo.semaphore = waitSemaphore;
+        semaphoreWaitInfo.stageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        semaphoreWaitInfo.deviceIndex = 0;
+        
+        VkCommandBufferSubmitInfo cmdBufferSubmitInfo = {};
+        cmdBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        cmdBufferSubmitInfo.pNext = NULL;
+        cmdBufferSubmitInfo.commandBuffer = transferBuffer;
+        cmdBufferSubmitInfo.deviceMask = 0;
 
-        commandsPtr->submitQueue(submitInfo, CmdPoolType::TRANSFER, true);
+        VkSemaphore signalSemaphore = commandsPtr->getSemaphore();
+        VkSemaphoreSubmitInfo semaphoreSignalInfo = {};
+        semaphoreSignalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        semaphoreSignalInfo.pNext = NULL;
+        semaphoreSignalInfo.semaphore = signalSemaphore;
+        semaphoreSignalInfo.stageMask = VK_PIPELINE_STAGE_2_BLIT_BIT;
+        semaphoreSignalInfo.deviceIndex = 0;
+        
+        VkSubmitInfo2 submitInfo = {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        submitInfo.pNext = NULL;
+        submitInfo.flags = 0;
+        submitInfo.waitSemaphoreInfoCount = 1;
+        submitInfo.pWaitSemaphoreInfos = &semaphoreWaitInfo;
+        submitInfo.commandBufferInfoCount = 1;
+        submitInfo.pCommandBufferInfos = &cmdBufferSubmitInfo;
+        submitInfo.signalSemaphoreInfoCount = 1;
+        submitInfo.pSignalSemaphoreInfos = &semaphoreSignalInfo;
+
+        vkQueueSubmit2(devicePtr->getQueues().transfer.at(0), 1, &submitInfo, VK_NULL_HANDLE);
+
+        return signalSemaphore;
     }
     
     void Texture::createTexture(Image* imageData)
@@ -395,7 +494,7 @@ namespace Renderer
         VkResult result = vmaCreateImage(devicePtr->getAllocator(), &imageInfo, &allocCreateInfo, &texture, &allocation, &allocInfo);
     }
 
-    void Texture::generateMipmaps(Image* imageData)
+    void Texture::generateMipmaps(Image* imageData, const VkSemaphore& waitSemaphore)
     {
         VkCommandBuffer blitBuffer = commandsPtr->getCommandBuffer(CmdPoolType::GRAPHICS);
 
@@ -498,15 +597,36 @@ namespace Renderer
             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             0, mipmapLevels
         );
+        
 
         vkEndCommandBuffer(blitBuffer);
 
-        VkSubmitInfo submitInfo = {};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &blitBuffer;
+        VkSemaphoreSubmitInfo semaphoreWaitInfo = {};
+        semaphoreWaitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        semaphoreWaitInfo.pNext = NULL;
+        semaphoreWaitInfo.semaphore = waitSemaphore;
+        semaphoreWaitInfo.stageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        semaphoreWaitInfo.deviceIndex = 0;
+        
+        VkCommandBufferSubmitInfo cmdBufferSubmitInfo = {};
+        cmdBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        cmdBufferSubmitInfo.pNext = NULL;
+        cmdBufferSubmitInfo.commandBuffer = blitBuffer;
+        cmdBufferSubmitInfo.deviceMask = 0;
+        
+        VkSubmitInfo2 submitInfo = {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        submitInfo.pNext = NULL;
+        submitInfo.flags = 0;
+        submitInfo.waitSemaphoreInfoCount = 1;
+        submitInfo.pWaitSemaphoreInfos = &semaphoreWaitInfo;
+        submitInfo.commandBufferInfoCount = 1;
+        submitInfo.pCommandBufferInfos = &cmdBufferSubmitInfo;
 
-        commandsPtr->submitQueue(submitInfo, CmdPoolType::GRAPHICS, true);
+        VkFence fence = commandsPtr->getUnsignaledFence();
+        vkQueueSubmit2(devicePtr->getQueues().graphics.at(0), 1, &submitInfo, fence);
+        vkWaitForFences(devicePtr->getDevice(), 1, &fence, VK_TRUE, UINT64_MAX);
+        vkDestroyFence(devicePtr->getDevice(), fence, nullptr);
     }
 
     void Texture::createTextureView()
@@ -644,23 +764,36 @@ namespace Renderer
     {
     }
 
-    QueueReturn StorageBuffer::setDataFromStaging(const StagingBuffer &stagingBuffer, VkDeviceSize size)
+    void StorageBuffer::setDataFromStaging(const StagingBuffer &stagingBuffer, VkDeviceSize size, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence)
     {
-        return copyBuffer(stagingBuffer.getBuffer(), buffer, size, false);
+        copyBuffer(stagingBuffer.getBuffer(), buffer, size, waitPairs, signalPairs, fence);
     }
 
     void StorageBuffer::createStorageBuffer()
     {
+        std::vector<uint32_t> queueFamilies = {
+            (uint32_t)std::max(devicePtr->getQueueFamilies().graphicsFamilyIndex, 0),
+            (uint32_t)std::max(devicePtr->getQueueFamilies().computeFamilyIndex, 0)
+        };
+
         VkBufferCreateInfo bufferInfo = {};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.pNext = NULL;
         bufferInfo.flags = 0;
         bufferInfo.size = size;
-        bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
+        bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                            VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        bufferInfo.queueFamilyIndexCount = 0;
-        bufferInfo.pQueueFamilyIndices = NULL;
+        if(devicePtr->getQueueFamilies().graphicsFamilyIndex == devicePtr->getQueueFamilies().computeFamilyIndex)
+        {
+            bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            bufferInfo.queueFamilyIndexCount = 0;
+        }
+        else
+        {
+            bufferInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
+            bufferInfo.queueFamilyIndexCount = queueFamilies.size();
+            bufferInfo.pQueueFamilyIndices = queueFamilies.data();
+        }
 
         VmaAllocationCreateInfo allocCreateInfo = {};
         allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;

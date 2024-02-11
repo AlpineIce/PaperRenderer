@@ -27,6 +27,8 @@ namespace Renderer
         defaultMaterial = std::make_shared<DefaultMaterial>("resources/materials/Default_vert.spv", "resources/materials/Default_frag.spv");
 
         if(rtEnabled) initRT();
+
+        vkDeviceWaitIdle(device.getDevice());
     }
 
     RenderEngine::~RenderEngine()
@@ -127,7 +129,7 @@ namespace Renderer
                 if(!renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer)
                 {
                     renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer = 
-                        std::make_shared<IndirectDrawBuffer>(&device, &commands, &descriptors, materialInstance->parentMaterial->getRasterPipeline());
+                        std::make_shared<IndirectDrawContainer>(&device, &commands, &descriptors, materialInstance->parentMaterial->getRasterPipeline());
                 }
                 renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer->addElement(object.objRefs.at(i));
             }
@@ -166,20 +168,8 @@ namespace Renderer
     void RenderEngine::drawAllReferences()
     {
         //start command buffer and bind pipeline
-        VkCommandBuffer cullingCmdBuffer = rendering.preProcessing(lightingInfo);
-
-        //draw call culling
-        CullingFrustum cullingFrustum = rendering.createCullingFrustum();
-        for(const auto& [material, materialNode] : renderTree) //material
-        {
-            for(const auto& [materialInstance, instanceNode] : materialNode.instances) //material instances
-            {
-                rendering.drawCallCull(cullingCmdBuffer, cullingFrustum, instanceNode.objectBuffer.get());
-            }
-        }
-        rendering.submitCulling(cullingCmdBuffer);
-
-        VkCommandBuffer cmdBuffer = rendering.beginRendering();
+        rendering.preProcessing(renderTree, lightingInfo);
+        rendering.raster(renderTree);
 
         //RT pass
         /*if(rtEnabled)
@@ -216,24 +206,6 @@ namespace Renderer
             }
             rtAccelStructure.createTopLevel(accelData);
         }*/
-        
-        //raster pass
-        for(const auto& [material, materialNode] : renderTree) //material
-        {
-            rendering.bindMaterial(material, cmdBuffer);
-            
-            for(const auto& [materialInstance, instanceNode] : materialNode.instances) //material instances
-            {
-                //if(materialNode.objectBuffer->getDrawCount() == 0) continue; potential for optimization
-                
-                rendering.bindMaterialInstance(materialInstance, cmdBuffer);
-                rendering.drawIndexedIndirect(cmdBuffer, instanceNode.objectBuffer.get());
-            }
-        }
-
-        rendering.composeAttachments(cmdBuffer);
-
-        rendering.incrementFrameCounter(cmdBuffer);
         glfwPollEvents();
     }
 

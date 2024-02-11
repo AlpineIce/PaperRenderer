@@ -59,7 +59,7 @@ namespace Renderer
         std::shared_ptr<DefaultMaterial> defaultMaterial;
 
         std::string appName;
-        bool rtEnabled = true;
+        bool rtEnabled = false;
 
         Image loadImage(std::string directory);
         void loadModels(std::string modelsDir);

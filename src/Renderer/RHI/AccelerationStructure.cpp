@@ -196,13 +196,23 @@ namespace Renderer
         
         vkEndCommandBuffer(cmdBuffer);
 
-        VkSubmitInfo submitInfo = {};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        VkCommandBufferSubmitInfo cmdBufferSubmitInfo = {};
+        cmdBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        cmdBufferSubmitInfo.pNext = NULL;
+        cmdBufferSubmitInfo.commandBuffer = cmdBuffer;
+        cmdBufferSubmitInfo.deviceMask = 0;
+        
+        VkSubmitInfo2 submitInfo = {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
         submitInfo.pNext = NULL;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &cmdBuffer;
-
-        commandsPtr->submitQueue(submitInfo, CmdPoolType::COMPUTE, true);
+        submitInfo.flags = 0;
+        submitInfo.commandBufferInfoCount = 1;
+        submitInfo.pCommandBufferInfos = &cmdBufferSubmitInfo;
+        
+        VkFence waitFence = commandsPtr->getUnsignaledFence();
+        vkQueueSubmit2(devicePtr->getQueues().compute.at(0), 1, &submitInfo, waitFence);
+        vkWaitForFences(devicePtr->getDevice(), 1, &waitFence, VK_TRUE, UINT64_MAX);
+        vkDestroyFence(devicePtr->getDevice(), waitFence, nullptr);
 
         for(auto& ptr : buildRangesPtrArray)
         {
@@ -210,7 +220,7 @@ namespace Renderer
         }
     }
 
-    QueueReturn AccelerationStructure::createTopLevel(const TopAccelerationData& instancesData)
+    VkSemaphore AccelerationStructure::createTopLevel(const TopAccelerationData& instancesData, const std::vector<SemaphorePair>& waitSemaphores)
     {
         //destroy old
         vkDestroyAccelerationStructureKHR(devicePtr->getDevice(), topStructure, nullptr);
@@ -234,7 +244,14 @@ namespace Renderer
 
         Buffer instancesBuffer(devicePtr, commandsPtr, sizeof(VkAccelerationStructureInstanceKHR) * structureInstances.size());
         instancesBuffer.createBuffer(bufferUsageFlags, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-        QueueReturn queueReturnData = instancesBuffer.copyFromBuffer(instancesStaging, false);
+        VkSemaphore copySemaphore = commandsPtr->getSemaphore();
+
+        SemaphorePair signalPair = {
+            .semaphore = copySemaphore,
+            .stage = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
+        };
+        std::vector<SemaphorePair> signalPairs = { signalPair };
+        instancesBuffer.copyFromBuffer(instancesStaging, waitSemaphores, signalPairs, VK_NULL_HANDLE);
 
         //get buffer address
         VkDeviceOrHostAddressConstKHR instancesAddress;
@@ -326,26 +343,48 @@ namespace Renderer
         
         vkEndCommandBuffer(cmdBuffer);
 
-        
-        VkSemaphore signalSemaphore = commandsPtr->getSemaphore();
-        VkSubmitInfo submitInfo = {};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.pNext = NULL;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &cmdBuffer;
-        submitInfo.waitSemaphoreCount = queueReturnData.getSemaphores().size();
-        submitInfo.pWaitSemaphores = queueReturnData.getSemaphores().data();
-        submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores = &signalSemaphore;
+        VkCommandBufferSubmitInfo cmdBufferSubmitInfo = {};
+        cmdBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        cmdBufferSubmitInfo.pNext = NULL;
+        cmdBufferSubmitInfo.commandBuffer = cmdBuffer;
+        cmdBufferSubmitInfo.deviceMask = 0;
 
-        QueueReturn returnInfo = commandsPtr->submitQueue(submitInfo, CmdPoolType::COMPUTE, false);
+        VkSemaphoreSubmitInfo semaphoreWaitInfo = {};
+        semaphoreWaitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        semaphoreWaitInfo.pNext = NULL;
+        semaphoreWaitInfo.semaphore = copySemaphore;
+        semaphoreWaitInfo.stageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
+        semaphoreWaitInfo.deviceIndex = 0;
+
+        VkSemaphore signalSemaphore = commandsPtr->getSemaphore(); //creates new semaphore
+        VkSemaphoreSubmitInfo semaphoreSignalInfo = {};
+        semaphoreSignalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        semaphoreSignalInfo.pNext = NULL;
+        semaphoreSignalInfo.semaphore = signalSemaphore;
+        semaphoreSignalInfo.stageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR; //???
+        semaphoreSignalInfo.deviceIndex = 0;
+        
+        VkSubmitInfo2 submitInfo = {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        submitInfo.pNext = NULL;
+        submitInfo.flags = 0;
+        submitInfo.commandBufferInfoCount = 1;
+        submitInfo.pWaitSemaphoreInfos = &semaphoreWaitInfo;
+        submitInfo.signalSemaphoreInfoCount = 1;
+        submitInfo.pCommandBufferInfos = &cmdBufferSubmitInfo;
+        submitInfo.waitSemaphoreInfoCount = 1;
+        submitInfo.pSignalSemaphoreInfos = &semaphoreSignalInfo;
+
+        vkQueueSubmit2(devicePtr->getQueues().compute.at(0), 1, &submitInfo, VK_NULL_HANDLE);
+        vkDestroySemaphore(devicePtr->getDevice(), copySemaphore, nullptr);
+        throw std::runtime_error("TODO need to fix the acceleration structure synchronization");
 
         //get top address
         VkAccelerationStructureDeviceAddressInfoKHR accelerationAddressInfo{};
-        accelerationAddressInfo.sType                 = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+        accelerationAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
         accelerationAddressInfo.accelerationStructure = topStructure;
         topStructureAddress = vkGetAccelerationStructureDeviceAddressKHR(devicePtr->getDevice(), &accelerationAddressInfo);
 
-        return returnInfo;
+        return signalSemaphore;
     }
 }

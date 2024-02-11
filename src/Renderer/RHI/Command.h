@@ -21,37 +21,6 @@ namespace Renderer
         PRESENT = 3
     };
 
-    struct QueuePrivateData //i dont know how move semantics work
-    {
-        Device* devicePtr;
-        VkResult result;
-        VkFence fence;
-        VkCommandPool pool;
-        std::vector<VkCommandBuffer> commandBuffers;
-        std::vector<VkSemaphore> semaphores;
-    };
-
-    class QueueReturn
-    {
-    private:
-        QueuePrivateData pData;
-
-        void shallowCopy(QueuePrivateData& data);
-        QueueReturn(QueueReturn& queueReturn);
-
-    public:
-        QueueReturn(QueuePrivateData pData);
-
-        QueueReturn(QueueReturn&& queueReturn);
-        ~QueueReturn();
-
-        void moveInvalidate();
-        void waitForFence();
-        std::vector<VkSemaphore> getSemaphores() const { return pData.semaphores; }
-        VkResult getSubmitResult() const { return pData.result; }
-
-    };
-
     class CmdBufferAllocator
     {
     private:
@@ -62,17 +31,14 @@ namespace Renderer
 
         void createCommandPools();
         
-        VkFence getSignaledFence();
-        VkFence getUnsignaledFence();
     public:
         CmdBufferAllocator(Device* device);
         ~CmdBufferAllocator();
 
-        VkSemaphore getSemaphore();
-        QueueReturn submitQueue(const VkSubmitInfo& submitInfo, CmdPoolType poolType, bool useFence);
-        QueueReturn submitPresentQueue(const VkPresentInfoKHR& submitInfo);
-
-        VkCommandBuffer getCommandBuffer(CmdPoolType type);
+        VkSemaphore getSemaphore() const;
+        VkFence getSignaledFence() const;
+        VkFence getUnsignaledFence() const;
+        VkCommandBuffer getCommandBuffer(CmdPoolType type) const;
         static uint32_t getFrameCount() { return frameCount; }
     };
 }

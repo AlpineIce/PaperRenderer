@@ -2,97 +2,48 @@
 
 namespace Renderer
 {
-    IndirectDrawBuffer::IndirectDrawBuffer(Device *device, CmdBufferAllocator *commands, DescriptorAllocator* descriptor, RasterPipeline const* pipeline)
+    IndirectDrawContainer::IndirectDrawContainer(Device *device, CmdBufferAllocator *commands, DescriptorAllocator* descriptor, RasterPipeline const* pipeline)
         :devicePtr(device),
         commandsPtr(commands),
         descriptorsPtr(descriptor),
-        pipelinePtr(pipeline),
-        drawCountBuffer(commands->getFrameCount())
-    {
-        /*VkBufferDeviceAddressInfoKHR addressInfo = {};
-        addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_KHR;
-        addressInfo.pNext = NULL;
-        addressInfo.buffer = VK_NULL_HANDLE;
-		VkDeviceAddress srcPtr = vkGetBufferDeviceAddressKHR(devicePtr->getDevice(), &addressInfo);*/
-    }
-
-    IndirectDrawBuffer::~IndirectDrawBuffer()
+        pipelinePtr(pipeline)
     {
     }
 
-    void IndirectDrawBuffer::addElement(DrawBufferObject &object)
+    IndirectDrawContainer::~IndirectDrawContainer()
+    {
+    }
+
+    void IndirectDrawContainer::addElement(DrawBufferObject &object)
     {
         if(drawCallTree.count(object.mesh) == 0)
         {
             drawCallTree[object.mesh].cullingInputData.resize(commandsPtr->getFrameCount());
-            drawCallTree[object.mesh].bufferData.resize(commandsPtr->getFrameCount());
         }
         drawCallTree[object.mesh].objects.push_back(&object);
         object.reference = drawCallTree.at(object.mesh).objects.end();
         object.reference--;
     }
 
-    void IndirectDrawBuffer::removeElement(DrawBufferObject &object)
+    void IndirectDrawContainer::removeElement(DrawBufferObject &object)
     {
         drawCallTree.at(object.mesh).objects.erase(object.reference);
         object.reference = std::list<Renderer::DrawBufferObject*>::iterator();
     }
 
-    std::vector<QueueReturn> IndirectDrawBuffer::performCulling(const VkCommandBuffer &cmdBuffer, ComputePipeline *cullingPipeline, const CullingFrustum& frustumData, glm::mat4 projection, glm::mat4 view, uint32_t currentFrame)
+    std::vector<std::vector<ObjectPreprocessStride>> IndirectDrawContainer::getObjectSizes(uint32_t currentBufferSize)
     {
-        std::vector<QueueReturn> returnFences;
-
-        std::vector<uint32_t> drawCounts(drawCallTree.size());
-        for(uint32_t& count : drawCounts) count = 0;
-        
-        drawCountBuffer.at(currentFrame) = std::make_shared<StorageBuffer>(devicePtr, commandsPtr, sizeof(uint32_t) * drawCallTree.size());
-        StagingBuffer drawCountsStaging(devicePtr, commandsPtr, drawCounts.size() * sizeof(uint32_t));
-        drawCountsStaging.mapData(drawCounts.data(), 0, drawCounts.size() * sizeof(uint32_t));
-        returnFences.push_back(std::move(drawCountBuffer.at(currentFrame)->setDataFromStaging(drawCountsStaging, drawCounts.size() * sizeof(uint32_t))));
-
-        //set 0
-        VkDescriptorSet set0Descriptor = descriptorsPtr->allocateDescriptorSet(cullingPipeline->getDescriptorSetLayouts().at(0), currentFrame);
-
-        //set 0 - binding 0
-        descriptorsPtr->writeUniform(
-            drawCountBuffer.at(currentFrame)->getBuffer(),
-            sizeof(uint32_t) * drawCallTree.size(),
-            0,
-            0,
-            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            set0Descriptor);
-
-        vkCmdBindDescriptorSets(cmdBuffer,
-            VK_PIPELINE_BIND_POINT_COMPUTE,
-            cullingPipeline->getLayout(),
-            0, //bind point
-            1,
-            &set0Descriptor,
-            0,
-            0);
-
-        
-        uint32_t drawCountIndex = 0;
+        std::vector<std::vector<ObjectPreprocessStride>> returnData;
+        uint32_t lastSize = 0;
         for(auto& [mesh, node] : drawCallTree) //per vertex/index buffer instance (mesh) group culling
         {
-            //uniform buffer
-            CullingInputData inputData = {
-                .projection = projection,
-                .view = view,
-                .frustumData = frustumData,
-                .matrixCount = (uint32_t)node.objects.size(),
-                .drawCountIndex = drawCountIndex
-            };
-            node.cullingInputData.at(currentFrame) = std::make_shared<UniformBuffer>(devicePtr, commandsPtr, sizeof(CullingInputData));
-            node.cullingInputData.at(currentFrame)->updateUniformBuffer(&inputData, sizeof(CullingInputData));
-
+            objectGroupLocations.push_back(currentBufferSize + lastSize);
             //storage buffer
             std::vector<ObjectPreprocessStride> bufferData(node.objects.size());
-            node.bufferData.at(currentFrame) = std::make_shared<StorageBuffer>(devicePtr, commandsPtr, node.objects.size() * sizeof(ObjectPreprocessStride));
 
             //add necessary data
             uint32_t i = 0;
-            for(auto object = node.objects.begin(); object != node.objects.end(); object++)
+            for(auto object = node.objects.begin(); object != node.objects.end(); object++) //todo get rid of this shi
             {
                 //objects
                 bufferData.at(i).inputObject = {
@@ -112,11 +63,54 @@ namespace Renderer
 
                 i++;
             }
-            
-            //set buffer data from staging
-            StagingBuffer dataStagingBuffer(devicePtr, commandsPtr, bufferData.size() * sizeof(ObjectPreprocessStride));
-            dataStagingBuffer.mapData(bufferData.data(), 0, bufferData.size() * sizeof(ObjectPreprocessStride));
-            returnFences.push_back(std::move(node.bufferData.at(currentFrame)->setDataFromStaging(dataStagingBuffer, bufferData.size() * sizeof(ObjectPreprocessStride))));
+
+            returnData.push_back(bufferData);
+            lastSize = bufferData.size() * sizeof(ObjectPreprocessStride);
+        }
+        return returnData;
+    }
+
+    uint32_t IndirectDrawContainer::getDrawCountsSize(uint32_t currentBufferSize)
+    {
+        this->drawCountsLocation = currentBufferSize;
+        return drawCallTree.size();
+    }
+
+    void IndirectDrawContainer::dispatchCulling(const VkCommandBuffer& cmdBuffer, ComputePipeline const* cullingPipeline, const CullingFrustum& frustum, StorageBuffer const* buffer, glm::mat4 projection, glm::mat4 view, uint32_t currentFrame)
+    {
+        VkDescriptorSet set0Descriptor = descriptorsPtr->allocateDescriptorSet(cullingPipeline->getDescriptorSetLayouts().at(0), currentFrame);
+
+        //set0 - binding 0
+        descriptorsPtr->writeUniform(
+            buffer->getBuffer(),
+            sizeof(uint32_t) * drawCallTree.size(),
+            drawCountsLocation,
+            0,
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            set0Descriptor);
+
+        vkCmdBindDescriptorSets(cmdBuffer,
+            VK_PIPELINE_BIND_POINT_COMPUTE,
+            cullingPipeline->getLayout(),
+            0, //bind point
+            1,
+            &set0Descriptor,
+            0,
+            0);
+
+        uint32_t drawCountIndex = 0;
+        for(auto& [mesh, node] : drawCallTree) //per vertex/index buffer instance (mesh) group culling
+        {
+            //update uniform buffer
+            CullingInputData inputData = {
+                .projection = projection,
+                .view = view,
+                .frustumData = frustum,
+                .matrixCount = (uint32_t)node.objects.size(),
+                .drawCountIndex = drawCountIndex
+            };
+            node.cullingInputData.at(currentFrame) = std::make_shared<UniformBuffer>(devicePtr, commandsPtr, sizeof(CullingInputData));
+            node.cullingInputData.at(currentFrame)->updateUniformBuffer(&inputData, sizeof(CullingInputData));
 
             //set1
             VkDescriptorSet set1Descriptor = descriptorsPtr->allocateDescriptorSet(cullingPipeline->getDescriptorSetLayouts().at(1), currentFrame);
@@ -129,12 +123,12 @@ namespace Renderer
                 0,
                 VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 set1Descriptor);
-            
+
             //set1 - binding 1
             descriptorsPtr->writeUniform(
-                node.bufferData.at(currentFrame)->getBuffer(),
+                buffer->getBuffer(),
                 sizeof(ObjectPreprocessStride) * node.objects.size(),
-                0,
+                objectGroupLocations.at(drawCountIndex),
                 1,
                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 set1Descriptor);
@@ -148,42 +142,14 @@ namespace Renderer
                 0,
                 0);
 
-            int groupcount = ((node.objects.size()) / 256) + 1;
+            int groupcount = ((node.objects.size()) / 64) + 1;
             vkCmdDispatch(cmdBuffer, groupcount, 1, 1);
+
             drawCountIndex++;
-
-            /*//memory barrier
-            VkBufferMemoryBarrier2 barrier = {};
-            barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
-            barrier.pNext = NULL;
-            barrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT_KHR;
-            barrier.srcAccessMask = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT_KHR;
-            barrier.dstStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
-            barrier.dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
-            barrier.srcQueueFamilyIndex = devicePtr->getQueueFamilies().computeFamilyIndex;
-            barrier.dstQueueFamilyIndex = devicePtr->getQueueFamilies().graphicsFamilyIndex;
-            barrier.buffer = node.bufferData.at(currentFrame)->getBuffer();
-            barrier.offset = 0;
-            barrier.size = sizeof(ObjectPreprocessStride) * node.objects.size();
-
-            VkDependencyInfo dependencyInfo = {};
-            dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-            dependencyInfo.pNext = NULL;
-            dependencyInfo.dependencyFlags = VK_DEPENDENCY_DEVICE_GROUP_BIT;
-            dependencyInfo.bufferMemoryBarrierCount = 1;
-            dependencyInfo.pBufferMemoryBarriers = &barrier;
-            dependencyInfo.imageMemoryBarrierCount = 0;
-            dependencyInfo.pImageMemoryBarriers = NULL;
-            dependencyInfo.memoryBarrierCount = 0;
-            dependencyInfo.pMemoryBarriers = NULL;
-
-            vkCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);*/
         }
-
-        return returnFences;
     }
 
-    void IndirectDrawBuffer::draw(const VkCommandBuffer& cmdBuffer, uint32_t currentFrame)
+    void IndirectDrawContainer::draw(const VkCommandBuffer& cmdBuffer, IndirectRenderingData const* renderData, uint32_t currentFrame)
     {
         uint32_t drawCountIndex = 0;
         for(auto& [mesh, node] : drawCallTree)
@@ -191,9 +157,9 @@ namespace Renderer
             VkDescriptorSet objDescriptorSet = descriptorsPtr->allocateDescriptorSet(pipelinePtr->getDescriptorSetLayouts().at(2), currentFrame);
 
             descriptorsPtr->writeUniform(
-                node.bufferData.at(currentFrame)->getBuffer(),
+                renderData->bufferData->getBuffer(),
                 sizeof(ObjectPreprocessStride) * node.objects.size(),
-                0, //idk how tf to get offset to work without a stride
+                objectGroupLocations.at(drawCountIndex), //idk how tf to get offset to work without a stride
                 0,
                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 objDescriptorSet);
@@ -215,10 +181,10 @@ namespace Renderer
 
             vkCmdDrawIndexedIndirectCount(
                 cmdBuffer,
-                node.bufferData.at(currentFrame)->getBuffer(),
-                offsetof(ObjectPreprocessStride, outputCommand),
-                drawCountBuffer.at(currentFrame)->getBuffer(),
-                drawCountIndex * sizeof(uint32_t),
+                renderData->bufferData->getBuffer(),
+                objectGroupLocations.at(drawCountIndex) + offsetof(ObjectPreprocessStride, inputCommand),
+                renderData->bufferData->getBuffer(),
+                drawCountsLocation + drawCountIndex * sizeof(uint32_t),
                 node.objects.size(),
                 sizeof(ObjectPreprocessStride));
 

@@ -37,36 +37,27 @@ namespace Renderer
         };
     }
 
-    void Material::bindPipeline(const VkCommandBuffer &cmdBuffer, GlobalUniforms& uniforms, uint32_t currentImage) const
+    void Material::bindPipeline(const VkCommandBuffer &cmdBuffer, const StorageBuffer& lightingBuffer, uint32_t lightingBufferOffset, uint32_t lightCount, const UniformBuffer& lightingData, uint32_t currentImage) const
     {
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
 
-        VkDescriptorSet globalDescriptorSet = rendererInfo.descriptorsPtr->allocateDescriptorSet(*rasterPipeline->getGlobalDescriptorLayoutPtr(), currentImage);
+        VkDescriptorSet globalDescriptorSet = rendererInfo.descriptorsPtr->allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(0), currentImage);
 
-        //global data
+        //light buffer
         rendererInfo.descriptorsPtr->writeUniform(
-            uniforms.globalUBO->getBuffer(),
-            sizeof(CameraData),
+            lightingBuffer.getBuffer(),
+            sizeof(PointLight) * lightCount,
+            lightingBufferOffset,
             0,
-            0,
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            globalDescriptorSet);
-
-        //point light data
-        rendererInfo.descriptorsPtr->writeUniform(
-            uniforms.pointLightsBuffer->getBuffer(),
-            sizeof(PointLight) * uniforms.maxPointLights,
-            0,
-            1,
             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             globalDescriptorSet);
 
         //lighting data
         rendererInfo.descriptorsPtr->writeUniform(
-            uniforms.lightingInfoBuffer->getBuffer(),
+            lightingData.getBuffer(),
             sizeof(ShaderLightingInformation),
             0,
-            2,
+            1,
             VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             globalDescriptorSet);
 
@@ -78,15 +69,11 @@ namespace Renderer
             &globalDescriptorSet,
             0,
             0);
-
-        
     }
 
     void Material::updateUniforms(void const* uniforms, VkDeviceSize uniformsSize, const std::vector<Renderer::Texture const*>& textures, const VkCommandBuffer &cmdBuffer, uint32_t currentImage) const
     {
-        //0 is non-global descriptor for material
         VkDescriptorSet materialDescriptorSet = rendererInfo.descriptorsPtr->allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(1), currentImage);
-
         materialUBOs.at(currentImage)->updateUniformBuffer(uniforms, uniformsSize);
 
         rendererInfo.descriptorsPtr->writeImageArray(textures, 1, materialDescriptorSet);
@@ -128,38 +115,60 @@ namespace Renderer
         };
         shaderPairs.push_back(frag);
 
-        //descriptor set 1 (material)
-        DescriptorSet set1Descriptors;
+        //descriptor set 0 (global)
+        DescriptorSet set0Descriptors;
+        set0Descriptors.setNumber = 0;
         
+        VkDescriptorSetLayoutBinding lights = {};
+        lights.binding = 0;
+        lights.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        lights.descriptorCount = 1;
+        lights.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        set0Descriptors.descriptorBindings[0] = lights;
+
         VkDescriptorSetLayoutBinding uniformDescriptor = {};
-        uniformDescriptor.binding = 0;
+        uniformDescriptor.binding = 1;
         uniformDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         uniformDescriptor.descriptorCount = 1;
-        uniformDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        set1Descriptors.descriptorBindings.push_back(uniformDescriptor);
+        uniformDescriptor.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        set0Descriptors.descriptorBindings[1] = uniformDescriptor;
 
-        VkDescriptorSetLayoutBinding textureDescriptor = {};
-        textureDescriptor.binding = 1;
-        textureDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        textureDescriptor.descriptorCount = TEXTURE_ARRAY_SIZE;
-        textureDescriptor.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        set1Descriptors.descriptorBindings.push_back(textureDescriptor);
+        //descriptor set 1 (material)
+        DescriptorSet set1Descriptors;
+        set1Descriptors.setNumber = 1;
+
+        VkDescriptorSetLayoutBinding reservedforfutureuseidk = {};
+        reservedforfutureuseidk.binding = 0;
+        reservedforfutureuseidk.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        reservedforfutureuseidk.descriptorCount = 1;
+        reservedforfutureuseidk.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        set1Descriptors.descriptorBindings[0] = reservedforfutureuseidk;
+
+        VkDescriptorSetLayoutBinding reservedforfutureuseidk2 = {};
+        reservedforfutureuseidk2.binding = 1;
+        reservedforfutureuseidk2.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        reservedforfutureuseidk2.descriptorCount = 8;
+        reservedforfutureuseidk2.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        set1Descriptors.descriptorBindings[1] = reservedforfutureuseidk2;
 
         //descriptor set 2 (object)
         DescriptorSet set2Descriptors;
+        set2Descriptors.setNumber = 1;
 
         VkDescriptorSetLayoutBinding objDescriptor = {};
         objDescriptor.binding = 0;
         objDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         objDescriptor.descriptorCount = 1;
         objDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        set2Descriptors.descriptorBindings.push_back(objDescriptor);
+        set2Descriptors.descriptorBindings[0] = objDescriptor;
 
-        std::vector<DescriptorSet> descriptorSets = {set1Descriptors, set2Descriptors};
+        std::unordered_map<uint32_t, DescriptorSet> descriptorSets;
+        descriptorSets[0] = set0Descriptors;
+        descriptorSets[1] = set1Descriptors;
+        descriptorSets[2] = set2Descriptors;
 
         PipelineBuildInfo rasterInfo;
         rasterInfo.shaderInfo = shaderPairs;
-        rasterInfo.useGlobalDescriptor = true;
         rasterInfo.descriptors = descriptorSets;
 
         //----------RT PIPELINE INFO----------//
@@ -192,9 +201,8 @@ namespace Renderer
         RTshaderPairs.push_back(intersectionShader);
 
         PipelineBuildInfo rtInfo;
-        rtInfo.descriptors = std::vector<DescriptorSet>();
+        rtInfo.descriptors = std::unordered_map<uint32_t, DescriptorSet>();
         rtInfo.shaderInfo = RTshaderPairs;
-        rtInfo.useGlobalDescriptor = true;
 
         buildPipelines(rasterInfo, rtInfo);
 

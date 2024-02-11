@@ -54,15 +54,23 @@ namespace Renderer
     {
         std::list<DrawBufferObject*> objects;
         std::vector<std::shared_ptr<UniformBuffer>> cullingInputData; //CullingInputData
-        std::vector<std::shared_ptr<StorageBuffer>> bufferData; //DrawBufferData
     };
     
-    class IndirectDrawBuffer
+    struct IndirectRenderingData
+    {
+        uint32_t lightsOffset;
+        uint32_t lightCount;
+        std::vector<char> stagingData;
+        std::shared_ptr<StorageBuffer> bufferData; //THE UBER-BUFFER
+    };
+
+    class IndirectDrawContainer
     {
     private:
         //VkDeviceAddress GPUaddress;
         std::unordered_map<Mesh const*, DrawBufferTreeNode> drawCallTree;
-        std::vector<std::shared_ptr<StorageBuffer>> drawCountBuffer;
+        std::vector<uint32_t> objectGroupLocations;
+        uint32_t drawCountsLocation;
         
         Device* devicePtr;
         CmdBufferAllocator* commandsPtr;
@@ -70,13 +78,15 @@ namespace Renderer
         RasterPipeline const* pipelinePtr;
 
     public:
-        IndirectDrawBuffer(Device *device, CmdBufferAllocator *commands, DescriptorAllocator* descriptor, RasterPipeline const* pipeline);
-        ~IndirectDrawBuffer();
+        IndirectDrawContainer(Device *device, CmdBufferAllocator *commands, DescriptorAllocator* descriptor, RasterPipeline const* pipeline);
+        ~IndirectDrawContainer();
 
         void addElement(DrawBufferObject& object);
         void removeElement(DrawBufferObject& object);
-        std::vector<QueueReturn> performCulling(const VkCommandBuffer& cmdBuffer, ComputePipeline* cullingPipeline, const CullingFrustum& frustumData, glm::mat4 projection, glm::mat4 view, uint32_t currentFrame);
-        void draw(const VkCommandBuffer& cmdBuffer, uint32_t currentFrame);
+        std::vector<std::vector<ObjectPreprocessStride>> getObjectSizes(uint32_t currentBufferSize);
+        uint32_t getDrawCountsSize(uint32_t currentBufferSize);
+        void dispatchCulling(const VkCommandBuffer& cmdBuffer, ComputePipeline const* cullingPipeline, const CullingFrustum& frustum, StorageBuffer const* renderData, glm::mat4 projection, glm::mat4 view, uint32_t currentFrame);
+        void draw(const VkCommandBuffer& cmdBuffer, IndirectRenderingData const* renderData, uint32_t currentFrame);
         const std::unordered_map<Mesh const*, DrawBufferTreeNode>& getDrawCallTree() const { return drawCallTree; }
     };
 }

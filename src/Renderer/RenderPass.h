@@ -16,7 +16,7 @@ namespace Renderer
     //node for objects corresponding to one material
     struct MaterialInstanceNode
     {
-        std::shared_ptr<IndirectDrawBuffer> objectBuffer;
+        std::shared_ptr<IndirectDrawContainer> objectBuffer;
     };
 
     //node for materials corresponding to one pipeline
@@ -47,16 +47,18 @@ namespace Renderer
     class RenderPass
     {
     private:
-        std::vector<VkSemaphore> lightBufferCopySemaphores;
-        std::vector<VkSemaphore> cullingSemaphores;
         std::vector<VkSemaphore> imageSemaphores;
-        std::vector<std::list<std::shared_ptr<QueueReturn>>> cullingFences;
-        std::vector<std::list<std::shared_ptr<QueueReturn>>> renderFences;
-        std::vector<std::shared_ptr<UniformBuffer>> globalInfoBuffers;
-        std::vector<std::shared_ptr<StorageBuffer>> pointLightsBuffers;
+        std::vector<VkSemaphore> stagingCopySemaphores;
+        std::vector<VkFence> bufferCopyFences;
+        std::vector<VkFence> stagingCopyFences;
+        std::vector<VkFence> cullingFences;
+        std::vector<VkSemaphore> cullingSemaphores;
+        std::vector<VkSemaphore> bufferCopySemaphores;
+        std::vector<VkSemaphore> renderSemaphores;
+        std::vector<VkFence> renderFences;
         std::vector<std::shared_ptr<UniformBuffer>> lightingInfoBuffers;
-        std::vector<CameraData> globalBufferDatas;
-        GlobalUniforms globalUniformData; //only need one per frame
+        std::vector<std::shared_ptr<IndirectRenderingData>> renderingData;
+        std::vector<std::shared_ptr<StorageBuffer>> dedicatedStagingData;
 
         std::shared_ptr<ComputePipeline> meshPreprocessPipeline;
 
@@ -73,6 +75,16 @@ namespace Renderer
         Camera* cameraPtr = NULL;
         
         void checkSwapchain(VkResult imageResult);
+        void appendDrawCallCounts(IndirectDrawContainer* drawBuffer);
+        void appendDrawCallGroup(IndirectDrawContainer* drawBuffer);
+        void drawCallCull(const VkCommandBuffer& cmdBuffer, const CullingFrustum& cullingFrustum, StorageBuffer const* newBufferData, IndirectDrawContainer* drawBuffer);
+        void submitCulling(const VkCommandBuffer& cmdBuffer);
+        void composeAttachments(const VkCommandBuffer& cmdBuffer);
+        void bindMaterial(Material const* material, const VkCommandBuffer& cmdBuffer);
+        void bindMaterialInstance(MaterialInstance const* materialInstance, const VkCommandBuffer& cmdBuffer);
+        void drawIndexedIndirect(const VkCommandBuffer& cmdBuffer, IndirectDrawContainer* drawBuffer);
+        void incrementFrameCounter(const VkCommandBuffer& cmdBuffer);
+        CullingFrustum createCullingFrustum();
         glm::vec4 normalizePlane(glm::vec4 plane);
         ImageAttachment createImageAttachment(VkFormat imageFormat);
 
@@ -84,32 +96,9 @@ namespace Renderer
         void setCamera(Camera* camera) { this->cameraPtr = camera; }
 
         //start new frame
-        VkCommandBuffer preProcessing(const LightingInformation& lightingInfo);
-
-        //creates a frustum from current view matrix
-        CullingFrustum createCullingFrustum();
-
-        //cull draw calls
-        void drawCallCull(const VkCommandBuffer& cmdBuffer, const CullingFrustum& frustumData, IndirectDrawBuffer* drawBuffer);
-
-        //submit culling commands
-        void submitCulling(const VkCommandBuffer& cmdBuffer);
+        void preProcessing(const std::unordered_map<Material*, MaterialNode>& renderTree, const LightingInformation& lightingInfo);
 
         //begin rendering
-        VkCommandBuffer beginRendering();
-
-        void composeAttachments(const VkCommandBuffer& cmdBuffer);
-
-        //end frame
-        void incrementFrameCounter(const VkCommandBuffer& cmdBuffer);
-        
-        //indirect indexed rendering
-        void drawIndexedIndirect(const VkCommandBuffer& cmdBuffer, IndirectDrawBuffer* drawBuffer);
-
-        //change the rendering pipeline
-        void bindMaterial(Material const* material, const VkCommandBuffer& cmdBuffer);
-
-        //change the material
-        void bindMaterialInstance(MaterialInstance const* materialInstance, const VkCommandBuffer& cmdBuffer);
+        void raster(const std::unordered_map<Material*, MaterialNode>& renderTree);
     };
 }

@@ -104,23 +104,14 @@ namespace Renderer
         descriptorsPtr(creationInfo.descriptors),
         shaders(creationInfo.shaders),
         setLayouts(creationInfo.setLayouts),
-        pipelineLayout(creationInfo.pipelineLayout),
-        globalDescriptorLayoutPtr(creationInfo.globalDescriptorLayoutPtr)
+        pipelineLayout(creationInfo.pipelineLayout)
     {
     }
 
     Pipeline::~Pipeline()
     {
-        for(VkDescriptorSetLayout set : setLayouts)
+        for(auto& [setNum, set] : setLayouts)
         {
-            if(globalDescriptorLayoutPtr != NULL)
-            {
-                if(set == *globalDescriptorLayoutPtr)
-                {
-                    continue;
-                }
-            }
-            
             vkDestroyDescriptorSetLayout(devicePtr->getDevice(), set, nullptr);
         }
         vkDestroyPipeline(devicePtr->getDevice(), pipeline, nullptr);
@@ -455,54 +446,10 @@ namespace Renderer
         creationInfo.initialDataSize = 0;
         creationInfo.pInitialData = NULL;
         vkCreatePipelineCache(device->getDevice(), &creationInfo, nullptr, &cache);
-
-        //global descriptor set
-        std::vector<VkDescriptorSetLayoutBinding> uniformBindings;
-        //camera data
-        VkDescriptorSetLayoutBinding cameraDescriptor = {};
-        cameraDescriptor.binding = 0;
-        cameraDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        cameraDescriptor.descriptorCount = 1;
-        cameraDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        cameraDescriptor.pImmutableSamplers = NULL;
-        uniformBindings.push_back(cameraDescriptor);
-
-        //point lights
-        VkDescriptorSetLayoutBinding pointLightDescriptor = {};
-        pointLightDescriptor.binding = 1;
-        pointLightDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        pointLightDescriptor.descriptorCount = 1;
-        pointLightDescriptor.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        pointLightDescriptor.pImmutableSamplers = NULL;
-        uniformBindings.push_back(pointLightDescriptor);
-
-        //lighting information
-        VkDescriptorSetLayoutBinding lightingDescriptor = {};
-        lightingDescriptor.binding = 2;
-        lightingDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        lightingDescriptor.descriptorCount = 1;
-        lightingDescriptor.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        lightingDescriptor.pImmutableSamplers = NULL;
-        uniformBindings.push_back(lightingDescriptor);
-        
-        //descriptor info
-        VkDescriptorSetLayoutCreateInfo descriptorInfo = {};
-        descriptorInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        descriptorInfo.pNext = NULL;
-        descriptorInfo.flags = 0;
-        descriptorInfo.bindingCount = uniformBindings.size();
-        descriptorInfo.pBindings = uniformBindings.data();
-
-        VkResult result = vkCreateDescriptorSetLayout(device->getDevice(), &descriptorInfo, nullptr, &globalDescriptorLayout);
-        if(result != VK_SUCCESS)
-        {
-            throw std::runtime_error("Failed to create descriptor set layout");
-        }
     }
 
     PipelineBuilder::~PipelineBuilder()
     {
-        vkDestroyDescriptorSetLayout(devicePtr->getDevice(), globalDescriptorLayout, nullptr);
         vkDestroyPipelineCache(devicePtr->getDevice(), cache, nullptr);
     }
 
@@ -513,36 +460,48 @@ namespace Renderer
         return std::make_shared<Shader>(devicePtr, shaderFile);
     }
 
-    std::vector<VkDescriptorSetLayout> PipelineBuilder::createDescriptorLayouts(const std::vector<DescriptorSet> &descriptorSets) const
+    std::unordered_map<uint32_t, VkDescriptorSetLayout> PipelineBuilder::createDescriptorLayouts(const std::unordered_map<uint32_t, DescriptorSet> &descriptorSets) const
     {
-        std::vector<VkDescriptorSetLayout> setLayouts;
-        for(const DescriptorSet& set : descriptorSets)
+        std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
+        for(const auto& [setNum, set] : descriptorSets)
         {
+            std::vector<VkDescriptorSetLayoutBinding> vBindings;
+            for(const auto& [bindingNum, binding] : set.descriptorBindings)
+            {
+                vBindings.push_back(binding);
+            }
+
             VkDescriptorSetLayoutCreateInfo descriptorLayoutInfo = {};
             descriptorLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
             descriptorLayoutInfo.pNext = NULL;
             descriptorLayoutInfo.flags = 0;
-            descriptorLayoutInfo.bindingCount = set.descriptorBindings.size();
-            descriptorLayoutInfo.pBindings = set.descriptorBindings.data();
+            descriptorLayoutInfo.bindingCount = vBindings.size();
+            descriptorLayoutInfo.pBindings = vBindings.data();
             
             VkDescriptorSetLayout setLayout;
             VkResult result = vkCreateDescriptorSetLayout(devicePtr->getDevice(), &descriptorLayoutInfo, nullptr, &setLayout);
             if(result != VK_SUCCESS) throw std::runtime_error("Failed to create descriptor set layout");
 
-            setLayouts.push_back(setLayout);
+            setLayouts[setNum] = setLayout;
         }
 
         return setLayouts;
     }
 
-    VkPipelineLayout PipelineBuilder::createPipelineLayout(const std::vector<VkDescriptorSetLayout>& setLayouts) const
+    VkPipelineLayout PipelineBuilder::createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts) const
     {
+        std::vector<VkDescriptorSetLayout> vSetLayouts;
+        for(const auto& [setNum, set] : setLayouts)
+        {
+            vSetLayouts.push_back(set);
+        }
+
         VkPipelineLayoutCreateInfo layoutInfo = {};
         layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         layoutInfo.pNext = NULL;
         layoutInfo.flags = 0;
-        layoutInfo.setLayoutCount = setLayouts.size();
-        layoutInfo.pSetLayouts = setLayouts.data();
+        layoutInfo.setLayoutCount = vSetLayouts.size();
+        layoutInfo.pSetLayouts = vSetLayouts.data();
         layoutInfo.pushConstantRangeCount = 0;
         layoutInfo.pPushConstantRanges = NULL;
 
@@ -567,21 +526,9 @@ namespace Renderer
         }
         pipelineInfo.shaders = shaders;
 
-        std::vector<VkDescriptorSetLayout> setLayouts;
-        if(info.useGlobalDescriptor)
-        {
-            pipelineInfo.globalDescriptorLayoutPtr = &globalDescriptorLayout;
-            setLayouts.push_back(globalDescriptorLayout);
-        }
-        else
-        {
-            pipelineInfo.globalDescriptorLayoutPtr = NULL;
-        }
-        std::vector<VkDescriptorSetLayout> localLayouts = createDescriptorLayouts(info.descriptors);
-        setLayouts.insert(setLayouts.end(), localLayouts.begin(), localLayouts.end());
-        pipelineInfo.setLayouts = setLayouts;
+        pipelineInfo.setLayouts = createDescriptorLayouts(info.descriptors);
 
-        VkPipelineLayout pipelineLayout = createPipelineLayout(setLayouts);
+        VkPipelineLayout pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts);
         pipelineInfo.pipelineLayout = pipelineLayout;
     
         return pipelineInfo;

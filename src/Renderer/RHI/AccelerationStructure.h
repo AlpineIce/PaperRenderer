@@ -53,6 +53,6 @@ namespace Renderer
         ~AccelerationStructure();
 
         void createBottomLevel(const BottomAccelerationStructureData& meshesData);
-        QueueReturn createTopLevel(const TopAccelerationData& instancesData);
+        VkSemaphore createTopLevel(const TopAccelerationData& instancesData, const std::vector<SemaphorePair>& waitSemaphores);
     };
 }

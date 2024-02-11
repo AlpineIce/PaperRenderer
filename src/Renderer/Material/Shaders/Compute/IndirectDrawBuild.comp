@@ -4,7 +4,7 @@
 
 //TODO gl_InstanceIndex instanced stuff
 
-layout (local_size_x = 256) in;
+layout (local_size_x = 64) in;
 
 
 //----------INPUT DATA----------//

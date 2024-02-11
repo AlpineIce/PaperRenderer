@@ -18,11 +18,11 @@ namespace Renderer
         std::vector<VkImageView> imageViews;
 
         //depth buffer
-        VkImage depthBuffer;
-        VkImageView depthBufferView;
+        std::vector<VkImage> depthBufferImages;
+        std::vector<VkImageView> depthBufferViews;
         VkImageLayout depthBufferLayout;
         VkFormat depthBufferFormat;
-        VmaAllocation depthBufferAllocation;
+        std::vector<VmaAllocation> depthBufferAllocations;
         
         Device* devicePtr;
         Window* windowPtr;
@@ -45,7 +45,7 @@ namespace Renderer
         VkExtent2D getExtent() const { return swapchainExtent; }
 
         //depth buffer
-        VkImageView getDepthView() const { return depthBufferView; }
+        const std::vector<VkImageView>& getDepthViews() const { return depthBufferViews; }
         VkImageLayout getDepthLayout() const { return depthBufferLayout; }
         VkFormat getDepthFormat() const { return depthBufferFormat; }
     };

@@ -6,13 +6,6 @@
 
 namespace Renderer
 {
-    //struct for uniform buffer
-    struct CameraData
-    {
-        glm::mat4 view;
-        glm::mat4 projection;
-    };
-
     struct CameraTranslation
     {
         float pitch = 0.0f;

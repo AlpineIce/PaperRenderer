@@ -17,12 +17,12 @@ struct PointLight
 
 layout(location = 0) in vec3 worldPosition;
 
-layout(std140, set = 0, binding = 1) readonly buffer PointLights
+layout(std430, set = 0, binding = 0) readonly buffer PointLights
 {
     PointLight lights[];
 } pointLights;
 
-layout(std140, set = 0, binding = 2) uniform LightInformation
+layout(std430, set = 0, binding = 1) uniform LightInformation
 {
     AmbientLight ambientLight;
     DirectLight directLight;
