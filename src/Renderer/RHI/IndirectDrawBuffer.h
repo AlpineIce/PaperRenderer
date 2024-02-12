@@ -20,26 +20,25 @@ namespace Renderer
         CullingFrustum frustumData;
         uint32_t matrixCount;
         uint32_t drawCountIndex;
-    };
-
-    struct DrawBufferData
-    {
-        glm::mat4 modelMatrix;
-        glm::vec4 position;
+        uint32_t indexCount;
+        uint32_t padding;
     };
 
     struct ShaderDrawCommand
     {
         VkDrawIndexedIndirectCommand command;
-        float padding;
     };
 
-    struct ObjectPreprocessStride
+    struct ShaderInputObject
     {
-        DrawBufferData inputObject;
-        glm::mat4 outputTransform;
-        ShaderDrawCommand inputCommand = {};
-        ShaderDrawCommand outputCommand = {};
+        glm::mat4 modelMatrix;
+        glm::vec4 position;
+    };
+
+    struct ShaderOutputObject
+    {
+        glm::mat4 modelMatrix;
+        glm::mat4 transformMatrix;
     };
 
     struct DrawBufferObject
@@ -69,7 +68,9 @@ namespace Renderer
     private:
         //VkDeviceAddress GPUaddress;
         std::unordered_map<Mesh const*, DrawBufferTreeNode> drawCallTree;
-        std::vector<uint32_t> objectGroupLocations;
+        std::vector<uint32_t> inputObjectsLocations;
+        std::vector<uint32_t> outputObjectsLocations;
+        std::vector<uint32_t> drawCommandsLocations;
         uint32_t drawCountsLocation;
         
         Device* devicePtr;
@@ -83,7 +84,11 @@ namespace Renderer
 
         void addElement(DrawBufferObject& object);
         void removeElement(DrawBufferObject& object);
-        std::vector<std::vector<ObjectPreprocessStride>> getObjectSizes(uint32_t currentBufferSize);
+
+        uint32_t getOutputObjectSize(uint32_t currentBufferSize);
+        std::vector<ShaderInputObject> getInputObjects(uint32_t currentBufferSize);
+        uint32_t getDrawCommandsSize(uint32_t currentBufferSize);
+        
         uint32_t getDrawCountsSize(uint32_t currentBufferSize);
         void dispatchCulling(const VkCommandBuffer& cmdBuffer, ComputePipeline const* cullingPipeline, const CullingFrustum& frustum, StorageBuffer const* renderData, glm::mat4 projection, glm::mat4 view, uint32_t currentFrame);
         void draw(const VkCommandBuffer& cmdBuffer, IndirectRenderingData const* renderData, uint32_t currentFrame);

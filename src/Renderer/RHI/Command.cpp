@@ -124,5 +124,23 @@ namespace Renderer
         return returnBuffer;
     }
 
-
+    void CmdBufferAllocator::freeCommandBuffer(CommandBuffer& commandBuffer)
+    {
+        switch(commandBuffer.type)
+        {
+            case GRAPHICS:
+                vkFreeCommandBuffers(devicePtr->getDevice(), commandPools.graphics, 1, &commandBuffer.buffer);
+                break;
+            case COMPUTE:
+                vkFreeCommandBuffers(devicePtr->getDevice(), commandPools.compute, 1, &commandBuffer.buffer);
+                break;
+            case TRANSFER:
+                vkFreeCommandBuffers(devicePtr->getDevice(), commandPools.transfer, 1, &commandBuffer.buffer);
+                break;
+            case PRESENT:
+                vkFreeCommandBuffers(devicePtr->getDevice(), commandPools.present, 1, &commandBuffer.buffer);
+                break;
+        }
+        
+    }
 }

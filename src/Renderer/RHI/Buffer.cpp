@@ -39,19 +39,19 @@ namespace Renderer
         VkResult result = vmaCreateBuffer(devicePtr->getAllocator(), &bufferInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
     }
 
-    void Buffer::copyFromBuffer(Buffer &src, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence)
+    CommandBuffer Buffer::copyFromBuffer(Buffer &src, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence)
     {
         if(this->size <= src.getAllocatedSize())
         {
-            copyBuffer(src.getBuffer(), this->buffer, this->size, waitPairs, signalPairs, fence);
+            return copyBuffer(src.getBuffer(), this->buffer, this->size, waitPairs, signalPairs, fence);
         }
         else
         {
-            copyBuffer(src.getBuffer(), this->buffer, src.getAllocatedSize(), waitPairs, signalPairs, fence);
+            return copyBuffer(src.getBuffer(), this->buffer, src.getAllocatedSize(), waitPairs, signalPairs, fence);
         }
     }
 
-    void Buffer::copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence)
+    CommandBuffer Buffer::copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence)
     {
         VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffer(CmdPoolType::TRANSFER); //note theres only 1 transfer cmd buffer
 
@@ -115,6 +115,8 @@ namespace Renderer
         submitInfo.pSignalSemaphoreInfos = semaphoreSignalInfos.data();
 
         vkQueueSubmit2(devicePtr->getQueues().transfer.at(0), 1, &submitInfo, fence);
+        
+        return { transferBuffer, TRANSFER };
     }
 
     VkDeviceAddress Buffer::getBufferDeviceAddress() const
@@ -171,19 +173,16 @@ namespace Renderer
         stagingBuffer.mapData(vertices->data(), 0, this->size);
 
         createVertexBuffer();
-        creationSemaphore = commandsPtr->getSemaphore();
 
-        SemaphorePair pair = {
-            .semaphore = creationSemaphore,
-            .stage = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT
-        };
-        std::vector<SemaphorePair> pairs = { pair };
-        copyBuffer(stagingBuffer.getBuffer(), this->buffer, this->size, std::vector<SemaphorePair>(), pairs, VK_NULL_HANDLE);
+        VkFence fence = commandsPtr->getUnsignaledFence();
+        CommandBuffer cmdBuffer = copyBuffer(stagingBuffer.getBuffer(), this->buffer, this->size, std::vector<SemaphorePair>(), std::vector<SemaphorePair>(), fence);
+        vkWaitForFences(devicePtr->getDevice(), 1, &fence, VK_TRUE, UINT64_MAX);
+        vkDestroyFence(devicePtr->getDevice(), fence, nullptr);
+        commandsPtr->freeCommandBuffer(cmdBuffer);
     }
 
     VertexBuffer::~VertexBuffer()
     {
-        vkDestroySemaphore(devicePtr->getDevice(), creationSemaphore, nullptr);
     }
 
     void VertexBuffer::createVertexBuffer()
@@ -216,18 +215,16 @@ namespace Renderer
         stagingBuffer.mapData(indices->data(), 0, this->size);
 
         createIndexBuffer();
-        creationSemaphore = commandsPtr->getSemaphore();
-        SemaphorePair pair = {
-            .semaphore = creationSemaphore,
-            .stage = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT
-        };
-        std::vector<SemaphorePair> pairs = { pair };
-        copyBuffer(stagingBuffer.getBuffer(), this->buffer, this->size, std::vector<SemaphorePair>(), pairs, VK_NULL_HANDLE);
+
+        VkFence fence = commandsPtr->getUnsignaledFence();
+        CommandBuffer cmdBuffer = copyBuffer(stagingBuffer.getBuffer(), this->buffer, this->size, std::vector<SemaphorePair>(), std::vector<SemaphorePair>(), fence);
+        vkWaitForFences(devicePtr->getDevice(), 1, &fence, VK_TRUE, UINT64_MAX);
+        vkDestroyFence(devicePtr->getDevice(), fence, nullptr);
+        commandsPtr->freeCommandBuffer(cmdBuffer);
     }
 
     IndexBuffer::~IndexBuffer()
     {
-        vkDestroySemaphore(devicePtr->getDevice(), creationSemaphore, nullptr);
     }
 
     void IndexBuffer::createIndexBuffer()
@@ -270,6 +267,12 @@ namespace Renderer
         vkDestroySemaphore(devicePtr->getDevice(), copySemaphore, nullptr);
         createTextureView();
         createSampler();
+
+        for(CommandBuffer& buffer : creationBuffers)
+        {
+            commandsPtr->freeCommandBuffer(buffer);
+        }
+        creationBuffers.clear();
     }
 
     Texture::~Texture()
@@ -373,6 +376,7 @@ namespace Renderer
         submitInfo.pSignalSemaphoreInfos = &semaphoreSignalInfo;
 
         vkQueueSubmit2(devicePtr->getQueues().transfer.at(0), 1, &submitInfo, VK_NULL_HANDLE);
+        creationBuffers.push_back({transferBuffer, TRANSFER});
 
         return signalSemaphore;
     }
@@ -444,6 +448,7 @@ namespace Renderer
         submitInfo.pSignalSemaphoreInfos = &semaphoreSignalInfo;
 
         vkQueueSubmit2(devicePtr->getQueues().transfer.at(0), 1, &submitInfo, VK_NULL_HANDLE);
+        creationBuffers.push_back({transferBuffer, TRANSFER});
 
         return signalSemaphore;
     }
@@ -764,9 +769,9 @@ namespace Renderer
     {
     }
 
-    void StorageBuffer::setDataFromStaging(const StagingBuffer &stagingBuffer, VkDeviceSize size, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence)
+    CommandBuffer StorageBuffer::setDataFromStaging(const StagingBuffer &stagingBuffer, VkDeviceSize size, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence)
     {
-        copyBuffer(stagingBuffer.getBuffer(), buffer, size, waitPairs, signalPairs, fence);
+        return copyBuffer(stagingBuffer.getBuffer(), buffer, size, waitPairs, signalPairs, fence);
     }
 
     void StorageBuffer::createStorageBuffer()

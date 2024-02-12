@@ -51,11 +51,11 @@ namespace Renderer
         std::vector<VkSemaphore> stagingCopySemaphores;
         std::vector<VkFence> bufferCopyFences;
         std::vector<VkFence> stagingCopyFences;
-        std::vector<VkFence> cullingFences;
         std::vector<VkSemaphore> cullingSemaphores;
         std::vector<VkSemaphore> bufferCopySemaphores;
         std::vector<VkSemaphore> renderSemaphores;
         std::vector<VkFence> renderFences;
+        std::vector<std::vector<CommandBuffer>> commandBuffers;
         std::vector<std::shared_ptr<UniformBuffer>> lightingInfoBuffers;
         std::vector<std::shared_ptr<IndirectRenderingData>> renderingData;
         std::vector<std::shared_ptr<StorageBuffer>> dedicatedStagingData;
@@ -75,10 +75,8 @@ namespace Renderer
         Camera* cameraPtr = NULL;
         
         void checkSwapchain(VkResult imageResult);
-        void appendDrawCallCounts(IndirectDrawContainer* drawBuffer);
-        void appendDrawCallGroup(IndirectDrawContainer* drawBuffer);
         void drawCallCull(const VkCommandBuffer& cmdBuffer, const CullingFrustum& cullingFrustum, StorageBuffer const* newBufferData, IndirectDrawContainer* drawBuffer);
-        void submitCulling(const VkCommandBuffer& cmdBuffer);
+        CommandBuffer submitCulling(const VkCommandBuffer& cmdBuffer);
         void composeAttachments(const VkCommandBuffer& cmdBuffer);
         void bindMaterial(Material const* material, const VkCommandBuffer& cmdBuffer);
         void bindMaterialInstance(MaterialInstance const* materialInstance, const VkCommandBuffer& cmdBuffer);

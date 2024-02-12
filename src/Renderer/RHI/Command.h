@@ -21,6 +21,12 @@ namespace Renderer
         PRESENT = 3
     };
 
+    struct CommandBuffer
+    {
+        VkCommandBuffer buffer;
+        CmdPoolType type;
+    };
+
     class CmdBufferAllocator
     {
     private:
@@ -39,6 +45,7 @@ namespace Renderer
         VkFence getSignaledFence() const;
         VkFence getUnsignaledFence() const;
         VkCommandBuffer getCommandBuffer(CmdPoolType type) const;
+        void freeCommandBuffer(CommandBuffer& commandBuffer);
         static uint32_t getFrameCount() { return frameCount; }
     };
 }

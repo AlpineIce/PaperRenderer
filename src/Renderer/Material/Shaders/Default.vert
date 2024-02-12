@@ -13,11 +13,7 @@ layout(location = 2) out vec2 texCoord;
 struct ObjectData
 {
     mat4 model;
-    vec4 position;
     mat4 objectTransform;
-    vec4 PADDING3;
-    vec4 PADDING4;
-    vec4 PADDING5;
 };
 
 layout(std430, set = 2, binding = 0) readonly buffer ObjectBuffer

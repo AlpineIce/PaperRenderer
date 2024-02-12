@@ -19,12 +19,6 @@ namespace Renderer
 
         descriptorPools.resize(CmdBufferAllocator::getFrameCount());
         currentPools.resize(CmdBufferAllocator::getFrameCount());
-        for(uint32_t i = 0; i < CmdBufferAllocator::getFrameCount(); i++)
-        {
-            descriptorPools.at(i).push_back(allocateDescriptorPool());
-            currentPools.at(i) = &(descriptorPools.at(i).back());
-        }
-        
     }
     
     DescriptorAllocator::~DescriptorAllocator()

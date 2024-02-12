@@ -14,10 +14,16 @@ layout(set = 0, binding = 0) buffer DrawCounts
     uint counts[];
 } drawCounts;
 
-struct ObjectData
+struct InputObject
 {
     mat4 matrix;
     vec4 position; //w component holds sphere extent
+};
+
+struct OutputObject
+{
+    mat4 model;
+    mat4 objectTransform;
 };
 
 struct DrawCommand //24 bytes
@@ -27,15 +33,6 @@ struct DrawCommand //24 bytes
     uint firstIndex;
     int vertexOffset;
     uint firstInstance;
-    float padding;
-};
-
-struct BufferStride
-{
-    ObjectData inputObject;
-    mat4 outputTransform;
-    DrawCommand inputCommand;
-    DrawCommand outputCommand;
 };
 
 layout(std430, set = 1, binding = 0) uniform InputData 
@@ -46,16 +43,28 @@ layout(std430, set = 1, binding = 0) uniform InputData
     vec2 zPlanes; //(near, far)
     uint matrixCount;
     uint drawCountIndex;
+    uint indexCount;
+    uint padding;
 } inputData;
 
-layout(std430, set = 1, binding = 1) buffer Buffers
+layout(std430, set = 1, binding = 1) readonly buffer InputObjects
 {
-    BufferStride data[];
-} dataBuffer;
+    InputObject objects[];
+} inputObjects;
+
+layout(std430, set = 1, binding = 2) buffer OutputObjects
+{
+    OutputObject objects[];
+} outputObjects;
+
+layout(std430, set = 1, binding = 3) buffer OutputCommands
+{
+    DrawCommand commands[];
+} drawCommands;
 
 //----------FUNCTIONS----------//
 
-bool isInBounds(ObjectData object)
+bool isInBounds(InputObject object)
 {
     //grab sphere cull data from the object buffer
 	vec4 sphereBounds = object.position;
@@ -77,15 +86,31 @@ bool isInBounds(ObjectData object)
 void main()
 {
     uint gID = gl_GlobalInvocationID.x;
+
     if(gID >= inputData.matrixCount)
     {
         return;
     }
-    else if(isInBounds(dataBuffer.data[gID].inputObject))
+    else if(isInBounds(inputObjects.objects[gID]))
     {
         //add one into the draw count buffer at location of drawCountIndex, assign the pre-addition value into writeIndex, which will be the index into OutputObjects
         uint writeIndex = atomicAdd(drawCounts.counts[inputData.drawCountIndex], 1);
-        dataBuffer.data[gID].outputTransform = inputData.projection * inputData.view * dataBuffer.data[gID].inputObject.matrix;
-        dataBuffer.data[writeIndex].outputCommand = dataBuffer.data[gID].inputCommand;
+
+        //draw command data
+        DrawCommand outputCommand;
+        outputCommand.indexCount = inputData.indexCount;
+        outputCommand.instanceCount = 1;
+        outputCommand.firstIndex = 0;
+        outputCommand.vertexOffset = 0;
+        outputCommand.firstInstance = writeIndex;
+
+        //output object data
+        OutputObject outputObject;
+        outputObject.model = inputObjects.objects[gID].matrix;
+        outputObject.objectTransform = inputData.projection * inputData.view * inputObjects.objects[gID].matrix;
+
+        //output
+        drawCommands.commands[writeIndex] = outputCommand;
+        outputObjects.objects[writeIndex] = outputObject;
     }
 }

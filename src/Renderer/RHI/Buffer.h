@@ -43,13 +43,13 @@ namespace Renderer
         Device* devicePtr;
         CmdBufferAllocator* commandsPtr;
 
-        void copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence);
+        CommandBuffer copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence);
     public:
         Buffer(Device* device, CmdBufferAllocator* commands, VkDeviceSize size);
         virtual ~Buffer();
 
         void createBuffer(VkBufferUsageFlags usage, VmaMemoryUsage memUsage, VmaAllocationCreateFlags memFlag);
-        void copyFromBuffer(Buffer& src, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence);
+        CommandBuffer copyFromBuffer(Buffer& src, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence);
 
         const VkBuffer& getBuffer() const { return buffer; }
         VkDeviceSize getAllocatedSize() const { return size; }
@@ -74,7 +74,6 @@ namespace Renderer
     class VertexBuffer : public Buffer
     {
     private:
-        VkSemaphore creationSemaphore;
         uint32_t verticesLength;
 
         void createVertexBuffer();
@@ -91,7 +90,6 @@ namespace Renderer
     class IndexBuffer : public Buffer
     {
     private:
-        VkSemaphore creationSemaphore;
         uint32_t indicesLength;
 
         void createIndexBuffer();
@@ -140,6 +138,7 @@ namespace Renderer
         VkDeviceSize size;
         VmaAllocation allocation;
         VmaAllocationInfo allocInfo;
+        std::vector<CommandBuffer> creationBuffers;
 
         Device* devicePtr;
         CmdBufferAllocator* commandsPtr;
@@ -196,7 +195,7 @@ namespace Renderer
         StorageBuffer(Device *device, CmdBufferAllocator *commands, VkDeviceSize size);
         ~StorageBuffer() override;
 
-        void setDataFromStaging(const StagingBuffer& stagingBuffer, VkDeviceSize size, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence);
+        CommandBuffer setDataFromStaging(const StagingBuffer& stagingBuffer, VkDeviceSize size, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence);
         const VkBuffer& getBuffer() const { return buffer; }
     };
 }
