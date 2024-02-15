@@ -51,6 +51,69 @@ namespace Renderer
         }
     }
 
+    CommandBuffer Buffer::copyFromBufferRanges(Buffer &src, const std::vector<SemaphorePair> &waitPairs, const std::vector<SemaphorePair> &signalPairs, const VkFence &fence, const std::vector<VkBufferCopy>& regions)
+    {
+        VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffer(CmdPoolType::TRANSFER); //note theres only 1 transfer cmd buffer
+
+        VkCommandBufferBeginInfo beginInfo = {};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.pNext = NULL;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(transferBuffer, &beginInfo); 
+
+        vkCmdCopyBuffer(transferBuffer, src.getBuffer(), this->buffer, regions.size(), regions.data());
+
+        vkEndCommandBuffer(transferBuffer);
+
+        VkCommandBufferSubmitInfo cmdBufferSubmitInfo = {};
+        cmdBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        cmdBufferSubmitInfo.pNext = NULL;
+        cmdBufferSubmitInfo.commandBuffer = transferBuffer;
+        cmdBufferSubmitInfo.deviceMask = 0;
+
+        std::vector<VkSemaphoreSubmitInfo> semaphoreWaitInfos;
+        for(const SemaphorePair& pair : waitPairs)
+        {
+            VkSemaphoreSubmitInfo semaphoreInfo = {};
+            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+            semaphoreInfo.pNext = NULL;
+            semaphoreInfo.semaphore = pair.semaphore;
+            semaphoreInfo.stageMask = pair.stage;
+            semaphoreInfo.deviceIndex = 0;
+
+            semaphoreWaitInfos.push_back(semaphoreInfo);
+        }
+
+        std::vector<VkSemaphoreSubmitInfo> semaphoreSignalInfos;
+        for(const SemaphorePair& pair : signalPairs)
+        {
+            VkSemaphoreSubmitInfo semaphoreInfo = {};
+            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+            semaphoreInfo.pNext = NULL;
+            semaphoreInfo.semaphore = pair.semaphore;
+            semaphoreInfo.stageMask = pair.stage;
+            semaphoreInfo.deviceIndex = 0;
+
+            semaphoreSignalInfos.push_back(semaphoreInfo);
+        }
+        
+        VkSubmitInfo2 submitInfo = {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+        submitInfo.pNext = NULL;
+        submitInfo.flags = 0;
+        submitInfo.waitSemaphoreInfoCount = semaphoreWaitInfos.size();
+        submitInfo.pWaitSemaphoreInfos = semaphoreWaitInfos.data();
+        submitInfo.commandBufferInfoCount = 1;
+        submitInfo.pCommandBufferInfos = &cmdBufferSubmitInfo;
+        submitInfo.signalSemaphoreInfoCount = semaphoreSignalInfos.size();
+        submitInfo.pSignalSemaphoreInfos = semaphoreSignalInfos.data();
+
+        vkQueueSubmit2(devicePtr->getQueues().transfer.at(0), 1, &submitInfo, fence);
+        
+        return { transferBuffer, TRANSFER };
+    }
+
     CommandBuffer Buffer::copyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence)
     {
         VkCommandBuffer transferBuffer = commandsPtr->getCommandBuffer(CmdPoolType::TRANSFER); //note theres only 1 transfer cmd buffer

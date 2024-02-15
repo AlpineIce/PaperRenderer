@@ -29,6 +29,7 @@ namespace Renderer
         if(rtEnabled) initRT();
 
         vkDeviceWaitIdle(device.getDevice());
+        std::cout << "Renderer initialization complete" << std::endl;
     }
 
     RenderEngine::~RenderEngine()
@@ -101,29 +102,29 @@ namespace Renderer
         return returnImg;
     }
 
-    void RenderEngine::addObject(ModelInstance& object)
+    void RenderEngine::addObject(ModelInstance& object, std::unordered_map<uint32_t, const Renderer::MaterialInstance*>* materials, RenderObjectReference& reference, glm::mat4 const* modelMatPtr, glm::vec3 const* posPtr)
     {
-        if(object.modelPtr != NULL)
+        if(object.getModelPtr() != NULL)
         {
-            for(uint32_t i = 0; i < object.modelPtr->getModelMeshes().size(); i++) //iterate meshes
+            for(uint32_t i = 0; i < object.getModelPtr()->getModelMeshes().size(); i++) //iterate meshes
             {
                 MaterialInstance const* materialInstance;
-                uint32_t materialIndex = object.modelPtr->getModelMeshes().at(i).materialIndex;
+                uint32_t materialIndex = object.getModelPtr()->getModelMeshes().at(i).materialIndex;
 
-                if(object.materials.count(materialIndex))
+                if(materials->count(materialIndex))
                 {
-                    materialInstance = object.materials.at(materialIndex);
+                    materialInstance = materials->at(materialIndex);
                 }
                 else //use default material if one isnt selected
                 {
                     materialInstance = &(defaultMaterial->getDefaultInstance());
-                    object.materials[materialIndex] = materialInstance;
+                    (*materials)[materialIndex] = materialInstance; //lmao syntax
                 }
 
-                object.objRefs[i] = {
-                    .modelMatrix = &object.modelMatrix,
-                    .position = &object.position,
-                    .mesh = object.modelPtr->getModelMeshes().at(i).mesh.get()
+                reference[i] = {
+                    .modelMatrix = modelMatPtr,
+                    .position = posPtr,
+                    .mesh = object.getModelPtr()->getModelMeshes().at(i).mesh.get()
                 };
 
                 if(!renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer)
@@ -131,20 +132,20 @@ namespace Renderer
                     renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer = 
                         std::make_shared<IndirectDrawContainer>(&device, &commands, &descriptors, materialInstance->parentMaterial->getRasterPipeline());
                 }
-                renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer->addElement(object.objRefs.at(i));
+                renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer->addElement(reference.at(i));
             }
         }
     }
 
-    void RenderEngine::removeObject(ModelInstance& object)
+    void RenderEngine::removeObject(ModelInstance& object, RenderObjectReference& references)
     {
-        for(uint32_t i = 0; i < object.modelPtr->getModelMeshes().size(); i++)
+        for(uint32_t i = 0; i < object.getModelPtr()->getModelMeshes().size(); i++)
         {
-            if(object.objRefs.count(i))
+            if(references.count(i))
             {
                 MaterialInstance const* materialInstance;
-                materialInstance = object.materials.at(object.modelPtr->getModelMeshes().at(i).materialIndex);
-                renderTree.at((Material*)materialInstance->parentMaterial).instances.at(materialInstance).objectBuffer->removeElement(object.objRefs.at(i));
+                materialInstance = object.getMaterials().at(object.getModelPtr()->getModelMeshes().at(i).materialIndex);
+                renderTree.at((Material*)materialInstance->parentMaterial).instances.at(materialInstance).objectBuffer->removeElement(references.at(i));
             }
         }
     }

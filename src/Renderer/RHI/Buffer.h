@@ -50,6 +50,7 @@ namespace Renderer
 
         void createBuffer(VkBufferUsageFlags usage, VmaMemoryUsage memUsage, VmaAllocationCreateFlags memFlag);
         CommandBuffer copyFromBuffer(Buffer& src, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence);
+        CommandBuffer copyFromBufferRanges(Buffer& src, const std::vector<SemaphorePair>& waitPairs, const std::vector<SemaphorePair>& signalPairs, const VkFence& fence, const std::vector<VkBufferCopy>& regions);
 
         const VkBuffer& getBuffer() const { return buffer; }
         VkDeviceSize getAllocatedSize() const { return size; }

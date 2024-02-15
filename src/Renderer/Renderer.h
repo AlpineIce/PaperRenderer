@@ -6,7 +6,6 @@
 #include "RHI/Swapchain.h"
 #include "RHI/Pipeline.h"
 #include "RHI/AccelerationStructure.h"
-#include "Material/Material.h"
 #include "RenderPass.h"
 #include "Model.h"
 
@@ -17,23 +16,11 @@
 
 namespace Renderer
 {
-    typedef std::unordered_map<uint32_t, DrawBufferObject> RenderObjectReference;
-    
     struct RendererCreationStruct
     {
         std::string appName;
         unsigned int resX;
         unsigned int resY;
-    };
-
-    //struct to be used as an instance of a model, used as a reference for rendering, material index corresponds to material slot
-    struct ModelInstance
-    {
-        RenderObjectReference objRefs;
-        glm::mat4 modelMatrix = glm::mat4(1.0f);
-        glm::vec3 position = glm::vec3(0.0f);
-        Model const* modelPtr = NULL; //TODO default model
-        std::unordered_map<uint32_t, MaterialInstance const*> materials;
     };
 
     class RenderEngine
@@ -71,8 +58,8 @@ namespace Renderer
         ~RenderEngine();
 
         //add/remove objects to render tree
-        void addObject(ModelInstance& object);
-        void removeObject(ModelInstance& object);
+        void addObject(ModelInstance& object, std::unordered_map<uint32_t, const Renderer::MaterialInstance*>* materials, RenderObjectReference& reference, glm::mat4 const* modelMatPtr, glm::vec3 const* posPtr);
+        void removeObject(ModelInstance& object, RenderObjectReference& references);
 
         //add point lights, returns list reference which is necessary for removal
         void addPointLight(PointLightObject& light);

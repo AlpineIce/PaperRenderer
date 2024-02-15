@@ -48,24 +48,22 @@ namespace Renderer
     {
     private:
         std::vector<VkSemaphore> imageSemaphores;
-        std::vector<VkSemaphore> stagingCopySemaphores;
-        std::vector<VkFence> bufferCopyFences;
-        std::vector<VkFence> stagingCopyFences;
-        std::vector<VkSemaphore> cullingSemaphores;
         std::vector<VkSemaphore> bufferCopySemaphores;
+        std::vector<VkSemaphore> cullingSemaphores;
+        std::vector<VkSemaphore> lightingCopySemaphores;
         std::vector<VkSemaphore> renderSemaphores;
+        std::vector<VkFence> cullingFences;
         std::vector<VkFence> renderFences;
-        std::vector<std::vector<CommandBuffer>> commandBuffers;
+        std::vector<std::vector<CommandBuffer>> fence0CmdBuffers;
+        std::vector<std::vector<CommandBuffer>> fence1CmdBuffers;
         std::vector<std::shared_ptr<UniformBuffer>> lightingInfoBuffers;
         std::vector<std::shared_ptr<IndirectRenderingData>> renderingData;
-        std::vector<std::shared_ptr<StorageBuffer>> dedicatedStagingData;
 
         std::shared_ptr<ComputePipeline> meshPreprocessPipeline;
 
         ImageAttachments renderTargets;
         uint32_t currentImage;
         bool recreateFlag = false;
-        const uint32_t MAX_POINT_LIGHTS = 1024; //id rather not do a new allocation for every addition like for objects
 
         Swapchain* swapchainPtr;
         Device* devicePtr;

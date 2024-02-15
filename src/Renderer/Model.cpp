@@ -1,4 +1,5 @@
 #include "Model.h"
+#include "Renderer.h"
 
 namespace Renderer
 {
@@ -109,4 +110,28 @@ namespace Renderer
         returnMesh.materialIndex = materialIndex;
         meshes.push_back(returnMesh);
 	}
+
+	//----------MODEL INSTANCE DEFINITIONS----------//
+
+    ModelInstance::ModelInstance(RenderEngine* renderer, Model const* parentModel, std::unordered_map<uint32_t, MaterialInstance const*> materials)
+		:rendererPtr(renderer),
+		modelPtr(parentModel),
+		materials(materials)
+    {
+		rendererPtr->addObject(*this, &this->materials, objRef, &modelMatrix, &transformation.position);
+    }
+
+    ModelInstance::~ModelInstance()
+    {
+		rendererPtr->removeObject(*this, objRef);
+    }
+
+    void ModelInstance::transform(const ModelTransform &newTransform)
+    {
+		transformation = newTransform;
+		modelMatrix = glm::mat4(1.0f);
+		modelMatrix = glm::scale(modelMatrix, newTransform.scale);
+		modelMatrix = glm::mat4_cast(newTransform.rotation) * modelMatrix;
+		modelMatrix = glm::translate(modelMatrix, newTransform.position);
+    }
 }

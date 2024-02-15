@@ -421,7 +421,7 @@ namespace Renderer
 
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderFeatures = {};
         dynamicRenderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
-        dynamicRenderFeatures.pNext = &RTfeatures;
+        dynamicRenderFeatures.pNext = &features2;//&RTfeatures;
         dynamicRenderFeatures.dynamicRendering = VK_TRUE;
 
         VkDeviceCreateInfo deviceCreateInfo = {};

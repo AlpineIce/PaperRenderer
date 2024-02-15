@@ -60,6 +60,9 @@ namespace Renderer
         uint32_t lightsOffset;
         uint32_t lightCount;
         std::vector<char> stagingData;
+        VkBufferCopy fragmentInputRegion;
+        VkBufferCopy preprocessInputRegion;
+        VkBufferCopy drawCountsRegion;
         std::shared_ptr<StorageBuffer> bufferData; //THE UBER-BUFFER
     };
 
