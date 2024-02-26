@@ -382,7 +382,6 @@ namespace Renderer
         std::vector<const char*> extensionNames;
         extensionNames.insert(extensionNames.end(), {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-            VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
             VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
             VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
             VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME});
@@ -393,7 +392,7 @@ namespace Renderer
         vulkan12Features.drawIndirectCount = VK_TRUE;
         vulkan12Features.bufferDeviceAddress = VK_TRUE;
 
-        VkPhysicalDeviceShaderDrawParametersFeatures  drawParamFeatures = {};
+        VkPhysicalDeviceShaderDrawParametersFeatures drawParamFeatures = {};
         drawParamFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
         drawParamFeatures.pNext = &vulkan12Features;
         drawParamFeatures.shaderDrawParameters = VK_TRUE;
@@ -421,7 +420,7 @@ namespace Renderer
 
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderFeatures = {};
         dynamicRenderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
-        dynamicRenderFeatures.pNext = &features2;//&RTfeatures;
+        dynamicRenderFeatures.pNext = &RTfeatures;
         dynamicRenderFeatures.dynamicRendering = VK_TRUE;
 
         VkDeviceCreateInfo deviceCreateInfo = {};

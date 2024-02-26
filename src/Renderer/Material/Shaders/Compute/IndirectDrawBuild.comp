@@ -1,32 +1,76 @@
 #version 460
 
 #extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require //for pointer arithmetic
 
-//TODO gl_InstanceIndex instanced stuff
+layout (local_size_x = 128) in;
 
-layout (local_size_x = 64) in;
+//----------GLOBAL INPUT DATA----------//
 
+layout(std430, buffer_reference, buffer_reference_align = 8) PreprocessBufferReference;
 
-//----------INPUT DATA----------//
-
-layout(set = 0, binding = 0) buffer DrawCounts
+struct CullingData
 {
-    uint counts[];
-} drawCounts;
+    vec4 frustum; //(left, right, top, bottom)
+    vec2 zPlanes; //(near, far)
+};
+
+layout(std430, set = 0, binding = 0) uniform InputData
+{
+    PreprocessBufferReference bufferReference;
+    vec4 camPos;
+    mat4 projection;
+    mat4 view;
+    uint objectCount;
+    CullingData cullingData;
+} inputData;
 
 struct InputObject
 {
-    mat4 matrix;
-    vec4 position; //w component holds sphere extent
+    vec4 position; //w hold sphere extent
+    mat4 rotation;
+    vec4 scale;
+    uint lodCount;
+    uint lodOffset;
+    vec2 padding;
 };
 
-struct OutputObject
+layout(std430, set = 0, binding = 1) readonly buffer InputObjects
 {
-    mat4 model;
-    mat4 objectTransform;
+    InputObject objects[];
+} inputObjects;
+
+struct LODMesh
+{
+    uint vboOffset;
+    uint vboSize;
+    uint iboOffset;
+    uint iboSize;
+
+    uint drawCountsOffset;
+    uint drawCommandsOffset;
+    uint outputObjectsOffset;
+    uint padding;
 };
 
-struct DrawCommand //24 bytes
+layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer LODMeshes
+{
+    LODMesh meshes[];
+};
+
+layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer LOD
+{
+    uint meshCount;
+    uint meshesLocationOffset;
+};
+
+layout(std430, buffer_reference, buffer_reference_align = 8) buffer DrawCounts
+{
+    uint count;
+};
+
+struct DrawCommand //20 bytes
 {
     uint indexCount;
     uint instanceCount;
@@ -35,32 +79,21 @@ struct DrawCommand //24 bytes
     uint firstInstance;
 };
 
-layout(std430, set = 1, binding = 0) uniform InputData 
-{
-    mat4 projection;
-    mat4 view;
-    vec4 frustum; //(left, right, top, bottom)
-    vec2 zPlanes; //(near, far)
-    uint matrixCount;
-    uint drawCountIndex;
-    uint indexCount;
-    uint padding;
-} inputData;
-
-layout(std430, set = 1, binding = 1) readonly buffer InputObjects
-{
-    InputObject objects[];
-} inputObjects;
-
-layout(std430, set = 1, binding = 2) buffer OutputObjects
-{
-    OutputObject objects[];
-} outputObjects;
-
-layout(std430, set = 1, binding = 3) buffer OutputCommands
+layout(std430, buffer_reference, buffer_reference_align = 8) writeonly buffer DrawCommands
 {
     DrawCommand commands[];
-} drawCommands;
+};
+
+struct OutputObject
+{
+    mat4 model;
+    mat4 objectTransform;
+};
+
+layout(std430, buffer_reference, buffer_reference_align = 8) writeonly buffer OutputObjects
+{
+    OutputObject objects[];
+};
 
 //----------FUNCTIONS----------//
 
@@ -70,47 +103,85 @@ bool isInBounds(InputObject object)
 	vec4 sphereBounds = object.position;
 
 	vec3 center = sphereBounds.xyz;
-	center = (inputData.view * vec4(center,1.0)).xyz;
+	center = (inputData.view * vec4(center, 1.0)).xyz;
 	float radius = 0.0;//sphereBounds.w;
 
 	bool visible = true;
 
 	//frustrum culling
-	visible = visible && center.z * inputData.frustum.y - abs(center.x) * inputData.frustum.x > -radius;
-	visible = visible && center.z * inputData.frustum.w - abs(center.y) * inputData.frustum.z > -radius;
+	visible = visible && center.z * inputData.cullingData.frustum.y - abs(center.x) * inputData.cullingData.frustum.x > -radius;
+	visible = visible && center.z * inputData.cullingData.frustum.w - abs(center.y) * inputData.cullingData.frustum.z > -radius;
     //visible = visible && center.z + radius > inputData.zPlanes.x && center.z - radius < inputData.zPlanes.y;
 
 	return visible;
 }
 
+uint getLODLevel(InputObject object)
+{
+    float cameraDistance = length(object.position.xyz - inputData.camPos.xyz);
+    float worldSize = 50.0;
+    uint lodLevel = uint(floor(inversesqrt(worldSize) * sqrt(cameraDistance)));
+
+    return lodLevel;
+}
+
+DrawCommand buildDrawCommand(LODMesh lodData, uint writeIndex)
+{
+    DrawCommand drawCommand;
+    drawCommand.indexCount = lodData.iboSize;
+    drawCommand.instanceCount = 1;
+    drawCommand.firstIndex = lodData.iboOffset;
+    drawCommand.vertexOffset = int(lodData.vboOffset);
+    drawCommand.firstInstance = writeIndex;
+
+    return drawCommand;
+}
+
+OutputObject buildOutputObject(InputObject object)
+{
+    //build model matrix
+    mat4 modelMatrix = mat4(
+        vec4(object.scale.x, 0.0, 0.0, 0.0),
+        vec4(0.0, object.scale.y, 0.0, 0.0),
+        vec4(0.0, 0.0, object.scale.z, 0.0),
+        vec4(object.position.xyz, 1.0));
+
+    modelMatrix = modelMatrix * object.rotation; //apply rotation before translation
+
+    OutputObject outputObject;
+    outputObject.model = modelMatrix;
+    outputObject.objectTransform = inputData.projection * inputData.view * modelMatrix;
+
+    return outputObject;
+}
+
 void main()
 {
     uint gID = gl_GlobalInvocationID.x;
-
-    if(gID >= inputData.matrixCount)
+    if(gID >= inputData.objectCount)
     {
         return;
     }
-    else if(isInBounds(inputObjects.objects[gID]))
-    {
-        //add one into the draw count buffer at location of drawCountIndex, assign the pre-addition value into writeIndex, which will be the index into OutputObjects
-        uint writeIndex = atomicAdd(drawCounts.counts[inputData.drawCountIndex], 1);
 
-        //draw command data
-        DrawCommand outputCommand;
-        outputCommand.indexCount = inputData.indexCount;
-        outputCommand.instanceCount = 1;
-        outputCommand.firstIndex = 0;
-        outputCommand.vertexOffset = 0;
-        outputCommand.firstInstance = writeIndex;
+    InputObject inputObject = inputObjects.objects[gID];
+    if(isInBounds(inputObject))
+    {   
+        //get LOD
+        uint lodLevel = min(getLODLevel(inputObject), inputObject.lodCount - 1);
+        LOD lod = LOD(uint64_t(inputData.bufferReference) + inputObject.lodOffset + lodLevel * 8);
+        LODMeshes meshesArray = LODMeshes(uint64_t(inputData.bufferReference) + lod.meshesLocationOffset);
 
-        //output object data
-        OutputObject outputObject;
-        outputObject.model = inputObjects.objects[gID].matrix;
-        outputObject.objectTransform = inputData.projection * inputData.view * inputObjects.objects[gID].matrix;
+        //loop through LOD meshes and create draw calls with counts
+        for(uint i = 0; i < lod.meshCount; i++)
+        {
+            DrawCounts drawCounts = DrawCounts(uint64_t(inputData.bufferReference) + meshesArray.meshes[i].drawCountsOffset);
+            DrawCommands outputCommands = DrawCommands(uint64_t(inputData.bufferReference) + meshesArray.meshes[i].drawCommandsOffset);
+            OutputObjects outputObjects = OutputObjects(uint64_t(inputData.bufferReference) + meshesArray.meshes[i].outputObjectsOffset);
 
-        //output
-        drawCommands.commands[writeIndex] = outputCommand;
-        outputObjects.objects[writeIndex] = outputObject;
+            uint writeIndex = atomicAdd(drawCounts.count, 1);
+
+            outputCommands.commands[writeIndex] = buildDrawCommand(meshesArray.meshes[i], writeIndex);
+            outputObjects.objects[writeIndex] = buildOutputObject(inputObject);
+        }
     }
 }

@@ -184,12 +184,12 @@ namespace Renderer
 
     VkDeviceAddress Buffer::getBufferDeviceAddress() const
     {
-        VkBufferDeviceAddressInfoKHR deviceAddressInfo = {};
+        VkBufferDeviceAddressInfo deviceAddressInfo = {};
         deviceAddressInfo.sType  = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
         deviceAddressInfo.pNext = NULL;
         deviceAddressInfo.buffer = buffer;
 
-        return vkGetBufferDeviceAddressKHR(devicePtr->getDevice(), &deviceAddressInfo);
+        return vkGetBufferDeviceAddress(devicePtr->getDevice(), &deviceAddressInfo);
     }
 
     //-----------STAGING BUFFER DEFINITIONS----------//
@@ -869,17 +869,5 @@ namespace Renderer
 
         VmaAllocationInfo allocInfo;
         VkResult result = vmaCreateBuffer(devicePtr->getAllocator(), &bufferInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
-    }
-
-    //----------MESH DEFINITIONS----------//
-
-    Mesh::Mesh(Device* device, CmdBufferAllocator* commands, std::vector<Vertex>* vertices, std::vector<uint32_t>* indices)
-        :vbo(device, commands, vertices),
-        ibo(device, commands, indices)
-    {
-    }
-
-    Mesh::~Mesh()
-    {
     }
 }

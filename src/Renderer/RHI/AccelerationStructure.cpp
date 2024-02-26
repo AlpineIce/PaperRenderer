@@ -58,15 +58,10 @@ namespace Renderer
             std::vector<VkAccelerationStructureBuildRangeInfoKHR> modelBuildRangeInfos;
 
             //get per-mesh geometry data
-            for(ModelMesh const* mesh : model.meshes)
+            for(const AccelerationStructureMeshData& mesh : model.meshes)
             {
-                //get buffer addresses
-                VkDeviceOrHostAddressConstKHR vertexBufferAddress = {};
-                VkDeviceOrHostAddressConstKHR indexBufferAddress = {};
-                //VkDeviceOrHostAddressConstKHR transformMatrixBufferAddress = {};
-
-                vertexBufferAddress.deviceAddress = mesh->mesh->getVertexBuffer().getBufferDeviceAddress();
-                indexBufferAddress.deviceAddress = mesh->mesh->getIndexBuffer().getBufferDeviceAddress();
+                //vertexBufferAddress.deviceAddress = mesh->mesh->getVertexBuffer().getBufferDeviceAddress();
+                //indexBufferAddress.deviceAddress = mesh->mesh->getIndexBuffer().getBufferDeviceAddress();
                 //transformMatrixBufferAddress.deviceAddress = transformMatrixBuffer.getBufferDeviceAddress();
 
                 //buffer information
@@ -74,11 +69,11 @@ namespace Renderer
                 trianglesGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
                 trianglesGeometry.pNext = NULL;
                 trianglesGeometry.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-                trianglesGeometry.vertexData = vertexBufferAddress;
-                trianglesGeometry.maxVertex = mesh->mesh->getVertexBuffer().getLength();
+                trianglesGeometry.vertexData = mesh.vertexBufferAddress;
+                trianglesGeometry.maxVertex = mesh.vertexCount;
                 trianglesGeometry.vertexStride = sizeof(Vertex);
                 trianglesGeometry.indexType = VK_INDEX_TYPE_UINT32;
-                trianglesGeometry.indexData = indexBufferAddress;
+                trianglesGeometry.indexData = mesh.indexBufferAddress;
                 //trianglesGeometry.transformData = transformMatrixBufferAddress;
 
                 //geometries
@@ -90,13 +85,13 @@ namespace Renderer
                 structureGeometry.geometry.triangles = trianglesGeometry;
                 
                 VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo;
-                buildRangeInfo.primitiveCount = mesh->mesh->getIndexBuffer().getLength() / 3;
+                buildRangeInfo.primitiveCount = mesh.primitiveCount;
                 buildRangeInfo.primitiveOffset = 0;
                 buildRangeInfo.firstVertex = 0;
                 buildRangeInfo.transformOffset = 0;
 
                 modelGeometries->push_back(structureGeometry);
-                modelPrimitiveCounts.push_back(mesh->mesh->getIndexBuffer().getLength() / 3);
+                modelPrimitiveCounts.push_back(mesh.primitiveCount / 3);
                 modelBuildRangeInfos.push_back(buildRangeInfo);
             }
             modelsGeometries.push_back(modelGeometries);

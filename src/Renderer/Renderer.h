@@ -3,11 +3,8 @@
 
 #include "RHI/Device.h"
 #include "RHI/Window.h"
-#include "RHI/Swapchain.h"
-#include "RHI/Pipeline.h"
 #include "RHI/AccelerationStructure.h"
 #include "RenderPass.h"
-#include "Model.h"
 
 #include <string>
 #include <memory>
@@ -37,11 +34,8 @@ namespace Renderer
 
         //render tree stores all pipelines, their child materials, with their child RenderObject pointers
         LightingInformation lightingInfo;
-
+        
         std::unordered_map<Material*, MaterialNode> renderTree;
-
-        std::unordered_map<std::string, std::shared_ptr<Model>> models;
-        std::unordered_map<std::string, std::shared_ptr<Material>> materials;
         std::unordered_map<std::string, std::shared_ptr<Texture>> textures;
         std::shared_ptr<DefaultMaterial> defaultMaterial;
 
@@ -49,7 +43,6 @@ namespace Renderer
         bool rtEnabled = false;
 
         Image loadImage(std::string directory);
-        void loadModels(std::string modelsDir);
         void loadTextures(std::string texturesDir);
         void initRT();
         
@@ -58,8 +51,8 @@ namespace Renderer
         ~RenderEngine();
 
         //add/remove objects to render tree
-        void addObject(ModelInstance& object, std::unordered_map<uint32_t, const Renderer::MaterialInstance*>* materials, RenderObjectReference& reference, glm::mat4 const* modelMatPtr, glm::vec3 const* posPtr);
-        void removeObject(ModelInstance& object, RenderObjectReference& references);
+        void addObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, std::list<ModelInstance*>::iterator& objectReference);
+        void removeObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, std::list<ModelInstance*>::iterator& objectReference);
 
         //add point lights, returns list reference which is necessary for removal
         void addPointLight(PointLightObject& light);
@@ -78,10 +71,10 @@ namespace Renderer
         bool getRTstatus() const { return rtEnabled; }
         void setRTstatus(bool newStatus) { this->rtEnabled = newStatus; }
 
-        Model const* getModelByName(std::string name);
-        Material const* getMaterialByName(std::string name);
         Texture const* getTextureByName(std::string name);
 
         GLFWwindow* getGLFWwindow() const { return window.getWindow(); }
+        Device* getDevice() { return &device; }
+        CmdBufferAllocator* getCommandsHandler() { return &commands; }
     };
 }

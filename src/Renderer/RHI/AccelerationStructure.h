@@ -6,9 +6,17 @@
 
 namespace Renderer
 {
+    struct AccelerationStructureMeshData
+    {
+        VkDeviceOrHostAddressConstKHR vertexBufferAddress = {};
+        VkDeviceOrHostAddressConstKHR indexBufferAddress = {};
+        uint32_t vertexCount = 0;
+        uint32_t primitiveCount = 0;
+    };
+
     struct AccelerationStructureModelReference
     {
-        std::vector<ModelMesh const*> meshes;
+        std::vector<AccelerationStructureMeshData> meshes;
         void const* modelPointer = NULL;
     };
 

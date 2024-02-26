@@ -1,4 +1,5 @@
 #include "RenderPass.h"
+#include "Renderer.h"
 #include "glm/gtc/matrix_transform.hpp"
 
 namespace Renderer
@@ -19,12 +20,10 @@ namespace Renderer
         imageSemaphores.resize(commandsPtr->getFrameCount());
         bufferCopySemaphores.resize(commandsPtr->getFrameCount());
         cullingSemaphores.resize(commandsPtr->getFrameCount());
-        lightingCopySemaphores.resize(commandsPtr->getFrameCount());
         renderSemaphores.resize(commandsPtr->getFrameCount());
         cullingFences.resize(commandsPtr->getFrameCount());
         renderFences.resize(commandsPtr->getFrameCount());
-        fence0CmdBuffers.resize(commandsPtr->getFrameCount());
-        fence1CmdBuffers.resize(commandsPtr->getFrameCount());
+        fenceCmdBuffers.resize(commandsPtr->getFrameCount());
 
         for(uint32_t i = 0; i < commandsPtr->getFrameCount(); i++)
         {
@@ -35,10 +34,11 @@ namespace Renderer
             imageSemaphores.at(i) = commandsPtr->getSemaphore();
             bufferCopySemaphores.at(i) = commandsPtr->getSemaphore();
             cullingSemaphores.at(i) = commandsPtr->getSemaphore();
-            lightingCopySemaphores.at(i) = commandsPtr->getSemaphore();
             renderSemaphores.at(i) = commandsPtr->getSemaphore();
             cullingFences.at(i) = commandsPtr->getSignaledFence();
             renderFences.at(i) = commandsPtr->getSignaledFence();
+
+            preprocessUniformBuffers.push_back(std::make_shared<UniformBuffer>(devicePtr, commandsPtr, sizeof(CullingInputData)));
         }
 
         for(auto& buffer : lightingInfoBuffers)
@@ -55,47 +55,22 @@ namespace Renderer
         std::unordered_map<uint32_t, DescriptorSet> descriptorSets;
 
         DescriptorSet set0;
-        set0.setNumber = 0;
-        VkDescriptorSetLayoutBinding drawCountsDescriptor = {};
-        drawCountsDescriptor.binding = 0;
-        drawCountsDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        drawCountsDescriptor.descriptorCount = 1;
-        drawCountsDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        set0.descriptorBindings[0] = drawCountsDescriptor;
-        
-        descriptorSets[0] = (set0);
-
-        DescriptorSet set1;
-        set1.setNumber = 1;
+        set0.setNumber = 1;
         VkDescriptorSetLayoutBinding inputDataDescriptor = {};
         inputDataDescriptor.binding = 0;
         inputDataDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         inputDataDescriptor.descriptorCount = 1;
         inputDataDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        set1.descriptorBindings[0] = inputDataDescriptor;
+        set0.descriptorBindings[0] = inputDataDescriptor;
 
         VkDescriptorSetLayoutBinding inputObjectsDescriptor = {};
         inputObjectsDescriptor.binding = 1;
         inputObjectsDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         inputObjectsDescriptor.descriptorCount = 1;
         inputObjectsDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        set1.descriptorBindings[1] = inputObjectsDescriptor;
+        set0.descriptorBindings[1] = inputObjectsDescriptor;
 
-        VkDescriptorSetLayoutBinding outputObjectsDescriptor = {};
-        outputObjectsDescriptor.binding = 2;
-        outputObjectsDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        outputObjectsDescriptor.descriptorCount = 1;
-        outputObjectsDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        set1.descriptorBindings[2] = outputObjectsDescriptor;
-
-        VkDescriptorSetLayoutBinding drawCommandsDescriptor = {};
-        drawCommandsDescriptor.binding = 3;
-        drawCommandsDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        drawCommandsDescriptor.descriptorCount = 1;
-        drawCommandsDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        set1.descriptorBindings[3] = drawCommandsDescriptor;
-
-        descriptorSets[1] = set1;
+        descriptorSets[0] = set0;
 
         PipelineBuildInfo pipelineInfo;
         pipelineInfo.descriptors = descriptorSets;
@@ -111,7 +86,6 @@ namespace Renderer
             vkDestroySemaphore(devicePtr->getDevice(), imageSemaphores.at(i), nullptr);
             vkDestroySemaphore(devicePtr->getDevice(), bufferCopySemaphores.at(i), nullptr);
             vkDestroySemaphore(devicePtr->getDevice(), cullingSemaphores.at(i), nullptr);
-            vkDestroySemaphore(devicePtr->getDevice(), lightingCopySemaphores.at(i), nullptr);
             vkDestroySemaphore(devicePtr->getDevice(), renderSemaphores.at(i), nullptr);
             vkDestroyFence(devicePtr->getDevice(), cullingFences.at(i), nullptr);
             vkDestroyFence(devicePtr->getDevice(), renderFences.at(i), nullptr);
@@ -125,7 +99,147 @@ namespace Renderer
             recreateFlag = true;
         }
     }
-    
+
+    void RenderPass::setStagingData(const std::unordered_map<Material*, MaterialNode>& renderTree, const LightingInformation& lightingInfo)
+    {
+        //----------LIGHTING REQUIREMENETS----------//
+
+        std::vector<char>& stagingData = renderingData.at(currentImage)->stagingData;
+        stagingData.clear();
+
+        //fill in point light buffer
+        renderingData.at(currentImage)->fragmentInputRegion = VkBufferCopy();
+        renderingData.at(currentImage)->fragmentInputRegion.srcOffset = stagingData.size();
+        renderingData.at(currentImage)->fragmentInputRegion.dstOffset = stagingData.size();
+        std::vector<PointLight> pointLights;
+        for(auto light = lightingInfo.pointLights.begin(); light != lightingInfo.pointLights.end(); light++)
+        {
+            pointLights.push_back(**light);
+        }
+
+        renderingData.at(currentImage)->lightsOffset = stagingData.size();
+        stagingData.resize(stagingData.size() + sizeof(PointLight) * pointLights.size());
+        memcpy(stagingData.data() + renderingData.at(currentImage)->fragmentInputRegion.srcOffset , pointLights.data(), sizeof(PointLight) * pointLights.size());
+        
+        renderingData.at(currentImage)->fragmentInputRegion.size = stagingData.size() - renderingData.at(currentImage)->fragmentInputRegion.dstOffset; //fragment shader input region
+        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
+
+        //put lighting into staging data
+        ShaderLightingInformation shaderLightingInfo = {};
+        if(lightingInfo.directLight) shaderLightingInfo.directLight = *lightingInfo.directLight;
+        if(lightingInfo.ambientLight) shaderLightingInfo.ambientLight = *lightingInfo.ambientLight;
+        shaderLightingInfo.pointLightCount = pointLights.size();
+        shaderLightingInfo.camPos = cameraPtr->getTranslation().position;
+        lightingInfoBuffers.at(currentImage)->updateUniformBuffer(&shaderLightingInfo, sizeof(ShaderLightingInformation));
+        renderingData.at(currentImage)->lightCount = pointLights.size();
+
+        //----------MESH REQUIREMENETS----------//
+
+        //draw counts
+        renderingData.at(currentImage)->meshDrawCountsRegion = VkBufferCopy();
+        renderingData.at(currentImage)->meshDrawCountsRegion.srcOffset = stagingData.size();
+        renderingData.at(currentImage)->meshDrawCountsRegion.dstOffset = stagingData.size();
+        for(const auto& [material, materialNode] : renderTree)
+        {
+            for(const auto& [materialInstance, instanceNode] : materialNode.instances) //memcpy because it needs to be cleared //TODO NEEDS TO HAPPEN AFTER VERTEX SHADER STAGE
+            {
+                uint32_t lastSize = stagingData.size();
+                std::vector<uint32_t> data;
+                stagingData.resize(stagingData.size() + instanceNode.objectBuffer->getDrawCountsSize(stagingData.size()));
+                for(uint32_t i = 0; i < (stagingData.size() - lastSize) / sizeof(uint32_t); i++)
+                {
+                    data.push_back(0);
+                }
+                memcpy(stagingData.data() + lastSize, data.data(), stagingData.size() - lastSize);
+            }
+        }
+        renderingData.at(currentImage)->meshDrawCountsRegion.size = stagingData.size() - renderingData.at(currentImage)->meshDrawCountsRegion.dstOffset;
+        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
+
+        //draw commands
+        renderingData.at(currentImage)->meshDrawCommandsRegion = VkBufferCopy();
+        renderingData.at(currentImage)->meshDrawCommandsRegion.srcOffset = stagingData.size();
+        renderingData.at(currentImage)->meshDrawCommandsRegion.dstOffset = stagingData.size();
+        for(const auto& [material, materialNode] : renderTree)
+        {
+            for(const auto& [materialInstance, instanceNode] : materialNode.instances)
+            {
+                stagingData.resize(stagingData.size() + instanceNode.objectBuffer->getDrawCommandsSize(stagingData.size()));
+            }
+        }
+        renderingData.at(currentImage)->meshDrawCommandsRegion.size = stagingData.size() - renderingData.at(currentImage)->meshDrawCommandsRegion.dstOffset;
+        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
+
+        //output mesh instance data
+        renderingData.at(currentImage)->meshOutputObjectsRegion = VkBufferCopy();
+        renderingData.at(currentImage)->meshOutputObjectsRegion.srcOffset = stagingData.size();
+        renderingData.at(currentImage)->meshOutputObjectsRegion.dstOffset = stagingData.size();
+        for(const auto& [material, materialNode] : renderTree)
+        {
+            for(const auto& [materialInstance, instanceNode] : materialNode.instances)
+            {
+                stagingData.resize(stagingData.size() + instanceNode.objectBuffer->getOutputObjectSize(stagingData.size()));
+            }
+        }
+        renderingData.at(currentImage)->meshOutputObjectsRegion.size = stagingData.size() - renderingData.at(currentImage)->meshOutputObjectsRegion.dstOffset;
+        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
+
+        //----------PREPROCESS INPUT REQUIREMENETS----------//
+
+        //LOD mesh data
+        renderingData.at(currentImage)->meshLODOffsetsRegion = VkBufferCopy();
+        renderingData.at(currentImage)->meshLODOffsetsRegion.srcOffset = stagingData.size();
+        renderingData.at(currentImage)->meshLODOffsetsRegion.dstOffset = stagingData.size();
+        for(auto& [model, instances] : renderingModels)
+        {
+            uint32_t lastSize = stagingData.size();
+            std::vector<LODMesh> lodMeshData = model->getMeshLODData(stagingData.size());
+            stagingData.resize(stagingData.size() + lodMeshData.size() * sizeof(LODMesh));
+            memcpy(stagingData.data() + lastSize, lodMeshData.data(), lodMeshData.size() * sizeof(LODMesh));
+        }
+        renderingData.at(currentImage)->meshLODOffsetsRegion.size = stagingData.size() - renderingData.at(currentImage)->meshLODOffsetsRegion.dstOffset;
+        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
+
+        //LOD data          THIS **ABSOLUTELY MUST** COME AFTER MESH DATA
+        renderingData.at(currentImage)->LODOffsetsRegion = VkBufferCopy();
+        renderingData.at(currentImage)->LODOffsetsRegion.srcOffset = stagingData.size();
+        renderingData.at(currentImage)->LODOffsetsRegion.dstOffset = stagingData.size();
+        for(auto& [model, instances] : renderingModels)
+        {
+            uint32_t lastSize = stagingData.size();
+            std::vector<ShaderLOD> lodData = model->getLODData(stagingData.size());
+            stagingData.resize(stagingData.size() + lodData.size() * sizeof(ShaderLOD));
+            memcpy(stagingData.data() + lastSize, lodData.data(), lodData.size() * sizeof(ShaderLOD));
+        }
+        renderingData.at(currentImage)->LODOffsetsRegion.size = stagingData.size() - renderingData.at(currentImage)->LODOffsetsRegion.dstOffset;
+        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
+        
+        //get input objects (binding 1)
+        renderingData.at(currentImage)->inputObjectsRegion = VkBufferCopy();
+        renderingData.at(currentImage)->inputObjectsRegion.srcOffset = stagingData.size();
+        renderingData.at(currentImage)->inputObjectsRegion.dstOffset = stagingData.size();
+        std::vector<ShaderInputObject> shaderInputObjects;
+        for(auto& [model, instances] : renderingModels) //material
+        {
+            for(std::list<ModelInstance*>::iterator inputObjectReference = instances.begin(); inputObjectReference != instances.end(); inputObjectReference++)
+            {
+                ShaderInputObject inputObject;
+                inputObject.position = glm::vec4((*inputObjectReference)->getTransformation().position, (*inputObjectReference)->getModelPtr()->getSphericalBounds());
+                inputObject.rotation = glm::mat4_cast((*inputObjectReference)->getTransformation().rotation);
+                inputObject.scale = glm::vec4((*inputObjectReference)->getTransformation().scale, 0.0f);
+                inputObject.lodCount = (*inputObjectReference)->getModelPtr()->getLODs().size();
+                inputObject.lodsOffset = model->getLODDataOffset();
+                shaderInputObjects.push_back(inputObject);
+            }
+        }
+        renderingData.at(currentImage)->objectCount = shaderInputObjects.size();
+        stagingData.resize(stagingData.size() + shaderInputObjects.size() * sizeof(ShaderInputObject));
+        memcpy(stagingData.data() + renderingData.at(currentImage)->inputObjectsRegion.srcOffset, shaderInputObjects.data(), sizeof(ShaderInputObject) * shaderInputObjects.size());
+
+        renderingData.at(currentImage)->inputObjectsRegion.size = stagingData.size() - renderingData.at(currentImage)->inputObjectsRegion.dstOffset; //input objects region
+        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
+    }
+
     glm::vec4 RenderPass::normalizePlane(glm::vec4 plane)
     {
         return plane / glm::length(glm::vec3(plane));
@@ -196,149 +310,25 @@ namespace Renderer
     {
         //----------FILL IN THE UBER-BUFFER, PRE-PROCESS THE BUFFER WITH ASYNC COMPUTE----------//
 
-        std::vector<char>& stagingData = renderingData.at(currentImage)->stagingData;
-        uint32_t oldSize = stagingData.size();
-        stagingData.clear();
+        uint32_t oldSize = renderingData.at(currentImage)->stagingData.size();
+        setStagingData(renderTree, lightingInfo);
 
-        //fill in point light buffer
-        renderingData.at(currentImage)->fragmentInputRegion = VkBufferCopy();
-        renderingData.at(currentImage)->fragmentInputRegion.srcOffset = stagingData.size();
-        renderingData.at(currentImage)->fragmentInputRegion.dstOffset = stagingData.size();
-        std::vector<PointLight> pointLights;
-        for(auto light = lightingInfo.pointLights.begin(); light != lightingInfo.pointLights.end(); light++)
-        {
-            pointLights.push_back(**light);
-        }
-
-        uint32_t stagingEnd = stagingData.size();
-        renderingData.at(currentImage)->lightsOffset = stagingEnd;
-        stagingData.resize(stagingData.size() + sizeof(PointLight) * pointLights.size());
-        memcpy(stagingData.data() + stagingEnd, pointLights.data(), sizeof(PointLight) * pointLights.size());
-        
-        renderingData.at(currentImage)->fragmentInputRegion.size = stagingData.size() - renderingData.at(currentImage)->fragmentInputRegion.dstOffset; //fragment shader input region
-        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
-        
-
-        //put lighting into staging data
-        ShaderLightingInformation shaderLightingInfo = {};
-        if(lightingInfo.directLight) shaderLightingInfo.directLight = *lightingInfo.directLight;
-        if(lightingInfo.ambientLight) shaderLightingInfo.ambientLight = *lightingInfo.ambientLight;
-        shaderLightingInfo.pointLightCount = pointLights.size();
-        shaderLightingInfo.camPos = cameraPtr->getTranslation().position;
-        lightingInfoBuffers.at(currentImage)->updateUniformBuffer(&shaderLightingInfo, sizeof(ShaderLightingInformation));
-        renderingData.at(currentImage)->lightCount = pointLights.size();
-
-
-        //get input objects
-        renderingData.at(currentImage)->preprocessInputRegion = VkBufferCopy();
-        renderingData.at(currentImage)->preprocessInputRegion.srcOffset = stagingData.size();
-        renderingData.at(currentImage)->preprocessInputRegion.dstOffset = stagingData.size();
-        for(const auto& [material, materialNode] : renderTree) //material
-        {
-            for(const auto& [materialInstance, instanceNode] : materialNode.instances) //material instances
-            {
-                std::vector<ShaderInputObject> inputObjects = instanceNode.objectBuffer->getInputObjects(stagingData.size());
-
-                uint32_t lastSize = stagingData.size();
-                stagingData.resize(stagingData.size() + sizeof(ShaderInputObject) * inputObjects.size());
-                memcpy(stagingData.data() + lastSize, inputObjects.data(), sizeof(ShaderInputObject) * inputObjects.size());
-            }
-        }
-        renderingData.at(currentImage)->preprocessInputRegion.size = stagingData.size() - renderingData.at(currentImage)->preprocessInputRegion.dstOffset; //compute shader input region
-        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
-
-        //get draw call counts
-        renderingData.at(currentImage)->drawCountsRegion = VkBufferCopy();
-        renderingData.at(currentImage)->drawCountsRegion.srcOffset = stagingData.size();
-        renderingData.at(currentImage)->drawCountsRegion.dstOffset = stagingData.size();
-        for(const auto& [material, materialNode] : renderTree)
-        {
-            for(const auto& [materialInstance, instanceNode] : materialNode.instances)
-            {
-                uint32_t lastSize = stagingData.size();
-                uint32_t data = 0;
-                stagingData.resize(stagingData.size() + instanceNode.objectBuffer->getDrawCountsSize(stagingData.size()));
-                memcpy(stagingData.data() + lastSize, &data, sizeof(uint32_t));
-            }
-        }
-        renderingData.at(currentImage)->drawCountsRegion.size = stagingData.size() - renderingData.at(currentImage)->drawCountsRegion.dstOffset; //compute shader input region
-        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
-        
         //setup staging buffer (no more inputs after this)
         StagingBuffer newDataStaging(devicePtr, commandsPtr, renderingData.at(currentImage)->stagingData.size());
-        newDataStaging.mapData(stagingData.data(), 0, stagingData.size());
-
-        //----------VERIFY THAT THE BUFFER IS LARGE ENOUGH TO SUPPORT FURTHER OPERATIONS----------//        
-
-        //get output objects
-        for(const auto& [material, materialNode] : renderTree)
-        {
-            for(const auto& [materialInstance, instanceNode] : materialNode.instances)
-            {
-                stagingData.resize(stagingData.size() + instanceNode.objectBuffer->getOutputObjectSize(stagingData.size()));
-            }
-        }
-        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
-
-        //get draw commands size
-        for(const auto& [material, materialNode] : renderTree)
-        {
-            for(const auto& [materialInstance, instanceNode] : materialNode.instances)
-            {
-                stagingData.resize(stagingData.size() + instanceNode.objectBuffer->getDrawCommandsSize(stagingData.size()));
-            }
-        }
-        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
+        newDataStaging.mapData(renderingData.at(currentImage)->stagingData.data(), 0, renderingData.at(currentImage)->stagingData.size()); 
 
         //allocate a new buffer before the wait fence if needed
         bool rebuildDataBuffer = false;
-        if(stagingData.size() > oldSize) rebuildDataBuffer = true;
-        else if(stagingData.size() < stagingData.size() * 0.5) rebuildDataBuffer = true; //trimming operation at 50% of capped size
+        if(renderingData.at(currentImage)->stagingData.size() > oldSize) rebuildDataBuffer = true;
+        else if(renderingData.at(currentImage)->stagingData.size() < renderingData.at(currentImage)->stagingData.size() * 0.5) rebuildDataBuffer = true; //trimming operation at 50% of capped size
 
         //wait for fences
-        std::vector<VkFence> waitFences0 = {
-            cullingFences.at(currentImage)
-        };
-        vkWaitForFences(devicePtr->getDevice(), waitFences0.size(), waitFences0.data(), VK_TRUE, UINT64_MAX);
-        vkResetFences(devicePtr->getDevice(), waitFences0.size(), waitFences0.data());
-
-        //free command buffers
-        for(CommandBuffer& buffer : fence0CmdBuffers.at(currentImage))
-        {
-            commandsPtr->freeCommandBuffer(buffer);
-        }
-        fence0CmdBuffers.at(currentImage).clear();
-
-        //copy buffers
-        std::vector<VkBufferCopy> copyRegions0 = {
-            renderingData.at(currentImage)->preprocessInputRegion,
-            renderingData.at(currentImage)->drawCountsRegion        //TODO THIS CAN BE A CLEAR OP
-        };
-
-        std::vector<SemaphorePair> waitPairs0 = {}; //culling should be done with culling fence
-        std::vector<SemaphorePair> signalPairs0 = {
-            { bufferCopySemaphores.at(currentImage), VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT }
-        };
-
-        if(!rebuildDataBuffer)
-        {
-            fence0CmdBuffers.at(currentImage).push_back(renderingData.at(currentImage)->bufferData->copyFromBufferRanges(newDataStaging, waitPairs0, signalPairs0, VK_NULL_HANDLE, copyRegions0));
-        }
-
-        //wait for rendering and culling to finish
-        std::vector<VkFence> waitFences1 = {
+        std::vector<VkFence> waitFences = {
+            cullingFences.at(currentImage),
             renderFences.at(currentImage)
         };
-        vkWaitForFences(devicePtr->getDevice(), waitFences1.size(), waitFences1.data(), VK_TRUE, UINT64_MAX);
-        vkResetFences(devicePtr->getDevice(), waitFences1.size(), waitFences1.data());
-
-        //free command buffers
-        for(CommandBuffer& buffer : fence1CmdBuffers.at(currentImage))
-        {
-            commandsPtr->freeCommandBuffer(buffer);
-        }
-        fence1CmdBuffers.at(currentImage).clear();
-        descriptorsPtr->refreshPools(currentImage); //NO DESCRIPTOR WRITES BEFORE THIS FUNCTION
+        vkWaitForFences(devicePtr->getDevice(), waitFences.size(), waitFences.data(), VK_TRUE, UINT64_MAX);
+        vkResetFences(devicePtr->getDevice(), waitFences.size(), waitFences.data());
 
         //get available image
         checkSwapchain(vkAcquireNextImageKHR(devicePtr->getDevice(),
@@ -347,52 +337,38 @@ namespace Renderer
             imageSemaphores.at(currentImage),
             VK_NULL_HANDLE, &currentImage));
 
-        //rebuild buffer and only now process input data if size test failed
+        //free command buffers and reset descriptor pool
+        for(CommandBuffer& buffer : fenceCmdBuffers.at(currentImage))
+        {
+            commandsPtr->freeCommandBuffer(buffer);
+        }
+        fenceCmdBuffers.at(currentImage).clear();
+        descriptorsPtr->refreshPools(currentImage);
+
+        //copy buffers
+        std::vector<VkBufferCopy> copyRegions = {
+            renderingData.at(currentImage)->fragmentInputRegion,
+            renderingData.at(currentImage)->inputObjectsRegion,
+            renderingData.at(currentImage)->LODOffsetsRegion,
+            renderingData.at(currentImage)->meshLODOffsetsRegion,
+            renderingData.at(currentImage)->meshDrawCountsRegion
+        };
+
+        std::vector<SemaphorePair> waitPairs = {}; //culling should be done with culling fence
+        std::vector<SemaphorePair> signalPairs = {
+            { bufferCopySemaphores.at(currentImage), VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT }
+        };
+
+        //rebuild if needed, copy, submit
         if(rebuildDataBuffer)
         {
             //find 20% size and rebuild with that
-            uint32_t newSize = stagingData.size() * 1.2;
+            uint32_t newSize = renderingData.at(currentImage)->stagingData.size() * 1.2;
             newSize = ((newSize - newSize % 128) + 128); //padding
             renderingData.at(currentImage)->bufferData = std::make_shared<StorageBuffer>(devicePtr, commandsPtr, newSize);
-
-            //copy data
-            fence0CmdBuffers.at(currentImage).push_back(renderingData.at(currentImage)->bufferData->copyFromBufferRanges(newDataStaging, waitPairs0, signalPairs0, VK_NULL_HANDLE, copyRegions0));
         }
-
-        //perform draw call culling
-        VkCommandBufferBeginInfo commandInfo;
-        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        commandInfo.pNext = NULL;
-        commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        commandInfo.pInheritanceInfo = NULL;
-
-        VkCommandBuffer cullingCmdBuffer = commandsPtr->getCommandBuffer(CmdPoolType::COMPUTE);
-        vkBeginCommandBuffer(cullingCmdBuffer, &commandInfo);
-
-        //bind culling pipeline and dispatch
-        vkCmdBindPipeline(cullingCmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, meshPreprocessPipeline->getPipeline());
-        CullingFrustum cullingFrustum = createCullingFrustum();
-        for(const auto& [material, materialNode] : renderTree) //material
-        {
-            for(const auto& [materialInstance, instanceNode] : materialNode.instances) //material instances
-            {
-                drawCallCull(cullingCmdBuffer, cullingFrustum, renderingData.at(currentImage)->bufferData.get(), instanceNode.objectBuffer.get());
-            }
-        }
-
-        fence0CmdBuffers.at(currentImage).push_back(submitCulling(cullingCmdBuffer));
-
-        //transfer lighting data for fragment shader
-        std::vector<VkBufferCopy> copyRegions1 = {
-            renderingData.at(currentImage)->fragmentInputRegion
-        };
-
-        std::vector<SemaphorePair> waitPairs1 = {}; //fragment shader should be done with render fence
-        std::vector<SemaphorePair> signalPairs1 = {
-            { lightingCopySemaphores.at(currentImage), VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT }
-        };
-
-        fence1CmdBuffers.at(currentImage).push_back(renderingData.at(currentImage)->bufferData->copyFromBufferRanges(newDataStaging, waitPairs1, signalPairs1, VK_NULL_HANDLE, copyRegions1));
+        fenceCmdBuffers.at(currentImage).push_back(renderingData.at(currentImage)->bufferData->copyFromBufferRanges(newDataStaging, waitPairs, signalPairs, VK_NULL_HANDLE, copyRegions));
+        fenceCmdBuffers.at(currentImage).push_back(submitPreprocess());
     }
 
     void RenderPass::raster(const std::unordered_map<Material*, MaterialNode>& renderTree)
@@ -506,23 +482,19 @@ namespace Renderer
         vkCmdSetViewportWithCount(graphicsCmdBuffer, 1, &viewport);
         vkCmdSetScissorWithCount(graphicsCmdBuffer, 1, &renderArea);
 
-        //bind "global" descriptor
-
+        //record draw commands
         for(const auto& [material, materialNode] : renderTree) //material
         {
             bindMaterial(material, graphicsCmdBuffer);
-            
+
             for(const auto& [materialInstance, instanceNode] : materialNode.instances) //material instances
             {
-                //if(materialNode.objectBuffer->getDrawCount() == 0) continue; potential for optimization
-                
                 bindMaterialInstance(materialInstance, graphicsCmdBuffer);
                 drawIndexedIndirect(graphicsCmdBuffer, instanceNode.objectBuffer.get());
             }
         }
 
         composeAttachments(graphicsCmdBuffer);
-
         incrementFrameCounter(graphicsCmdBuffer);
     }
 
@@ -543,14 +515,64 @@ namespace Renderer
         return frustum;
     }
 
-    void RenderPass::drawCallCull(const VkCommandBuffer& cmdBuffer, const CullingFrustum& cullingFrustum, StorageBuffer const* newBufferData, IndirectDrawContainer* drawBuffer)
+    CommandBuffer RenderPass::submitPreprocess()
     {
-        drawBuffer->dispatchCulling(cmdBuffer, meshPreprocessPipeline.get(), cullingFrustum, newBufferData, cameraPtr->getProjection(), cameraPtr->getViewMatrix(), currentImage);
-    }
+        //fill in uniform buffer
+        CullingInputData preprocessInputData;
+        preprocessInputData.bufferAddress = renderingData.at(currentImage)->bufferData->getBufferDeviceAddress();
+        preprocessInputData.camPos = glm::vec4(cameraPtr->getTranslation().position, 1.0f);
+        preprocessInputData.projection = cameraPtr->getProjection();
+        preprocessInputData.view = cameraPtr->getViewMatrix();
+        preprocessInputData.objectCount = renderingData.at(currentImage)->objectCount;
+        preprocessInputData.frustumData = createCullingFrustum();
+        preprocessUniformBuffers.at(currentImage)->updateUniformBuffer(&preprocessInputData, sizeof(CullingInputData));
+        uint32_t bbc = sizeof(ShaderInputObject);
+        
+        VkCommandBufferBeginInfo commandInfo;
+        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        commandInfo.pNext = NULL;
+        commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        commandInfo.pInheritanceInfo = NULL;
 
-    CommandBuffer RenderPass::submitCulling(const VkCommandBuffer& cmdBuffer)
-    {
-        vkEndCommandBuffer(cmdBuffer);
+        VkCommandBuffer cullingCmdBuffer = commandsPtr->getCommandBuffer(CmdPoolType::COMPUTE);
+        vkBeginCommandBuffer(cullingCmdBuffer, &commandInfo);
+
+        vkCmdBindPipeline(cullingCmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, meshPreprocessPipeline->getPipeline());
+
+        //bind descriptor set (only 1)
+        VkDescriptorSet set0Descriptor = descriptorsPtr->allocateDescriptorSet(meshPreprocessPipeline->getDescriptorSetLayouts().at(0), currentImage);
+
+        //set0 - binding 0: input data
+        descriptorsPtr->writeUniform(
+            preprocessUniformBuffers.at(currentImage)->getBuffer(),
+            sizeof(CullingInputData),
+            0,
+            0,
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            set0Descriptor);
+
+        //set0 - binding 1: input objects
+        descriptorsPtr->writeUniform(
+            renderingData.at(currentImage)->bufferData->getBuffer(),
+            renderingData.at(currentImage)->inputObjectsRegion.size,
+            renderingData.at(currentImage)->inputObjectsRegion.dstOffset,
+            1,
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            set0Descriptor);
+
+        vkCmdBindDescriptorSets(cullingCmdBuffer,
+            VK_PIPELINE_BIND_POINT_COMPUTE,
+            meshPreprocessPipeline->getLayout(),
+            0, //bind point
+            1,
+            &set0Descriptor,
+            0,
+            0);
+
+        int groupcount = ((renderingData.at(currentImage)->objectCount) / 128) + 1;
+        vkCmdDispatch(cullingCmdBuffer, groupcount, 1, 1);
+
+        vkEndCommandBuffer(cullingCmdBuffer);
 
         VkSemaphoreSubmitInfo semaphoreWaitInfo = {};
         semaphoreWaitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
@@ -562,7 +584,7 @@ namespace Renderer
         VkCommandBufferSubmitInfo cmdBufferSubmitInfo = {};
         cmdBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
         cmdBufferSubmitInfo.pNext = NULL;
-        cmdBufferSubmitInfo.commandBuffer = cmdBuffer;
+        cmdBufferSubmitInfo.commandBuffer = cullingCmdBuffer;
         cmdBufferSubmitInfo.deviceMask = 0;
 
         VkSemaphoreSubmitInfo semaphoreSignalInfo = {};
@@ -585,7 +607,7 @@ namespace Renderer
 
         vkQueueSubmit2(devicePtr->getQueues().compute.at(0), 1, &submitInfo, cullingFences.at(currentImage));
 
-        return { cmdBuffer, COMPUTE };
+        return { cullingCmdBuffer, COMPUTE };
     }
 
     void RenderPass::composeAttachments(const VkCommandBuffer &cmdBuffer)
@@ -668,14 +690,6 @@ namespace Renderer
         graphicsSemaphoreWaitInfo1.deviceIndex = 0;
         graphicsWaitSemaphores.push_back(graphicsSemaphoreWaitInfo1);
 
-        VkSemaphoreSubmitInfo graphicsSemaphoreWaitInfo2 = {};
-        graphicsSemaphoreWaitInfo2.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-        graphicsSemaphoreWaitInfo2.pNext = NULL;
-        graphicsSemaphoreWaitInfo2.semaphore = lightingCopySemaphores.at(currentImage);
-        graphicsSemaphoreWaitInfo2.stageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-        graphicsSemaphoreWaitInfo2.deviceIndex = 0;
-        graphicsWaitSemaphores.push_back(graphicsSemaphoreWaitInfo2);
-
         VkCommandBufferSubmitInfo graphicsCmdBufferSubmitInfo = {};
         graphicsCmdBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
         graphicsCmdBufferSubmitInfo.pNext = NULL;
@@ -704,7 +718,7 @@ namespace Renderer
 
         vkQueueSubmit2(devicePtr->getQueues().graphics.at(0), 1, &graphicsSubmitInfo, renderFences.at(currentImage));
 
-        fence1CmdBuffers.at(currentImage).push_back({cmdBuffer, GRAPHICS});
+        fenceCmdBuffers.at(currentImage).push_back({cmdBuffer, GRAPHICS});
 
         VkResult returnResult;
         VkPresentInfoKHR presentSubmitInfo = {};
@@ -742,5 +756,21 @@ namespace Renderer
         {
             currentImage = 0;
         }
+    }
+
+    //----------OBJECT ADD/REMOVE FUNCTIONS----------//
+
+    std::list<ModelInstance*>::iterator RenderPass::addModelInstance(ModelInstance* instance)
+    {
+        renderingModels[(Model*)instance->getModelPtr()].push_back(instance);
+        std::list<ModelInstance*>::iterator reference = renderingModels[instance->getModelPtr()].end();
+        reference--;
+
+        return reference;
+    }
+
+    void RenderPass::removeModelInstance(std::list<ModelInstance*>::iterator reference)
+    {
+        renderingModels[(*reference)->getModelPtr()].erase(reference);
     }
 }

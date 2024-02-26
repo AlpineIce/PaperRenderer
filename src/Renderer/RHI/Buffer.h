@@ -102,31 +102,6 @@ namespace Renderer
         uint32_t getLength() const { return indicesLength; }
     };
 
-    //----------MESH DECLARATION----------//
-
-    class Mesh
-    {
-    private:
-        const VertexBuffer vbo;
-        const IndexBuffer ibo;
-
-        float sphereBounds = 1.0f;
-
-    public:
-        Mesh(Device* device, CmdBufferAllocator* commands, std::vector<Vertex>* vertices, std::vector<uint32_t>* indices);
-        ~Mesh();
-
-        const VertexBuffer& getVertexBuffer() const { return vbo; };
-        const IndexBuffer& getIndexBuffer() const { return ibo; };
-        float getSphericalBounding() const { return sphereBounds; }
-    };
-
-    struct ModelMesh
-    {
-        std::shared_ptr<Mesh> mesh;
-        uint32_t materialIndex;
-    };
-
     //----------TEXTURE DECLARATION----------//
 
     class Texture

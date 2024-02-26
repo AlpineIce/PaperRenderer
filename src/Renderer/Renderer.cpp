@@ -21,7 +21,6 @@ namespace Renderer
         rendering(&swapchain, &device, &commands, &descriptors, &pipelineBuilder)
     {
         Material::initRendererInfo(&device, &commands, &descriptors, &pipelineBuilder);
-        loadModels("resources/models");
         loadTextures("resources/textures");
 
         defaultMaterial = std::make_shared<DefaultMaterial>("resources/materials/Default_vert.spv", "resources/materials/Default_frag.spv");
@@ -35,21 +34,6 @@ namespace Renderer
     RenderEngine::~RenderEngine()
     {
         vkDeviceWaitIdle(device.getDevice());
-    }
-
-    void RenderEngine::loadModels(std::string modelsDir)
-    {
-        const std::filesystem::path models(modelsDir);
-        for(const auto& model : std::filesystem::directory_iterator(models)) //iterate models
-        {
-            if(model.path().filename().string().find(".fbx") != std::string::npos ) //must be a valid .fbx file
-            {
-                std::cout << "loading model: " << model.path().stem().string() << std::endl;
-                this->models.insert(std::make_pair(
-                    model.path().stem().string(),
-                    std::make_shared<Model>(&device, &commands, model.path().string())));
-            }
-        }
     }
 
     void RenderEngine::loadTextures(std::string texturesDir)
@@ -74,7 +58,7 @@ namespace Renderer
 
     void RenderEngine::initRT()
     {
-        BottomAccelerationStructureData bottomData;
+        /*BottomAccelerationStructureData bottomData;
         for(auto& [name, model] : models)
         {
             AccelerationStructureModelReference modelRef;
@@ -85,7 +69,7 @@ namespace Renderer
             }
             bottomData.models.push_back(modelRef);
         }
-        rtAccelStructure.createBottomLevel(bottomData);
+        rtAccelStructure.createBottomLevel(bottomData);*/
     }
 
     Image RenderEngine::loadImage(std::string directory)
@@ -102,52 +86,79 @@ namespace Renderer
         return returnImg;
     }
 
-    void RenderEngine::addObject(ModelInstance& object, std::unordered_map<uint32_t, const Renderer::MaterialInstance*>* materials, RenderObjectReference& reference, glm::mat4 const* modelMatPtr, glm::vec3 const* posPtr)
+    void RenderEngine::addObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, std::list<ModelInstance*>::iterator& objectReference)
     {
         if(object.getModelPtr() != NULL)
         {
-            for(uint32_t i = 0; i < object.getModelPtr()->getModelMeshes().size(); i++) //iterate meshes
+            uint32_t lodIndex = 0;
+            for(LOD& lod : object.getModelPtr()->getLODs()) //iterate LODs
             {
-                MaterialInstance const* materialInstance;
-                uint32_t materialIndex = object.getModelPtr()->getModelMeshes().at(i).materialIndex;
-
-                if(materials->count(materialIndex))
+                for(auto& [matSlot, meshes] : lod.meshes) //iterate materials in LOD
                 {
-                    materialInstance = materials->at(materialIndex);
-                }
-                else //use default material if one isnt selected
-                {
-                    materialInstance = &(defaultMaterial->getDefaultInstance());
-                    (*materials)[materialIndex] = materialInstance; //lmao syntax
-                }
+                    uint32_t meshIndex = 0;
+                    for(LODMesh& mesh : meshes) //iterate meshes with associated material
+                    {
+                        MaterialInstance const* materialInstance;
 
-                reference[i] = {
-                    .modelMatrix = modelMatPtr,
-                    .position = posPtr,
-                    .mesh = object.getModelPtr()->getModelMeshes().at(i).mesh.get()
-                };
+                        if(lod.materials.count(matSlot))
+                        {
+                            materialInstance = (MaterialInstance const*)lod.materials.at(matSlot);
+                        }
+                        else //use default material if one isnt selected
+                        {
+                            materialInstance = &(defaultMaterial->getDefaultInstance());
+                        }
 
-                if(!renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer)
-                {
-                    renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer = 
-                        std::make_shared<IndirectDrawContainer>(&device, &commands, &descriptors, materialInstance->parentMaterial->getRasterPipeline());
+                        //pointers to object data
+                        meshReferences.at(lodIndex)[meshIndex] = {
+                            .parentMesh = &mesh,
+                            .parentLOD = &lod.shaderLOD,
+                            .parentModel = object.getModelPtr(),
+                            .objectTransform = &object.getTransformation(),
+                            .isVisible = &object.getVisibility(),
+                            .sphericalBounds = &object.getModelPtr()->getSphericalBounds()
+                        };
+
+                        //check if drawing class thing has been created
+                        if(!renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer)
+                        {
+                            renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer = 
+                                std::make_shared<IndirectDrawContainer>(&device, &commands, &descriptors, materialInstance->parentMaterial->getRasterPipeline());
+                        }
+
+                        //add reference
+                        renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer->addElement(meshReferences.at(lodIndex).at(meshIndex));
+
+                        meshIndex++;
+                    }
                 }
-                renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer->addElement(reference.at(i));
+                lodIndex++;
             }
+            rendering.addModelInstance(&object);
         }
     }
 
-    void RenderEngine::removeObject(ModelInstance& object, RenderObjectReference& references)
+    void RenderEngine::removeObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, std::list<ModelInstance*>::iterator& objectReference)
     {
-        for(uint32_t i = 0; i < object.getModelPtr()->getModelMeshes().size(); i++)
+        uint32_t lodIndex = 0;
+        for(const Renderer::LOD& lod : object.getModelPtr()->getLODs()) //iterate LODs
         {
-            if(references.count(i))
+            for(const auto [matSlot, meshes] : lod.meshes) //iterate materials in LOD
             {
-                MaterialInstance const* materialInstance;
-                materialInstance = object.getMaterials().at(object.getModelPtr()->getModelMeshes().at(i).materialIndex);
-                renderTree.at((Material*)materialInstance->parentMaterial).instances.at(materialInstance).objectBuffer->removeElement(references.at(i));
+                uint32_t meshIndex = 0;
+                for(const auto [matSlot, meshes] : lod.meshes) //iterate materials in LOD
+                {
+                    if(meshReferences.at(lodIndex).count(meshIndex))
+                    {
+                        MaterialInstance const* materialInstance = (MaterialInstance const*)lod.materials.at(matSlot);
+                        renderTree.at((Material*)materialInstance->parentMaterial).instances.at(materialInstance).objectBuffer->removeElement(meshReferences.at(lodIndex).at(meshIndex));
+                    }
+                    meshIndex++;
+                }
             }
+            lodIndex++;
         }
+        rendering.removeModelInstance(objectReference);
     }
 
     void RenderEngine::addPointLight(PointLightObject& light)
@@ -211,24 +222,6 @@ namespace Renderer
     }
 
     //----------GETTER/SETTER FUNCTIONS----------//
-
-    Model const* RenderEngine::getModelByName(std::string name)
-    {
-        if(this->models.count(name))
-        {
-            return this->models.at(name).get();
-        }
-        return NULL;
-    }
-
-    Material const* RenderEngine::getMaterialByName(std::string name)
-    {
-        if(this->materials.count(name))
-        {
-            return this->materials.at(name).get();
-        }
-        return NULL;
-    }
 
     Texture const* RenderEngine::getTextureByName(std::string name)
     {

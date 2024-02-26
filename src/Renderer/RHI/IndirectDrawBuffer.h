@@ -2,6 +2,7 @@
 #include "Buffer.h"
 #include "Descriptor.h"
 #include "Pipeline.h"
+#include "glm/gtx/quaternion.hpp"
 
 #include <unordered_map>
 
@@ -15,13 +16,14 @@ namespace Renderer
 
     struct CullingInputData
     {
+        VkDeviceAddress bufferAddress; //used with offsets to make LOD selection possible in a compute shader
+        glm::vec2 padding; //i wanna kms
+        glm::vec4 camPos;
         glm::mat4 projection;
         glm::mat4 view;
+        uint32_t objectCount;
+        glm::vec3 padding2;
         CullingFrustum frustumData;
-        uint32_t matrixCount;
-        uint32_t drawCountIndex;
-        uint32_t indexCount;
-        uint32_t padding;
     };
 
     struct ShaderDrawCommand
@@ -31,8 +33,33 @@ namespace Renderer
 
     struct ShaderInputObject
     {
-        glm::mat4 modelMatrix;
+        //transformation
         glm::vec4 position;
+        glm::mat4 rotation; //quat -> mat4... could possibly be a mat3
+        glm::vec4 scale;
+        
+        uint32_t lodCount;
+        uint32_t lodsOffset;
+        glm::vec2 padding;
+    };
+
+    struct ShaderLOD
+    {
+        uint32_t meshCount;
+        uint32_t meshesLocationOffset;
+    };
+
+    struct LODMesh
+    {
+        uint32_t vboOffset;
+        uint32_t vboSize;
+        uint32_t iboOffset;
+        uint32_t iboSize;
+
+        uint32_t drawCountsOffset;
+        uint32_t drawCommandsOffset;
+        uint32_t outputObjectsOffset;
+        uint32_t padding;
     };
 
     struct ShaderOutputObject
@@ -41,37 +68,46 @@ namespace Renderer
         glm::mat4 transformMatrix;
     };
 
+    struct ModelTransform
+    {
+        glm::vec3 position = glm::vec3(0.0f); //world position
+        glm::vec3 scale = glm::vec3(1.0f); //local scale
+        glm::quat rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f); //local rotation
+    };
+
     struct DrawBufferObject
     {
-        glm::mat4 const* modelMatrix;
-        glm::vec3 const* position;
-        Mesh const* mesh;
+        LODMesh* parentMesh;
+        ShaderLOD* parentLOD;
+        class Model const* parentModel; //forward declaration of parent model used for vbo/ibo binding (too lazy to figure out function pointers)
+        ModelTransform const* objectTransform;
+        bool const* isVisible;
+        float const* sphericalBounds;
         std::list<DrawBufferObject*>::iterator reference;
-    };
-    
-    struct DrawBufferTreeNode
-    {
-        std::list<DrawBufferObject*> objects;
-        std::vector<std::shared_ptr<UniformBuffer>> cullingInputData; //CullingInputData
     };
     
     struct IndirectRenderingData
     {
         uint32_t lightsOffset;
         uint32_t lightCount;
-        std::vector<char> stagingData;
+        uint32_t objectCount;
         VkBufferCopy fragmentInputRegion;
-        VkBufferCopy preprocessInputRegion;
-        VkBufferCopy drawCountsRegion;
+        VkBufferCopy LODOffsetsRegion;
+        VkBufferCopy meshLODOffsetsRegion;
+        VkBufferCopy meshDrawCountsRegion;
+        VkBufferCopy meshDrawCommandsRegion;
+        VkBufferCopy meshOutputObjectsRegion;
+        VkBufferCopy inputObjectsRegion;
+        VkBufferCopy modelLODsRegion;
+
+        std::vector<char> stagingData;
         std::shared_ptr<StorageBuffer> bufferData; //THE UBER-BUFFER
     };
 
     class IndirectDrawContainer
     {
     private:
-        //VkDeviceAddress GPUaddress;
-        std::unordered_map<Mesh const*, DrawBufferTreeNode> drawCallTree;
-        std::vector<uint32_t> inputObjectsLocations;
+        std::unordered_map<LODMesh*, std::list<DrawBufferObject*>> drawCallTree;
         std::vector<uint32_t> outputObjectsLocations;
         std::vector<uint32_t> drawCommandsLocations;
         uint32_t drawCountsLocation;
@@ -89,12 +125,10 @@ namespace Renderer
         void removeElement(DrawBufferObject& object);
 
         uint32_t getOutputObjectSize(uint32_t currentBufferSize);
-        std::vector<ShaderInputObject> getInputObjects(uint32_t currentBufferSize);
         uint32_t getDrawCommandsSize(uint32_t currentBufferSize);
-        
         uint32_t getDrawCountsSize(uint32_t currentBufferSize);
-        void dispatchCulling(const VkCommandBuffer& cmdBuffer, ComputePipeline const* cullingPipeline, const CullingFrustum& frustum, StorageBuffer const* renderData, glm::mat4 projection, glm::mat4 view, uint32_t currentFrame);
+
         void draw(const VkCommandBuffer& cmdBuffer, IndirectRenderingData const* renderData, uint32_t currentFrame);
-        const std::unordered_map<Mesh const*, DrawBufferTreeNode>& getDrawCallTree() const { return drawCallTree; }
+        const std::unordered_map<LODMesh*, std::list<DrawBufferObject*>>& getDrawCallTree() const { return drawCallTree; }
     };
 }

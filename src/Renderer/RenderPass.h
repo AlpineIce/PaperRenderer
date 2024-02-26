@@ -4,6 +4,7 @@
 #include "RHI/IndirectDrawBuffer.h"
 #include "Camera.h"
 #include "Renderer/Material/Material.h"
+#include "Model.h"
 
 #include <list>
 #include <unordered_map>
@@ -50,14 +51,14 @@ namespace Renderer
         std::vector<VkSemaphore> imageSemaphores;
         std::vector<VkSemaphore> bufferCopySemaphores;
         std::vector<VkSemaphore> cullingSemaphores;
-        std::vector<VkSemaphore> lightingCopySemaphores;
         std::vector<VkSemaphore> renderSemaphores;
         std::vector<VkFence> cullingFences;
         std::vector<VkFence> renderFences;
-        std::vector<std::vector<CommandBuffer>> fence0CmdBuffers;
-        std::vector<std::vector<CommandBuffer>> fence1CmdBuffers;
+        std::vector<std::vector<CommandBuffer>> fenceCmdBuffers;
         std::vector<std::shared_ptr<UniformBuffer>> lightingInfoBuffers;
         std::vector<std::shared_ptr<IndirectRenderingData>> renderingData;
+        std::vector<std::shared_ptr<UniformBuffer>> preprocessUniformBuffers;
+        std::unordered_map<Model*, std::list<ModelInstance*>> renderingModels;
 
         std::shared_ptr<ComputePipeline> meshPreprocessPipeline;
 
@@ -73,8 +74,8 @@ namespace Renderer
         Camera* cameraPtr = NULL;
         
         void checkSwapchain(VkResult imageResult);
-        void drawCallCull(const VkCommandBuffer& cmdBuffer, const CullingFrustum& cullingFrustum, StorageBuffer const* newBufferData, IndirectDrawContainer* drawBuffer);
-        CommandBuffer submitCulling(const VkCommandBuffer& cmdBuffer);
+        void setStagingData(const std::unordered_map<Material*, MaterialNode>& renderTree, const LightingInformation& lightingInfo);
+        CommandBuffer submitPreprocess();
         void composeAttachments(const VkCommandBuffer& cmdBuffer);
         void bindMaterial(Material const* material, const VkCommandBuffer& cmdBuffer);
         void bindMaterialInstance(MaterialInstance const* materialInstance, const VkCommandBuffer& cmdBuffer);
@@ -96,5 +97,8 @@ namespace Renderer
 
         //begin rendering
         void raster(const std::unordered_map<Material*, MaterialNode>& renderTree);
+
+        std::list<ModelInstance*>::iterator addModelInstance(ModelInstance* instance);
+        void removeModelInstance(std::list<ModelInstance*>::iterator reference);
     };
 }
