@@ -169,17 +169,17 @@ namespace Renderer
         }
     }
 
-    void AccelerationStructure::updateBLAS(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame)
+    CommandBuffer AccelerationStructure::updateBLAS(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame)
     {
-        createBottomLevel(waitSemaphores, signalSemaphores, fence, currentFrame);
+        return createBottomLevel(waitSemaphores, signalSemaphores, fence, currentFrame);
     }
 
-    void AccelerationStructure::updateTLAS(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame)
+    CommandBuffer AccelerationStructure::updateTLAS(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame)
     {
-        createTopLevel(waitSemaphores, signalSemaphores, fence, currentFrame);
+        return createTopLevel(waitSemaphores, signalSemaphores, fence, currentFrame);
     }
 
-    void AccelerationStructure::createBottomLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame)
+    CommandBuffer AccelerationStructure::createBottomLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame)
     {
         /*VkTransformMatrixKHR defaultTransform = {
             1.0f, 0.0f, 0.0f, 0.0f,
@@ -317,9 +317,11 @@ namespace Renderer
         {
             free(ptr);
         }
+
+        return { cmdBuffer, COMPUTE };
     }
 
-    void AccelerationStructure::createTopLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair>& signalSemaphores, const VkFence& fence, uint32_t currentFrame)
+    CommandBuffer AccelerationStructure::createTopLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair>& signalSemaphores, const VkFence& fence, uint32_t currentFrame)
     {
         //destroy old
         vkDestroyAccelerationStructureKHR(devicePtr->getDevice(), topStructure, nullptr);
@@ -469,5 +471,7 @@ namespace Renderer
         accelerationAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
         accelerationAddressInfo.accelerationStructure = topStructure;
         topStructureAddress = vkGetAccelerationStructureDeviceAddressKHR(devicePtr->getDevice(), &accelerationAddressInfo);
+
+        return { cmdBuffer, COMPUTE };
     }
 }

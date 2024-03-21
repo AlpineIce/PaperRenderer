@@ -333,7 +333,7 @@ namespace Renderer
         std::vector<SemaphorePair> BLASWaitPairs = {}; //no wait (fence instead)
         std::vector<SemaphorePair> BLASSignalPairs = {}; //no signal (fence instead)
         rtAccelStructure.verifyBufferSizes(renderingModels, currentImage); //update buffers if needed
-        rtAccelStructure.updateBLAS(BLASWaitPairs, BLASSignalPairs, BLASFences.at(currentImage), currentImage); //update BLAS
+        CommandBuffer blasCmdBuffer = rtAccelStructure.updateBLAS(BLASWaitPairs, BLASSignalPairs, BLASFences.at(currentImage), currentImage); //update BLAS
 
         //wait for fences, start filling staging data
         std::vector<VkFence> stagingWaitFences = {
@@ -341,6 +341,9 @@ namespace Renderer
         };
         vkWaitForFences(devicePtr->getDevice(), stagingWaitFences.size(), stagingWaitFences.data(), VK_TRUE, UINT64_MAX);
         vkResetFences(devicePtr->getDevice(), stagingWaitFences.size(), stagingWaitFences.data());
+
+        //free blas command buffer
+        commandsPtr->freeCommandBuffer(blasCmdBuffer);
 
         uint32_t oldSize = renderingData.at(currentImage)->stagingData.size();
         setStagingData(renderTree, lightingInfo);
@@ -422,7 +425,7 @@ namespace Renderer
                 .stage = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
             }
         };
-        rtAccelStructure.updateTLAS(TLASWaitPairs, TLASSignalPairs, VK_NULL_HANDLE, currentImage);
+        fenceCmdBuffers.at(currentImage).push_back(rtAccelStructure.updateTLAS(TLASWaitPairs, TLASSignalPairs, VK_NULL_HANDLE, currentImage));
         return true;
     }
 

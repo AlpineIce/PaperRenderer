@@ -50,19 +50,19 @@ namespace Renderer
         Device* devicePtr;
         CmdBufferAllocator* commandsPtr;
 
-        void createBottomLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame);
-        void createTopLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair>& signalSemaphores, const VkFence& fence, uint32_t currentFrame);
+        CommandBuffer createBottomLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame);
+        CommandBuffer createTopLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair>& signalSemaphores, const VkFence& fence, uint32_t currentFrame);
 
     public:
         AccelerationStructure(Device* device, CmdBufferAllocator* commands);
         ~AccelerationStructure();
 
         void verifyBufferSizes(const std::unordered_map<Model*, std::list<ModelInstance*>> &modelInstances, uint32_t currentFrame);
-        void updateBLAS(const std::vector<SemaphorePair>& waitSemaphores, 
+        CommandBuffer updateBLAS(const std::vector<SemaphorePair>& waitSemaphores, 
             const std::vector<SemaphorePair>& signalSemaphores, 
             const VkFence& fence,
             uint32_t currentFrame);
-        void updateTLAS(const std::vector<SemaphorePair>& waitSemaphores, 
+        CommandBuffer updateTLAS(const std::vector<SemaphorePair>& waitSemaphores, 
             const std::vector<SemaphorePair>& signalSemaphores, 
             const VkFence& fence,
             uint32_t currentFrame);
