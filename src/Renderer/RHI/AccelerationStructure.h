@@ -6,61 +6,68 @@
 
 namespace Renderer
 {
-    struct AccelerationStructureMeshData
-    {
-        VkDeviceOrHostAddressConstKHR vertexBufferAddress = {};
-        VkDeviceOrHostAddressConstKHR indexBufferAddress = {};
-        uint32_t vertexCount = 0;
-        uint32_t primitiveCount = 0;
-    };
-
-    struct AccelerationStructureModelReference
-    {
-        std::vector<AccelerationStructureMeshData> meshes;
-        void const* modelPointer = NULL;
-    };
+    class Model; //forward declaration
+    class ModelInstance; //forward declaration
 
     struct BottomStructure
     {
         VkAccelerationStructureKHR structure;
-        std::shared_ptr<Buffer> structureBuffer;
-    };
-
-    struct BottomAccelerationStructureData
-    {
-        std::vector<AccelerationStructureModelReference> models;
-    };
-
-    struct TopAccelerationInstance
-    {
-        void const* modelPointer = NULL;
-        VkTransformMatrixKHR transform;
-    };
-
-    struct TopAccelerationData
-    {
-        std::vector<TopAccelerationInstance> instances;
+        VkDeviceAddress bufferAddress;
     };
 
     class AccelerationStructure
     {
     private:
+        std::vector<std::shared_ptr<Buffer>> BLBuffers;
+        std::vector<std::shared_ptr<Buffer>> BLScratchBuffers;
+        std::vector<std::shared_ptr<Buffer>> TLInstancesBuffers;
+        std::vector<std::shared_ptr<Buffer>> TLBuffers;
+        std::vector<std::shared_ptr<Buffer>> TLScratchBuffers;
 
         VkAccelerationStructureKHR topStructure;
         VkDeviceAddress topStructureAddress;
-        std::unordered_map<void const*, BottomStructure> bottomStructures;
+        std::unordered_map<Model const*, BottomStructure> bottomStructures;
+        std::vector<VkSemaphore> BottomSignalSemaphores;
         bool isBuilt = false;
+
+        VkDeviceSize instancesBufferSize;
+        uint32_t instancesCount;
+        struct BottomBuildData
+        {
+            std::vector<Model*> buildModels;
+            std::vector<std::vector<VkAccelerationStructureGeometryKHR>> modelsGeometries;
+            std::vector<std::vector<VkAccelerationStructureBuildRangeInfoKHR>> buildRangeInfos;
+            std::unordered_map<Model const*, VkAccelerationStructureBuildGeometryInfoKHR> buildGeometries;
+            std::vector<VkAccelerationStructureBuildSizesInfoKHR> buildSizes;
+            VkDeviceSize totalScratchSize = 0;
+            std::vector<VkDeviceSize> scratchOffsets;
+            VkDeviceSize totalBuildSize = 0;
+            std::vector<VkDeviceSize> asOffsets;
+        } BLBuildData;
+
+        
 
         Device* devicePtr;
         CmdBufferAllocator* commandsPtr;
 
-        
+        void createBottomLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame);
+        void createTopLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair>& signalSemaphores, const VkFence& fence, uint32_t currentFrame);
 
     public:
         AccelerationStructure(Device* device, CmdBufferAllocator* commands);
         ~AccelerationStructure();
 
-        void createBottomLevel(const BottomAccelerationStructureData& meshesData);
-        VkSemaphore createTopLevel(const TopAccelerationData& instancesData, const std::vector<SemaphorePair>& waitSemaphores);
+        void verifyBufferSizes(const std::unordered_map<Model*, std::list<ModelInstance*>> &modelInstances, uint32_t currentFrame);
+        void updateBLAS(const std::vector<SemaphorePair>& waitSemaphores, 
+            const std::vector<SemaphorePair>& signalSemaphores, 
+            const VkFence& fence,
+            uint32_t currentFrame);
+        void updateTLAS(const std::vector<SemaphorePair>& waitSemaphores, 
+            const std::vector<SemaphorePair>& signalSemaphores, 
+            const VkFence& fence,
+            uint32_t currentFrame);
+
+        const std::vector<std::shared_ptr<Buffer>>& getInstancesBuffers() const { return TLInstancesBuffers; }
+        const std::unordered_map<Model const*, BottomStructure>& getBottomStructures() const { return bottomStructures; }
     };
 }

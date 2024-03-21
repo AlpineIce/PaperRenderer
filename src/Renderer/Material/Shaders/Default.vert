@@ -23,7 +23,7 @@ layout(std430, set = 2, binding = 0) readonly buffer ObjectBuffer
 
 void main()
 {
-    normal = vertexNormal;
+    normal = mat3(transpose(inverse(objBuffer.data[gl_BaseInstance].model))) * vertexNormal;
     texCoord = vertexTexCoord;
     
     worldPosition = vec3(objBuffer.data[gl_BaseInstance].model * vec4(vertexPosition, 1.0)).xyz;

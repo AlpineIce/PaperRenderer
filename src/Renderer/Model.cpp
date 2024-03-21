@@ -23,9 +23,9 @@ namespace Renderer
 				{
 					LODMesh returnMesh;
 					returnMesh.vboOffset = creationVertices.size();
-					returnMesh.vboSize =  mesh.vertices->size();
+					returnMesh.vertexCount =  mesh.vertices->size();
 					returnMesh.iboOffset = creationIndices.size();
-					returnMesh.iboSize =  mesh.indices->size();
+					returnMesh.indexCount =  mesh.indices->size();
 
 					creationVertices.insert(creationVertices.end(), mesh.vertices->begin(), mesh.vertices->end());
 					creationIndices.insert(creationIndices.end(), mesh.indices->begin(), mesh.indices->end());

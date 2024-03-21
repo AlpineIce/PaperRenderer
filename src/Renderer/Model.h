@@ -57,10 +57,15 @@ namespace Renderer
         std::vector<LOD>& getLODs() { return LODs; }
         void bindBuffers(const VkCommandBuffer& cmdBuffer) const;
         const float& getSphericalBounds() const { return sphericalBounds; }
+
+        //mutable functions used in render loop
         std::vector<ShaderLOD> getLODData(uint32_t currentBufferSize);
         uint32_t getLODDataOffset() const { return LODDataOffset;}
         std::vector<LODMesh> getMeshLODData(uint32_t currentBufferSize);
         uint32_t getMeshLODsOffset() const { return bufferMeshLODsOffset; }
+
+        VkDeviceAddress getVBOAddress() const { return vbo->getBufferDeviceAddress(); }
+        VkDeviceAddress getIBOAddress() const { return ibo->getBufferDeviceAddress(); }
     };
 
     //----------MODEL INSTANCE DECLARATIONS----------//

@@ -1,4 +1,5 @@
 #include "AccelerationStructure.h"
+#include "../Model.h"
 
 namespace Renderer
 {
@@ -8,10 +9,36 @@ namespace Renderer
         //bottomStructure(VK_NULL_HANDLE),
         topStructure(VK_NULL_HANDLE)
     {
+        BottomSignalSemaphores.resize(commandsPtr->getFrameCount());
+        BLBuffers.resize(commandsPtr->getFrameCount());
+        BLScratchBuffers.resize(commandsPtr->getFrameCount());
+        TLInstancesBuffers.resize(commandsPtr->getFrameCount());
+        TLBuffers.resize(commandsPtr->getFrameCount());
+        TLScratchBuffers.resize(commandsPtr->getFrameCount());
+        for(uint32_t i = 0; i < commandsPtr->getFrameCount(); i++)
+        {
+            BottomSignalSemaphores.at(i) = commandsPtr->getSemaphore();
+            BLBuffers.at(i) = std::make_shared<Buffer>(devicePtr, commandsPtr, 256); //starting size really doesn't matter
+            BLBuffers.at(i)->createBuffer(VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+            BLScratchBuffers.at(i) = std::make_shared<Buffer>(devicePtr, commandsPtr, 256); //starting size really doesn't matter
+            BLScratchBuffers.at(i)->createBuffer(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+            TLInstancesBuffers.at(i) = std::make_shared<Buffer>(devicePtr, commandsPtr, 256);
+            TLInstancesBuffers.at(i)->createBuffer(VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+            TLBuffers.at(i) = std::make_shared<Buffer>(devicePtr, commandsPtr, 256); //starting size really doesn't matter
+            TLBuffers.at(i)->createBuffer(VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+            TLScratchBuffers.at(i) = std::make_shared<Buffer>(devicePtr, commandsPtr, 256); //starting size really doesn't matter
+            TLScratchBuffers.at(i)->createBuffer(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+        }
     }
 
     AccelerationStructure::~AccelerationStructure()
     {
+        for(uint32_t i = 0; i < commandsPtr->getFrameCount(); i++)
+        {
+            vkDestroySemaphore(devicePtr->getDevice(), BottomSignalSemaphores.at(i), nullptr);
+        }
+
         vkDestroyAccelerationStructureKHR(devicePtr->getDevice(), topStructure, nullptr);
         for(auto& [ptr, structure] : bottomStructures)
         {
@@ -20,7 +47,139 @@ namespace Renderer
         bottomStructures.clear();
     }
 
-    void AccelerationStructure::createBottomLevel(const BottomAccelerationStructureData& meshesData)
+    void AccelerationStructure::verifyBufferSizes(const std::unordered_map<Model*, std::list<ModelInstance*>> &modelInstances, uint32_t currentFrame)
+    {
+        //BOTTOM LEVEL
+        BLBuildData = BottomBuildData{}; //reset build data
+
+        //get model and instance data in neater format
+        std::vector<ModelInstance*> vectorModelInstances;
+        for(const auto& [model, instances] : modelInstances)
+        {
+            BLBuildData.buildModels.push_back(model);
+            for(auto instance = instances.begin(); instance != instances.end(); instance++)
+            {
+                vectorModelInstances.push_back(*instance);
+            }
+        }
+        instancesCount = vectorModelInstances.size();
+
+        //setup bottom level geometries
+        for(Model* model : BLBuildData.buildModels)
+        {
+            std::vector<VkAccelerationStructureGeometryKHR> modelGeometries;
+            std::vector<uint32_t> modelPrimitiveCounts;
+            std::vector<VkAccelerationStructureBuildRangeInfoKHR> modelBuildRangeInfos;
+
+            //get per mesh group geometry data
+            for(const auto& [matIndex, meshes] : model->getLODs().at(0).meshes) //use LOD 0 for BLAS
+            {
+                for(const LODMesh& mesh : meshes) //per mesh in mesh group data
+                {
+                    //buffer information
+                    VkAccelerationStructureGeometryTrianglesDataKHR trianglesGeometry = {};
+                    trianglesGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+                    trianglesGeometry.pNext = NULL;
+                    trianglesGeometry.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+                    trianglesGeometry.vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = model->getVBOAddress() + mesh.vboOffset};
+                    trianglesGeometry.maxVertex = mesh.vertexCount;
+                    trianglesGeometry.vertexStride = sizeof(Vertex);
+                    trianglesGeometry.indexType = VK_INDEX_TYPE_UINT32;
+                    trianglesGeometry.indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = model->getIBOAddress() + mesh.iboOffset};
+                    //trianglesGeometry.transformData = transformMatrixBufferAddress;
+
+                    //geometries
+                    VkAccelerationStructureGeometryKHR structureGeometry = {};
+                    structureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+                    structureGeometry.pNext = NULL;
+                    structureGeometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+                    structureGeometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+                    structureGeometry.geometry.triangles = trianglesGeometry;
+                    
+                    VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo;
+                    buildRangeInfo.primitiveCount = mesh.indexCount / 3;
+                    buildRangeInfo.primitiveOffset = 0;
+                    buildRangeInfo.firstVertex = 0;
+                    buildRangeInfo.transformOffset = 0;
+
+                    modelGeometries.push_back(std::move(structureGeometry));
+                    modelPrimitiveCounts.push_back(mesh.indexCount / 3);
+                    modelBuildRangeInfos.push_back(std::move(buildRangeInfo));
+                }
+            }
+            BLBuildData.modelsGeometries.push_back(std::move(modelGeometries));
+            BLBuildData.buildRangeInfos.push_back(std::move(modelBuildRangeInfos));
+            
+            //per model build information
+            VkAccelerationStructureBuildGeometryInfoKHR buildGeoInfo = {};
+            buildGeoInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+            buildGeoInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+            buildGeoInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;// | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR;
+            buildGeoInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+            buildGeoInfo.srcAccelerationStructure = VK_NULL_HANDLE;
+            buildGeoInfo.geometryCount = BLBuildData.modelsGeometries.rbegin()->size();
+            buildGeoInfo.pGeometries = BLBuildData.modelsGeometries.rbegin()->data();
+            buildGeoInfo.ppGeometries = NULL;
+
+            VkAccelerationStructureBuildSizesInfoKHR buildSize = {};
+            buildSize.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+
+            vkGetAccelerationStructureBuildSizesKHR(
+                devicePtr->getDevice(),
+                VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+                &buildGeoInfo,
+                modelPrimitiveCounts.data(),
+                &buildSize);
+
+            BLBuildData.buildGeometries[model] = buildGeoInfo;
+            BLBuildData.buildSizes.push_back(buildSize);
+        }
+
+        //add up total sizes and offsets needed
+        for(uint32_t i = 0; i < BLBuildData.buildGeometries.size(); i++)
+        {
+            BLBuildData.scratchOffsets.push_back(BLBuildData.totalScratchSize);
+            BLBuildData.totalScratchSize += BLBuildData.buildSizes.at(i).buildScratchSize;
+            BLBuildData.asOffsets.push_back(BLBuildData.totalBuildSize);
+            BLBuildData.totalBuildSize += (BLBuildData.buildSizes.at(i).accelerationStructureSize); 
+            BLBuildData.totalBuildSize += 256 - (BLBuildData.totalBuildSize % 256); //must be a multiple of 256 bytes;
+        }
+
+        //rebuild buffers if needed (if needed size is greater than current alocation, or is 70% less than what's needed)
+        if(BLBuildData.totalScratchSize > BLScratchBuffers.at(currentFrame)->getAllocatedSize() || BLBuildData.totalScratchSize < BLScratchBuffers.at(currentFrame)->getAllocatedSize() * 0.7)
+        {
+            VkDeviceSize newSize = BLBuildData.totalScratchSize * 1.1; //allocate 10% more than what's currently needed
+            BLScratchBuffers.at(currentFrame) = std::make_shared<Buffer>(devicePtr, commandsPtr, newSize); //starting size really doesn't matter
+            BLScratchBuffers.at(currentFrame)->createBuffer(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+        }
+        if(BLBuildData.totalBuildSize > BLBuffers.at(currentFrame)->getAllocatedSize() || BLBuildData.totalBuildSize < BLBuffers.at(currentFrame)->getAllocatedSize() * 0.7)
+        {
+            VkDeviceSize newSize = BLBuildData.totalBuildSize * 1.1; //allocate 10% more than what's currently needed
+            BLBuffers.at(currentFrame) = std::make_shared<Buffer>(devicePtr, commandsPtr, newSize); //starting size really doesn't matter
+            BLBuffers.at(currentFrame)->createBuffer(VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+        }
+        
+        //TOP LEVEL
+        instancesBufferSize = vectorModelInstances.size() * sizeof(VkAccelerationStructureInstanceKHR);
+        if(instancesBufferSize > TLInstancesBuffers.at(currentFrame)->getAllocatedSize())
+        {
+            TLInstancesBuffers.at(currentFrame) = std::make_shared<Buffer>(devicePtr, commandsPtr, instancesBufferSize);
+            TLInstancesBuffers.at(currentFrame)->createBuffer(VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+        }
+    }
+
+    void AccelerationStructure::updateBLAS(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame)
+    {
+        createBottomLevel(waitSemaphores, signalSemaphores, fence, currentFrame);
+    }
+
+    void AccelerationStructure::updateTLAS(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame)
+    {
+        createTopLevel(waitSemaphores, signalSemaphores, fence, currentFrame);
+    }
+
+    void AccelerationStructure::createBottomLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame)
     {
         /*VkTransformMatrixKHR defaultTransform = {
             1.0f, 0.0f, 0.0f, 0.0f,
@@ -34,135 +193,44 @@ namespace Renderer
 
         Buffer transformMatrixBuffer(devicePtr, commandsPtr, sizeof(defaultTransform));
         transformMatrixBuffer.createBuffer(bufferUsageFlags, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-        QueueReturn queueReturnData = transformMatrixBuffer.copyFromBuffer(transformationMatrixStaging, true);*/
+        transformMatrixBuffer.copyFromBuffer(transformationMatrixStaging, std::vector<SemaphorePair>(), std::vector<SemaphorePair>(), VK_NULL_HANDLE);*/
 
-        //clear previous structure
-        for(auto& [ptr, structure] : bottomStructures)
+        //clear previous structures
+        for(auto& [modelPtr, structure] : bottomStructures)
         {
             vkDestroyAccelerationStructureKHR(devicePtr->getDevice(), structure.structure, nullptr);
         }
         bottomStructures.clear();
 
-        //setup bottom level geometries
-        std::vector<std::shared_ptr<std::vector<VkAccelerationStructureGeometryKHR>>> modelsGeometries;
-        std::vector<VkAccelerationStructureBuildGeometryInfoKHR> buildGeometries;
-        std::vector<std::vector<VkAccelerationStructureBuildRangeInfoKHR>> buildRangeInfos;
-        std::vector<std::shared_ptr<Buffer>> buffers;
-
-        //build per-model bottom level acceleration structures
-        for(const AccelerationStructureModelReference& model : meshesData.models)
+        //create BLASes (funny grammar moment)
+        uint32_t modelIndex = 0;
+        for(Model const* model : BLBuildData.buildModels)
         {
-            std::shared_ptr<std::vector<VkAccelerationStructureGeometryKHR>> modelGeometries = 
-                std::make_shared<std::vector<VkAccelerationStructureGeometryKHR>>();
-            std::vector<uint32_t> modelPrimitiveCounts;
-            std::vector<VkAccelerationStructureBuildRangeInfoKHR> modelBuildRangeInfos;
-
-            //get per-mesh geometry data
-            for(const AccelerationStructureMeshData& mesh : model.meshes)
-            {
-                //vertexBufferAddress.deviceAddress = mesh->mesh->getVertexBuffer().getBufferDeviceAddress();
-                //indexBufferAddress.deviceAddress = mesh->mesh->getIndexBuffer().getBufferDeviceAddress();
-                //transformMatrixBufferAddress.deviceAddress = transformMatrixBuffer.getBufferDeviceAddress();
-
-                //buffer information
-                VkAccelerationStructureGeometryTrianglesDataKHR trianglesGeometry = {};
-                trianglesGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
-                trianglesGeometry.pNext = NULL;
-                trianglesGeometry.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-                trianglesGeometry.vertexData = mesh.vertexBufferAddress;
-                trianglesGeometry.maxVertex = mesh.vertexCount;
-                trianglesGeometry.vertexStride = sizeof(Vertex);
-                trianglesGeometry.indexType = VK_INDEX_TYPE_UINT32;
-                trianglesGeometry.indexData = mesh.indexBufferAddress;
-                //trianglesGeometry.transformData = transformMatrixBufferAddress;
-
-                //geometries
-                VkAccelerationStructureGeometryKHR structureGeometry = {};
-                structureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
-                structureGeometry.pNext = NULL;
-                structureGeometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
-                structureGeometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
-                structureGeometry.geometry.triangles = trianglesGeometry;
-                
-                VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo;
-                buildRangeInfo.primitiveCount = mesh.primitiveCount;
-                buildRangeInfo.primitiveOffset = 0;
-                buildRangeInfo.firstVertex = 0;
-                buildRangeInfo.transformOffset = 0;
-
-                modelGeometries->push_back(structureGeometry);
-                modelPrimitiveCounts.push_back(mesh.primitiveCount / 3);
-                modelBuildRangeInfos.push_back(buildRangeInfo);
-            }
-            modelsGeometries.push_back(modelGeometries);
-            buildRangeInfos.push_back(modelBuildRangeInfos);
-            
-            //per model build information
-            VkAccelerationStructureBuildGeometryInfoKHR buildGeoInfo = {};
-            buildGeoInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
-            buildGeoInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-            buildGeoInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
-            buildGeoInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
-            buildGeoInfo.srcAccelerationStructure = VK_NULL_HANDLE;
-            buildGeoInfo.geometryCount = modelGeometries->size();
-            buildGeoInfo.pGeometries = modelGeometries->data();
-            buildGeoInfo.ppGeometries = NULL;
-
-            VkAccelerationStructureBuildSizesInfoKHR buildSizes = {};
-            buildSizes.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
-
-            vkGetAccelerationStructureBuildSizesKHR(
-                devicePtr->getDevice(),
-                VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
-                &buildGeoInfo,
-                modelPrimitiveCounts.data(),
-                &buildSizes);
-
-            //scratch buffer
-            std::shared_ptr<Buffer> scratchBuffer = std::make_shared<Buffer>(
-                devicePtr, commandsPtr, buildSizes.buildScratchSize
-            );
-            scratchBuffer->createBuffer(
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                VMA_MEMORY_USAGE_AUTO,
-                VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-            buffers.push_back(scratchBuffer);
-
-            buildGeoInfo.scratchData.deviceAddress = scratchBuffer->getBufferDeviceAddress();
-
-            //acceleration structure
-            BottomStructure structure;
-            structure.structure = VK_NULL_HANDLE;
-            structure.structureBuffer = std::make_shared<Buffer>(
-                devicePtr, commandsPtr, buildSizes.accelerationStructureSize
-            );
-            structure.structureBuffer->createBuffer(
-                VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                VMA_MEMORY_USAGE_AUTO,
-                VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+            bottomStructures[model].structure = VK_NULL_HANDLE;
+            bottomStructures[model].bufferAddress = BLBuffers.at(currentFrame)->getBufferDeviceAddress() + BLBuildData.asOffsets.at(modelIndex);
+            BLBuildData.buildGeometries[model].scratchData.deviceAddress = BLScratchBuffers.at(currentFrame)->getBufferDeviceAddress() + BLBuildData.scratchOffsets.at(modelIndex);
 
             VkAccelerationStructureCreateInfoKHR accelStructureInfo = {};
             accelStructureInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
             accelStructureInfo.pNext = NULL;
             accelStructureInfo.createFlags = 0;
-            accelStructureInfo.buffer = structure.structureBuffer->getBuffer();
-            accelStructureInfo.offset = 0;
-            accelStructureInfo.size = buildSizes.accelerationStructureSize;
+            accelStructureInfo.buffer = BLBuffers.at(currentFrame)->getBuffer();
+            accelStructureInfo.offset = BLBuildData.asOffsets.at(modelIndex);
+            accelStructureInfo.size = BLBuildData.buildSizes.at(modelIndex).accelerationStructureSize;
             accelStructureInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-
-            vkCreateAccelerationStructureKHR(devicePtr->getDevice(), &accelStructureInfo, nullptr, &structure.structure);
-            buildGeoInfo.dstAccelerationStructure = structure.structure;
             
-            buildGeometries.push_back(buildGeoInfo);
-            bottomStructures[model.modelPointer] = structure;
-        }
+            vkCreateAccelerationStructureKHR(devicePtr->getDevice(), &accelStructureInfo, nullptr, &bottomStructures[model].structure);
+            BLBuildData.buildGeometries.at(model).dstAccelerationStructure = bottomStructures[model].structure;
 
+            modelIndex++;
+        }
+        
         //build process
         std::vector<VkAccelerationStructureBuildRangeInfoKHR*> buildRangesPtrArray;
-        for(auto buildRanges : buildRangeInfos)
+        for(auto buildRanges : BLBuildData.buildRangeInfos) //model
         {
             std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRangesArray;
-            for(auto buildRange : buildRanges)
+            for(auto buildRange : buildRanges) //mesh
             {
                 buildRangesArray.push_back(buildRange);
             }
@@ -170,12 +238,6 @@ namespace Renderer
             memcpy(buildDataPtr, buildRangesArray.data(), buildRangesArray.size() * sizeof(VkAccelerationStructureBuildRangeInfoKHR));
             buildRangesPtrArray.push_back((VkAccelerationStructureBuildRangeInfoKHR*)buildDataPtr);
         }
-
-        //----------------------------------------------------------------------------------------------------//
-        //----------------------------------------------------------------------------------------------------//
-        //--------------------BIG FAT TODO COMPACT THE BOTTOM LEVEL ACCELERATION STRUCTURE--------------------//
-        //----------------------------------------------------------------------------------------------------//
-        //----------------------------------------------------------------------------------------------------//
 
         VkCommandBuffer cmdBuffer = commandsPtr->getCommandBuffer(CmdPoolType::COMPUTE);
 
@@ -187,27 +249,69 @@ namespace Renderer
         
         vkBeginCommandBuffer(cmdBuffer, &beginInfo);
         
-        vkCmdBuildAccelerationStructuresKHR(cmdBuffer, buildGeometries.size(), buildGeometries.data(), buildRangesPtrArray.data());
+        //unordered map -> vector
+        std::vector<VkAccelerationStructureBuildGeometryInfoKHR> vectorBuildGeos;
+        for(const auto& [model, buildGeo] : BLBuildData.buildGeometries)
+        {
+            vectorBuildGeos.push_back(buildGeo);
+        }
+        vkCmdBuildAccelerationStructuresKHR(cmdBuffer, vectorBuildGeos.size(), vectorBuildGeos.data(), buildRangesPtrArray.data());
         
         vkEndCommandBuffer(cmdBuffer);
+
+        std::vector<VkSemaphoreSubmitInfo> semaphoreWaitInfos;
+
+        for(const SemaphorePair& pair : waitSemaphores)
+        {
+            VkSemaphoreSubmitInfo semaphoreInfo = {};
+            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+            semaphoreInfo.pNext = NULL;
+            semaphoreInfo.semaphore = pair.semaphore;
+            semaphoreInfo.stageMask = pair.stage;
+            semaphoreInfo.deviceIndex = 0;
+
+            semaphoreWaitInfos.push_back(semaphoreInfo);
+        }
 
         VkCommandBufferSubmitInfo cmdBufferSubmitInfo = {};
         cmdBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
         cmdBufferSubmitInfo.pNext = NULL;
         cmdBufferSubmitInfo.commandBuffer = cmdBuffer;
         cmdBufferSubmitInfo.deviceMask = 0;
+
+        std::vector<VkSemaphoreSubmitInfo> semaphoreSignalInfos;
+        VkSemaphoreSubmitInfo semaphoreSignalInfo = {};
+        semaphoreSignalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        semaphoreSignalInfo.pNext = NULL;
+        semaphoreSignalInfo.semaphore = BottomSignalSemaphores.at(currentFrame);
+        semaphoreSignalInfo.stageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
+        semaphoreSignalInfo.deviceIndex = 0;
+        semaphoreSignalInfos.push_back(semaphoreSignalInfo);
+
+        for(const SemaphorePair& pair : signalSemaphores)
+        {
+            VkSemaphoreSubmitInfo semaphoreInfo = {};
+            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+            semaphoreInfo.pNext = NULL;
+            semaphoreInfo.semaphore = pair.semaphore;
+            semaphoreInfo.stageMask = pair.stage;
+            semaphoreInfo.deviceIndex = 0;
+
+            semaphoreSignalInfos.push_back(semaphoreInfo);
+        }
         
         VkSubmitInfo2 submitInfo = {};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
         submitInfo.pNext = NULL;
         submitInfo.flags = 0;
+        submitInfo.waitSemaphoreInfoCount = semaphoreWaitInfos.size();
+        submitInfo.pWaitSemaphoreInfos = semaphoreWaitInfos.data();
         submitInfo.commandBufferInfoCount = 1;
         submitInfo.pCommandBufferInfos = &cmdBufferSubmitInfo;
-        
-        VkFence waitFence = commandsPtr->getUnsignaledFence();
-        vkQueueSubmit2(devicePtr->getQueues().compute.at(0), 1, &submitInfo, waitFence);
-        vkWaitForFences(devicePtr->getDevice(), 1, &waitFence, VK_TRUE, UINT64_MAX);
-        vkDestroyFence(devicePtr->getDevice(), waitFence, nullptr);
+        submitInfo.signalSemaphoreInfoCount = semaphoreSignalInfos.size();
+        submitInfo.pSignalSemaphoreInfos = semaphoreSignalInfos.data();
+
+        vkQueueSubmit2(devicePtr->getQueues().compute.at(0), 1, &submitInfo, fence);
 
         for(auto& ptr : buildRangesPtrArray)
         {
@@ -215,49 +319,17 @@ namespace Renderer
         }
     }
 
-    VkSemaphore AccelerationStructure::createTopLevel(const TopAccelerationData& instancesData, const std::vector<SemaphorePair>& waitSemaphores)
+    void AccelerationStructure::createTopLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair>& signalSemaphores, const VkFence& fence, uint32_t currentFrame)
     {
         //destroy old
         vkDestroyAccelerationStructureKHR(devicePtr->getDevice(), topStructure, nullptr);
-
-        //setup top level geometries
-        std::vector<VkAccelerationStructureInstanceKHR> structureInstances;
-        for(const TopAccelerationInstance& instance : instancesData.instances)
-        {
-            VkAccelerationStructureInstanceKHR structureInstance = {};
-            structureInstance.transform = instance.transform;
-            structureInstance.instanceCustomIndex = 0;
-            structureInstance.mask = 0xFF;
-            structureInstance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-            structureInstance.accelerationStructureReference = bottomStructures.at(instance.modelPointer).structureBuffer->getBufferDeviceAddress();
-        }
-
-        //create buffers
-        const VkBufferUsageFlags bufferUsageFlags = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        StagingBuffer instancesStaging(devicePtr, commandsPtr, sizeof(VkAccelerationStructureInstanceKHR) * structureInstances.size());
-        instancesStaging.mapData(structureInstances.data(), 0, sizeof(VkAccelerationStructureInstanceKHR) * structureInstances.size());
-
-        Buffer instancesBuffer(devicePtr, commandsPtr, sizeof(VkAccelerationStructureInstanceKHR) * structureInstances.size());
-        instancesBuffer.createBuffer(bufferUsageFlags, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-        VkSemaphore copySemaphore = commandsPtr->getSemaphore();
-
-        SemaphorePair signalPair = {
-            .semaphore = copySemaphore,
-            .stage = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
-        };
-        std::vector<SemaphorePair> signalPairs = { signalPair };
-        instancesBuffer.copyFromBuffer(instancesStaging, waitSemaphores, signalPairs, VK_NULL_HANDLE);
-
-        //get buffer address
-        VkDeviceOrHostAddressConstKHR instancesAddress;
-        instancesAddress.deviceAddress = instancesBuffer.getBufferDeviceAddress();
 
         //geometries
         VkAccelerationStructureGeometryInstancesDataKHR geoInstances = {};
         geoInstances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
         geoInstances.pNext = NULL;
         geoInstances.arrayOfPointers = VK_FALSE;
-        geoInstances.data = instancesAddress;
+        geoInstances.data = VkDeviceOrHostAddressConstKHR{.deviceAddress = TLInstancesBuffers.at(currentFrame)->getBufferDeviceAddress()};
 
         VkAccelerationStructureGeometryDataKHR geometry = {};
         geometry.instances = geoInstances;
@@ -279,7 +351,7 @@ namespace Renderer
         buildGeoInfo.geometryCount = 1;
         buildGeoInfo.pGeometries   = &structureGeometry;
 
-        const uint32_t primitiveCount = 1;
+        const uint32_t primitiveCount = instancesCount;
 
         VkAccelerationStructureBuildSizesInfoKHR buildSizes = {};
         buildSizes.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
@@ -291,15 +363,26 @@ namespace Renderer
             &primitiveCount,
             &buildSizes);
 
-        // Create a buffer to hold the acceleration structure
-        Buffer accelStructureBuffer(devicePtr, commandsPtr, buildSizes.accelerationStructureSize);
-        accelStructureBuffer.createBuffer(VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+        //rebuild buffers if needed (if needed size is greater than current alocation, or is 70% less than what's needed)
+        if(buildSizes.buildScratchSize > TLScratchBuffers.at(currentFrame)->getAllocatedSize() || buildSizes.buildScratchSize < TLScratchBuffers.at(currentFrame)->getAllocatedSize() * 0.7)
+        {
+            VkDeviceSize newSize = buildSizes.buildScratchSize * 1.1; //allocate 10% more than what's currently needed
+            TLScratchBuffers.at(currentFrame) = std::make_shared<Buffer>(devicePtr, commandsPtr, newSize); //starting size really doesn't matter
+            TLScratchBuffers.at(currentFrame)->createBuffer(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+        }
+        if(buildSizes.accelerationStructureSize > TLBuffers.at(currentFrame)->getAllocatedSize() || buildSizes.accelerationStructureSize < TLBuffers.at(currentFrame)->getAllocatedSize() * 0.7)
+        {
+            VkDeviceSize newSize = buildSizes.accelerationStructureSize * 1.1; //allocate 10% more than what's currently needed
+            TLBuffers.at(currentFrame) = std::make_shared<Buffer>(devicePtr, commandsPtr, newSize); //starting size really doesn't matter
+            TLBuffers.at(currentFrame)->createBuffer(VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+        }
+        buildGeoInfo.scratchData.deviceAddress = TLScratchBuffers.at(currentFrame)->getBufferDeviceAddress();
 
         VkAccelerationStructureCreateInfoKHR accelStructureInfo = {};
         accelStructureInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
         accelStructureInfo.pNext = NULL;
         accelStructureInfo.createFlags = 0;
-        accelStructureInfo.buffer = accelStructureBuffer.getBuffer();
+        accelStructureInfo.buffer = TLBuffers.at(currentFrame)->getBuffer();
         accelStructureInfo.offset = 0;
         accelStructureInfo.size = buildSizes.accelerationStructureSize;
         accelStructureInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
@@ -307,18 +390,8 @@ namespace Renderer
         vkCreateAccelerationStructureKHR(devicePtr->getDevice(), &accelStructureInfo, nullptr, &topStructure);
         buildGeoInfo.dstAccelerationStructure = topStructure;
 
-        //build process
-        //scratch buffer
-        Buffer scratchBuffer(devicePtr, commandsPtr, buildSizes.buildScratchSize);
-        scratchBuffer.createBuffer(
-            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-            VMA_MEMORY_USAGE_AUTO,
-            VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-
-        buildGeoInfo.scratchData.deviceAddress = scratchBuffer.getBufferDeviceAddress();
-
         VkAccelerationStructureBuildRangeInfoKHR buildRange;
-        buildRange.primitiveCount = 1;
+        buildRange.primitiveCount = instancesCount;
         buildRange.primitiveOffset = 0;
         buildRange.firstVertex = 0;
         buildRange.transformOffset = 0;
@@ -338,48 +411,63 @@ namespace Renderer
         
         vkEndCommandBuffer(cmdBuffer);
 
+        std::vector<VkSemaphoreSubmitInfo> semaphoreWaitInfos;
+        VkSemaphoreSubmitInfo semaphoreWaitInfo = {};
+        semaphoreWaitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        semaphoreWaitInfo.pNext = NULL;
+        semaphoreWaitInfo.semaphore = BottomSignalSemaphores.at(currentFrame);
+        semaphoreWaitInfo.stageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
+        semaphoreWaitInfo.deviceIndex = 0;
+        semaphoreWaitInfos.push_back(semaphoreWaitInfo);
+
+        for(const SemaphorePair& pair : waitSemaphores)
+        {
+            VkSemaphoreSubmitInfo semaphoreInfo = {};
+            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+            semaphoreInfo.pNext = NULL;
+            semaphoreInfo.semaphore = pair.semaphore;
+            semaphoreInfo.stageMask = pair.stage;
+            semaphoreInfo.deviceIndex = 0;
+
+            semaphoreWaitInfos.push_back(semaphoreInfo);
+        }
+
         VkCommandBufferSubmitInfo cmdBufferSubmitInfo = {};
         cmdBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
         cmdBufferSubmitInfo.pNext = NULL;
         cmdBufferSubmitInfo.commandBuffer = cmdBuffer;
         cmdBufferSubmitInfo.deviceMask = 0;
 
-        VkSemaphoreSubmitInfo semaphoreWaitInfo = {};
-        semaphoreWaitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-        semaphoreWaitInfo.pNext = NULL;
-        semaphoreWaitInfo.semaphore = copySemaphore;
-        semaphoreWaitInfo.stageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
-        semaphoreWaitInfo.deviceIndex = 0;
+        std::vector<VkSemaphoreSubmitInfo> semaphoreSignalInfos;
+        for(const SemaphorePair& pair : signalSemaphores)
+        {
+            VkSemaphoreSubmitInfo semaphoreInfo = {};
+            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+            semaphoreInfo.pNext = NULL;
+            semaphoreInfo.semaphore = pair.semaphore;
+            semaphoreInfo.stageMask = pair.stage;
+            semaphoreInfo.deviceIndex = 0;
 
-        VkSemaphore signalSemaphore = commandsPtr->getSemaphore(); //creates new semaphore
-        VkSemaphoreSubmitInfo semaphoreSignalInfo = {};
-        semaphoreSignalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-        semaphoreSignalInfo.pNext = NULL;
-        semaphoreSignalInfo.semaphore = signalSemaphore;
-        semaphoreSignalInfo.stageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR; //???
-        semaphoreSignalInfo.deviceIndex = 0;
+            semaphoreSignalInfos.push_back(semaphoreInfo);
+        }
         
         VkSubmitInfo2 submitInfo = {};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
         submitInfo.pNext = NULL;
         submitInfo.flags = 0;
+        submitInfo.waitSemaphoreInfoCount = semaphoreWaitInfos.size();
+        submitInfo.pWaitSemaphoreInfos = semaphoreWaitInfos.data();
         submitInfo.commandBufferInfoCount = 1;
-        submitInfo.pWaitSemaphoreInfos = &semaphoreWaitInfo;
-        submitInfo.signalSemaphoreInfoCount = 1;
         submitInfo.pCommandBufferInfos = &cmdBufferSubmitInfo;
-        submitInfo.waitSemaphoreInfoCount = 1;
-        submitInfo.pSignalSemaphoreInfos = &semaphoreSignalInfo;
+        submitInfo.signalSemaphoreInfoCount = semaphoreSignalInfos.size();
+        submitInfo.pSignalSemaphoreInfos = semaphoreSignalInfos.data();
 
-        vkQueueSubmit2(devicePtr->getQueues().compute.at(0), 1, &submitInfo, VK_NULL_HANDLE);
-        vkDestroySemaphore(devicePtr->getDevice(), copySemaphore, nullptr);
-        throw std::runtime_error("TODO need to fix the acceleration structure synchronization");
+        vkQueueSubmit2(devicePtr->getQueues().compute.at(0), 1, &submitInfo, fence);
 
         //get top address
         VkAccelerationStructureDeviceAddressInfoKHR accelerationAddressInfo{};
         accelerationAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
         accelerationAddressInfo.accelerationStructure = topStructure;
         topStructureAddress = vkGetAccelerationStructureDeviceAddressKHR(devicePtr->getDevice(), &accelerationAddressInfo);
-
-        return signalSemaphore;
     }
 }

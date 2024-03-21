@@ -9,6 +9,8 @@ layout (local_size_x = 128) in;
 //----------GLOBAL INPUT DATA----------//
 
 layout(std430, buffer_reference, buffer_reference_align = 8) PreprocessBufferReference;
+layout(std430, buffer_reference, buffer_reference_align = 8) writeonly buffer ASInstances;
+layout(std430, buffer_reference, buffer_reference_align = 8) BLASReference;
 
 struct CullingData
 {
@@ -19,6 +21,7 @@ struct CullingData
 layout(std430, set = 0, binding = 0) uniform InputData
 {
     PreprocessBufferReference bufferReference;
+    ASInstances asInstancesBufferReference;
     vec4 camPos;
     mat4 projection;
     mat4 view;
@@ -33,7 +36,7 @@ struct InputObject
     vec4 scale;
     uint lodCount;
     uint lodOffset;
-    vec2 padding;
+    BLASReference blasReference;
 };
 
 layout(std430, set = 0, binding = 1) readonly buffer InputObjects
@@ -95,6 +98,19 @@ layout(std430, buffer_reference, buffer_reference_align = 8) writeonly buffer Ou
     OutputObject objects[];
 };
 
+struct AccelerationStructureInstance
+{
+    mat3x4 transform;
+    uint instanceCustomIndexAndMask;//24 + 8;
+    uint instanceShaderBindingTableRecordOffsetAndFlags;//24 + 8;
+    uint64_t accelerationStructureReference;
+};
+
+layout(std430, buffer_reference, buffer_reference_align = 8) writeonly buffer ASInstances
+{
+    AccelerationStructureInstance objects[];
+}; 
+
 //----------FUNCTIONS----------//
 
 bool isInBounds(InputObject object)
@@ -137,22 +153,52 @@ DrawCommand buildDrawCommand(LODMesh lodData, uint writeIndex)
     return drawCommand;
 }
 
-OutputObject buildOutputObject(InputObject object)
+OutputObject buildOutputObject(mat4 modelMatrix)
 {
-    //build model matrix
-    mat4 modelMatrix = mat4(
-        vec4(object.scale.x, 0.0, 0.0, 0.0),
-        vec4(0.0, object.scale.y, 0.0, 0.0),
-        vec4(0.0, 0.0, object.scale.z, 0.0),
-        vec4(object.position.xyz, 1.0));
-
-    modelMatrix = modelMatrix * object.rotation; //apply rotation before translation
-
     OutputObject outputObject;
     outputObject.model = modelMatrix;
     outputObject.objectTransform = inputData.projection * inputData.view * modelMatrix;
 
     return outputObject;
+}
+
+const uint VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR = 0x01000000;
+
+AccelerationStructureInstance buildASInstance(InputObject object, uint customIndex)
+{
+    mat4 transformMatrix = mat4(
+        vec4(object.scale.x, 0.0, 0.0, 0.0),
+        vec4(0.0, object.scale.y, 0.0, 0.0),
+        vec4(0.0, 0.0, object.scale.z, 0.0),
+        vec4(0.0, 0.0, 0.0, 1.0));
+    transformMatrix = inputData.view * transformMatrix * object.rotation; //apply rotation before translation  TODO ROTATION IS BROKEN BECAUSE IM A RETARD WHO DOESNT KNOW LINEAR ALGEBRA
+
+    mat3x4 instTransform;
+    instTransform[0] = vec4(transformMatrix[0].xyz, object.position.x);
+    instTransform[1] = vec4(transformMatrix[1].xyz, object.position.y);
+    instTransform[2] = vec4(transformMatrix[2].xyz, object.position.z);
+
+    //I HAVE NO IDEA HOW WELL THIS CODE WILL ACTUALLY HOLD UP CONSIDERING I BARELY KNOW HOW TO USE BITWISE OPERATORS
+
+    //custom index and mask
+    uint instanceCustomIndex = customIndex;    // value to merge in non-masked bits
+    uint mask = 0xAA000000;    // value to merge in masked bits
+    uint bitmask0 = 0xFF000000; // 1 where bits from mask should be selected; 0 where from instanceCustomIndex.
+    uint instanceCustomIndexAndMask = instanceCustomIndex ^ ((instanceCustomIndex ^ mask) & bitmask0);
+
+    //binding table record offset and flags
+    uint instanceShaderBindingTableRecordOffset = 0;    // value to merge in non-masked bits
+    uint flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;    // value to merge in masked bits
+    uint bitmask1 = 0xFF000000; // 1 where bits from flags should be selected; 0 where from instanceShaderBindingTableRecordOffset.
+    uint instanceShaderBindingTableRecordOffsetAndFlags = instanceShaderBindingTableRecordOffset ^ ((instanceShaderBindingTableRecordOffset ^ flags) & bitmask1);
+
+    AccelerationStructureInstance structureInstance;
+    structureInstance.transform = instTransform;
+    structureInstance.instanceCustomIndexAndMask = instanceCustomIndexAndMask;
+    structureInstance.instanceShaderBindingTableRecordOffsetAndFlags = instanceShaderBindingTableRecordOffsetAndFlags;
+    structureInstance.accelerationStructureReference = uint64_t(object.blasReference);
+
+    return structureInstance;
 }
 
 void main()
@@ -162,8 +208,12 @@ void main()
     {
         return;
     }
-
     InputObject inputObject = inputObjects.objects[gID];
+
+    //ray tracing bits
+    ASInstances outputInstances = inputData.asInstancesBufferReference;
+    outputInstances.objects[gID] = buildASInstance(inputObject, gID);
+
     if(isInBounds(inputObject))
     {   
         //get LOD
@@ -174,14 +224,25 @@ void main()
         //loop through LOD meshes and create draw calls with counts
         for(uint i = 0; i < lod.meshCount; i++)
         {
+            //draw counts and output objects
             DrawCounts drawCounts = DrawCounts(uint64_t(inputData.bufferReference) + meshesArray.meshes[i].drawCountsOffset);
             DrawCommands outputCommands = DrawCommands(uint64_t(inputData.bufferReference) + meshesArray.meshes[i].drawCommandsOffset);
             OutputObjects outputObjects = OutputObjects(uint64_t(inputData.bufferReference) + meshesArray.meshes[i].outputObjectsOffset);
 
             uint writeIndex = atomicAdd(drawCounts.count, 1);
 
+            //draw commands
             outputCommands.commands[writeIndex] = buildDrawCommand(meshesArray.meshes[i], writeIndex);
-            outputObjects.objects[writeIndex] = buildOutputObject(inputObject);
+
+            //output objects
+            mat4 modelMatrix = mat4(
+                vec4(inputObject.scale.x, 0.0, 0.0, 0.0),
+                vec4(0.0, inputObject.scale.y, 0.0, 0.0),
+                vec4(0.0, 0.0, inputObject.scale.z, 0.0),
+                vec4(inputObject.position.xyz, 1.0));
+            modelMatrix = modelMatrix * inputObject.rotation; //apply rotation before translation  TODO ROTATION IS BROKEN BECAUSE IM A RETARD WHO DOESNT KNOW LINEAR ALGEBRA
+            outputObjects.objects[writeIndex] = buildOutputObject(modelMatrix);
+            
         }
     }
 }

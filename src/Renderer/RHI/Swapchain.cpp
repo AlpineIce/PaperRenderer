@@ -264,7 +264,7 @@ namespace Renderer
             glfwGetFramebufferSize(windowPtr->getWindow(), &width, &height);
         }
         
-        vkQueueWaitIdle(devicePtr->getQueues().graphics.at(0));
+        vkDeviceWaitIdle(devicePtr->getDevice());
         
         //destruction
         for(VkImageView image : imageViews)

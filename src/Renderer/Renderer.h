@@ -3,7 +3,6 @@
 
 #include "RHI/Device.h"
 #include "RHI/Window.h"
-#include "RHI/AccelerationStructure.h"
 #include "RenderPass.h"
 
 #include <string>
@@ -29,7 +28,6 @@ namespace Renderer
         CmdBufferAllocator commands;
         DescriptorAllocator descriptors;
         PipelineBuilder pipelineBuilder;
-        AccelerationStructure rtAccelStructure;
         RenderPass rendering;
 
         //render tree stores all pipelines, their child materials, with their child RenderObject pointers

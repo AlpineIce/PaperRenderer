@@ -2,6 +2,7 @@
 #include "RHI/Swapchain.h"
 #include "RHI/Pipeline.h"
 #include "RHI/IndirectDrawBuffer.h"
+#include "RHI/AccelerationStructure.h"
 #include "Camera.h"
 #include "Renderer/Material/Material.h"
 #include "Model.h"
@@ -50,9 +51,11 @@ namespace Renderer
     private:
         std::vector<VkSemaphore> imageSemaphores;
         std::vector<VkSemaphore> bufferCopySemaphores;
-        std::vector<VkSemaphore> cullingSemaphores;
+        std::vector<VkSemaphore> tlasBuildSemaphores;
+        std::vector<VkSemaphore> preprocessSemaphores;
+        std::vector<VkSemaphore> preprocessTLASSignalSemaphores;
         std::vector<VkSemaphore> renderSemaphores;
-        std::vector<VkFence> cullingFences;
+        std::vector<VkFence> BLASFences;
         std::vector<VkFence> renderFences;
         std::vector<std::vector<CommandBuffer>> fenceCmdBuffers;
         std::vector<std::shared_ptr<UniformBuffer>> lightingInfoBuffers;
@@ -61,7 +64,8 @@ namespace Renderer
         std::unordered_map<Model*, std::list<ModelInstance*>> renderingModels;
 
         std::shared_ptr<ComputePipeline> meshPreprocessPipeline;
-
+        
+        AccelerationStructure rtAccelStructure;
         ImageAttachments renderTargets;
         uint32_t currentImage;
         bool recreateFlag = false;
@@ -73,8 +77,11 @@ namespace Renderer
         PipelineBuilder* pipelineBuilderPtr;
         Camera* cameraPtr = NULL;
         
+        bool preProcessing(const std::unordered_map<Material*, MaterialNode>& renderTree, const LightingInformation& lightingInfo);
+        void raster(const std::unordered_map<Material*, MaterialNode>& renderTree);
         void checkSwapchain(VkResult imageResult);
         void setStagingData(const std::unordered_map<Material*, MaterialNode>& renderTree, const LightingInformation& lightingInfo);
+        void traceRays();
         CommandBuffer submitPreprocess();
         void composeAttachments(const VkCommandBuffer& cmdBuffer);
         void bindMaterial(Material const* material, const VkCommandBuffer& cmdBuffer);
@@ -92,11 +99,8 @@ namespace Renderer
         //set camera
         void setCamera(Camera* camera) { this->cameraPtr = camera; }
 
-        //start new frame
-        void preProcessing(const std::unordered_map<Material*, MaterialNode>& renderTree, const LightingInformation& lightingInfo);
-
-        //begin rendering
-        void raster(const std::unordered_map<Material*, MaterialNode>& renderTree);
+        //draw new frame
+        void drawAll(const  std::unordered_map<Material*, MaterialNode>& renderTree, const LightingInformation& lightingInfo);
 
         std::list<ModelInstance*>::iterator addModelInstance(ModelInstance* instance);
         void removeModelInstance(std::list<ModelInstance*>::iterator reference);

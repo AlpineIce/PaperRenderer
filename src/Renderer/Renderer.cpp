@@ -17,7 +17,6 @@ namespace Renderer
         swapchain(&device, &window, false),
         descriptors(&device, &commands),
         pipelineBuilder(&device, &descriptors, &swapchain),
-        rtAccelStructure(&device, &commands),
         rendering(&swapchain, &device, &commands, &descriptors, &pipelineBuilder)
     {
         Material::initRendererInfo(&device, &commands, &descriptors, &pipelineBuilder);
@@ -180,8 +179,7 @@ namespace Renderer
     void RenderEngine::drawAllReferences()
     {
         //start command buffer and bind pipeline
-        rendering.preProcessing(renderTree, lightingInfo);
-        rendering.raster(renderTree);
+        rendering.drawAll(renderTree, lightingInfo);
 
         //RT pass
         /*if(rtEnabled)

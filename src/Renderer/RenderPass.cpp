@@ -10,7 +10,8 @@ namespace Renderer
         commandsPtr(commands),
         descriptorsPtr(descriptors),
         pipelineBuilderPtr(pipelineBuilder),
-        currentImage(0)
+        currentImage(0),
+        rtAccelStructure(device, commands)
     {
         //THE UBER-BUFFER
         renderingData.resize(commandsPtr->getFrameCount());
@@ -19,9 +20,11 @@ namespace Renderer
         //synchronization objects
         imageSemaphores.resize(commandsPtr->getFrameCount());
         bufferCopySemaphores.resize(commandsPtr->getFrameCount());
-        cullingSemaphores.resize(commandsPtr->getFrameCount());
+        tlasBuildSemaphores.resize(commandsPtr->getFrameCount());
+        preprocessSemaphores.resize(commandsPtr->getFrameCount());
+        preprocessTLASSignalSemaphores.resize(commandsPtr->getFrameCount());
         renderSemaphores.resize(commandsPtr->getFrameCount());
-        cullingFences.resize(commandsPtr->getFrameCount());
+        BLASFences.resize(commandsPtr->getFrameCount());
         renderFences.resize(commandsPtr->getFrameCount());
         fenceCmdBuffers.resize(commandsPtr->getFrameCount());
 
@@ -33,9 +36,11 @@ namespace Renderer
 
             imageSemaphores.at(i) = commandsPtr->getSemaphore();
             bufferCopySemaphores.at(i) = commandsPtr->getSemaphore();
-            cullingSemaphores.at(i) = commandsPtr->getSemaphore();
+            tlasBuildSemaphores.at(i) = commandsPtr->getSemaphore();
+            preprocessSemaphores.at(i) = commandsPtr->getSemaphore();
+            preprocessTLASSignalSemaphores.at(i) = commandsPtr->getSemaphore();
             renderSemaphores.at(i) = commandsPtr->getSemaphore();
-            cullingFences.at(i) = commandsPtr->getSignaledFence();
+            BLASFences.at(i) = commandsPtr->getUnsignaledFence();
             renderFences.at(i) = commandsPtr->getSignaledFence();
 
             preprocessUniformBuffers.push_back(std::make_shared<UniformBuffer>(devicePtr, commandsPtr, sizeof(CullingInputData)));
@@ -85,9 +90,11 @@ namespace Renderer
         {
             vkDestroySemaphore(devicePtr->getDevice(), imageSemaphores.at(i), nullptr);
             vkDestroySemaphore(devicePtr->getDevice(), bufferCopySemaphores.at(i), nullptr);
-            vkDestroySemaphore(devicePtr->getDevice(), cullingSemaphores.at(i), nullptr);
+            vkDestroySemaphore(devicePtr->getDevice(), tlasBuildSemaphores.at(i), nullptr);
+            vkDestroySemaphore(devicePtr->getDevice(), preprocessSemaphores.at(i), nullptr);
+            vkDestroySemaphore(devicePtr->getDevice(), preprocessTLASSignalSemaphores.at(i), nullptr);
             vkDestroySemaphore(devicePtr->getDevice(), renderSemaphores.at(i), nullptr);
-            vkDestroyFence(devicePtr->getDevice(), cullingFences.at(i), nullptr);
+            vkDestroyFence(devicePtr->getDevice(), BLASFences.at(i), nullptr);
             vkDestroyFence(devicePtr->getDevice(), renderFences.at(i), nullptr);
         }
     }
@@ -229,6 +236,7 @@ namespace Renderer
                 inputObject.scale = glm::vec4((*inputObjectReference)->getTransformation().scale, 0.0f);
                 inputObject.lodCount = (*inputObjectReference)->getModelPtr()->getLODs().size();
                 inputObject.lodsOffset = model->getLODDataOffset();
+                inputObject.blasReference = rtAccelStructure.getBottomStructures().at(model).bufferAddress;
                 shaderInputObjects.push_back(inputObject);
             }
         }
@@ -238,6 +246,11 @@ namespace Renderer
 
         renderingData.at(currentImage)->inputObjectsRegion.size = stagingData.size() - renderingData.at(currentImage)->inputObjectsRegion.dstOffset; //input objects region
         stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
+    }
+
+    void RenderPass::traceRays()
+    {
+        
     }
 
     glm::vec4 RenderPass::normalizePlane(glm::vec4 plane)
@@ -306,9 +319,28 @@ namespace Renderer
         return { returnImage, returnView, returnAllocation };
     }
 
-    void RenderPass::preProcessing(const std::unordered_map<Material*, MaterialNode>& renderTree, const LightingInformation& lightingInfo)
+    bool RenderPass::preProcessing(const std::unordered_map<Material*, MaterialNode>& renderTree, const LightingInformation& lightingInfo)
     {
         //----------FILL IN THE UBER-BUFFER, PRE-PROCESS THE BUFFER WITH ASYNC COMPUTE----------//
+
+        //wait for fences, update BLAS
+        std::vector<VkFence> BLASWaitFences = {
+            //TODO FENCE FOR RAY TRAVERSAL
+        };
+        vkWaitForFences(devicePtr->getDevice(), BLASWaitFences.size(), BLASWaitFences.data(), VK_TRUE, 3000000000/*UINT64_MAX*/);
+        vkResetFences(devicePtr->getDevice(), BLASWaitFences.size(), BLASWaitFences.data());
+
+        std::vector<SemaphorePair> BLASWaitPairs = {}; //no wait (fence instead)
+        std::vector<SemaphorePair> BLASSignalPairs = {}; //no signal (fence instead)
+        rtAccelStructure.verifyBufferSizes(renderingModels, currentImage); //update buffers if needed
+        rtAccelStructure.updateBLAS(BLASWaitPairs, BLASSignalPairs, BLASFences.at(currentImage), currentImage); //update BLAS
+
+        //wait for fences, start filling staging data
+        std::vector<VkFence> stagingWaitFences = {
+            BLASFences.at(currentImage) //wait for BLAS to finish updating (required for getting pointers)
+        };
+        vkWaitForFences(devicePtr->getDevice(), stagingWaitFences.size(), stagingWaitFences.data(), VK_TRUE, UINT64_MAX);
+        vkResetFences(devicePtr->getDevice(), stagingWaitFences.size(), stagingWaitFences.data());
 
         uint32_t oldSize = renderingData.at(currentImage)->stagingData.size();
         setStagingData(renderTree, lightingInfo);
@@ -324,10 +356,9 @@ namespace Renderer
 
         //wait for fences
         std::vector<VkFence> waitFences = {
-            cullingFences.at(currentImage),
-            renderFences.at(currentImage)
+            renderFences.at(currentImage) //wait for raster to finish
         };
-        vkWaitForFences(devicePtr->getDevice(), waitFences.size(), waitFences.data(), VK_TRUE, UINT64_MAX);
+        vkWaitForFences(devicePtr->getDevice(), waitFences.size(), waitFences.data(), VK_TRUE, 3000000000); //i give up on fixing the resize deadlock
         vkResetFences(devicePtr->getDevice(), waitFences.size(), waitFences.data());
 
         //get available image
@@ -336,6 +367,14 @@ namespace Renderer
             UINT64_MAX,
             imageSemaphores.at(currentImage),
             VK_NULL_HANDLE, &currentImage));
+
+        if(recreateFlag)
+        {
+            recreateFlag = false;
+            swapchainPtr->recreate();
+
+            return false;
+        }
 
         //free command buffers and reset descriptor pool
         for(CommandBuffer& buffer : fenceCmdBuffers.at(currentImage))
@@ -369,6 +408,22 @@ namespace Renderer
         }
         fenceCmdBuffers.at(currentImage).push_back(renderingData.at(currentImage)->bufferData->copyFromBufferRanges(newDataStaging, waitPairs, signalPairs, VK_NULL_HANDLE, copyRegions));
         fenceCmdBuffers.at(currentImage).push_back(submitPreprocess());
+
+        //update TLAS
+        std::vector<SemaphorePair> TLASWaitPairs = {
+            {
+                .semaphore = preprocessTLASSignalSemaphores.at(currentImage),
+                .stage = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
+            }
+        };
+        std::vector<SemaphorePair> TLASSignalPairs = {
+            {
+                .semaphore = tlasBuildSemaphores.at(currentImage),
+                .stage = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
+            }
+        };
+        rtAccelStructure.updateTLAS(TLASWaitPairs, TLASSignalPairs, VK_NULL_HANDLE, currentImage);
+        return true;
     }
 
     void RenderPass::raster(const std::unordered_map<Material*, MaterialNode>& renderTree)
@@ -520,13 +575,13 @@ namespace Renderer
         //fill in uniform buffer
         CullingInputData preprocessInputData;
         preprocessInputData.bufferAddress = renderingData.at(currentImage)->bufferData->getBufferDeviceAddress();
+        preprocessInputData.asInstancesAddress = rtAccelStructure.getInstancesBuffers().at(currentImage)->getBufferDeviceAddress();
         preprocessInputData.camPos = glm::vec4(cameraPtr->getTranslation().position, 1.0f);
         preprocessInputData.projection = cameraPtr->getProjection();
         preprocessInputData.view = cameraPtr->getViewMatrix();
         preprocessInputData.objectCount = renderingData.at(currentImage)->objectCount;
         preprocessInputData.frustumData = createCullingFrustum();
         preprocessUniformBuffers.at(currentImage)->updateUniformBuffer(&preprocessInputData, sizeof(CullingInputData));
-        uint32_t bbc = sizeof(ShaderInputObject);
         
         VkCommandBufferBeginInfo commandInfo;
         commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -587,12 +642,23 @@ namespace Renderer
         cmdBufferSubmitInfo.commandBuffer = cullingCmdBuffer;
         cmdBufferSubmitInfo.deviceMask = 0;
 
-        VkSemaphoreSubmitInfo semaphoreSignalInfo = {};
-        semaphoreSignalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-        semaphoreSignalInfo.pNext = NULL;
-        semaphoreSignalInfo.semaphore = cullingSemaphores.at(currentImage);
-        semaphoreSignalInfo.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-        semaphoreSignalInfo.deviceIndex = 0;
+        std::vector<VkSemaphoreSubmitInfo> semaphoreSignalInfos;
+        VkSemaphoreSubmitInfo semaphoreSignalInfo1 = {};
+        semaphoreSignalInfo1.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        semaphoreSignalInfo1.pNext = NULL;
+        semaphoreSignalInfo1.semaphore = preprocessSemaphores.at(currentImage);
+        semaphoreSignalInfo1.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+        semaphoreSignalInfo1.deviceIndex = 0;
+        semaphoreSignalInfos.push_back(semaphoreSignalInfo1);
+
+        VkSemaphoreSubmitInfo semaphoreSignalInfo2 = {};
+        semaphoreSignalInfo2.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        semaphoreSignalInfo2.pNext = NULL;
+        semaphoreSignalInfo2.semaphore = preprocessTLASSignalSemaphores.at(currentImage);
+        semaphoreSignalInfo2.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+        semaphoreSignalInfo2.deviceIndex = 0;
+        semaphoreSignalInfos.push_back(semaphoreSignalInfo2);
+
 
         VkSubmitInfo2 submitInfo = {};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
@@ -602,10 +668,10 @@ namespace Renderer
         submitInfo.pWaitSemaphoreInfos = &semaphoreWaitInfo;
         submitInfo.commandBufferInfoCount = 1;
         submitInfo.pCommandBufferInfos = &cmdBufferSubmitInfo;
-        submitInfo.signalSemaphoreInfoCount = 1;
-        submitInfo.pSignalSemaphoreInfos = &semaphoreSignalInfo;
+        submitInfo.signalSemaphoreInfoCount = semaphoreSignalInfos.size();
+        submitInfo.pSignalSemaphoreInfos = semaphoreSignalInfos.data();
 
-        vkQueueSubmit2(devicePtr->getQueues().compute.at(0), 1, &submitInfo, cullingFences.at(currentImage));
+        vkQueueSubmit2(devicePtr->getQueues().compute.at(0), 1, &submitInfo, VK_NULL_HANDLE);
 
         return { cullingCmdBuffer, COMPUTE };
     }
@@ -672,7 +738,7 @@ namespace Renderer
 
         vkEndCommandBuffer(cmdBuffer);
 
-        //submit rendering to GPU
+        //submit rendering to GPU   
         std::vector<VkSemaphoreSubmitInfo> graphicsWaitSemaphores;
         VkSemaphoreSubmitInfo graphicsSemaphoreWaitInfo0 = {};
         graphicsSemaphoreWaitInfo0.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
@@ -685,10 +751,18 @@ namespace Renderer
         VkSemaphoreSubmitInfo graphicsSemaphoreWaitInfo1 = {};
         graphicsSemaphoreWaitInfo1.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
         graphicsSemaphoreWaitInfo1.pNext = NULL;
-        graphicsSemaphoreWaitInfo1.semaphore = cullingSemaphores.at(currentImage);
+        graphicsSemaphoreWaitInfo1.semaphore = preprocessSemaphores.at(currentImage);
         graphicsSemaphoreWaitInfo1.stageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
         graphicsSemaphoreWaitInfo1.deviceIndex = 0;
         graphicsWaitSemaphores.push_back(graphicsSemaphoreWaitInfo1);
+
+        /*VkSemaphoreSubmitInfo graphicsSemaphoreWaitInfo2 = {};
+        graphicsSemaphoreWaitInfo2.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        graphicsSemaphoreWaitInfo2.pNext = NULL;
+        graphicsSemaphoreWaitInfo2.semaphore = tlasBuildSemaphores.at(currentImage);
+        graphicsSemaphoreWaitInfo2.stageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        graphicsSemaphoreWaitInfo2.deviceIndex = 0;
+        graphicsWaitSemaphores.push_back(graphicsSemaphoreWaitInfo2);*/
 
         VkCommandBufferSubmitInfo graphicsCmdBufferSubmitInfo = {};
         graphicsCmdBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
@@ -720,12 +794,17 @@ namespace Renderer
 
         fenceCmdBuffers.at(currentImage).push_back({cmdBuffer, GRAPHICS});
 
+        std::vector<VkSemaphore> presentWaitSemaphores = {
+            tlasBuildSemaphores.at(currentImage),
+            renderSemaphores.at(currentImage)
+        };
+
         VkResult returnResult;
         VkPresentInfoKHR presentSubmitInfo = {};
         presentSubmitInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         presentSubmitInfo.pNext = NULL;
-        presentSubmitInfo.waitSemaphoreCount = 1;
-        presentSubmitInfo.pWaitSemaphores = &renderSemaphores.at(currentImage);
+        presentSubmitInfo.waitSemaphoreCount = presentWaitSemaphores.size();
+        presentSubmitInfo.pWaitSemaphores = presentWaitSemaphores.data();
         presentSubmitInfo.swapchainCount = 1;
         presentSubmitInfo.pSwapchains = swapchainPtr->getSwapchainPtr();
         presentSubmitInfo.pImageIndices = &currentImage;
@@ -733,18 +812,27 @@ namespace Renderer
 
         VkResult presentResult = vkQueuePresentKHR(devicePtr->getQueues().present.at(0), &presentSubmitInfo);
 
-        if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR || recreateFlag) 
+        if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) 
+        {
+            recreateFlag = true;
+        }
+    }
+
+    //----------OBJECT ADD/REMOVE FUNCTIONS----------//
+
+    void RenderPass::drawAll(const std::unordered_map<Material *, MaterialNode> &renderTree, const LightingInformation &lightingInfo)
+    {
+        if(preProcessing(renderTree, lightingInfo))
+        {
+            raster(renderTree);
+        }
+
+        if(recreateFlag)
         {
             recreateFlag = false;
             swapchainPtr->recreate();
-            vkDestroyFence(devicePtr->getDevice(), renderFences.at(currentImage), nullptr);
-            renderFences.at(currentImage) = commandsPtr->getSignaledFence();
-            vkDestroyFence(devicePtr->getDevice(), cullingFences.at(currentImage), nullptr);
-            cullingFences.at(currentImage) = commandsPtr->getSignaledFence();
-            vkDestroySemaphore(devicePtr->getDevice(), imageSemaphores.at(currentImage), nullptr);
-            imageSemaphores.at(currentImage) = commandsPtr->getSemaphore();
             cameraPtr->updateCameraProjection();
-
+            
             return;
         }
 
@@ -756,11 +844,10 @@ namespace Renderer
         {
             currentImage = 0;
         }
+        
     }
 
-    //----------OBJECT ADD/REMOVE FUNCTIONS----------//
-
-    std::list<ModelInstance*>::iterator RenderPass::addModelInstance(ModelInstance* instance)
+    std::list<ModelInstance *>::iterator RenderPass::addModelInstance(ModelInstance *instance)
     {
         renderingModels[(Model*)instance->getModelPtr()].push_back(instance);
         std::list<ModelInstance*>::iterator reference = renderingModels[instance->getModelPtr()].end();

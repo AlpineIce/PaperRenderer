@@ -17,7 +17,7 @@ namespace Renderer
     struct CullingInputData
     {
         VkDeviceAddress bufferAddress; //used with offsets to make LOD selection possible in a compute shader
-        glm::vec2 padding; //i wanna kms
+        VkDeviceAddress asInstancesAddress;
         glm::vec4 camPos;
         glm::mat4 projection;
         glm::mat4 view;
@@ -40,7 +40,7 @@ namespace Renderer
         
         uint32_t lodCount;
         uint32_t lodsOffset;
-        glm::vec2 padding;
+        VkDeviceAddress blasReference;
     };
 
     struct ShaderLOD
@@ -52,9 +52,9 @@ namespace Renderer
     struct LODMesh
     {
         uint32_t vboOffset;
-        uint32_t vboSize;
+        uint32_t vertexCount;
         uint32_t iboOffset;
-        uint32_t iboSize;
+        uint32_t indexCount;
 
         uint32_t drawCountsOffset;
         uint32_t drawCommandsOffset;
