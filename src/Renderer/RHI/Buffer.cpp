@@ -10,6 +10,12 @@ namespace Renderer
         size(size),
         buffer(VK_NULL_HANDLE)
     {
+        /*      DEVELOPMENT CODE
+        DeviceAllocationInfo allocationInfo = {};
+        allocationInfo.allocationSize = 65536;
+        allocationInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+        DeviceAllocation allocation(devicePtr, allocationInfo);*/
     }
 
     Buffer::~Buffer()

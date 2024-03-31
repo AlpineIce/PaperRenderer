@@ -1,6 +1,7 @@
 #pragma once
 #include "glm/glm.hpp"
 #include "Device.h"
+#include "Memory/VulkanMemory.h"
 #include "Command.h"
 
 #include <list>
