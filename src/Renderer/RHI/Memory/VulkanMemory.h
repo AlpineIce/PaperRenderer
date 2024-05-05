@@ -1,30 +1,58 @@
 #pragma once
-#include "../Device.h"
+#define VK_NO_PROTOTYPES
+#include "volk.h"
 
-namespace Renderer
+#include <atomic>
+
+namespace PaperRenderer
 {
-    struct DeviceAllocationInfo
+    namespace PaperMemory
     {
-        VkDeviceSize allocationSize = 0;
-        VkMemoryPropertyFlagBits memoryProperties;
-    };
+        //struct for allocation constructor parameters
+        struct DeviceAllocationInfo
+        {
+            VkDeviceSize allocationSize = 0;
+            VkMemoryPropertyFlagBits memoryProperties;
+        };
 
-    class DeviceAllocation
-    {
-    private:
-        Device* devicePtr;
-        DeviceAllocationInfo allocationInfo;
-        
-        static uint32_t allocationCount;
-        VkDeviceMemory allocation;
-        VkMemoryType memoryType;
+        //return struct for binding functions
+        struct ResourceBindingInfo
+        {
+            VkDeviceSize allocationLocation;
+            VkDeviceSize allocatedSize = 0;
+        };
 
-        VkPhysicalDeviceMemoryProperties2 getDeviceMemoryProperties() const;
-    public:
-        DeviceAllocation(Device* device, DeviceAllocationInfo allocationInfo);
-        ~DeviceAllocation();
+        //class for a vulkan memory allocation
+        class DeviceAllocation
+        {
+        private:
+            DeviceAllocationInfo allocationInfo;
+            VkDeviceMemory allocation;
+            VkMemoryType memoryType;
+            VkDeviceSize currentOffset;
+            const VkDeviceSize allocationSize;
 
-        const VkDeviceMemory& getAllocation() const { return allocation; }
-        const VkMemoryType& getMemoryType() const { return memoryType; }
-    };
+            //TODO LIST OF MEMORY FRAGMENTS
+
+            static std::atomic<int> allocationCount;
+
+            VkDevice device;
+            VkPhysicalDevice gpu;
+
+            //check if a new binding will "overflow" from the allocation. returns true if there is suitable available memory
+            bool verifyAvaliableMemory(VkDeviceSize bindSize);
+
+        public:
+            DeviceAllocation(VkDevice device, VkPhysicalDevice gpu, DeviceAllocationInfo allocationInfo);
+            ~DeviceAllocation();
+
+            ResourceBindingInfo bindBuffer(VkBuffer buffer, VkMemoryRequirements memoryRequirements);
+            ResourceBindingInfo bindImage(VkImage image, VkMemoryRequirements memoryRequirements);
+
+            const VkDeviceMemory& getAllocation() const { return allocation; }
+            const VkMemoryType& getMemoryType() const { return memoryType; }
+
+            VkDeviceSize getAvailableMemorySize() const { return allocationSize - currentOffset; }
+        };
+    }
 }

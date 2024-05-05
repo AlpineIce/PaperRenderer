@@ -1,12 +1,11 @@
 #pragma once
 #include "Descriptor.h"
-#include "Buffer.h"
+#include "Memory/VulkanResources.h"
 #include "Swapchain.h"
 
 #include <vector>
-#include <memory>
 
-namespace Renderer
+namespace PaperRenderer
 {   
     enum VertexLayout
     {
@@ -66,7 +65,7 @@ namespace Renderer
         virtual ~Pipeline();
         
         VkPipeline getPipeline() const { return pipeline; }
-        const std::unordered_map<uint32_t, VkDescriptorSetLayout>& getDescriptorSetLayouts() const { return setLayouts; }
+        const std::unordered_map<uint32_t, VkDescriptorSetLayout>& getDescriptorSetLayouts() const { return setLayouts; } //TODO USE AN ENUM FOR USABLE SET LAYOUT INDICES
         VkPipelineLayout getLayout() const { return pipelineLayout; }
     };
 
@@ -146,8 +145,8 @@ namespace Renderer
         PipelineBuilder(Device* device, DescriptorAllocator* descriptors, Swapchain* swapchain);
         ~PipelineBuilder();
 
-        std::shared_ptr<ComputePipeline> buildComputePipeline(const PipelineBuildInfo& info) const;
-        std::shared_ptr<RasterPipeline> buildRasterPipeline(const PipelineBuildInfo& info) const;
-        std::shared_ptr<RTPipeline> buildRTPipeline(const PipelineBuildInfo& info) const;
+        std::unique_ptr<ComputePipeline> buildComputePipeline(const PipelineBuildInfo& info) const;
+        std::unique_ptr<RasterPipeline> buildRasterPipeline(const PipelineBuildInfo& info) const;
+        std::unique_ptr<RTPipeline> buildRTPipeline(const PipelineBuildInfo& info) const;
     };
 }

@@ -4,7 +4,7 @@
 #include "glm/gtc/quaternion.hpp"
 #include "GLFW/glfw3.h"
 
-namespace Renderer
+namespace PaperRenderer
 {
     struct CameraTranslation
     {

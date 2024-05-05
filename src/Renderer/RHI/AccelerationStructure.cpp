@@ -1,40 +1,49 @@
 #include "AccelerationStructure.h"
 #include "../Model.h"
 
-namespace Renderer
+namespace PaperRenderer
 {
-    AccelerationStructure::AccelerationStructure(Device *device, CmdBufferAllocator *commands)
+    AccelerationStructure::AccelerationStructure(Device *device)
         :devicePtr(device),
-        commandsPtr(commands),
-        //bottomStructure(VK_NULL_HANDLE),
         topStructure(VK_NULL_HANDLE)
     {
-        BottomSignalSemaphores.resize(commandsPtr->getFrameCount());
-        BLBuffers.resize(commandsPtr->getFrameCount());
-        BLScratchBuffers.resize(commandsPtr->getFrameCount());
-        TLInstancesBuffers.resize(commandsPtr->getFrameCount());
-        TLBuffers.resize(commandsPtr->getFrameCount());
-        TLScratchBuffers.resize(commandsPtr->getFrameCount());
-        for(uint32_t i = 0; i < commandsPtr->getFrameCount(); i++)
+        //synchronization things
+        BottomSignalSemaphores.resize(PaperMemory::Commands::getFrameCount());
+
+        //buffers and memory allocation
+        ASBuffersAllocation.resize(PaperMemory::Commands::getFrameCount());
+        BLBuffers.resize(PaperMemory::Commands::getFrameCount());
+        BLScratchBuffers.resize(PaperMemory::Commands::getFrameCount());
+        TLInstancesBuffers.resize(PaperMemory::Commands::getFrameCount());
+        TLBuffers.resize(PaperMemory::Commands::getFrameCount());
+        TLScratchBuffers.resize(PaperMemory::Commands::getFrameCount());
+        for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {
-            BottomSignalSemaphores.at(i) = commandsPtr->getSemaphore();
-            BLBuffers.at(i) = std::make_shared<Buffer>(devicePtr, commandsPtr, 256); //starting size really doesn't matter
-            BLBuffers.at(i)->createBuffer(VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-            BLScratchBuffers.at(i) = std::make_shared<Buffer>(devicePtr, commandsPtr, 256); //starting size really doesn't matter
-            BLScratchBuffers.at(i)->createBuffer(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-            TLInstancesBuffers.at(i) = std::make_shared<Buffer>(devicePtr, commandsPtr, 256);
-            TLInstancesBuffers.at(i)->createBuffer(VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-            TLBuffers.at(i) = std::make_shared<Buffer>(devicePtr, commandsPtr, 256); //starting size really doesn't matter
-            TLBuffers.at(i)->createBuffer(VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-            TLScratchBuffers.at(i) = std::make_shared<Buffer>(devicePtr, commandsPtr, 256); //starting size really doesn't matter
-            TLScratchBuffers.at(i)->createBuffer(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+            //synchronization things
+            BottomSignalSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
+            
+            //buffers
+            //IMPORTANT NOTE HERE: BUFFERS ONLY USE THE COMPUTE FAMILY INDEX, NOT THE GRAPHICS FAMILY
+            PaperMemory::BufferInfo bufferInfo = {};
+            bufferInfo.queueFamilyIndices = { (uint32_t)(devicePtr->getQueueFamilies().computeFamilyIndex) };
+            bufferInfo.size = 256; //arbitrary starting size
+
+            bufferInfo.usageFlags =    VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+            BLBuffers.at(i) =          std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo);
+            bufferInfo.usageFlags =    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+            BLScratchBuffers.at(i) =   std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo);
+            bufferInfo.usageFlags =    VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            TLInstancesBuffers.at(i) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo);
+            bufferInfo.usageFlags =    VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+            TLBuffers.at(i) =          std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo);
+            bufferInfo.usageFlags =    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+            TLScratchBuffers.at(i) =   std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo);
         }
     }
 
     AccelerationStructure::~AccelerationStructure()
     {
-        for(uint32_t i = 0; i < commandsPtr->getFrameCount(); i++)
+        for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {
             vkDestroySemaphore(devicePtr->getDevice(), BottomSignalSemaphores.at(i), nullptr);
         }
@@ -83,7 +92,7 @@ namespace Renderer
                     trianglesGeometry.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
                     trianglesGeometry.vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = model->getVBOAddress() + mesh.vboOffset};
                     trianglesGeometry.maxVertex = mesh.vertexCount;
-                    trianglesGeometry.vertexStride = sizeof(Vertex);
+                    trianglesGeometry.vertexStride = sizeof(PaperMemory::Vertex);
                     trianglesGeometry.indexType = VK_INDEX_TYPE_UINT32;
                     trianglesGeometry.indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = model->getIBOAddress() + mesh.iboOffset};
                     //trianglesGeometry.transformData = transformMatrixBufferAddress;
@@ -148,38 +157,47 @@ namespace Renderer
         //rebuild buffers if needed (if needed size is greater than current alocation, or is 70% less than what's needed)
         if(BLBuildData.totalScratchSize > BLScratchBuffers.at(currentFrame)->getAllocatedSize() || BLBuildData.totalScratchSize < BLScratchBuffers.at(currentFrame)->getAllocatedSize() * 0.7)
         {
-            VkDeviceSize newSize = BLBuildData.totalScratchSize * 1.1; //allocate 10% more than what's currently needed
-            BLScratchBuffers.at(currentFrame) = std::make_shared<Buffer>(devicePtr, commandsPtr, newSize); //starting size really doesn't matter
-            BLScratchBuffers.at(currentFrame)->createBuffer(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+            PaperMemory::BufferInfo bufferInfo = {};
+            bufferInfo.queueFamilyIndices = { (uint32_t)(devicePtr->getQueueFamilies().computeFamilyIndex) };
+            bufferInfo.size = BLBuildData.totalScratchSize * 1.1; //allocate 10% more than what's currently needed
+            bufferInfo.usageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+
+            BLScratchBuffers.at(currentFrame) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo);
         }
         if(BLBuildData.totalBuildSize > BLBuffers.at(currentFrame)->getAllocatedSize() || BLBuildData.totalBuildSize < BLBuffers.at(currentFrame)->getAllocatedSize() * 0.7)
         {
-            VkDeviceSize newSize = BLBuildData.totalBuildSize * 1.1; //allocate 10% more than what's currently needed
-            BLBuffers.at(currentFrame) = std::make_shared<Buffer>(devicePtr, commandsPtr, newSize); //starting size really doesn't matter
-            BLBuffers.at(currentFrame)->createBuffer(VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+            PaperMemory::BufferInfo bufferInfo = {};
+            bufferInfo.queueFamilyIndices = { (uint32_t)(devicePtr->getQueueFamilies().computeFamilyIndex) };
+            bufferInfo.size = BLBuildData.totalBuildSize * 1.1; //allocate 10% more than what's currently needed
+            bufferInfo.usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+
+            BLBuffers.at(currentFrame) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo);
         }
         
         //TOP LEVEL
         instancesBufferSize = vectorModelInstances.size() * sizeof(VkAccelerationStructureInstanceKHR);
         if(instancesBufferSize > TLInstancesBuffers.at(currentFrame)->getAllocatedSize())
         {
-            TLInstancesBuffers.at(currentFrame) = std::make_shared<Buffer>(devicePtr, commandsPtr, instancesBufferSize);
-            TLInstancesBuffers.at(currentFrame)->createBuffer(VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+            PaperMemory::BufferInfo bufferInfo = {};
+            bufferInfo.queueFamilyIndices = { (uint32_t)(devicePtr->getQueueFamilies().computeFamilyIndex) };
+            bufferInfo.size = instancesBufferSize * 1.1; //allocate 10% more than what's currently needed
+            bufferInfo.usageFlags = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+            TLInstancesBuffers.at(currentFrame) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo);
         }
     }
 
-    CommandBuffer AccelerationStructure::updateBLAS(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame)
+    PaperMemory::CommandBuffer AccelerationStructure::updateBLAS(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame)
     {
-        return createBottomLevel(waitSemaphores, signalSemaphores, fence, currentFrame);
+        return createBottomLevel(synchronizationInfo, currentFrame);
     }
 
-    CommandBuffer AccelerationStructure::updateTLAS(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame)
+    PaperMemory::CommandBuffer AccelerationStructure::updateTLAS(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame)
     {
-        return createTopLevel(waitSemaphores, signalSemaphores, fence, currentFrame);
+        return createTopLevel(synchronizationInfo, currentFrame);
     }
 
-    CommandBuffer AccelerationStructure::createBottomLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame)
+    PaperMemory::CommandBuffer AccelerationStructure::createBottomLevel(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame)
     {
         /*VkTransformMatrixKHR defaultTransform = {
             1.0f, 0.0f, 0.0f, 0.0f,
@@ -239,7 +257,7 @@ namespace Renderer
             buildRangesPtrArray.push_back((VkAccelerationStructureBuildRangeInfoKHR*)buildDataPtr);
         }
 
-        VkCommandBuffer cmdBuffer = commandsPtr->getCommandBuffer(CmdPoolType::COMPUTE);
+        VkCommandBuffer cmdBuffer = PaperMemory::Commands::getCommandBuffer(devicePtr->getDevice(), PaperMemory::CmdPoolType::COMPUTE);
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -260,8 +278,7 @@ namespace Renderer
         vkEndCommandBuffer(cmdBuffer);
 
         std::vector<VkSemaphoreSubmitInfo> semaphoreWaitInfos;
-
-        for(const SemaphorePair& pair : waitSemaphores)
+        for(const PaperMemory::SemaphorePair& pair : synchronizationInfo.waitPairs)
         {
             VkSemaphoreSubmitInfo semaphoreInfo = {};
             semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
@@ -288,7 +305,7 @@ namespace Renderer
         semaphoreSignalInfo.deviceIndex = 0;
         semaphoreSignalInfos.push_back(semaphoreSignalInfo);
 
-        for(const SemaphorePair& pair : signalSemaphores)
+        for(const PaperMemory::SemaphorePair& pair : synchronizationInfo.signalPairs)
         {
             VkSemaphoreSubmitInfo semaphoreInfo = {};
             semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
@@ -311,17 +328,17 @@ namespace Renderer
         submitInfo.signalSemaphoreInfoCount = semaphoreSignalInfos.size();
         submitInfo.pSignalSemaphoreInfos = semaphoreSignalInfos.data();
 
-        vkQueueSubmit2(devicePtr->getQueues().compute.at(0), 1, &submitInfo, fence);
+        vkQueueSubmit2(devicePtr->getQueues().compute.at(0), 1, &submitInfo, synchronizationInfo.fence);
 
         for(auto& ptr : buildRangesPtrArray)
         {
             free(ptr);
         }
 
-        return { cmdBuffer, COMPUTE };
+        return { cmdBuffer, PaperMemory::COMPUTE };
     }
 
-    CommandBuffer AccelerationStructure::createTopLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair>& signalSemaphores, const VkFence& fence, uint32_t currentFrame)
+    PaperMemory::CommandBuffer AccelerationStructure::createTopLevel(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame)
     {
         //destroy old
         vkDestroyAccelerationStructureKHR(devicePtr->getDevice(), topStructure, nullptr);
@@ -368,15 +385,21 @@ namespace Renderer
         //rebuild buffers if needed (if needed size is greater than current alocation, or is 70% less than what's needed)
         if(buildSizes.buildScratchSize > TLScratchBuffers.at(currentFrame)->getAllocatedSize() || buildSizes.buildScratchSize < TLScratchBuffers.at(currentFrame)->getAllocatedSize() * 0.7)
         {
-            VkDeviceSize newSize = buildSizes.buildScratchSize * 1.1; //allocate 10% more than what's currently needed
-            TLScratchBuffers.at(currentFrame) = std::make_shared<Buffer>(devicePtr, commandsPtr, newSize); //starting size really doesn't matter
-            TLScratchBuffers.at(currentFrame)->createBuffer(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+            PaperMemory::BufferInfo bufferInfo = {};
+            bufferInfo.queueFamilyIndices = { (uint32_t)(devicePtr->getQueueFamilies().computeFamilyIndex) };
+            bufferInfo.size = buildSizes.buildScratchSize * 1.1; //allocate 10% more than what's currently needed
+            bufferInfo.usageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+
+            TLScratchBuffers.at(currentFrame) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo);
         }
         if(buildSizes.accelerationStructureSize > TLBuffers.at(currentFrame)->getAllocatedSize() || buildSizes.accelerationStructureSize < TLBuffers.at(currentFrame)->getAllocatedSize() * 0.7)
         {
-            VkDeviceSize newSize = buildSizes.accelerationStructureSize * 1.1; //allocate 10% more than what's currently needed
-            TLBuffers.at(currentFrame) = std::make_shared<Buffer>(devicePtr, commandsPtr, newSize); //starting size really doesn't matter
-            TLBuffers.at(currentFrame)->createBuffer(VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, VMA_MEMORY_USAGE_AUTO, VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+            PaperMemory::BufferInfo bufferInfo = {};
+            bufferInfo.queueFamilyIndices = { (uint32_t)(devicePtr->getQueueFamilies().computeFamilyIndex) };
+            bufferInfo.size = buildSizes.accelerationStructureSize * 1.1; //allocate 10% more than what's currently needed
+            bufferInfo.usageFlags = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
+
+            TLBuffers.at(currentFrame) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo);
         }
         buildGeoInfo.scratchData.deviceAddress = TLScratchBuffers.at(currentFrame)->getBufferDeviceAddress();
 
@@ -399,7 +422,7 @@ namespace Renderer
         buildRange.transformOffset = 0;
         std::vector<VkAccelerationStructureBuildRangeInfoKHR*> buildRangesPtrArray = {&buildRange};
 
-        VkCommandBuffer cmdBuffer = commandsPtr->getCommandBuffer(CmdPoolType::COMPUTE);
+        VkCommandBuffer cmdBuffer = PaperMemory::Commands::getCommandBuffer(devicePtr->getDevice(), PaperMemory::CmdPoolType::COMPUTE);
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -422,7 +445,7 @@ namespace Renderer
         semaphoreWaitInfo.deviceIndex = 0;
         semaphoreWaitInfos.push_back(semaphoreWaitInfo);
 
-        for(const SemaphorePair& pair : waitSemaphores)
+        for(const PaperMemory::SemaphorePair& pair : synchronizationInfo.waitPairs)
         {
             VkSemaphoreSubmitInfo semaphoreInfo = {};
             semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
@@ -441,7 +464,7 @@ namespace Renderer
         cmdBufferSubmitInfo.deviceMask = 0;
 
         std::vector<VkSemaphoreSubmitInfo> semaphoreSignalInfos;
-        for(const SemaphorePair& pair : signalSemaphores)
+        for(const PaperMemory::SemaphorePair& pair : synchronizationInfo.signalPairs)
         {
             VkSemaphoreSubmitInfo semaphoreInfo = {};
             semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
@@ -464,7 +487,7 @@ namespace Renderer
         submitInfo.signalSemaphoreInfoCount = semaphoreSignalInfos.size();
         submitInfo.pSignalSemaphoreInfos = semaphoreSignalInfos.data();
 
-        vkQueueSubmit2(devicePtr->getQueues().compute.at(0), 1, &submitInfo, fence);
+        vkQueueSubmit2(devicePtr->getQueues().compute.at(0), 1, &submitInfo, synchronizationInfo.fence);
 
         //get top address
         VkAccelerationStructureDeviceAddressInfoKHR accelerationAddressInfo{};
@@ -472,6 +495,6 @@ namespace Renderer
         accelerationAddressInfo.accelerationStructure = topStructure;
         topStructureAddress = vkGetAccelerationStructureDeviceAddressKHR(devicePtr->getDevice(), &accelerationAddressInfo);
 
-        return { cmdBuffer, COMPUTE };
+        return { cmdBuffer, PaperMemory::COMPUTE };
     }
 }

@@ -1,10 +1,9 @@
 #pragma once
-#include "Buffer.h"
-#include "Command.h"
+#include "Device.h"
 
 #include <unordered_map>
 
-namespace Renderer
+namespace PaperRenderer
 {
     class Model; //forward declaration
     class ModelInstance; //forward declaration
@@ -18,11 +17,12 @@ namespace Renderer
     class AccelerationStructure
     {
     private:
-        std::vector<std::shared_ptr<Buffer>> BLBuffers;
-        std::vector<std::shared_ptr<Buffer>> BLScratchBuffers;
-        std::vector<std::shared_ptr<Buffer>> TLInstancesBuffers;
-        std::vector<std::shared_ptr<Buffer>> TLBuffers;
-        std::vector<std::shared_ptr<Buffer>> TLScratchBuffers;
+        std::vector<std::unique_ptr<PaperMemory::DeviceAllocation>> ASBuffersAllocation; //one shared allocation for all buffers in the AS
+        std::vector<std::unique_ptr<PaperMemory::Buffer>> BLBuffers;
+        std::vector<std::unique_ptr<PaperMemory::Buffer>> BLScratchBuffers;
+        std::vector<std::unique_ptr<PaperMemory::Buffer>> TLInstancesBuffers;
+        std::vector<std::unique_ptr<PaperMemory::Buffer>> TLBuffers;
+        std::vector<std::unique_ptr<PaperMemory::Buffer>> TLScratchBuffers;
 
         VkAccelerationStructureKHR topStructure;
         VkDeviceAddress topStructureAddress;
@@ -45,29 +45,19 @@ namespace Renderer
             std::vector<VkDeviceSize> asOffsets;
         } BLBuildData;
 
-        
-
         Device* devicePtr;
-        CmdBufferAllocator* commandsPtr;
 
-        CommandBuffer createBottomLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair> &signalSemaphores, const VkFence &fence, uint32_t currentFrame);
-        CommandBuffer createTopLevel(const std::vector<SemaphorePair> &waitSemaphores, const std::vector<SemaphorePair>& signalSemaphores, const VkFence& fence, uint32_t currentFrame);
+        PaperMemory::CommandBuffer createBottomLevel(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
+        PaperMemory::CommandBuffer createTopLevel(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
 
     public:
-        AccelerationStructure(Device* device, CmdBufferAllocator* commands);
+        AccelerationStructure(Device* device);
         ~AccelerationStructure();
 
         void verifyBufferSizes(const std::unordered_map<Model*, std::list<ModelInstance*>> &modelInstances, uint32_t currentFrame);
-        CommandBuffer updateBLAS(const std::vector<SemaphorePair>& waitSemaphores, 
-            const std::vector<SemaphorePair>& signalSemaphores, 
-            const VkFence& fence,
-            uint32_t currentFrame);
-        CommandBuffer updateTLAS(const std::vector<SemaphorePair>& waitSemaphores, 
-            const std::vector<SemaphorePair>& signalSemaphores, 
-            const VkFence& fence,
-            uint32_t currentFrame);
+        PaperMemory::CommandBuffer updateBLAS(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
+        PaperMemory::CommandBuffer updateTLAS(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
 
-        const std::vector<std::shared_ptr<Buffer>>& getInstancesBuffers() const { return TLInstancesBuffers; }
         const std::unordered_map<Model const*, BottomStructure>& getBottomStructures() const { return bottomStructures; }
     };
 }

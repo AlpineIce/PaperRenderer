@@ -2,53 +2,52 @@
 #include "Renderer.h"
 #include "glm/gtc/matrix_transform.hpp"
 
-namespace Renderer
+namespace PaperRenderer
 {
-    RenderPass::RenderPass(Swapchain* swapchain, Device* device, CmdBufferAllocator* commands, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder)
+    RenderPass::RenderPass(Swapchain* swapchain, Device* device, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder)
         :swapchainPtr(swapchain),
         devicePtr(device),
-        commandsPtr(commands),
         descriptorsPtr(descriptors),
         pipelineBuilderPtr(pipelineBuilder),
         currentImage(0),
-        rtAccelStructure(device, commands)
+        rtAccelStructure(device)
     {
         //THE UBER-BUFFER
-        renderingData.resize(commandsPtr->getFrameCount());
-        lightingInfoBuffers.resize(commandsPtr->getFrameCount());
+        renderingData.resize(PaperMemory::Commands::getFrameCount());
+        lightingInfoBuffers.resize(PaperMemory::Commands::getFrameCount());
 
         //synchronization objects
-        imageSemaphores.resize(commandsPtr->getFrameCount());
-        bufferCopySemaphores.resize(commandsPtr->getFrameCount());
-        tlasBuildSemaphores.resize(commandsPtr->getFrameCount());
-        preprocessSemaphores.resize(commandsPtr->getFrameCount());
-        preprocessTLASSignalSemaphores.resize(commandsPtr->getFrameCount());
-        renderSemaphores.resize(commandsPtr->getFrameCount());
-        BLASFences.resize(commandsPtr->getFrameCount());
-        renderFences.resize(commandsPtr->getFrameCount());
-        fenceCmdBuffers.resize(commandsPtr->getFrameCount());
+        imageSemaphores.resize(PaperMemory::Commands::getFrameCount());
+        bufferCopySemaphores.resize(PaperMemory::Commands::getFrameCount());
+        tlasBuildSemaphores.resize(PaperMemory::Commands::getFrameCount());
+        preprocessSemaphores.resize(PaperMemory::Commands::getFrameCount());
+        preprocessTLASSignalSemaphores.resize(PaperMemory::Commands::getFrameCount());
+        renderSemaphores.resize(PaperMemory::Commands::getFrameCount());
+        BLASFences.resize(PaperMemory::Commands::getFrameCount());
+        renderFences.resize(PaperMemory::Commands::getFrameCount());
+        fenceCmdBuffers.resize(PaperMemory::Commands::getFrameCount());
 
-        for(uint32_t i = 0; i < commandsPtr->getFrameCount(); i++)
+        for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {
             descriptorsPtr->refreshPools(i);
-            renderingData.at(i) = std::make_shared<IndirectRenderingData>();
-            renderingData.at(i)->bufferData = std::make_shared<StorageBuffer>(devicePtr, commandsPtr, 0);
+            renderingData.at(i) = std::make_unique<IndirectRenderingData>();
+            renderingData.at(i)->bufferData = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), 0);
 
-            imageSemaphores.at(i) = commandsPtr->getSemaphore();
-            bufferCopySemaphores.at(i) = commandsPtr->getSemaphore();
-            tlasBuildSemaphores.at(i) = commandsPtr->getSemaphore();
-            preprocessSemaphores.at(i) = commandsPtr->getSemaphore();
-            preprocessTLASSignalSemaphores.at(i) = commandsPtr->getSemaphore();
-            renderSemaphores.at(i) = commandsPtr->getSemaphore();
-            BLASFences.at(i) = commandsPtr->getUnsignaledFence();
-            renderFences.at(i) = commandsPtr->getSignaledFence();
+            imageSemaphores.at(i) = PaperMemory::Commands::getSemaphore();
+            bufferCopySemaphores.at(i) = PaperMemory::Commands::getSemaphore();
+            tlasBuildSemaphores.at(i) = PaperMemory::Commands::getSemaphore();
+            preprocessSemaphores.at(i) = PaperMemory::Commands::getSemaphore();
+            preprocessTLASSignalSemaphores.at(i) = PaperMemory::Commands::getSemaphore();
+            renderSemaphores.at(i) = PaperMemory::Commands::getSemaphore();
+            BLASFences.at(i) = PaperMemory::Commands::getUnsignaledFence();
+            renderFences.at(i) = PaperMemory::Commands::getSignaledFence();
 
-            preprocessUniformBuffers.push_back(std::make_shared<UniformBuffer>(devicePtr, commandsPtr, sizeof(CullingInputData)));
+            preprocessUniformBuffers.push_back(std::make_shared<PaperMemory::Buffer>(devicePtr->getDevice(), sizeof(CullingInputData)));
         }
 
         for(auto& buffer : lightingInfoBuffers)
         {
-            buffer = std::make_shared<UniformBuffer>(devicePtr, commandsPtr, sizeof(ShaderLightingInformation));
+            buffer = std::make_shared<PaperMemory::Buffer>(devicePtr->getDevice(), sizeof(ShaderLightingInformation));
         }
 
         //----------PREPROCESS PIPELINE----------//
@@ -256,67 +255,6 @@ namespace Renderer
     glm::vec4 RenderPass::normalizePlane(glm::vec4 plane)
     {
         return plane / glm::length(glm::vec3(plane));
-    }
-
-    ImageAttachment RenderPass::createImageAttachment(VkFormat imageFormat)
-    {
-        VkImage returnImage;
-        VkImageView returnView;
-        VmaAllocation returnAllocation;
-
-        VkExtent3D swapchainExtent = {
-            .width = swapchainPtr->getExtent().width,
-            .height = swapchainPtr->getExtent().height,
-            .depth = 1
-        };
-        
-        VkImageCreateInfo imageInfo = {};
-        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        imageInfo.pNext = NULL;
-        imageInfo.flags = 0;
-        imageInfo.imageType = VK_IMAGE_TYPE_2D;
-        imageInfo.format = imageFormat;
-        imageInfo.extent = swapchainExtent;
-        imageInfo.mipLevels = 1;
-        imageInfo.arrayLayers = 1;
-        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT; //no MSAA for now
-        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE; //likely wont be transfered or anything
-        imageInfo.queueFamilyIndexCount = 0;
-        imageInfo.pQueueFamilyIndices = NULL;
-        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-        VmaAllocationCreateInfo allocCreateInfo = {};
-        allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-        allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
-
-        VmaAllocationInfo allocInfo;
-        VkResult allocResult = vmaCreateImage(devicePtr->getAllocator(), &imageInfo, &allocCreateInfo, &returnImage, &returnAllocation, &allocInfo);
-
-        //create the image view
-        VkImageSubresourceRange subresourceRange;
-        subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        subresourceRange.baseMipLevel = 0;
-        subresourceRange.levelCount = 1;
-        subresourceRange.baseArrayLayer = 0;
-        subresourceRange.layerCount = 1;
-
-        VkImageViewCreateInfo viewInfo = {};
-        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        viewInfo.pNext = NULL;
-        viewInfo.flags = 0;
-        viewInfo.image = returnImage;
-        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        viewInfo.format = imageFormat;
-        viewInfo.subresourceRange = subresourceRange;
-
-        if (vkCreateImageView(devicePtr->getDevice(), &viewInfo, nullptr, &returnView) != VK_SUCCESS) 
-        {
-            throw std::runtime_error("Failed to create a render target image view");
-        }
-
-        return { returnImage, returnView, returnAllocation };
     }
 
     bool RenderPass::preProcessing(const std::unordered_map<Material*, MaterialNode>& renderTree, const LightingInformation& lightingInfo)

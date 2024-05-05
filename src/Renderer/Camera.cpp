@@ -1,6 +1,6 @@
 #include "Camera.h"
 
-namespace Renderer
+namespace PaperRenderer
 {
     Camera::Camera(const CameraCreateInfo& creationInfo)
         :windowPtr(creationInfo.window),

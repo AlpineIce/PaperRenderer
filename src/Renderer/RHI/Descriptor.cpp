@@ -1,24 +1,12 @@
-#include "stb_image.h"
 #include "Descriptor.h"
 
-namespace Renderer
+namespace PaperRenderer
 {
-    DescriptorAllocator::DescriptorAllocator(Device *device, CmdBufferAllocator *commands)
-        :devicePtr(device),
-        commandsPtr(commands)
+    DescriptorAllocator::DescriptorAllocator(Device *device)
+        :devicePtr(device)
     {
-        unsigned char pixel[4] = {(uint8_t)0, (uint8_t)0, (uint8_t)0, (uint8_t)255};
-        Image imageData;
-        imageData.channels = 4;
-        imageData.width = 1;
-        imageData.height = 1;
-        imageData.size = 4;
-        imageData.data = &pixel;
-
-        defaultTexture = std::make_shared<Texture>(devicePtr, commandsPtr, &imageData);
-
-        descriptorPools.resize(CmdBufferAllocator::getFrameCount());
-        currentPools.resize(CmdBufferAllocator::getFrameCount());
+        descriptorPools.resize(PaperMemory::Commands::getFrameCount());
+        currentPools.resize(PaperMemory::Commands::getFrameCount());
     }
     
     DescriptorAllocator::~DescriptorAllocator()
@@ -94,67 +82,63 @@ namespace Renderer
         return returnSet;
     }
 
-    void DescriptorAllocator::writeUniform(
-        const VkBuffer& buffer,
-        uint32_t size,
-        uint32_t offset,
-        uint32_t binding,
-        VkDescriptorType type,
-        const VkDescriptorSet& set)
+    void DescriptorAllocator::writeUniforms(VkDevice device, VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo)
     {
-        VkDescriptorBufferInfo bufferInfo = {};
-        bufferInfo.buffer = buffer;
-        bufferInfo.offset = offset;
-        bufferInfo.range = size;
+        //3 different writes for 3 different types
+        std::vector<VkWriteDescriptorSet> descriptorWrites;
 
-        //write set
-        VkWriteDescriptorSet uniformWriteInfo = {};
-        uniformWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        uniformWriteInfo.dstSet = set;
-        uniformWriteInfo.dstBinding = binding;
-        uniformWriteInfo.dstArrayElement = 0;
-        uniformWriteInfo.descriptorType = type;
-        uniformWriteInfo.descriptorCount = 1;
-        uniformWriteInfo.pBufferInfo = &bufferInfo;
-        uniformWriteInfo.pImageInfo = NULL;
-        uniformWriteInfo.pTexelBufferView = NULL;
-
-        vkUpdateDescriptorSets(devicePtr->getDevice(), 1, &uniformWriteInfo, 0, nullptr);
-    }
-
-    void DescriptorAllocator::writeImageArray(std::vector<Texture const*> textures, uint32_t binding, const VkDescriptorSet& set)
-    {
-        textures.resize(8);
-        std::vector<VkDescriptorImageInfo> imageInfos(TEXTURE_ARRAY_SIZE);
-        for(int i = 0; i < TEXTURE_ARRAY_SIZE; i++)
+        if(descriptorWritesInfo.bufferWrites.infos.size())
         {
-            if(textures.at(i))
-            {
-                imageInfos.at(i).imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                imageInfos.at(i).imageView = textures.at(i)->getTextureView();
-                imageInfos.at(i).sampler = textures.at(i)->getTextureSampler();
-            }
-            else
-            {
-                //default texture (pink)
-                imageInfos.at(i).imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                imageInfos.at(i).imageView = defaultTexture->getTextureView();
-                imageInfos.at(i).sampler = defaultTexture->getTextureSampler();
-            }
+            VkWriteDescriptorSet writeInfo = {};
+            writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writeInfo.dstSet = set;
+            writeInfo.dstBinding = descriptorWritesInfo.bufferWrites.binding;
+            writeInfo.dstArrayElement = 0;
+            writeInfo.descriptorType = descriptorWritesInfo.bufferWrites.type;
+            writeInfo.descriptorCount = descriptorWritesInfo.bufferWrites.infos.size();
+            writeInfo.pBufferInfo = descriptorWritesInfo.bufferWrites.infos.data();
+            writeInfo.pImageInfo = NULL;
+            writeInfo.pTexelBufferView = NULL;
+
+            descriptorWrites.push_back(writeInfo);
         }
 
-        VkWriteDescriptorSet imageWriteInfo = {};
-        imageWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        imageWriteInfo.dstSet = set;
-        imageWriteInfo.dstBinding = binding;
-        imageWriteInfo.dstArrayElement = 0;
-        imageWriteInfo.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        imageWriteInfo.descriptorCount = TEXTURE_ARRAY_SIZE;
-        imageWriteInfo.pBufferInfo = NULL;
-        imageWriteInfo.pImageInfo = imageInfos.data();
-        imageWriteInfo.pTexelBufferView = NULL;
+        if(descriptorWritesInfo.imageWrites.infos.size())
+        {
+            VkWriteDescriptorSet writeInfo = {};
+            writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writeInfo.dstSet = set;
+            writeInfo.dstBinding = descriptorWritesInfo.imageWrites.binding;
+            writeInfo.dstArrayElement = 0;
+            writeInfo.descriptorType = descriptorWritesInfo.imageWrites.type;
+            writeInfo.descriptorCount = descriptorWritesInfo.imageWrites.infos.size();
+            writeInfo.pBufferInfo = NULL;
+            writeInfo.pImageInfo = descriptorWritesInfo.imageWrites.infos.data();
+            writeInfo.pTexelBufferView = NULL;
 
-        vkUpdateDescriptorSets(devicePtr->getDevice(), 1, &imageWriteInfo, 0, nullptr);
+            descriptorWrites.push_back(writeInfo);
+        }
+        
+        if(descriptorWritesInfo.bufferViewWrites.infos.size())
+        {
+            VkWriteDescriptorSet writeInfo = {};
+            writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writeInfo.dstSet = set;
+            writeInfo.dstBinding = descriptorWritesInfo.bufferViewWrites.binding;
+            writeInfo.dstArrayElement = 0;
+            writeInfo.descriptorType = descriptorWritesInfo.bufferViewWrites.type;
+            writeInfo.descriptorCount = descriptorWritesInfo.bufferViewWrites.infos.size();
+            writeInfo.pBufferInfo = NULL;
+            writeInfo.pImageInfo = NULL;
+            writeInfo.pTexelBufferView = descriptorWritesInfo.bufferViewWrites.infos.data();
+
+            descriptorWrites.push_back(writeInfo);
+        }
+
+        if(descriptorWrites.size()) //valid usage per spec, encouraging runtime safety
+        {
+            vkUpdateDescriptorSets(device, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
+        }
     }
 
     void DescriptorAllocator::refreshPools(uint32_t frameIndex)

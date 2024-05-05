@@ -1,6 +1,6 @@
 #include "Swapchain.h"
 
-namespace Renderer
+namespace PaperRenderer
 {
     Swapchain::Swapchain(Device *device, Window* window, bool enableVsync)
         :devicePtr(device),
@@ -90,7 +90,6 @@ namespace Renderer
         //depth buffer
         for(uint32_t i = 0; i < depthBufferImages.size(); i++)
         {
-            vmaDestroyImage(devicePtr->getAllocator(), depthBufferImages.at(i), depthBufferAllocations.at(i));
             vkDestroyImageView(devicePtr->getDevice(), depthBufferViews.at(i), nullptr);
         }
         for(VkImageView image : imageViews)
@@ -203,56 +202,41 @@ namespace Renderer
         vkGetSwapchainImagesKHR(devicePtr->getDevice(), swapchain, &imageCount, nullptr);
         depthBufferImages.resize(imageCount);
         depthBufferViews.resize(imageCount);
-        depthBufferAllocations.resize(imageCount);
         
+        //create images
         for(int i = 0; i < imageCount; i++)
         {
-            VkImageCreateInfo depthImageInfo = {};
-            depthImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-            depthImageInfo.pNext = NULL;
-            depthImageInfo.flags = 0;
+            PaperMemory::ImageInfo depthImageInfo = {};
             depthImageInfo.imageType = VK_IMAGE_TYPE_2D;
             depthImageInfo.format = depthBufferFormat;
             depthImageInfo.extent = imageExtent;
-            depthImageInfo.mipLevels = 1;
-            depthImageInfo.arrayLayers = 1;
             depthImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-            depthImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
             depthImageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-            depthImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            depthImageInfo.queueFamilyIndexCount = 0;
-            depthImageInfo.pQueueFamilyIndices = NULL;
-            depthImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            depthImageInfo.queueFamilyIndices = std::vector<uint32_t>();
 
-            VmaAllocationCreateInfo allocCreateInfo = {};
-            allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-            allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
-
-            VmaAllocationInfo allocInfo;
-            VkResult allocResult = vmaCreateImage(devicePtr->getAllocator(), &depthImageInfo, &allocCreateInfo, &depthBufferImages.at(i), &depthBufferAllocations.at(i), &allocInfo);
-
-            //create the image view
-            VkImageSubresourceRange subresourceRange;
-            subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-            subresourceRange.baseMipLevel = 0;
-            subresourceRange.levelCount = 1;
-            subresourceRange.baseArrayLayer = 0;
-            subresourceRange.layerCount = 1;
-
-            VkImageViewCreateInfo viewInfo = {};
-            viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            viewInfo.pNext = NULL;
-            viewInfo.flags = 0;
-            viewInfo.image = depthBufferImages.at(i);
-            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            viewInfo.format = depthBufferFormat;
-            viewInfo.subresourceRange = subresourceRange;
-
-            if (vkCreateImageView(devicePtr->getDevice(), &viewInfo, nullptr, &depthBufferViews.at(i)) != VK_SUCCESS) 
-            {
-                throw std::runtime_error("Failed to create depth buffer image view");
-            }
+            depthBufferImages.at(i) = std::make_unique<PaperMemory::Image>(devicePtr->getDevice(), depthImageInfo);
         }
+
+        //get total allocation size
+        PaperMemory::DeviceAllocationInfo depthBuffersAllocationInfo = {};
+        depthBuffersAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        depthBuffersAllocationInfo.allocationSize = 0;
+        for(int i = 0; i < imageCount; i++)
+        {
+            VkMemoryRequirements memRequirements = depthBufferImages.at(i)->getMemoryRequirements();
+            depthBuffersAllocationInfo.allocationSize += ((memRequirements.size - memRequirements.size % memRequirements.alignment) + memRequirements.alignment);
+        }
+
+        //create depth buffer allocation
+        depthBuffersAllocation = std::make_unique<PaperMemory::DeviceAllocation>(devicePtr->getDevice(), devicePtr->getGPU(), depthBuffersAllocationInfo);
+
+        //assign allocation and create image views
+        for(int i = 0; i < imageCount; i++)
+        {
+            depthBufferImages.at(i)->assignAllocation(depthBuffersAllocation.get());
+            depthBufferViews.at(i) = PaperMemory::Image::getNewImageView(*depthBufferImages.at(i), devicePtr->getDevice(), VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_VIEW_TYPE_2D, depthBufferFormat);
+        }
+
     }
 
     void Swapchain::recreate()
@@ -271,12 +255,14 @@ namespace Renderer
         {
             vkDestroyImageView(devicePtr->getDevice(), image, nullptr);
         }
+        imageViews.clear();
 
-        for(uint32_t i = 0; i < depthBufferImages.size(); i++)
+        for(VkImageView view : depthBufferViews)
         {
-            vmaDestroyImage(devicePtr->getAllocator(), depthBufferImages.at(i), depthBufferAllocations.at(i));
-            vkDestroyImageView(devicePtr->getDevice(), depthBufferViews.at(i), nullptr);
+            vkDestroyImageView(devicePtr->getDevice(), view, nullptr);
         }
+        depthBufferViews.clear();
+        depthBufferImages.clear();
 
         //rebuild
         VkSwapchainKHR oldSwapchain = swapchain;

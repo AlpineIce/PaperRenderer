@@ -1,24 +1,16 @@
 #pragma once
-#define VK_NO_PROTOTYPES
-#include "Volk/volk.h"
-#include "vk_mem_alloc.h"
+#include "Memory/VulkanResources.h"
 #include "GLFW/glfw3.h"
 
 #include <vector>
 #include <string>
 #include <map>
+#include <unordered_map>
+#include <memory>
 #include <stdexcept>
 
-namespace Renderer
+namespace PaperRenderer
 {
-    struct QueueFamiliesIndices
-    {
-        int graphicsFamilyIndex = -1;
-        int computeFamilyIndex = -1;
-        int transferFamilyIndex = -1;
-        int presentationFamilyIndex = -1;
-    };
-
     struct Queues
     {
         std::vector<VkQueue> graphics;
@@ -30,13 +22,13 @@ namespace Renderer
     class Device
     {
     private:
-        VmaAllocator allocator;
         VkInstance instance;
         VkPhysicalDevice GPU;
         VkPhysicalDeviceProperties2 gpuProperties;
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtPipelineProperties = {};
         VkPhysicalDeviceFeatures gpuFeatures;
-        QueueFamiliesIndices queueFamilies;
+        PaperMemory::QueueFamiliesIndices queueFamilies;
+        std::unique_ptr<PaperMemory::Commands> commands;
         VkDevice device;
         VkSurfaceKHR surface;
         Queues queues;
@@ -49,25 +41,20 @@ namespace Renderer
                           const std::vector<VkQueueFamilyProperties>& queueFamiliesProperties, 
                           float* queuePriority);
         void retrieveQueues(const std::vector<VkQueueFamilyProperties>& queueFamiliesProperties);
-        void initVma();
         
     public:
         Device(std::string appName);
         ~Device();
 
         VkSurfaceKHR* getSurfacePtr() { return &surface; }
-        VmaAllocator getAllocator() const { return allocator; }
         VkInstance getInstance() const { return instance; }
         VkPhysicalDevice getGPU() const { return GPU; }
         VkPhysicalDeviceProperties2 getGPUProperties() const { return gpuProperties; }
         VkPhysicalDeviceFeatures getGPUFeatures() const { return gpuFeatures; }
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR getRTproperties() const { return rtPipelineProperties; }
-        QueueFamiliesIndices getQueueFamilies() const { return queueFamilies; }
+        PaperMemory::QueueFamiliesIndices getQueueFamilies() const { return queueFamilies; }
         VkDevice getDevice() const { return device; }
         Queues getQueues() const { return queues; }
-
-        
-        
 
         void createDevice();
     };

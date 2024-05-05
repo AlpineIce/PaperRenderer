@@ -8,9 +8,8 @@
 #include "Model.h"
 
 #include <list>
-#include <unordered_map>
 
-namespace Renderer
+namespace PaperRenderer
 {
     //leaf node including the mesh and any uniforms/push constants to be set for rendering. 
     //Ownership should be within actors, not the render tree, which includes a pointer instead
@@ -18,7 +17,7 @@ namespace Renderer
     //node for objects corresponding to one material
     struct MaterialInstanceNode
     {
-        std::shared_ptr<IndirectDrawContainer> objectBuffer;
+        std::unique_ptr<IndirectDrawContainer> objectBuffer;
     };
 
     //node for materials corresponding to one pipeline
@@ -32,13 +31,6 @@ namespace Renderer
         std::list<PointLight const*> pointLights;
         DirectLight const* directLight = NULL; //this could be easily expaned to support multiple direct lights, but isnt needed
         AmbientLight const* ambientLight = NULL;
-    };
-
-    struct ImageAttachment
-    {
-        VkImage image;
-        VkImageView view;
-        VmaAllocation allocation;
     };
 
     struct ImageAttachments
@@ -57,22 +49,20 @@ namespace Renderer
         std::vector<VkSemaphore> renderSemaphores;
         std::vector<VkFence> BLASFences;
         std::vector<VkFence> renderFences;
-        std::vector<std::vector<CommandBuffer>> fenceCmdBuffers;
-        std::vector<std::shared_ptr<UniformBuffer>> lightingInfoBuffers;
-        std::vector<std::shared_ptr<IndirectRenderingData>> renderingData;
-        std::vector<std::shared_ptr<UniformBuffer>> preprocessUniformBuffers;
+        std::vector<std::vector<PaperMemory::CommandBuffer>> fenceCmdBuffers;
+        std::vector<std::unique_ptr<PaperMemory::Buffer>> lightingInfoBuffers; //uniform buffer
+        std::vector<std::unique_ptr<IndirectRenderingData>> renderingData;
+        std::vector<std::unique_ptr<PaperMemory::Buffer>> preprocessUniformBuffers; //uniform buffer
         std::unordered_map<Model*, std::list<ModelInstance*>> renderingModels;
 
-        std::shared_ptr<ComputePipeline> meshPreprocessPipeline;
+        std::unique_ptr<ComputePipeline> meshPreprocessPipeline;
         
         AccelerationStructure rtAccelStructure;
-        ImageAttachments renderTargets;
         uint32_t currentImage;
         bool recreateFlag = false;
 
         Swapchain* swapchainPtr;
         Device* devicePtr;
-        CmdBufferAllocator* commandsPtr;
         DescriptorAllocator* descriptorsPtr;
         PipelineBuilder* pipelineBuilderPtr;
         Camera* cameraPtr = NULL;
@@ -82,7 +72,7 @@ namespace Renderer
         void checkSwapchain(VkResult imageResult);
         void setStagingData(const std::unordered_map<Material*, MaterialNode>& renderTree, const LightingInformation& lightingInfo);
         void traceRays();
-        CommandBuffer submitPreprocess();
+        PaperMemory::CommandBuffer submitPreprocess();
         void composeAttachments(const VkCommandBuffer& cmdBuffer);
         void bindMaterial(Material const* material, const VkCommandBuffer& cmdBuffer);
         void bindMaterialInstance(MaterialInstance const* materialInstance, const VkCommandBuffer& cmdBuffer);
@@ -90,10 +80,9 @@ namespace Renderer
         void incrementFrameCounter(const VkCommandBuffer& cmdBuffer);
         CullingFrustum createCullingFrustum();
         glm::vec4 normalizePlane(glm::vec4 plane);
-        ImageAttachment createImageAttachment(VkFormat imageFormat);
 
     public:
-        RenderPass(Swapchain* swapchain, Device* device, CmdBufferAllocator* commands, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder);
+        RenderPass(Swapchain* swapchain, Device* device, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder);
         ~RenderPass();
 
         //set camera

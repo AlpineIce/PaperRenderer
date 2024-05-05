@@ -1,17 +1,10 @@
-#define VOLK_IMPLEMENTATION
-#define VK_NO_PROTOTYPES
-#include "volk.h"
-#define VMA_IMPLEMENTATION
-#include "vk_mem_alloc.h"
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE 
-#include "glm/glm.hpp"
 #include "Device.h"
 
 #include <iostream>
 #include <list>
 #include <unordered_map>
 
-namespace Renderer
+namespace PaperRenderer
 {
     Device::Device(std::string appName)
     {
@@ -24,7 +17,6 @@ namespace Renderer
 
     Device::~Device()
     {
-        vmaDestroyAllocator(allocator);
         vkDestroyDevice(device, nullptr);
         vkDestroyInstance(instance, nullptr);
     }
@@ -350,18 +342,6 @@ namespace Renderer
         }
     }
 
-    void Device::initVma()
-    {
-
-        VmaAllocatorCreateInfo vmaInfo = {};
-        vmaInfo.physicalDevice = GPU;
-        vmaInfo.device = device;
-        vmaInfo.instance = instance;
-        vmaInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
-
-        VkResult result = vmaCreateAllocator(&vmaInfo, &allocator);
-    }
-
     void Device::createDevice()
     {
         //enable anisotropy
@@ -439,8 +419,10 @@ namespace Renderer
         //volk
         volkLoadDevice(device);
 
-        //queues and vma
+        //queues
         retrieveQueues(queueFamiliesProperties);
-        initVma();
+
+        //command pools init
+        commands = std::make_unique<PaperMemory::Commands>(device, queueFamilies);
     }
 }

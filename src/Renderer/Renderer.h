@@ -2,15 +2,15 @@
 #include "GLFW/glfw3.h"
 
 #include "RHI/Device.h"
+#include "RHI/Memory/VulkanResources.h"
 #include "RHI/Window.h"
 #include "RenderPass.h"
 
 #include <string>
 #include <memory>
 #include <vector>
-#include <unordered_map>
 
-namespace Renderer
+namespace PaperRenderer
 {
     struct RendererCreationStruct
     {
@@ -25,7 +25,6 @@ namespace Renderer
         Device device;
         Window window;
         Swapchain swapchain;
-        CmdBufferAllocator commands;
         DescriptorAllocator descriptors;
         PipelineBuilder pipelineBuilder;
         RenderPass rendering;
@@ -34,14 +33,11 @@ namespace Renderer
         LightingInformation lightingInfo;
         
         std::unordered_map<Material*, MaterialNode> renderTree;
-        std::unordered_map<std::string, std::shared_ptr<Texture>> textures;
         std::shared_ptr<DefaultMaterial> defaultMaterial;
 
         std::string appName;
         bool rtEnabled = false;
 
-        Image loadImage(std::string directory);
-        void loadTextures(std::string texturesDir);
         void initRT();
         
     public:
@@ -69,10 +65,7 @@ namespace Renderer
         bool getRTstatus() const { return rtEnabled; }
         void setRTstatus(bool newStatus) { this->rtEnabled = newStatus; }
 
-        Texture const* getTextureByName(std::string name);
-
         GLFWwindow* getGLFWwindow() const { return window.getWindow(); }
         Device* getDevice() { return &device; }
-        CmdBufferAllocator* getCommandsHandler() { return &commands; }
     };
 }

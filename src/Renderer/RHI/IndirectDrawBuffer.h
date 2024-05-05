@@ -1,12 +1,12 @@
 #pragma once
-#include "Buffer.h"
+#include "Memory/VulkanResources.h"
 #include "Descriptor.h"
 #include "Pipeline.h"
 #include "glm/gtx/quaternion.hpp"
 
 #include <unordered_map>
 
-namespace Renderer
+namespace PaperRenderer
 {
     struct CullingFrustum
     {
@@ -101,7 +101,7 @@ namespace Renderer
         VkBufferCopy modelLODsRegion;
 
         std::vector<char> stagingData;
-        std::shared_ptr<StorageBuffer> bufferData; //THE UBER-BUFFER
+        std::unique_ptr<PaperMemory::Buffer> bufferData; //THE UBER-BUFFER
     };
 
     class IndirectDrawContainer
@@ -113,12 +113,11 @@ namespace Renderer
         uint32_t drawCountsLocation;
         
         Device* devicePtr;
-        CmdBufferAllocator* commandsPtr;
         DescriptorAllocator* descriptorsPtr;
         RasterPipeline const* pipelinePtr;
 
     public:
-        IndirectDrawContainer(Device *device, CmdBufferAllocator *commands, DescriptorAllocator* descriptor, RasterPipeline const* pipeline);
+        IndirectDrawContainer(Device *device, DescriptorAllocator* descriptor, RasterPipeline const* pipeline);
         ~IndirectDrawContainer();
 
         void addElement(DrawBufferObject& object);

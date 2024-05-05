@@ -1,105 +1,68 @@
 #include "Material.h"
 
-namespace Renderer
+namespace PaperRenderer
 {
     //----------MATERIAL DEFINITIONS----------//
 
     MaterialRendererInfo Material::rendererInfo;
 
-    Material::Material( std::string materialName,uint32_t matUBOsize)
+    Material::Material(std::string materialName)
         :matName(materialName)
     {
-        materialUBOs.resize(CmdBufferAllocator::getFrameCount());
-        for(std::shared_ptr<UniformBuffer>& buffer : materialUBOs)
-        {
-            buffer = std::make_shared<UniformBuffer>(rendererInfo.devicePtr, rendererInfo.commandsPtr, matUBOsize);
-        }
     }
 
     Material::~Material()
     {
-
     }
 
-    void Material::buildPipelines(const PipelineBuildInfo &rasterInfo, const PipelineBuildInfo &rtInfo)
+    void Material::buildPipelines(PipelineBuildInfo const* rasterInfo, PipelineBuildInfo const* rtInfo)
     {
-        this->rasterPipeline = rendererInfo.pipelineBuilderPtr->buildRasterPipeline(rasterInfo);
-        //this->rtPipeline = pipelineBuilderPtr->buildRTPipeline(rtInfo);               TODO RAY TRACING IS INCOMPLETE
+        if(rasterInfo) this->rasterPipeline = rendererInfo.pipelineBuilderPtr->buildRasterPipeline(*rasterInfo);
+        if(rtInfo) this->rtPipeline = rendererInfo.pipelineBuilderPtr->buildRTPipeline(*rtInfo);
     }
 
-    void Material::initRendererInfo(Device* device, CmdBufferAllocator *commands, DescriptorAllocator *descriptors, PipelineBuilder *pipelineBuilder)
+    void Material::initRendererInfo(Device* device, DescriptorAllocator *descriptors, PipelineBuilder *pipelineBuilder)
     {
         rendererInfo = {
             .devicePtr = device,
-            .commandsPtr = commands,
             .descriptorsPtr = descriptors,
             .pipelineBuilderPtr = pipelineBuilder
         };
     }
 
-    void Material::bindPipeline(const VkCommandBuffer &cmdBuffer, const StorageBuffer& lightingBuffer, uint32_t lightingBufferOffset, uint32_t lightCount, const UniformBuffer& lightingData, uint32_t currentImage) const
+    void Material::updateUniforms(VkCommandBuffer cmdBuffer, DescriptorWrites descriptorWrites, uint32_t currentImage) const
     {
-        vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
-
-        VkDescriptorSet globalDescriptorSet = rendererInfo.descriptorsPtr->allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(0), currentImage);
-
-        //light buffer
-        rendererInfo.descriptorsPtr->writeUniform(
-            lightingBuffer.getBuffer(),
-            sizeof(PointLight) * lightCount,
-            lightingBufferOffset,
-            0,
-            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            globalDescriptorSet);
-
-        //lighting data
-        rendererInfo.descriptorsPtr->writeUniform(
-            lightingData.getBuffer(),
-            sizeof(ShaderLightingInformation),
-            0,
-            1,
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            globalDescriptorSet);
-
-        vkCmdBindDescriptorSets(cmdBuffer,
-            VK_PIPELINE_BIND_POINT_GRAPHICS,
-            rasterPipeline->getLayout(),
-            0, //pipeline bind point
-            1,
-            &globalDescriptorSet,
-            0,
-            0);
+        VkDescriptorSet materialDescriptorSet = rendererInfo.descriptorsPtr->allocateDescriptorSet(descriptorWrites.setLayout, currentImage);
+        DescriptorAllocator::writeUniforms(rendererInfo.devicePtr->getDevice(), materialDescriptorSet, descriptorWrites);
     }
 
-    void Material::updateUniforms(void const* uniforms, VkDeviceSize uniformsSize, const std::vector<Renderer::Texture const*>& textures, const VkCommandBuffer &cmdBuffer, uint32_t currentImage) const
-    {
-        VkDescriptorSet materialDescriptorSet = rendererInfo.descriptorsPtr->allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(1), currentImage);
-        materialUBOs.at(currentImage)->updateUniformBuffer(uniforms, uniformsSize);
+    //----------MATERIAL INSTANCE DEFINITIONS----------//
 
-        rendererInfo.descriptorsPtr->writeImageArray(textures, 1, materialDescriptorSet);
-        rendererInfo.descriptorsPtr->writeUniform(
-            materialUBOs.at(currentImage)->getBuffer(),
-            uniformsSize,
-            0,
-            0,
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            materialDescriptorSet);
-        
-        vkCmdBindDescriptorSets(cmdBuffer,
-            VK_PIPELINE_BIND_POINT_GRAPHICS,
-            rasterPipeline->getLayout(),
-            1, //material bind point
-            1,
-            &materialDescriptorSet,
-            0,
-            0);
+    MaterialInstance::MaterialInstance(Material const* baseMaterial)
+        :baseMaterial(baseMaterial)
+    {
+    }
+
+    MaterialInstance::~MaterialInstance()
+    {
+    }
+
+    void MaterialInstance::bind(const VkCommandBuffer &cmdBuffer, uint32_t currentImage) const
+    {
+        DescriptorWrites descriptorWrites = {};
+        descriptorWrites.setLayout = VK_NULL_HANDLE;
+        bind(cmdBuffer, descriptorWrites, currentImage);
+    }
+
+    void MaterialInstance::bind(const VkCommandBuffer &cmdBuffer, DescriptorWrites descriptorWrites, uint32_t currentImage) const
+    {
+        baseMaterial->updateUniforms(cmdBuffer, descriptorWrites, currentImage);
     }
 
     //----------DEFAULT MATERIAL DEFINITIONS----------//
 
     DefaultMaterial::DefaultMaterial(std::string vertexShaderPath, std::string fragmentShaderPath)
-        :Material("m_Default", sizeof(Uniforms))
-            
+        :Material("m_Default")
     {
         //----------RASTER PIPELINE INFO----------//
 
@@ -204,13 +167,7 @@ namespace Renderer
         rtInfo.descriptors = std::unordered_map<uint32_t, DescriptorSet>();
         rtInfo.shaderInfo = RTshaderPairs;
 
-        buildPipelines(rasterInfo, rtInfo);
-
-        //setup default instance
-        defaultInstance.parentMaterial = this;
-        defaultInstance.uniformSize = sizeof(Uniforms);
-        defaultInstance.uniformData = &defaultUniforms;
-        defaultInstance.textures = std::vector<const Renderer::Texture*>(); //no textures in texture array
+        buildPipelines(&rasterInfo, NULL); //no RT for now
     }
 
     DefaultMaterial::~DefaultMaterial()

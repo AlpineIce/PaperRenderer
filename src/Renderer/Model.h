@@ -6,14 +6,14 @@
 #include <unordered_map>
 #include <list>
 
-namespace Renderer
+namespace PaperRenderer
 {
     //----------MODEL CREATION INFO----------//
 
     struct MeshInfo
     {
-        std::shared_ptr<std::vector<Vertex>> vertices;
-        std::shared_ptr<std::vector<uint32_t>> indices;
+        std::unique_ptr<std::vector<PaperMemory::Vertex>> vertices;
+        std::unique_ptr<std::vector<uint32_t>> indices;
         uint32_t materialIndex;
     };
 
@@ -42,8 +42,8 @@ namespace Renderer
     {
     private:
         std::vector<LOD> LODs;
-        std::shared_ptr<VertexBuffer> vbo;
-        std::shared_ptr<IndexBuffer> ibo;
+        std::unique_ptr<PaperMemory::Buffer> vbo;
+        std::unique_ptr<PaperMemory::Buffer> ibo;
         float sphericalBounds = 0.0f; //calculated as largest possible LOD size in constructor
         uint32_t LODDataOffset;
         uint32_t bufferMeshLODsOffset;

@@ -6,21 +6,20 @@
 
 #include <memory>
 
-namespace Renderer
+namespace PaperRenderer
 {
     //"helper" struct to decrease parameters needed for construction
     struct MaterialRendererInfo
     {
         Device* devicePtr;
-        CmdBufferAllocator* commandsPtr;
         DescriptorAllocator* descriptorsPtr;
         PipelineBuilder* pipelineBuilderPtr;
     };
 
     struct GlobalUniforms
     {
-        UniformBuffer* globalUBO;
-        UniformBuffer* lightingInfoBuffer;
+        PaperMemory::Buffer* globalUBO;
+        PaperMemory::Buffer* lightingInfoBuffer;
         uint32_t maxPointLights;
         glm::vec3 camPos;
     };
@@ -29,63 +28,52 @@ namespace Renderer
     class Material
     {
     protected:
-        std::shared_ptr<RasterPipeline> rasterPipeline;
-        std::shared_ptr<RTPipeline> rtPipeline;
-        std::vector<std::shared_ptr<UniformBuffer>> materialUBOs;
+        std::unique_ptr<RasterPipeline> rasterPipeline;
+        std::unique_ptr<RTPipeline> rtPipeline;
         std::string matName;
 
         static MaterialRendererInfo rendererInfo;
 
-        void buildPipelines(const PipelineBuildInfo& rasterInfo, const PipelineBuildInfo& rtInfo);
+        void buildPipelines(PipelineBuildInfo const* rasterInfo, PipelineBuildInfo const* rtInfo);
 
     public:
-        Material(std::string materialName, uint32_t matUBOsize);
+        Material(std::string materialName);
         virtual ~Material();
 
-        struct BaseUniforms //uniforms that all materials within renderer will use (inherited)
-        {
-            float gamma;
-        };
+        static void initRendererInfo(Device* device, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder);
 
-        void bindPipeline(const VkCommandBuffer &cmdBuffer, const StorageBuffer& lightingBuffer, uint32_t lightingBufferOffset, uint32_t lightCount, const UniformBuffer& lightingData, uint32_t currentImage) const;
-        virtual void updateUniforms(void const* uniforms, VkDeviceSize uniformsSize, const std::vector<Renderer::Texture const*>& textures, const VkCommandBuffer& cmdBuffer, uint32_t currentImage) const;
-        static void initRendererInfo(Device* device, CmdBufferAllocator* commands, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder);
-
+        virtual void updateUniforms(VkCommandBuffer cmdBuffer, DescriptorWrites descriptorWrites, uint32_t currentImage) const; //used per pipeline bind and material instance
+        
         std::string getMaterialName() const { return matName; }
         RasterPipeline const* getRasterPipeline() const { return rasterPipeline.get(); }
         RTPipeline const* getRTPipeline() const { return rtPipeline.get(); }
     };
 
-    struct MaterialInstance
+    class MaterialInstance
     {
-        Material const* parentMaterial = NULL;
-        void const* uniformData = NULL;
-        VkDeviceSize uniformSize = 0;
-        std::vector<Renderer::Texture const*> textures; //vector makes this optional
+    protected:
+        Material const* baseMaterial = NULL;
 
-        void bind(const VkCommandBuffer& cmdBuffer, uint32_t currentImage) const
-        {
-            parentMaterial->updateUniforms(uniformData, uniformSize, textures, cmdBuffer, currentImage);
-        }
+        void bind(const VkCommandBuffer &cmdBuffer, DescriptorWrites descriptorWrites, uint32_t currentImage) const;
+
+    public:
+        MaterialInstance(Material const* baseMaterial);
+        virtual ~MaterialInstance();
+        
+        virtual void bind(const VkCommandBuffer &cmdBuffer, uint32_t currentImage) const;
+
+        Material const* getBaseMaterialPtr() const { return baseMaterial; }
     };
 
     //default material
+    //it really is this basic, but a lot of power is given for other materials to have their own UBO's with their own descriptor sets, so long as they work with the "drawing process".
+    //the last bit is referring to set layout 0 being the base material descriptor layout, and 1 being the material instance layout.
     class DefaultMaterial : public Material
     {
-    public:
-        struct Uniforms : public BaseUniforms
-        {
-            glm::vec4 testVec = glm::vec4(0.0f);
-        };
-
     private:
-        MaterialInstance defaultInstance; //default instance for default material since its automatically specified when no instance is specified
-        Uniforms defaultUniforms;
 
     public:
         DefaultMaterial(std::string vertexShaderPath, std::string fragmentShaderPath);
         ~DefaultMaterial() override;
-
-        const MaterialInstance& getDefaultInstance() const { return defaultInstance; }
     };
 }

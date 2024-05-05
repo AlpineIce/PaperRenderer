@@ -1,35 +1,61 @@
 #pragma once
-#include "Buffer.h"
+#include "Device.h"
+#include "Memory/VulkanResources.h"
 
 #include <unordered_map>
-#include <memory>
 
-namespace Renderer
+namespace PaperRenderer
 {
-    //----------DYNAMIC UBO STRUCTS----------//
+    //----------DESCRIPTOR WRITE STRUCTS----------//
 
-    const uint32_t TEXTURE_ARRAY_SIZE = 8;
-    const uint32_t MAX_POINT_LIGHTS = 4;
-    
+    struct BuffersDescriptorWrites
+    {
+        std::vector<VkDescriptorBufferInfo> infos;
+        VkDescriptorType type;
+        uint32_t binding;
+    };
+
+    struct ImagesDescriptorWrites
+    {
+        std::vector<VkDescriptorImageInfo> infos; //VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+        VkDescriptorType type;
+        uint32_t binding;
+    };
+
+    struct BufferViewsDescriptorWrites
+    {
+        std::vector<VkBufferView> infos;
+        VkDescriptorType type;
+        uint32_t binding;
+    };
+
+    struct DescriptorWrites
+    {
+        VkDescriptorSetLayout setLayout;
+        BuffersDescriptorWrites bufferWrites;
+        ImagesDescriptorWrites imageWrites;
+        BufferViewsDescriptorWrites bufferViewWrites;
+    };
+
+    //----------DESCRIPTOR ALLOCATOR DECLARATIONS----------//
+
     class DescriptorAllocator
     {
     private:
         std::vector<std::vector<VkDescriptorPool>> descriptorPools;
         std::vector<VkDescriptorPool*> currentPools;
-        std::shared_ptr<Texture> defaultTexture;
 
         Device* devicePtr;
-        CmdBufferAllocator* commandsPtr;
 
         VkDescriptorPool allocateDescriptorPool();
 
     public:
-        DescriptorAllocator(Device* device, CmdBufferAllocator* commands);
+        DescriptorAllocator(Device* device);
         ~DescriptorAllocator();
 
+        static void writeUniforms(VkDevice device, VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo);
+
         VkDescriptorSet allocateDescriptorSet(VkDescriptorSetLayout setLayout, uint32_t frameIndex);
-        void writeUniform(const VkBuffer& buffer, uint32_t size, uint32_t offset, uint32_t binding, VkDescriptorType type, const VkDescriptorSet& set);
-        void writeImageArray(std::vector<Texture const*> textures, uint32_t binding, const VkDescriptorSet& set);
         void refreshPools(uint32_t frameIndex);
     };
 }

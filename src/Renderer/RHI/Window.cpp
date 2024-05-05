@@ -1,6 +1,6 @@
 #include "Window.h"
 
-namespace Renderer
+namespace PaperRenderer
 {
     Window::Window(WindowInformation windowInfo, std::string name, Device* device)
         :devicePtr(device)

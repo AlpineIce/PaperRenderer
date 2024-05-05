@@ -1,11 +1,10 @@
 #include "IndirectDrawBuffer.h"
 #include "../Model.h"
 
-namespace Renderer
+namespace PaperRenderer
 {
-    IndirectDrawContainer::IndirectDrawContainer(Device *device, CmdBufferAllocator *commands, DescriptorAllocator* descriptor, RasterPipeline const* pipeline)
+    IndirectDrawContainer::IndirectDrawContainer(Device *device, DescriptorAllocator* descriptor, RasterPipeline const* pipeline)
         :devicePtr(device),
-        commandsPtr(commands),
         descriptorsPtr(descriptor),
         pipelinePtr(pipeline)
     {

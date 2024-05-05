@@ -1,5 +1,3 @@
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
 #include "Renderer.h"
 
 #include <iostream>
@@ -7,20 +5,18 @@
 #include <sstream>
 #include <fstream>
 
-namespace Renderer
+namespace PaperRenderer
 {
     RenderEngine::RenderEngine(RendererCreationStruct creationInfo)
         :appName(creationInfo.appName),
         device(creationInfo.appName),
         window(WindowInformation(creationInfo.resX, creationInfo.resY, false), creationInfo.appName, &device),
-        commands(&device),
         swapchain(&device, &window, false),
-        descriptors(&device, &commands),
+        descriptors(&device),
         pipelineBuilder(&device, &descriptors, &swapchain),
-        rendering(&swapchain, &device, &commands, &descriptors, &pipelineBuilder)
+        rendering(&swapchain, &device, &descriptors, &pipelineBuilder)
     {
-        Material::initRendererInfo(&device, &commands, &descriptors, &pipelineBuilder);
-        loadTextures("resources/textures");
+        Material::initRendererInfo(&device, &descriptors, &pipelineBuilder);
 
         defaultMaterial = std::make_shared<DefaultMaterial>("resources/materials/Default_vert.spv", "resources/materials/Default_frag.spv");
 
@@ -33,26 +29,6 @@ namespace Renderer
     RenderEngine::~RenderEngine()
     {
         vkDeviceWaitIdle(device.getDevice());
-    }
-
-    void RenderEngine::loadTextures(std::string texturesDir)
-    {
-        const std::filesystem::path textures(texturesDir);
-        for(const auto& texture : std::filesystem::recursive_directory_iterator(textures)) //iterate models RECURSIVE BECAUSE TEXTURES CAN BE IN FOLDERS
-        {
-            if(texture.path().filename().string().find(".png") != std::string::npos ||
-                texture.path().filename().string().find(".jpeg") != std::string::npos) //must be a valid .png/jpg file
-            {
-                std::cout << "loading texture: " << texture.path().stem().string() << std::endl;
-                Image imageData = loadImage(texture.path().string());
-
-                this->textures.insert(std::make_pair(
-                    texture.path().stem().string(),
-                    std::make_shared<Texture>(&device, &commands, &imageData)));
-                
-                stbi_image_free(imageData.data);
-            }
-        }
     }
 
     void RenderEngine::initRT()
@@ -69,20 +45,6 @@ namespace Renderer
             bottomData.models.push_back(modelRef);
         }
         rtAccelStructure.createBottomLevel(bottomData);*/
-    }
-
-    Image RenderEngine::loadImage(std::string directory)
-    {
-        Image returnImg;
-        returnImg.data = stbi_load(directory.c_str(), &returnImg.width, &returnImg.height, &returnImg.channels, STBI_rgb_alpha);
-        returnImg.size = returnImg.width * returnImg.height * 4;
-
-        if(!returnImg.data) //image is NULL by default
-        {
-            throw std::runtime_error("failed to load texture image!");
-        }
-
-        return returnImg;
     }
 
     void RenderEngine::addObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, std::list<ModelInstance*>::iterator& objectReference)
@@ -122,7 +84,7 @@ namespace Renderer
                         if(!renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer)
                         {
                             renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer = 
-                                std::make_shared<IndirectDrawContainer>(&device, &commands, &descriptors, materialInstance->parentMaterial->getRasterPipeline());
+                                std::make_shared<IndirectDrawContainer>(&device, &descriptors, materialInstance->parentMaterial->getRasterPipeline());
                         }
 
                         //add reference
@@ -217,16 +179,5 @@ namespace Renderer
             rtAccelStructure.createTopLevel(accelData);
         }*/
         glfwPollEvents();
-    }
-
-    //----------GETTER/SETTER FUNCTIONS----------//
-
-    Texture const* RenderEngine::getTextureByName(std::string name)
-    {
-        if(this->textures.count(name))
-        {
-            return this->textures.at(name).get();
-        }
-        return NULL; //default texture already exists in texture class
     }
 }

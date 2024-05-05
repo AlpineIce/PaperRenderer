@@ -4,7 +4,7 @@
 
 #include <vector>
 
-namespace Renderer
+namespace PaperRenderer
 {
     class Swapchain
     {
@@ -18,11 +18,11 @@ namespace Renderer
         std::vector<VkImageView> imageViews;
 
         //depth buffer
-        std::vector<VkImage> depthBufferImages;
+        std::unique_ptr<PaperMemory::DeviceAllocation> depthBuffersAllocation;
+        std::vector<std::unique_ptr<PaperMemory::Image>> depthBufferImages;
         std::vector<VkImageView> depthBufferViews;
         VkImageLayout depthBufferLayout;
         VkFormat depthBufferFormat;
-        std::vector<VmaAllocation> depthBufferAllocations;
         
         Device* devicePtr;
         Window* windowPtr;

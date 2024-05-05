@@ -1,7 +1,7 @@
 #include "Model.h"
 #include "Renderer.h"
 
-namespace Renderer
+namespace PaperRenderer
 {
 	//----------MODEL DEFINITIONS----------//
 
@@ -9,7 +9,7 @@ namespace Renderer
 		:rendererPtr(renderer)
 	{
 		//temporary variables for creating the singular vertex and index buffer
-		std::vector<Vertex> creationVertices;
+		std::vector<PaperMemory::Vertex> creationVertices;
 		std::vector<uint32_t> creationIndices;
 
 		//fill in variables with the input LOD data
@@ -43,8 +43,13 @@ namespace Renderer
 			LODs.push_back(returnLOD);
 		}
 
-		vbo = std::make_shared<VertexBuffer>(rendererPtr->getDevice(), rendererPtr->getCommandsHandler(), &creationVertices);
-		ibo = std::make_shared<IndexBuffer>(rendererPtr->getDevice(), rendererPtr->getCommandsHandler(), &creationIndices);
+		PaperMemory::BufferInfo vboInfo = {};
+		vboInfo.size = 0;
+		vboInfo.usageFlags = 0;
+		vboInfo.queueFamilyIndices = 0;
+
+		vbo = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice(), , &creationVertices);
+		ibo = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice(), rendererPtr->getCommandsHandler(), &creationIndices);
 	}
 
 	Model::~Model()

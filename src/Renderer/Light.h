@@ -3,7 +3,7 @@
 
 #include <list>
 
-namespace Renderer
+namespace PaperRenderer
 {
     struct AmbientLight
     {

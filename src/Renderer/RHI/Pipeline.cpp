@@ -1,10 +1,8 @@
 #include "Pipeline.h"
-#include "Command.h"
-#include "Buffer.h"
 
 #include <fstream>
 
-namespace Renderer
+namespace PaperRenderer
 {
     //----------SHADER DEFINITIONS----------//
 
@@ -124,28 +122,28 @@ namespace Renderer
         :Pipeline(creationInfo)
     {
         vertexDescription.binding = 0;
-        vertexDescription.stride = sizeof(Vertex);
+        vertexDescription.stride = sizeof(PaperMemory::Vertex);
         vertexDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
         //vertex position
         vertexAttributes.push_back(VkVertexInputAttributeDescription{
             .location = 0,
             .binding = 0,
             .format = VK_FORMAT_R32G32B32_SFLOAT, //vec3
-            .offset = offsetof(Vertex, position)
+            .offset = offsetof(PaperMemory::Vertex, position)
         });
         //normals
         vertexAttributes.push_back(VkVertexInputAttributeDescription{
             .location = 1,
             .binding = 0,
             .format = VK_FORMAT_R32G32B32_SFLOAT, //vec3
-            .offset = offsetof(Vertex, normal)
+            .offset = offsetof(PaperMemory::Vertex, normal)
         });
         //texture Coordinates
         vertexAttributes.push_back(VkVertexInputAttributeDescription{
             .location = 2,
             .binding = 0,
             .format = VK_FORMAT_R32G32_SFLOAT, //vec2
-            .offset = offsetof(Vertex, texCoord)
+            .offset = offsetof(PaperMemory::Vertex, texCoord)
         });
 
         //pipeline info from here on
@@ -541,18 +539,18 @@ namespace Renderer
         return rtInfo;
     }
 
-    std::shared_ptr<ComputePipeline> PipelineBuilder::buildComputePipeline(const PipelineBuildInfo& info) const
+    std::unique_ptr<ComputePipeline> PipelineBuilder::buildComputePipeline(const PipelineBuildInfo& info) const
     {
-        return std::make_shared<ComputePipeline>(initPipelineInfo(info));
+        return std::make_unique<ComputePipeline>(initPipelineInfo(info));
     }
 
-    std::shared_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const PipelineBuildInfo& info) const
+    std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const PipelineBuildInfo& info) const
     {
-        return std::make_shared<RasterPipeline>(initPipelineInfo(info), swapchainPtr);
+        return std::make_unique<RasterPipeline>(initPipelineInfo(info), swapchainPtr);
     }
 
-    std::shared_ptr<RTPipeline> PipelineBuilder::buildRTPipeline(const PipelineBuildInfo& info) const
+    std::unique_ptr<RTPipeline> PipelineBuilder::buildRTPipeline(const PipelineBuildInfo& info) const
     {
-        return std::make_shared<RTPipeline>(initPipelineInfo(info), initRTinfo());
+        return std::make_unique<RTPipeline>(initPipelineInfo(info), initRTinfo());
     }
 }
