@@ -1,10 +1,9 @@
 #pragma once
-#include "Material/material.h"
+#include "material.h"
 #include "RHI/IndirectDrawBuffer.h"
 
 #include <filesystem>
 #include <unordered_map>
-#include <list>
 
 namespace PaperRenderer
 {
@@ -12,19 +11,14 @@ namespace PaperRenderer
 
     struct MeshInfo
     {
-        std::unique_ptr<std::vector<PaperMemory::Vertex>> vertices;
-        std::unique_ptr<std::vector<uint32_t>> indices;
+        std::vector<PaperMemory::Vertex> vertices;
+        std::vector<uint32_t> indices;
         uint32_t materialIndex;
-    };
-
-    struct LODInfo
-    {
-        std::unordered_map<uint32_t, std::vector<MeshInfo>> meshes; //material index/slot, material associated meshes
     };
 
     struct ModelCreateInfo
     {
-        std::vector<LODInfo> LODs;
+        std::vector<std::unordered_map<uint32_t, std::vector<MeshInfo>>> LODs; //material index/slot, material associated meshes
     };
 
     //----------MODEL INFORMATION----------//
@@ -32,7 +26,7 @@ namespace PaperRenderer
     struct LOD //acts more like an individual model
     {
         ShaderLOD shaderLOD;
-        std::unordered_map<uint32_t, Material const*> materials; //material index/slot, associated material
+        std::unordered_map<uint32_t, MaterialInstance const*> materials; //material index/slot, associated material
         std::unordered_map<uint32_t, std::vector<LODMesh>> meshes; //material index/slot, material associated meshes
     };
 
@@ -49,9 +43,12 @@ namespace PaperRenderer
         uint32_t bufferMeshLODsOffset;
 
         class RenderEngine* rendererPtr;
+        PaperMemory::DeviceAllocation* allocationPtr;
+
+        std::unique_ptr<PaperMemory::Buffer> createDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags2KHR usageFlags);
 
     public:
-        Model(RenderEngine* renderer, const ModelCreateInfo& creationInfo);
+        Model(RenderEngine* renderer, PaperMemory::DeviceAllocation* allocation, const ModelCreateInfo& creationInfo);
         ~Model();
 
         std::vector<LOD>& getLODs() { return LODs; }
@@ -74,24 +71,25 @@ namespace PaperRenderer
     {
     private:
         std::vector<std::unordered_map<uint32_t, DrawBufferObject>> meshReferences;
-        std::list<ModelInstance*>::iterator objectReference;
+        uint64_t selfIndex;
         ModelTransform transformation = ModelTransform();
-        std::vector<std::unordered_map<uint32_t, Material const*>> materials;
+        std::vector<std::unordered_map<uint32_t, MaterialInstance const*>> materials;
         bool isVisible = true;
 
         class RenderEngine* rendererPtr;
         Model* modelPtr = NULL;
         
     public:
-        ModelInstance(RenderEngine* renderer, Model* parentModel, std::vector<std::unordered_map<uint32_t, Material const*>> materials);
+        ModelInstance(RenderEngine* renderer, Model* parentModel, std::vector<std::unordered_map<uint32_t, MaterialInstance const*>> materials);
         ~ModelInstance();
 
         void transform(const ModelTransform& newTransform);
         void setVisibility(bool newVisibility) { this->isVisible = newVisibility; }
+        void setRendererIndex(uint64_t newIndex) { this->selfIndex = newIndex; } //FOR RENDERER USE ONLY
 
         Model* getModelPtr() { return modelPtr; }
         const ModelTransform& getTransformation() const { return transformation; }
-        const std::vector<std::unordered_map<uint32_t, Material const*>>& getMaterials() const { return materials; }
+        const std::vector<std::unordered_map<uint32_t, MaterialInstance const*>>& getMaterialInstances() const { return materials; }
         const bool& getVisibility() const { return isVisible; }
     };
 }

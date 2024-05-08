@@ -22,18 +22,20 @@ namespace PaperRenderer
         {
         }
 
-        VkResult VulkanResource::assignAllocation(DeviceAllocation *allocation)
+        int VulkanResource::assignAllocation(DeviceAllocation *allocation)
         {
             allocationPtr = allocation;
 
-            return VK_SUCCESS;
+            return 0;
         }
         
         //----------BUFFER DEFINITIONS----------//
 
         Buffer::Buffer(VkDevice device, const BufferInfo& bufferInfo)
-            : VulkanResource(device)
+            :VulkanResource(device)
         {
+            std::vector<uint32_t> uniqueIndices = bufferInfo.queueFamilyIndices;
+
             VkBufferCreateInfo bufferCreateInfo = {};
             bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
             bufferCreateInfo.pNext = NULL;
@@ -41,9 +43,8 @@ namespace PaperRenderer
             bufferCreateInfo.size = bufferInfo.size;
             bufferCreateInfo.usage = bufferInfo.usageFlags;
             bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            if(bufferInfo.queueFamilyIndices.size() > 1) //use concurrent sharing mode if more than one queue family
+            if(bufferInfo.queueFamilyIndices.size() != 1) //use concurrent sharing mode if more than one queue family
             {
-                std::vector<uint32_t> uniqueIndices = bufferInfo.queueFamilyIndices;
                 std::sort(uniqueIndices.begin(), uniqueIndices.end());
                 auto result = std::unique(uniqueIndices.begin(), uniqueIndices.end());
                 uniqueIndices.erase(result, uniqueIndices.end());
@@ -54,6 +55,10 @@ namespace PaperRenderer
                     bufferCreateInfo.queueFamilyIndexCount = uniqueIndices.size();
                     bufferCreateInfo.pQueueFamilyIndices = uniqueIndices.data();
                 }
+            }
+            else //guaranteed to be exactly 1 queue family index
+            {
+                exclusiveQueueFamilyIndex = bufferInfo.queueFamilyIndices.at(0);
             }
             
             vkCreateBuffer(device, &bufferCreateInfo, nullptr, &buffer);
@@ -72,7 +77,7 @@ namespace PaperRenderer
             vkDestroyBuffer(device, buffer, nullptr);
         }
 
-        VkResult Buffer::assignAllocation(DeviceAllocation *allocation)
+        int Buffer::assignAllocation(DeviceAllocation *allocation)
         {
             VulkanResource::assignAllocation(allocation);
 
@@ -81,13 +86,90 @@ namespace PaperRenderer
             size = memRequirements.memoryRequirements.size;
             if(bindingInfo.allocatedSize == 0)
             {
-                return VK_ERROR_UNKNOWN; //error in this case should just be that its out of memory, or wrong memory type was used
+                return 1; //error in this case should just be that its out of memory, or wrong memory type was used
             }
 
-            return VK_SUCCESS;
+            //map memory if host visible
+            if(allocation->getMemoryType().propertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT))
+            {
+                if(allocation->getMemoryType().propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) //vkFlushMappedMemoryRanges and vkInvalidateMappedMemoryRanges not needed
+                {
+                    needsFlush = false;
+                }
+                vkMapMemory(device, allocation->getAllocation(), bindingInfo.allocationLocation, size, 0, &hostDataPtr);
+            }
+
+            return 0; //success, also VK_SUCCESS
         }
 
-        CommandBuffer Buffer::copyFromBufferRanges(Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo)
+        int Buffer::writeToBuffer(const std::vector<BufferWrite>& writes)
+        {
+            //gather ranges to flush and invalidate (if needed)
+            std::vector<VkMappedMemoryRange> toFlushRanges;
+            if(needsFlush)
+            {
+                for(const BufferWrite& write : writes)
+                {
+                    VkMappedMemoryRange range = {};
+                    range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+                    range.pNext = NULL;
+                    range.memory = allocationPtr->getAllocation();
+                    range.offset = write.offset;
+                    range.size = write.size;
+
+                    toFlushRanges.push_back(range);
+                }
+
+                //invalidate all the ranges for coherency
+                if(vkInvalidateMappedMemoryRanges(device, toFlushRanges.size(), toFlushRanges.data()) != VK_SUCCESS) return 1;
+            }
+
+            //write data
+            for(const BufferWrite& write : writes)
+            {
+                memcpy(hostDataPtr, (char*)write.data + write.offset, write.size); //cast to char for 1 byte increment pointer arithmetic
+            }
+
+            //flush data from cache if needed
+            if(needsFlush)
+            {
+                if(vkFlushMappedMemoryRanges(device, toFlushRanges.size(), toFlushRanges.data()) != VK_SUCCESS) return 1;
+            }
+
+            return 0;
+        }
+
+        void Buffer::transferQueueFamilyOwnership(
+            VkCommandBuffer cmdBuffer,
+            VkPipelineStageFlags2 srcStageMask,
+            VkAccessFlags2 srcAccessMask,
+            VkPipelineStageFlags2 dstStageMask,
+            VkAccessFlags2 dstAccessMask,
+            uint32_t srcFamily,
+            uint32_t dstFamily)
+        {
+            VkBufferMemoryBarrier2 ownershipTransferBarrier = {};
+            ownershipTransferBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
+            ownershipTransferBarrier.pNext = NULL;
+            ownershipTransferBarrier.srcStageMask = srcStageMask;
+            ownershipTransferBarrier.srcAccessMask = srcAccessMask;
+            ownershipTransferBarrier.dstStageMask = dstStageMask;
+            ownershipTransferBarrier.dstAccessMask = dstAccessMask;
+            ownershipTransferBarrier.srcQueueFamilyIndex = srcFamily;
+            ownershipTransferBarrier.dstQueueFamilyIndex = dstFamily;
+            ownershipTransferBarrier.buffer = buffer;
+            ownershipTransferBarrier.offset = 0;
+            ownershipTransferBarrier.size = VK_WHOLE_SIZE;
+
+            VkDependencyInfo dependencyInfo = {};
+            dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+            dependencyInfo.pNext = NULL;
+            dependencyInfo.bufferMemoryBarrierCount = 1;
+            dependencyInfo.pBufferMemoryBarriers = &ownershipTransferBarrier;
+            vkCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
+        }
+
+        CommandBuffer Buffer::copyFromBufferRanges(Buffer &src, uint32_t transferQueueFamily, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo)
         {
             VkCommandBuffer transferBuffer = Commands::getCommandBuffer(device, CmdPoolType::TRANSFER); //note theres only 1 transfer cmd buffer
 
@@ -96,8 +178,58 @@ namespace PaperRenderer
             beginInfo.pNext = NULL;
             beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-            vkBeginCommandBuffer(transferBuffer, &beginInfo); 
+            vkBeginCommandBuffer(transferBuffer, &beginInfo);
+
+            //ownership transfer from srcQueueFamily to transferQueueFamily for buffers
+            if(src.exclusiveQueueFamilyIndex != -1 && transferQueueFamily != src.exclusiveQueueFamilyIndex) //using exlusive mode
+            {
+                src.transferQueueFamilyOwnership(
+                    transferBuffer,
+                    VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                    VK_ACCESS_2_NONE,
+                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                    VK_ACCESS_2_TRANSFER_READ_BIT,
+                    src.exclusiveQueueFamilyIndex,
+                    transferQueueFamily);
+            }
+            if(exclusiveQueueFamilyIndex != -1 && transferQueueFamily != exclusiveQueueFamilyIndex)
+            {
+                transferQueueFamilyOwnership(
+                    transferBuffer,
+                    VK_PIPELINE_STAGE_2_NONE,
+                    VK_ACCESS_2_NONE,
+                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                    VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                    exclusiveQueueFamilyIndex,
+                    transferQueueFamily);
+            }
+
             vkCmdCopyBuffer(transferBuffer, src.getBuffer(), this->buffer, regions.size(), regions.data());
+
+            //ownership transfer from transferQueueFamily to srcQueueFamily for buffers
+            if(src.exclusiveQueueFamilyIndex != -1 && transferQueueFamily != src.exclusiveQueueFamilyIndex) //using exlusive mode
+            {
+                src.transferQueueFamilyOwnership(
+                    transferBuffer,
+                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                    VK_ACCESS_2_TRANSFER_READ_BIT,
+                    VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+                    VK_ACCESS_2_NONE,
+                    transferQueueFamily,
+                    src.exclusiveQueueFamilyIndex);
+            }
+            if(exclusiveQueueFamilyIndex != -1 && transferQueueFamily != exclusiveQueueFamilyIndex)
+            {
+                transferQueueFamilyOwnership(
+                    transferBuffer,
+                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                    VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                    VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+                    VK_ACCESS_2_NONE,
+                    transferQueueFamily,
+                    exclusiveQueueFamilyIndex);
+            }
+
             vkEndCommandBuffer(transferBuffer);
 
             std::vector<VkCommandBuffer> commandBuffers = {
@@ -127,6 +259,7 @@ namespace PaperRenderer
         {
             //calculate mip levels (select the least of minimum mip levels either explicitely, or from whats mathematically doable)
             mipmapLevels = std::min((uint32_t)(std::floorl(std::log2(std::max(imageInfo.extent.width, imageInfo.extent.height))) + 1), std::max(imageInfo.maxMipLevels, (uint32_t)1));
+            std::vector<uint32_t> uniqueIndices = imageInfo.queueFamilyIndices;
 
             //create image
             VkImageCreateInfo imageCreateInfo = {};
@@ -144,7 +277,6 @@ namespace PaperRenderer
             imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
             if(imageInfo.queueFamilyIndices.size() > 1) //use concurrent sharing mode if more than one queue family
             {
-                std::vector<uint32_t> uniqueIndices = imageInfo.queueFamilyIndices;
                 std::sort(uniqueIndices.begin(), uniqueIndices.end());
                 auto result = std::unique(uniqueIndices.begin(), uniqueIndices.end());
                 uniqueIndices.erase(result, uniqueIndices.end());
@@ -168,7 +300,12 @@ namespace PaperRenderer
             vkGetDeviceImageMemoryRequirements(device, &imageMemRequirements, &memRequirements);
         }
 
-        VkResult Image::assignAllocation(DeviceAllocation* allocation)
+        Image::~Image()
+        {
+            vkDestroyImage(device, image, nullptr);
+        }
+
+        int Image::assignAllocation(DeviceAllocation* allocation)
         {
             VulkanResource::assignAllocation(allocation);
 
@@ -177,10 +314,10 @@ namespace PaperRenderer
             size = memRequirements.memoryRequirements.size;
             if(bindingInfo.allocatedSize == 0)
             {
-                return VK_ERROR_UNKNOWN; //error in this case should just be that its out of memory, or wrong memory type was used
+                return 1; //error in this case should just be that its out of memory, or wrong memory type was used
             }
 
-            return VK_SUCCESS;
+            return 0;
         }
 
         VkImageView Image::getNewImageView(const Image& image, VkDevice device, VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format)
@@ -290,11 +427,6 @@ namespace PaperRenderer
             VkResult result = vkCreateSampler(device, &samplerInfo, nullptr, &sampler);
 
             return sampler;
-        }
-
-        Image::~Image()
-        {
-            vkDestroyImage(device, image, nullptr);
         }
 
         CommandBuffer Image::changeImageLayout(VkImage image, const SynchronizationInfo& synchronizationInfo, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)

@@ -1,8 +1,7 @@
 #pragma once
-#include "Renderer/RHI/Device.h"
-#include "Renderer/RHI/Pipeline.h"
-#include "Renderer/Light.h"
-#include "Renderer/Camera.h"
+#include "RHI/Device.h"
+#include "RHI/Pipeline.h"
+#include "Camera.h"
 
 #include <memory>
 
@@ -30,6 +29,7 @@ namespace PaperRenderer
     protected:
         std::unique_ptr<RasterPipeline> rasterPipeline;
         std::unique_ptr<RTPipeline> rtPipeline;
+        DescriptorWrites descriptorWrites = {};
         std::string matName;
 
         static MaterialRendererInfo rendererInfo;
@@ -41,8 +41,9 @@ namespace PaperRenderer
         virtual ~Material();
 
         static void initRendererInfo(Device* device, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder);
+        static MaterialRendererInfo getRendererInfo() { return rendererInfo; }
 
-        virtual void updateUniforms(VkCommandBuffer cmdBuffer, DescriptorWrites descriptorWrites, uint32_t currentImage) const; //used per pipeline bind and material instance
+        virtual void bind(VkCommandBuffer cmdBuffer, uint32_t currentImage) const; //used per pipeline bind and material instance
         
         std::string getMaterialName() const { return matName; }
         RasterPipeline const* getRasterPipeline() const { return rasterPipeline.get(); }
@@ -53,14 +54,13 @@ namespace PaperRenderer
     {
     protected:
         Material const* baseMaterial = NULL;
-
-        void bind(const VkCommandBuffer &cmdBuffer, DescriptorWrites descriptorWrites, uint32_t currentImage) const;
+        DescriptorWrites descriptorWrites = {};
 
     public:
         MaterialInstance(Material const* baseMaterial);
         virtual ~MaterialInstance();
         
-        virtual void bind(const VkCommandBuffer &cmdBuffer, uint32_t currentImage) const;
+        virtual void bind(VkCommandBuffer cmdBuffer, uint32_t currentImage) const;
 
         Material const* getBaseMaterialPtr() const { return baseMaterial; }
     };
@@ -75,5 +75,18 @@ namespace PaperRenderer
     public:
         DefaultMaterial(std::string vertexShaderPath, std::string fragmentShaderPath);
         ~DefaultMaterial() override;
+
+        void bind(VkCommandBuffer cmdBuffer, uint32_t currentImage);
+    };
+
+    class DefaultMaterialInstance : public MaterialInstance
+    {
+    private:
+
+    public:
+        DefaultMaterialInstance(Material const* baseMaterial);
+        ~DefaultMaterialInstance() override;
+
+        void bind(VkCommandBuffer cmdBuffer, uint32_t currentImage);
     };
 }

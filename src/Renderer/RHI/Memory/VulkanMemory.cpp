@@ -13,7 +13,7 @@ namespace PaperRenderer
     {
         std::atomic<int> DeviceAllocation::allocationCount = 0;
 
-        DeviceAllocation::DeviceAllocation(VkDevice device, VkPhysicalDevice gpu, DeviceAllocationInfo allocationInfo)
+        DeviceAllocation::DeviceAllocation(VkDevice device, VkPhysicalDevice gpu, const DeviceAllocationInfo& allocationInfo)
             : device(device),
             gpu(gpu),
             allocationInfo(allocationInfo),
@@ -32,7 +32,7 @@ namespace PaperRenderer
             for(int i = 0; i < memoryProperties.memoryProperties.memoryTypeCount; i++)
             {
                 VkMemoryType memType = memoryProperties.memoryProperties.memoryTypes[i];
-                if(memType.propertyFlags = allocationInfo.memoryProperties)
+                if(memType.propertyFlags & allocationInfo.memoryProperties)
                 {
                     this->memoryType = memType;
                     heapIndex = memType.heapIndex;
@@ -70,9 +70,14 @@ namespace PaperRenderer
             }
 
             //create allocation and check result
+            VkMemoryAllocateFlagsInfo allocFlags = {};
+            allocFlags.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+            allocFlags.pNext = NULL;
+            allocFlags.flags = allocationInfo.allocFlags;
+            allocFlags.deviceMask = 0;
             VkMemoryAllocateInfo allocInfo = {};
             allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-            allocInfo.pNext = NULL;
+            allocInfo.pNext = &allocFlags;
             allocInfo.allocationSize = allocationInfo.allocationSize;
             allocInfo.memoryTypeIndex = memoryTypeIndex;
 
@@ -101,9 +106,15 @@ namespace PaperRenderer
             allocationCount -= 1;
         }
 
-        bool DeviceAllocation::verifyAvaliableMemory(VkDeviceSize bindSize)
+        VkDeviceSize DeviceAllocation::padToMultiple(VkDeviceSize startingSize, VkDeviceSize multiple)
         {
-            if(allocationSize >= bindSize + currentOffset)
+            //from https://stackoverflow.com/questions/3407012/rounding-up-to-the-nearest-multiple-of-a-number assumes startingSize is always positive and a power of 2
+            return (startingSize + multiple - 1) & -multiple;
+        }
+
+        bool DeviceAllocation::verifyAvaliableMemory(VkDeviceSize bindSize, VkDeviceSize alignment)
+        {
+            if(allocationSize >= bindSize + padToMultiple(currentOffset, alignment))
             {
                 return true;
             }
@@ -112,22 +123,20 @@ namespace PaperRenderer
 
         ResourceBindingInfo DeviceAllocation::bindBuffer(VkBuffer buffer, VkMemoryRequirements memoryRequirements)
         {
-
-            VkDeviceSize bindSize = ((memoryRequirements.size - memoryRequirements.size % memoryRequirements.alignment) + memoryRequirements.alignment);
             ResourceBindingInfo resourceBindingInfo = {
-                .allocationLocation = currentOffset,
-                .allocatedSize = bindSize
+                .allocationLocation = padToMultiple(currentOffset, memoryRequirements.alignment),
+                .allocatedSize = memoryRequirements.size
             };
 
             //check if there is available space in the allocation
-            if(verifyAvaliableMemory(bindSize))
+            if(verifyAvaliableMemory(memoryRequirements.size, memoryRequirements.alignment))
             {
                 VkBindBufferMemoryInfo bindingInfo = {};
                 bindingInfo.sType = VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO;
                 bindingInfo.pNext = NULL;
                 bindingInfo.buffer = buffer;
                 bindingInfo.memory = allocation;
-                bindingInfo.memoryOffset = currentOffset;
+                bindingInfo.memoryOffset = resourceBindingInfo.allocationLocation;
 
                 if(vkBindBufferMemory2(device, 1, &bindingInfo) != VK_SUCCESS)
                 {
@@ -139,7 +148,7 @@ namespace PaperRenderer
                 }
 
                 //move "memory pointer"
-                currentOffset += bindSize;
+                currentOffset += memoryRequirements.size;
             }
             else
             {
@@ -153,25 +162,24 @@ namespace PaperRenderer
 
         ResourceBindingInfo DeviceAllocation::bindImage(VkImage image, VkMemoryRequirements memoryRequirements)
         {
-            VkDeviceSize bindSize = ((memoryRequirements.size - memoryRequirements.size % memoryRequirements.alignment) + memoryRequirements.alignment);
             ResourceBindingInfo resourceBindingInfo = {
-                .allocationLocation = currentOffset,
-                .allocatedSize = bindSize
+                .allocationLocation = padToMultiple(currentOffset, memoryRequirements.alignment),
+                .allocatedSize = memoryRequirements.size
             };
             //check if there is available space in the allocation
-            if(verifyAvaliableMemory(bindSize))
+            if(verifyAvaliableMemory(memoryRequirements.size, memoryRequirements.alignment))
             {
                 VkBindImageMemoryInfo bindingInfo;
                 bindingInfo.sType = VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO;
                 bindingInfo.pNext = NULL;
                 bindingInfo.image = image;
                 bindingInfo.memory = allocation;
-                bindingInfo.memoryOffset = currentOffset;
+                bindingInfo.memoryOffset = resourceBindingInfo.allocationLocation;
 
                 vkBindImageMemory2(device, 1, &bindingInfo);
 
                 //move "memory pointer"
-                currentOffset += bindSize;
+                currentOffset += memoryRequirements.size;
 
                 return resourceBindingInfo;
             }

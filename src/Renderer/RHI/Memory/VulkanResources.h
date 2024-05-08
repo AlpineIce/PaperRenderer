@@ -30,6 +30,13 @@ namespace PaperRenderer
             std::vector<uint32_t> queueFamilyIndices = {};
         };
 
+        struct BufferWrite
+        {
+            VkDeviceSize offset;
+            VkDeviceSize size;
+            void* data;
+        };
+
         //----------RESOURCE BASE CLASS DECLARATIONS----------//
 
         class VulkanResource
@@ -38,11 +45,12 @@ namespace PaperRenderer
             VkDeviceSize size = 0;
             ResourceBindingInfo bindingInfo;
             VkMemoryRequirements2 memRequirements;
+            int exclusiveQueueFamilyIndex = -1; //-1 if concurrent
 
             VkDevice device;
             DeviceAllocation* allocationPtr;
 
-            virtual VkResult assignAllocation(DeviceAllocation* allocation); //uses vulkan result for convenience
+            virtual int assignAllocation(DeviceAllocation* allocation); //uses vulkan result for convenience
 
         public:
             VulkanResource(VkDevice device);
@@ -59,18 +67,30 @@ namespace PaperRenderer
         private:
             VkBuffer buffer;
             VkDeviceBufferMemoryRequirements bufferMemRequirements;
+            bool needsFlush = true;
+            void* hostDataPtr = NULL;
+
+            void transferQueueFamilyOwnership(
+                VkCommandBuffer cmdBuffer,
+                VkPipelineStageFlags2 srcStageMask,
+                VkAccessFlags2 srcAccessMask,
+                VkPipelineStageFlags2 dstStageMask,
+                VkAccessFlags2 dstAccessMask,
+                uint32_t srcFamily,
+                uint32_t dstFamily);
             
         public:
             Buffer(VkDevice device, const BufferInfo& bufferInfo);
             ~Buffer() override;
 
-            VkResult assignAllocation(DeviceAllocation* allocation) override;
-            CommandBuffer copyFromBufferRanges(Buffer& src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo);
+            int assignAllocation(DeviceAllocation* allocation) override;
+            int writeToBuffer(const std::vector<BufferWrite>& writes); //returns 0 if successful, 1 if unsuccessful (probably because not host visible)
+            CommandBuffer copyFromBufferRanges(Buffer &src, uint32_t transferQueueFamily, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo);
 
             const VkBuffer& getBuffer() const { return buffer; }
             VkDeviceSize getAllocatedSize() const { return bindingInfo.allocatedSize; }
             VkDeviceAddress getBufferDeviceAddress() const;
-
+            void* getHostDataPtr() const { return hostDataPtr; }
             const VkDeviceBufferMemoryRequirements& getBufferMemoryRequirements() const { return bufferMemRequirements; }
         };
 
@@ -120,7 +140,7 @@ namespace PaperRenderer
             Image(VkDevice device, const ImageInfo& imageInfo);
             ~Image() override;
 
-            VkResult assignAllocation(DeviceAllocation* allocation);
+            int assignAllocation(DeviceAllocation* allocation);
             void setImageData(const Buffer& imageStagingBuffer, VkQueue transferQueue, VkQueue graphicsQueue);
 
             static VkImageView getNewImageView(const Image& image, VkDevice device, VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format);

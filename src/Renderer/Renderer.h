@@ -30,10 +30,9 @@ namespace PaperRenderer
         RenderPass rendering;
 
         //render tree stores all pipelines, their child materials, with their child RenderObject pointers
-        LightingInformation lightingInfo;
-        
         std::unordered_map<Material*, MaterialNode> renderTree;
-        std::shared_ptr<DefaultMaterial> defaultMaterial;
+        std::unique_ptr<DefaultMaterial> defaultMaterial;
+        std::unique_ptr<DefaultMaterialInstance> defaultMaterialInstance;
 
         std::string appName;
         bool rtEnabled = false;
@@ -45,16 +44,8 @@ namespace PaperRenderer
         ~RenderEngine();
 
         //add/remove objects to render tree
-        void addObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, std::list<ModelInstance*>::iterator& objectReference);
-        void removeObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, std::list<ModelInstance*>::iterator& objectReference);
-
-        //add point lights, returns list reference which is necessary for removal
-        void addPointLight(PointLightObject& light);
-        void setDirectLight(const DirectLight& light) { lightingInfo.directLight = &light; }
-        void setAmbientLight(const AmbientLight& light) { lightingInfo.ambientLight = &light; }
-
-        //remove point light using a previously aquired reference TODO make the light contain the reference
-        void removePointLight(PointLightObject& light);
+        void addObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, uint64_t& selfIndex);
+        void removeObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, uint64_t& selfIndex);
 
         //overwrite camera pointer used for rendering
         void setCamera(Camera* camera);

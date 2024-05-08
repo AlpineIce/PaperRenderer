@@ -9,34 +9,34 @@ layout (local_size_x = 128) in;
 //----------GLOBAL INPUT DATA----------//
 
 layout(std430, buffer_reference, buffer_reference_align = 8) PreprocessBufferReference;
-layout(std430, buffer_reference, buffer_reference_align = 8) writeonly buffer ASInstances;
-layout(std430, buffer_reference, buffer_reference_align = 8) BLASReference;
 
 struct CullingData
 {
     vec4 frustum; //(left, right, top, bottom)
     vec2 zPlanes; //(near, far)
+    vec2 padding;
 };
 
 layout(std430, set = 0, binding = 0) uniform InputData
 {
     PreprocessBufferReference bufferReference;
-    ASInstances asInstancesBufferReference;
+    uint64_t padding;
     vec4 camPos;
     mat4 projection;
     mat4 view;
-    uint objectCount;
     CullingData cullingData;
+    uint objectCount;
+    
 } inputData;
 
 struct InputObject
 {
     vec4 position; //w hold sphere extent
-    mat4 rotation;
     vec4 scale;
+    mat4 rotation;
     uint lodCount;
     uint lodOffset;
-    BLASReference blasReference;
+    vec2 padding;
 };
 
 layout(std430, set = 0, binding = 1) readonly buffer InputObjects
@@ -98,19 +98,6 @@ layout(std430, buffer_reference, buffer_reference_align = 8) writeonly buffer Ou
     OutputObject objects[];
 };
 
-struct AccelerationStructureInstance
-{
-    mat3x4 transform;
-    uint instanceCustomIndexAndMask;//24 + 8;
-    uint instanceShaderBindingTableRecordOffsetAndFlags;//24 + 8;
-    uint64_t accelerationStructureReference;
-};
-
-layout(std430, buffer_reference, buffer_reference_align = 8) writeonly buffer ASInstances
-{
-    AccelerationStructureInstance objects[];
-}; 
-
 //----------FUNCTIONS----------//
 
 bool isInBounds(InputObject object)
@@ -162,45 +149,6 @@ OutputObject buildOutputObject(mat4 modelMatrix)
     return outputObject;
 }
 
-const uint VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR = 0x01000000;
-
-AccelerationStructureInstance buildASInstance(InputObject object, uint customIndex)
-{
-    mat4 transformMatrix = mat4(
-        vec4(object.scale.x, 0.0, 0.0, 0.0),
-        vec4(0.0, object.scale.y, 0.0, 0.0),
-        vec4(0.0, 0.0, object.scale.z, 0.0),
-        vec4(0.0, 0.0, 0.0, 1.0));
-    transformMatrix = inputData.view * transformMatrix * object.rotation; //apply rotation before translation  TODO ROTATION IS BROKEN BECAUSE IM A RETARD WHO DOESNT KNOW LINEAR ALGEBRA
-
-    mat3x4 instTransform;
-    instTransform[0] = vec4(transformMatrix[0].xyz, object.position.x);
-    instTransform[1] = vec4(transformMatrix[1].xyz, object.position.y);
-    instTransform[2] = vec4(transformMatrix[2].xyz, object.position.z);
-
-    //I HAVE NO IDEA HOW WELL THIS CODE WILL ACTUALLY HOLD UP CONSIDERING I BARELY KNOW HOW TO USE BITWISE OPERATORS
-
-    //custom index and mask
-    uint instanceCustomIndex = customIndex;    // value to merge in non-masked bits
-    uint mask = 0xAA000000;    // value to merge in masked bits
-    uint bitmask0 = 0xFF000000; // 1 where bits from mask should be selected; 0 where from instanceCustomIndex.
-    uint instanceCustomIndexAndMask = instanceCustomIndex ^ ((instanceCustomIndex ^ mask) & bitmask0);
-
-    //binding table record offset and flags
-    uint instanceShaderBindingTableRecordOffset = 0;    // value to merge in non-masked bits
-    uint flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;    // value to merge in masked bits
-    uint bitmask1 = 0xFF000000; // 1 where bits from flags should be selected; 0 where from instanceShaderBindingTableRecordOffset.
-    uint instanceShaderBindingTableRecordOffsetAndFlags = instanceShaderBindingTableRecordOffset ^ ((instanceShaderBindingTableRecordOffset ^ flags) & bitmask1);
-
-    AccelerationStructureInstance structureInstance;
-    structureInstance.transform = instTransform;
-    structureInstance.instanceCustomIndexAndMask = instanceCustomIndexAndMask;
-    structureInstance.instanceShaderBindingTableRecordOffsetAndFlags = instanceShaderBindingTableRecordOffsetAndFlags;
-    structureInstance.accelerationStructureReference = uint64_t(object.blasReference);
-
-    return structureInstance;
-}
-
 void main()
 {
     uint gID = gl_GlobalInvocationID.x;
@@ -209,10 +157,6 @@ void main()
         return;
     }
     InputObject inputObject = inputObjects.objects[gID];
-
-    //ray tracing bits
-    ASInstances outputInstances = inputData.asInstancesBufferReference;
-    outputInstances.objects[gID] = buildASInstance(inputObject, gID);
 
     if(isInBounds(inputObject))
     {   

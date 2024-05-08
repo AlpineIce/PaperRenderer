@@ -30,16 +30,3 @@ target_include_directories(glfw PUBLIC "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/
 add_subdirectory("lib/glm")
 target_link_libraries(${PROJECT_NAME} PUBLIC glm)
 target_include_directories(glm INTERFACE "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/lib/glm>$<INSTALL_INTERFACE:lib/glm>")
-
-#STB IMAGE
-target_include_directories(${PROJECT_NAME} PUBLIC "${stbimage_dir}")
-
-#VULKAN MEMORY ALLOCATOR
-add_subdirectory("lib/VulkanMemoryAllocator")
-target_link_libraries(${PROJECT_NAME} PUBLIC VulkanMemoryAllocator)
-target_include_directories(VulkanMemoryAllocator INTERFACE "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/lib/VulkanMemoryAllocator/include>$<INSTALL_INTERFACE:lib/VulkanMemoryAllocator/include>")
-
-#ASSIMP
-add_subdirectory("lib/assimp")
-target_link_libraries(${PROJECT_NAME} PUBLIC assimp)
-target_include_directories(assimp PUBLIC "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/lib/assimp/include>$<INSTALL_INTERFACE:lib/assimp/include>")

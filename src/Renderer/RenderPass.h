@@ -4,10 +4,8 @@
 #include "RHI/IndirectDrawBuffer.h"
 #include "RHI/AccelerationStructure.h"
 #include "Camera.h"
-#include "Renderer/Material/Material.h"
+#include "Material.h"
 #include "Model.h"
-
-#include <list>
 
 namespace PaperRenderer
 {
@@ -26,13 +24,6 @@ namespace PaperRenderer
         std::unordered_map<MaterialInstance const*, MaterialInstanceNode> instances;
     };
 
-    struct LightingInformation
-    {
-        std::list<PointLight const*> pointLights;
-        DirectLight const* directLight = NULL; //this could be easily expaned to support multiple direct lights, but isnt needed
-        AmbientLight const* ambientLight = NULL;
-    };
-
     struct ImageAttachments
     {
         //nothing for now
@@ -41,19 +32,28 @@ namespace PaperRenderer
     class RenderPass
     {
     private:
+        //synchronization and commands
         std::vector<VkSemaphore> imageSemaphores;
         std::vector<VkSemaphore> bufferCopySemaphores;
-        std::vector<VkSemaphore> tlasBuildSemaphores;
-        std::vector<VkSemaphore> preprocessSemaphores;
+        std::vector<VkSemaphore> BLASBuildSemaphores;
+        std::vector<VkSemaphore> TLASBuildSemaphores;
+        std::vector<VkSemaphore> rasterPreprocessSemaphores;
         std::vector<VkSemaphore> preprocessTLASSignalSemaphores;
         std::vector<VkSemaphore> renderSemaphores;
-        std::vector<VkFence> BLASFences;
+        std::vector<VkFence> RTFences;
         std::vector<VkFence> renderFences;
-        std::vector<std::vector<PaperMemory::CommandBuffer>> fenceCmdBuffers;
-        std::vector<std::unique_ptr<PaperMemory::Buffer>> lightingInfoBuffers; //uniform buffer
-        std::vector<std::unique_ptr<IndirectRenderingData>> renderingData;
-        std::vector<std::unique_ptr<PaperMemory::Buffer>> preprocessUniformBuffers; //uniform buffer
-        std::unordered_map<Model*, std::list<ModelInstance*>> renderingModels;
+        std::vector<std::vector<PaperMemory::CommandBuffer>> usedCmdBuffers;
+        
+        //buffers and allocations
+        std::vector<std::unique_ptr<PaperMemory::DeviceAllocation>> uniformBuffersAllocations;
+        std::vector<std::unique_ptr<PaperMemory::Buffer>> preprocessUniformBuffers;
+        std::vector<std::unique_ptr<PaperMemory::DeviceAllocation>> stagingAllocations; //took me forever to learn this needs to live more than the lifetime of a function body... i love buffer addresses
+        std::vector<std::unique_ptr<PaperMemory::Buffer>> newDataStagingBuffers;
+
+        //device local rendering buffer and misc data
+        std::vector<IndirectRenderingData> renderingData; //includes its own device local allocation, but needs staging allocation for access
+        
+        std::unordered_map<Model*, std::vector<ModelInstance*>> renderingModels;
 
         std::unique_ptr<ComputePipeline> meshPreprocessPipeline;
         
@@ -67,19 +67,20 @@ namespace PaperRenderer
         PipelineBuilder* pipelineBuilderPtr;
         Camera* cameraPtr = NULL;
         
-        bool preProcessing(const std::unordered_map<Material*, MaterialNode>& renderTree, const LightingInformation& lightingInfo);
-        void raster(const std::unordered_map<Material*, MaterialNode>& renderTree);
-        void checkSwapchain(VkResult imageResult);
-        void setStagingData(const std::unordered_map<Material*, MaterialNode>& renderTree, const LightingInformation& lightingInfo);
-        void traceRays();
-        PaperMemory::CommandBuffer submitPreprocess();
-        void composeAttachments(const VkCommandBuffer& cmdBuffer);
-        void bindMaterial(Material const* material, const VkCommandBuffer& cmdBuffer);
-        void bindMaterialInstance(MaterialInstance const* materialInstance, const VkCommandBuffer& cmdBuffer);
-        void drawIndexedIndirect(const VkCommandBuffer& cmdBuffer, IndirectDrawContainer* drawBuffer);
-        void incrementFrameCounter(const VkCommandBuffer& cmdBuffer);
+        //helper functions
         CullingFrustum createCullingFrustum();
         glm::vec4 normalizePlane(glm::vec4 plane);
+        void rebuildRenderDataAllocation(uint32_t currentFrame);
+        
+        //frame rendering functions
+        void frameBegin(const std::unordered_map<Material *, MaterialNode> &renderTree);
+        void raster(const std::unordered_map<Material*, MaterialNode>& renderTree);
+        void setRasterStagingData(const std::unordered_map<Material*, MaterialNode>& renderTree);
+        void setRTStagingData(const std::unordered_map<Material*, MaterialNode>& renderTree);
+        void copyStagingData();
+        void rasterPreProcess(const std::unordered_map<Material*, MaterialNode>& renderTree);
+        void rayTracePreProcess(const std::unordered_map<Material*, MaterialNode>& renderTree);
+        void frameEnd(VkSemaphore waitSemaphore);
 
     public:
         RenderPass(Swapchain* swapchain, Device* device, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder);
@@ -89,9 +90,9 @@ namespace PaperRenderer
         void setCamera(Camera* camera) { this->cameraPtr = camera; }
 
         //draw new frame
-        void drawAll(const  std::unordered_map<Material*, MaterialNode>& renderTree, const LightingInformation& lightingInfo);
+        void rasterOrTrace(bool shouldRaster, const std::unordered_map<Material *, MaterialNode> &renderTree);
 
-        std::list<ModelInstance*>::iterator addModelInstance(ModelInstance* instance);
-        void removeModelInstance(std::list<ModelInstance*>::iterator reference);
+        void addModelInstance(ModelInstance* instance, uint64_t& selfIndex);
+        void removeModelInstance(ModelInstance* instance, uint64_t& reference);
     };
 }

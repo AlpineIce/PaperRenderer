@@ -16,15 +16,26 @@ namespace PaperRenderer
 
     void IndirectDrawContainer::addElement(DrawBufferObject &object)
     {
+        object.selfIndex = drawCallTree[object.parentMesh].size();
         drawCallTree[object.parentMesh].push_back(&object);
-        object.reference = drawCallTree.at(object.parentMesh).end();
-        object.reference--;
     }
 
     void IndirectDrawContainer::removeElement(DrawBufferObject &object)
     {
-        drawCallTree.at(object.parentMesh).erase(object.reference);
-        object.reference = std::list<Renderer::DrawBufferObject*>::iterator();
+        //replace object index with the last element in the vector, change last elements self index to match, remove last element with pop_back()
+        
+
+        if(drawCallTree.at(object.parentMesh).size() > 1)
+        {
+            drawCallTree.at(object.parentMesh).at(object.selfIndex) = drawCallTree.at(object.parentMesh).back();
+            drawCallTree.at(object.parentMesh).at(object.selfIndex)->selfIndex = object.selfIndex;
+            drawCallTree.at(object.parentMesh).pop_back();
+        }
+        else
+        {
+            drawCallTree.at(object.parentMesh).clear();
+        }
+        object.selfIndex = UINT64_MAX;
     }
     
     uint32_t IndirectDrawContainer::getOutputObjectSize(uint32_t currentBufferSize)
@@ -73,43 +84,49 @@ namespace PaperRenderer
         return drawCallTree.size() * sizeof(uint32_t);
     }
 
-    void IndirectDrawContainer::draw(const VkCommandBuffer& cmdBuffer, IndirectRenderingData const* renderData, uint32_t currentFrame)
+    void IndirectDrawContainer::draw(const VkCommandBuffer& cmdBuffer, const IndirectRenderingData& renderData, uint32_t currentFrame)
     {
         uint32_t drawCountIndex = 0;
         for(auto& [mesh, drawBufferObjects] : drawCallTree)
         {
-            VkDescriptorSet objDescriptorSet = descriptorsPtr->allocateDescriptorSet(pipelinePtr->getDescriptorSetLayouts().at(2), currentFrame);
+            //get new descriptor set
+            const uint32_t setNumber = 2;
+            VkDescriptorSet objDescriptorSet = descriptorsPtr->allocateDescriptorSet(pipelinePtr->getDescriptorSetLayouts().at(setNumber), currentFrame);
             
-            descriptorsPtr->writeUniform(
-                renderData->bufferData->getBuffer(),
-                sizeof(ShaderOutputObject) * drawBufferObjects.size(),
-                outputObjectsLocations.at(drawCountIndex),
-                0,
-                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                objDescriptorSet);
-            
-            vkCmdBindDescriptorSets(
-                cmdBuffer,
-                VK_PIPELINE_BIND_POINT_GRAPHICS,
-                pipelinePtr->getLayout(),
-                2, //object bind point
-                1,
-                &objDescriptorSet,
-                0,
-                0);
+            //write uniforms
+            VkDescriptorBufferInfo descriptorInfo = {};
+            descriptorInfo.buffer = renderData.bufferData->getBuffer();
+            descriptorInfo.offset = outputObjectsLocations.at(drawCountIndex);
+            descriptorInfo.range = sizeof(ShaderOutputObject) * drawBufferObjects.size();
+            BuffersDescriptorWrites write = {};
+            write.binding = 0;
+            write.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            write.infos.push_back(descriptorInfo);
+
+            DescriptorWrites descriptorWritesInfo = {};
+            descriptorWritesInfo.bufferWrites = { write };
+            DescriptorAllocator::writeUniforms(devicePtr->getDevice(), objDescriptorSet, descriptorWritesInfo);
+
+            //bind set
+            DescriptorBind bindingInfo = {};
+            bindingInfo.setNumber = setNumber;
+            bindingInfo.set = objDescriptorSet;
+            bindingInfo.layout = pipelinePtr->getLayout();
+            bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            DescriptorAllocator::bindSet(devicePtr->getDevice(), cmdBuffer, bindingInfo);
 
             //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)
             (*(drawBufferObjects.begin()))->parentModel->bindBuffers(cmdBuffer);
-
             vkCmdDrawIndexedIndirectCount(
                 cmdBuffer,
-                renderData->bufferData->getBuffer(),
+                renderData.bufferData->getBuffer(),
                 drawCommandsLocations.at(drawCountIndex),
-                renderData->bufferData->getBuffer(),
+                renderData.bufferData->getBuffer(),
                 drawCountsLocation + drawCountIndex * sizeof(uint32_t),
                 drawBufferObjects.size(),
                 sizeof(ShaderDrawCommand));
 
+            //increment draw count index
             drawCountIndex++;
         }
     }

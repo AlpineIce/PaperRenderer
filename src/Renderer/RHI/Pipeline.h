@@ -48,6 +48,13 @@ namespace PaperRenderer
         uint32_t MAX_RT_RECURSION_DEPTH = 0;
     };
 
+    enum RasterDescriptorScopes
+    {
+        MATERIAL = 0,
+        MATERIAL_INSTANCE = 1,
+        OBJECT = 2
+    };
+
     //Pipeline base class
     class Pipeline
     {

@@ -12,18 +12,18 @@ namespace PaperRenderer
     {
         glm::vec4 frustum; //(left, right, top, bottom)
         glm::vec2 zPlanes; //(near, far)
+        glm::vec2 padding;
     };
 
-    struct CullingInputData
+    struct RasterInputData
     {
         VkDeviceAddress bufferAddress; //used with offsets to make LOD selection possible in a compute shader
-        VkDeviceAddress asInstancesAddress;
+        uint64_t padding;
         glm::vec4 camPos;
         glm::mat4 projection;
         glm::mat4 view;
-        uint32_t objectCount;
-        glm::vec3 padding2;
         CullingFrustum frustumData;
+        uint32_t objectCount;
     };
 
     struct ShaderDrawCommand
@@ -35,12 +35,11 @@ namespace PaperRenderer
     {
         //transformation
         glm::vec4 position;
+        glm::vec4 scale; 
         glm::mat4 rotation; //quat -> mat4... could possibly be a mat3
-        glm::vec4 scale;
-        
         uint32_t lodCount;
         uint32_t lodsOffset;
-        VkDeviceAddress blasReference;
+        glm::vec2 padding;
     };
 
     struct ShaderLOD
@@ -83,31 +82,28 @@ namespace PaperRenderer
         ModelTransform const* objectTransform;
         bool const* isVisible;
         float const* sphericalBounds;
-        std::list<DrawBufferObject*>::iterator reference;
+        uint64_t selfIndex;
     };
     
     struct IndirectRenderingData
     {
-        uint32_t lightsOffset;
-        uint32_t lightCount;
         uint32_t objectCount;
-        VkBufferCopy fragmentInputRegion;
         VkBufferCopy LODOffsetsRegion;
         VkBufferCopy meshLODOffsetsRegion;
         VkBufferCopy meshDrawCountsRegion;
         VkBufferCopy meshDrawCommandsRegion;
         VkBufferCopy meshOutputObjectsRegion;
         VkBufferCopy inputObjectsRegion;
-        VkBufferCopy modelLODsRegion;
 
         std::vector<char> stagingData;
+        std::unique_ptr<PaperMemory::DeviceAllocation> bufferAllocation;
         std::unique_ptr<PaperMemory::Buffer> bufferData; //THE UBER-BUFFER
     };
 
     class IndirectDrawContainer
     {
     private:
-        std::unordered_map<LODMesh*, std::list<DrawBufferObject*>> drawCallTree;
+        std::unordered_map<LODMesh*, std::vector<DrawBufferObject*>> drawCallTree;
         std::vector<uint32_t> outputObjectsLocations;
         std::vector<uint32_t> drawCommandsLocations;
         uint32_t drawCountsLocation;
@@ -127,7 +123,7 @@ namespace PaperRenderer
         uint32_t getDrawCommandsSize(uint32_t currentBufferSize);
         uint32_t getDrawCountsSize(uint32_t currentBufferSize);
 
-        void draw(const VkCommandBuffer& cmdBuffer, IndirectRenderingData const* renderData, uint32_t currentFrame);
-        const std::unordered_map<LODMesh*, std::list<DrawBufferObject*>>& getDrawCallTree() const { return drawCallTree; }
+        void draw(const VkCommandBuffer& cmdBuffer, const IndirectRenderingData& renderData, uint32_t currentFrame);
+        const std::unordered_map<LODMesh*, std::vector<DrawBufferObject*>>& getDrawCallTree() const { return drawCallTree; }
     };
 }

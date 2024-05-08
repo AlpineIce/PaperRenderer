@@ -34,9 +34,9 @@ namespace PaperRenderer
         struct SynchronizationInfo
         {
             VkQueue queue;
-            std::vector<SemaphorePair> waitPairs;
-            std::vector<SemaphorePair> signalPairs;
-            VkFence fence;
+            std::vector<SemaphorePair> waitPairs = {};
+            std::vector<SemaphorePair> signalPairs = {};
+            VkFence fence = VK_NULL_HANDLE;
         };
 
         struct CommandBuffer

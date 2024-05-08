@@ -30,15 +30,27 @@ namespace PaperRenderer
         };
     }
 
-    void Material::updateUniforms(VkCommandBuffer cmdBuffer, DescriptorWrites descriptorWrites, uint32_t currentImage) const
+    void Material::bind(VkCommandBuffer cmdBuffer, uint32_t currentImage) const
     {
-        VkDescriptorSet materialDescriptorSet = rendererInfo.descriptorsPtr->allocateDescriptorSet(descriptorWrites.setLayout, currentImage);
-        DescriptorAllocator::writeUniforms(rendererInfo.devicePtr->getDevice(), materialDescriptorSet, descriptorWrites);
+        vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
+        if(descriptorWrites.bufferViewWrites.size() || descriptorWrites.bufferWrites.size() || descriptorWrites.imageWrites.size())
+        {
+            VkDescriptorSet materialDescriptorSet = rendererInfo.descriptorsPtr->allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(RasterDescriptorScopes::MATERIAL), currentImage);
+            DescriptorAllocator::writeUniforms(rendererInfo.devicePtr->getDevice(), materialDescriptorSet, descriptorWrites);
+
+            DescriptorBind bindingInfo = {};
+            bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            bindingInfo.set = materialDescriptorSet;
+            bindingInfo.setNumber = RasterDescriptorScopes::MATERIAL;
+            bindingInfo.layout = rasterPipeline->getLayout();
+            
+            DescriptorAllocator::bindSet(rendererInfo.devicePtr->getDevice(), cmdBuffer, bindingInfo);
+        }
     }
 
     //----------MATERIAL INSTANCE DEFINITIONS----------//
 
-    MaterialInstance::MaterialInstance(Material const* baseMaterial)
+    MaterialInstance::MaterialInstance(Material const *baseMaterial)
         :baseMaterial(baseMaterial)
     {
     }
@@ -47,16 +59,21 @@ namespace PaperRenderer
     {
     }
 
-    void MaterialInstance::bind(const VkCommandBuffer &cmdBuffer, uint32_t currentImage) const
+    void MaterialInstance::bind(VkCommandBuffer cmdBuffer, uint32_t currentImage) const
     {
-        DescriptorWrites descriptorWrites = {};
-        descriptorWrites.setLayout = VK_NULL_HANDLE;
-        bind(cmdBuffer, descriptorWrites, currentImage);
-    }
+        if(descriptorWrites.bufferViewWrites.size() || descriptorWrites.bufferWrites.size() || descriptorWrites.imageWrites.size())
+        {
+            VkDescriptorSet instDescriptorSet = Material::getRendererInfo().descriptorsPtr->allocateDescriptorSet(baseMaterial->getRasterPipeline()->getDescriptorSetLayouts().at(RasterDescriptorScopes::MATERIAL_INSTANCE), currentImage);
+            DescriptorAllocator::writeUniforms(Material::getRendererInfo().devicePtr->getDevice(), instDescriptorSet, descriptorWrites);
 
-    void MaterialInstance::bind(const VkCommandBuffer &cmdBuffer, DescriptorWrites descriptorWrites, uint32_t currentImage) const
-    {
-        baseMaterial->updateUniforms(cmdBuffer, descriptorWrites, currentImage);
+            DescriptorBind bindingInfo = {};
+            bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            bindingInfo.set = instDescriptorSet;
+            bindingInfo.setNumber = RasterDescriptorScopes::MATERIAL_INSTANCE;
+            bindingInfo.layout = baseMaterial->getRasterPipeline()->getLayout();
+            
+            DescriptorAllocator::bindSet(Material::getRendererInfo().devicePtr->getDevice(), cmdBuffer, bindingInfo);
+        }
     }
 
     //----------DEFAULT MATERIAL DEFINITIONS----------//
@@ -173,5 +190,26 @@ namespace PaperRenderer
     DefaultMaterial::~DefaultMaterial()
     {
 
+    }
+
+    void DefaultMaterial::bind(VkCommandBuffer cmdBuffer, uint32_t currentImage)
+    {
+        Material::bind(cmdBuffer, currentImage);
+    }
+
+    DefaultMaterialInstance::DefaultMaterialInstance(Material const* baseMaterial)
+        :MaterialInstance(baseMaterial)
+    {
+
+    }
+
+    DefaultMaterialInstance::~DefaultMaterialInstance()
+    {
+
+    }
+
+    void DefaultMaterialInstance::bind(VkCommandBuffer cmdBuffer, uint32_t currentImage)
+    {
+        MaterialInstance::bind(cmdBuffer, currentImage);
     }
 }

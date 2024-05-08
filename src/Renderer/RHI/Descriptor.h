@@ -31,10 +31,17 @@ namespace PaperRenderer
 
     struct DescriptorWrites
     {
-        VkDescriptorSetLayout setLayout;
-        BuffersDescriptorWrites bufferWrites;
-        ImagesDescriptorWrites imageWrites;
-        BufferViewsDescriptorWrites bufferViewWrites;
+        std::vector<BuffersDescriptorWrites> bufferWrites = std::vector<BuffersDescriptorWrites>();
+        std::vector<ImagesDescriptorWrites> imageWrites = std::vector<ImagesDescriptorWrites>();
+        std::vector<BufferViewsDescriptorWrites> bufferViewWrites = std::vector<BufferViewsDescriptorWrites>();
+    };
+
+    struct DescriptorBind
+    {
+        VkPipelineBindPoint bindingPoint;
+        VkPipelineLayout layout;
+        uint32_t setNumber;
+        VkDescriptorSet set;
     };
 
     //----------DESCRIPTOR ALLOCATOR DECLARATIONS----------//
@@ -54,6 +61,7 @@ namespace PaperRenderer
         ~DescriptorAllocator();
 
         static void writeUniforms(VkDevice device, VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo);
+        static void bindSet(VkDevice device, VkCommandBuffer cmdBuffer, const DescriptorBind& bindingInfo);
 
         VkDescriptorSet allocateDescriptorSet(VkDescriptorSetLayout setLayout, uint32_t frameIndex);
         void refreshPools(uint32_t frameIndex);

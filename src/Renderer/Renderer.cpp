@@ -18,7 +18,8 @@ namespace PaperRenderer
     {
         Material::initRendererInfo(&device, &descriptors, &pipelineBuilder);
 
-        defaultMaterial = std::make_shared<DefaultMaterial>("resources/materials/Default_vert.spv", "resources/materials/Default_frag.spv");
+        defaultMaterial = std::make_unique<DefaultMaterial>("resources/materials/Default_vert.spv", "resources/materials/Default_frag.spv");
+        defaultMaterialInstance = std::make_unique<DefaultMaterialInstance>(defaultMaterial.get());
 
         if(rtEnabled) initRT();
 
@@ -47,7 +48,7 @@ namespace PaperRenderer
         rtAccelStructure.createBottomLevel(bottomData);*/
     }
 
-    void RenderEngine::addObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, std::list<ModelInstance*>::iterator& objectReference)
+    void RenderEngine::addObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, uint64_t& selfIndex)
     {
         if(object.getModelPtr() != NULL)
         {
@@ -63,11 +64,12 @@ namespace PaperRenderer
 
                         if(lod.materials.count(matSlot))
                         {
-                            materialInstance = (MaterialInstance const*)lod.materials.at(matSlot);
+                            materialInstance = lod.materials.at(matSlot);
                         }
                         else //use default material if one isnt selected
                         {
-                            materialInstance = &(defaultMaterial->getDefaultInstance());
+                            materialInstance = defaultMaterialInstance.get();
+                            lod.materials[matSlot] = materialInstance;
                         }
 
                         //pointers to object data
@@ -81,28 +83,28 @@ namespace PaperRenderer
                         };
 
                         //check if drawing class thing has been created
-                        if(!renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer)
+                        if(!renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance].objectBuffer)
                         {
-                            renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer = 
-                                std::make_shared<IndirectDrawContainer>(&device, &descriptors, materialInstance->parentMaterial->getRasterPipeline());
+                            renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance].objectBuffer = 
+                                std::make_unique<IndirectDrawContainer>(&device, &descriptors, materialInstance->getBaseMaterialPtr()->getRasterPipeline());
                         }
 
                         //add reference
-                        renderTree[(Material*)materialInstance->parentMaterial].instances[materialInstance].objectBuffer->addElement(meshReferences.at(lodIndex).at(meshIndex));
+                        renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance].objectBuffer->addElement(meshReferences.at(lodIndex).at(meshIndex));
 
                         meshIndex++;
                     }
                 }
                 lodIndex++;
             }
-            rendering.addModelInstance(&object);
+            rendering.addModelInstance(&object, selfIndex);
         }
     }
 
-    void RenderEngine::removeObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, std::list<ModelInstance*>::iterator& objectReference)
+    void RenderEngine::removeObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, uint64_t& selfIndex)
     {
         uint32_t lodIndex = 0;
-        for(const Renderer::LOD& lod : object.getModelPtr()->getLODs()) //iterate LODs
+        for(const LOD& lod : object.getModelPtr()->getLODs()) //iterate LODs
         {
             for(const auto [matSlot, meshes] : lod.meshes) //iterate materials in LOD
             {
@@ -111,26 +113,15 @@ namespace PaperRenderer
                 {
                     if(meshReferences.at(lodIndex).count(meshIndex))
                     {
-                        MaterialInstance const* materialInstance = (MaterialInstance const*)lod.materials.at(matSlot);
-                        renderTree.at((Material*)materialInstance->parentMaterial).instances.at(materialInstance).objectBuffer->removeElement(meshReferences.at(lodIndex).at(meshIndex));
+                        MaterialInstance const* materialInstance = lod.materials.at(matSlot);
+                        renderTree.at((Material*)materialInstance->getBaseMaterialPtr()).instances.at(materialInstance).objectBuffer->removeElement(meshReferences.at(lodIndex).at(meshIndex));
                     }
                     meshIndex++;
                 }
             }
             lodIndex++;
         }
-        rendering.removeModelInstance(objectReference);
-    }
-
-    void RenderEngine::addPointLight(PointLightObject& light)
-    {
-        lightingInfo.pointLights.push_back(&light.light);
-        light.lightReference = lightingInfo.pointLights.end()--;
-    }
-
-    void RenderEngine::removePointLight(PointLightObject& light)
-    {
-        lightingInfo.pointLights.erase(light.lightReference);
+        rendering.removeModelInstance(&object, selfIndex);
     }
 
     void RenderEngine::setCamera(Camera *camera)
@@ -141,7 +132,7 @@ namespace PaperRenderer
     void RenderEngine::drawAllReferences()
     {
         //start command buffer and bind pipeline
-        rendering.drawAll(renderTree, lightingInfo);
+        rendering.rasterOrTrace(!rtEnabled, renderTree);
 
         //RT pass
         /*if(rtEnabled)

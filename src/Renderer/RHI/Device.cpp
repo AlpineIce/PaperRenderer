@@ -17,6 +17,7 @@ namespace PaperRenderer
 
     Device::~Device()
     {
+        commands.reset();
         vkDestroyDevice(device, nullptr);
         vkDestroyInstance(instance, nullptr);
     }

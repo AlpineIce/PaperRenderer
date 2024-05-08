@@ -8,6 +8,16 @@ namespace PaperRenderer
     class Model; //forward declaration
     class ModelInstance; //forward declaration
 
+    struct RTInputData
+    {
+        
+    };
+    
+    struct ShaderTLASInstance
+    {
+
+    };
+
     struct BottomStructure
     {
         VkAccelerationStructureKHR structure;
@@ -17,10 +27,11 @@ namespace PaperRenderer
     class AccelerationStructure
     {
     private:
-        std::vector<std::unique_ptr<PaperMemory::DeviceAllocation>> ASBuffersAllocation; //one shared allocation for all buffers in the AS
+        std::vector<std::unique_ptr<PaperMemory::DeviceAllocation>> ASAllocations0; //one shared allocation for the BL and TL instances
         std::vector<std::unique_ptr<PaperMemory::Buffer>> BLBuffers;
         std::vector<std::unique_ptr<PaperMemory::Buffer>> BLScratchBuffers;
         std::vector<std::unique_ptr<PaperMemory::Buffer>> TLInstancesBuffers;
+        std::vector<std::unique_ptr<PaperMemory::DeviceAllocation>> ASAllocations1; //one shared allocation for the TL
         std::vector<std::unique_ptr<PaperMemory::Buffer>> TLBuffers;
         std::vector<std::unique_ptr<PaperMemory::Buffer>> TLScratchBuffers;
 
@@ -47,6 +58,9 @@ namespace PaperRenderer
 
         Device* devicePtr;
 
+        void verifyBufferSizes(const std::unordered_map<Model*, std::vector<ModelInstance*>> &modelInstances, uint32_t currentFrame);
+        void rebuildAllocations0(uint32_t currentFrame);
+        void rebuildAllocations1(uint32_t currentFrame);
         PaperMemory::CommandBuffer createBottomLevel(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
         PaperMemory::CommandBuffer createTopLevel(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
 
@@ -54,10 +68,10 @@ namespace PaperRenderer
         AccelerationStructure(Device* device);
         ~AccelerationStructure();
 
-        void verifyBufferSizes(const std::unordered_map<Model*, std::list<ModelInstance*>> &modelInstances, uint32_t currentFrame);
-        PaperMemory::CommandBuffer updateBLAS(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
+        PaperMemory::CommandBuffer updateBLAS(const std::unordered_map<Model*, std::vector<ModelInstance*>> &modelInstances, const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
         PaperMemory::CommandBuffer updateTLAS(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
 
         const std::unordered_map<Model const*, BottomStructure>& getBottomStructures() const { return bottomStructures; }
+        VkDeviceAddress getTLASInstancesBufferAddress(uint32_t currentFrame) const;
     };
 }

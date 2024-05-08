@@ -87,58 +87,80 @@ namespace PaperRenderer
         //3 different writes for 3 different types
         std::vector<VkWriteDescriptorSet> descriptorWrites;
 
-        if(descriptorWritesInfo.bufferWrites.infos.size())
+        for(const BuffersDescriptorWrites& write : descriptorWritesInfo.bufferWrites)
         {
-            VkWriteDescriptorSet writeInfo = {};
-            writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            writeInfo.dstSet = set;
-            writeInfo.dstBinding = descriptorWritesInfo.bufferWrites.binding;
-            writeInfo.dstArrayElement = 0;
-            writeInfo.descriptorType = descriptorWritesInfo.bufferWrites.type;
-            writeInfo.descriptorCount = descriptorWritesInfo.bufferWrites.infos.size();
-            writeInfo.pBufferInfo = descriptorWritesInfo.bufferWrites.infos.data();
-            writeInfo.pImageInfo = NULL;
-            writeInfo.pTexelBufferView = NULL;
+            if(write.infos.size())
+            {
+                VkWriteDescriptorSet writeInfo = {};
+                writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writeInfo.dstSet = set;
+                writeInfo.dstBinding = write.binding;
+                writeInfo.dstArrayElement = 0;
+                writeInfo.descriptorType = write.type;
+                writeInfo.descriptorCount = write.infos.size();
+                writeInfo.pBufferInfo = write.infos.data();
+                writeInfo.pImageInfo = NULL;
+                writeInfo.pTexelBufferView = NULL;
 
-            descriptorWrites.push_back(writeInfo);
+                descriptorWrites.push_back(writeInfo);
+            }
         }
 
-        if(descriptorWritesInfo.imageWrites.infos.size())
+        for(const ImagesDescriptorWrites& write : descriptorWritesInfo.imageWrites)
         {
-            VkWriteDescriptorSet writeInfo = {};
-            writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            writeInfo.dstSet = set;
-            writeInfo.dstBinding = descriptorWritesInfo.imageWrites.binding;
-            writeInfo.dstArrayElement = 0;
-            writeInfo.descriptorType = descriptorWritesInfo.imageWrites.type;
-            writeInfo.descriptorCount = descriptorWritesInfo.imageWrites.infos.size();
-            writeInfo.pBufferInfo = NULL;
-            writeInfo.pImageInfo = descriptorWritesInfo.imageWrites.infos.data();
-            writeInfo.pTexelBufferView = NULL;
+            if(write.infos.size())
+            {
+                VkWriteDescriptorSet writeInfo = {};
+                writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writeInfo.dstSet = set;
+                writeInfo.dstBinding = write.binding;
+                writeInfo.dstArrayElement = 0;
+                writeInfo.descriptorType = write.type;
+                writeInfo.descriptorCount = write.infos.size();
+                writeInfo.pBufferInfo = NULL;
+                writeInfo.pImageInfo = write.infos.data();
+                writeInfo.pTexelBufferView = NULL;
 
-            descriptorWrites.push_back(writeInfo);
+                descriptorWrites.push_back(writeInfo);
+            }
         }
         
-        if(descriptorWritesInfo.bufferViewWrites.infos.size())
+        for(const BufferViewsDescriptorWrites& write : descriptorWritesInfo.bufferViewWrites)
         {
-            VkWriteDescriptorSet writeInfo = {};
-            writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            writeInfo.dstSet = set;
-            writeInfo.dstBinding = descriptorWritesInfo.bufferViewWrites.binding;
-            writeInfo.dstArrayElement = 0;
-            writeInfo.descriptorType = descriptorWritesInfo.bufferViewWrites.type;
-            writeInfo.descriptorCount = descriptorWritesInfo.bufferViewWrites.infos.size();
-            writeInfo.pBufferInfo = NULL;
-            writeInfo.pImageInfo = NULL;
-            writeInfo.pTexelBufferView = descriptorWritesInfo.bufferViewWrites.infos.data();
+            if(write.infos.size())
+            {
+                VkWriteDescriptorSet writeInfo = {};
+                writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writeInfo.dstSet = set;
+                writeInfo.dstBinding = write.binding;
+                writeInfo.dstArrayElement = 0;
+                writeInfo.descriptorType = write.type;
+                writeInfo.descriptorCount = write.infos.size();
+                writeInfo.pBufferInfo = NULL;
+                writeInfo.pImageInfo = NULL;
+                writeInfo.pTexelBufferView = write.infos.data();
 
-            descriptorWrites.push_back(writeInfo);
+                descriptorWrites.push_back(writeInfo);
+            }
         }
-
+        
         if(descriptorWrites.size()) //valid usage per spec, encouraging runtime safety
         {
             vkUpdateDescriptorSets(device, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
         }
+    }
+
+    void DescriptorAllocator::bindSet(VkDevice device, VkCommandBuffer cmdBuffer, const DescriptorBind& bindingInfo)
+    {
+        vkCmdBindDescriptorSets(
+            cmdBuffer,
+            bindingInfo.bindingPoint,
+            bindingInfo.layout,
+            bindingInfo.setNumber,
+            1,
+            &bindingInfo.set,
+            0,
+            NULL);
     }
 
     void DescriptorAllocator::refreshPools(uint32_t frameIndex)

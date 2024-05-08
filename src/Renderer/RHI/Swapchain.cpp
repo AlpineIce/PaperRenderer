@@ -233,7 +233,10 @@ namespace PaperRenderer
         //assign allocation and create image views
         for(int i = 0; i < imageCount; i++)
         {
-            depthBufferImages.at(i)->assignAllocation(depthBuffersAllocation.get());
+            if(depthBufferImages.at(i)->assignAllocation(depthBuffersAllocation.get()) != 0)
+            {
+                throw std::runtime_error("Depth buffer allocation assignment failed");
+            };
             depthBufferViews.at(i) = PaperMemory::Image::getNewImageView(*depthBufferImages.at(i), devicePtr->getDevice(), VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_VIEW_TYPE_2D, depthBufferFormat);
         }
 

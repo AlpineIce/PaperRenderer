@@ -12,7 +12,8 @@ namespace PaperRenderer
         struct DeviceAllocationInfo
         {
             VkDeviceSize allocationSize = 0;
-            VkMemoryPropertyFlagBits memoryProperties;
+            VkMemoryPropertyFlags memoryProperties;
+            VkMemoryAllocateFlags allocFlags;
         };
 
         //return struct for binding functions
@@ -40,15 +41,17 @@ namespace PaperRenderer
             VkPhysicalDevice gpu;
 
             //check if a new binding will "overflow" from the allocation. returns true if there is suitable available memory
-            bool verifyAvaliableMemory(VkDeviceSize bindSize);
+            bool verifyAvaliableMemory(VkDeviceSize bindSize, VkDeviceSize alignment);
 
         public:
-            DeviceAllocation(VkDevice device, VkPhysicalDevice gpu, DeviceAllocationInfo allocationInfo);
+            DeviceAllocation(VkDevice device, VkPhysicalDevice gpu, const DeviceAllocationInfo& allocationInfo);
             ~DeviceAllocation();
+
+            static VkDeviceSize padToMultiple(VkDeviceSize startingSize, VkDeviceSize multiple);
 
             ResourceBindingInfo bindBuffer(VkBuffer buffer, VkMemoryRequirements memoryRequirements);
             ResourceBindingInfo bindImage(VkImage image, VkMemoryRequirements memoryRequirements);
-
+            
             const VkDeviceMemory& getAllocation() const { return allocation; }
             const VkMemoryType& getMemoryType() const { return memoryType; }
 
