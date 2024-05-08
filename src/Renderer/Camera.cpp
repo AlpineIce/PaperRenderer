@@ -33,14 +33,13 @@ namespace PaperRenderer
 
     void Camera::updateCameraView(const CameraTranslation& newTranslation)
     {
-        
         this->translation = newTranslation;
         up = glm::vec3(0.0f, 1.0f, 0.0f);
-        right = glm::vec3(1.0f, 0.0f, 0.0f);
+        right = glm::vec3(-1.0f, 0.0f, 0.0f);
         forward = glm::vec3(0.0f, 0.0f, 1.0f);
 
         //kinda from stack overflow ngl
-        glm::quat qPitch = glm::angleAxis(glm::radians(translation.pitch), -right);
+        glm::quat qPitch = glm::angleAxis(glm::radians(translation.pitch), right);
         glm::quat qYaw = glm::angleAxis(glm::radians(translation.yaw), up);
         //glm::quat qRoll = glm::angleAxis(glm::radians(0.0f), forward);
 
@@ -50,7 +49,7 @@ namespace PaperRenderer
         glm::mat4 mTranslation = glm::mat4(1.0f);
 
         mTranslation = glm::translate(mTranslation, -translation.position);
-
-        view = mRotation * mTranslation;
+        mTranslation = glm::scale(mTranslation, glm::vec3(-1.0f, 1.0f, 1.0f));
+        view = mRotation * glm::rotate(mTranslation, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)); //make it z up (lmao i suck at linear algebruh)
     }
 }
