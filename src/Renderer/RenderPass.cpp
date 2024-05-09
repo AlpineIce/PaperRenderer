@@ -20,6 +20,7 @@ namespace PaperRenderer
         //synchronization objects
         imageSemaphores.resize(PaperMemory::Commands::getFrameCount());
         bufferCopySemaphores.resize(PaperMemory::Commands::getFrameCount());
+        bufferCopyFences.resize(PaperMemory::Commands::getFrameCount());
         BLASBuildSemaphores.resize(PaperMemory::Commands::getFrameCount());
         TLASBuildSemaphores.resize(PaperMemory::Commands::getFrameCount());
         rasterPreprocessSemaphores.resize(PaperMemory::Commands::getFrameCount());
@@ -37,6 +38,7 @@ namespace PaperRenderer
             //synchronization stuff
             imageSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
             bufferCopySemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
+            bufferCopyFences.at(i) = PaperMemory::Commands::getSignaledFence(devicePtr->getDevice());
             TLASBuildSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
             TLASBuildSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
             rasterPreprocessSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
@@ -132,6 +134,7 @@ namespace PaperRenderer
         {
             vkDestroySemaphore(devicePtr->getDevice(), imageSemaphores.at(i), nullptr);
             vkDestroySemaphore(devicePtr->getDevice(), bufferCopySemaphores.at(i), nullptr);
+            vkDestroyFence(devicePtr->getDevice(), bufferCopyFences.at(i), nullptr);
             vkDestroySemaphore(devicePtr->getDevice(), BLASBuildSemaphores.at(i), nullptr);
             vkDestroySemaphore(devicePtr->getDevice(), TLASBuildSemaphores.at(i), nullptr);
             vkDestroySemaphore(devicePtr->getDevice(), rasterPreprocessSemaphores.at(i), nullptr);
@@ -156,10 +159,10 @@ namespace PaperRenderer
 		glm::vec4 frustumY = normalizePlane(projectionT[3] + projectionT[1]);
 
         CullingFrustum frustum;
-        frustum.frustum[0] = frustumX.x;
-		frustum.frustum[1] = frustumX.z;
-		frustum.frustum[2] = frustumY.y;
-		frustum.frustum[3] = frustumY.z;
+        frustum.frustum.x = frustumX.x;
+		frustum.frustum.y = frustumX.z;
+		frustum.frustum.z = frustumY.y;
+		frustum.frustum.w = frustumY.z;
         frustum.zPlanes = glm::vec2(cameraPtr->getClipNear(), cameraPtr->getClipFar());
         
         return frustum;
@@ -359,6 +362,13 @@ namespace PaperRenderer
 
             rebuildRenderDataAllocation(currentImage); //function also assigns allocation to buffer
         }
+
+        //wait for fences
+        std::vector<VkFence> waitFences = {
+            bufferCopyFences.at(currentImage) //wait for raster to finish
+        };
+        vkWaitForFences(devicePtr->getDevice(), waitFences.size(), waitFences.data(), VK_TRUE, 3000000000);
+        vkResetFences(devicePtr->getDevice(), waitFences.size(), waitFences.data());
         
         //copy to dedicated buffer
         std::vector<VkBufferCopy> copyRegions = {
@@ -371,7 +381,7 @@ namespace PaperRenderer
         syncInfo.queue = devicePtr->getQueues().transfer.at(0);
         syncInfo.waitPairs = {};
         syncInfo.signalPairs = { { bufferCopySemaphores.at(currentImage), VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT } };
-        syncInfo.fence = VK_NULL_HANDLE;
+        syncInfo.fence = bufferCopyFences.at(currentImage);
         usedCmdBuffers.at(currentImage).push_back(renderingData.at(currentImage).bufferData->copyFromBufferRanges(*newDataStagingBuffers.at(currentImage), devicePtr->getQueueFamilies().transferFamilyIndex, copyRegions, syncInfo));
     }
 
@@ -383,6 +393,16 @@ namespace PaperRenderer
         };
         vkWaitForFences(devicePtr->getDevice(), waitFences.size(), waitFences.data(), VK_TRUE, 3000000000); //i give up on fixing the resize deadlock
         vkResetFences(devicePtr->getDevice(), waitFences.size(), waitFences.data());
+
+        //get available image
+        if(vkAcquireNextImageKHR(devicePtr->getDevice(),
+            *(swapchainPtr->getSwapchainPtr()),
+            UINT64_MAX,
+            imageSemaphores.at(currentImage),
+            VK_NULL_HANDLE, &currentImage) == VK_ERROR_OUT_OF_DATE_KHR)
+        {
+            recreateFlag = true;
+        }
 
         //free command buffers and reset descriptor pool
         for(PaperMemory::CommandBuffer& buffer : usedCmdBuffers.at(currentImage))
@@ -490,6 +510,16 @@ namespace PaperRenderer
         };
         vkWaitForFences(devicePtr->getDevice(), BLASWaitFences.size(), BLASWaitFences.data(), VK_TRUE, 3000000000);
         vkResetFences(devicePtr->getDevice(), BLASWaitFences.size(), BLASWaitFences.data());
+
+        //get available image
+        if(vkAcquireNextImageKHR(devicePtr->getDevice(),
+            *(swapchainPtr->getSwapchainPtr()),
+            UINT64_MAX,
+            imageSemaphores.at(currentImage),
+            VK_NULL_HANDLE, &currentImage) == VK_ERROR_OUT_OF_DATE_KHR)
+        {
+            recreateFlag = true;
+        }
 
         //free command buffers and reset descriptor pool
         for(PaperMemory::CommandBuffer& buffer : usedCmdBuffers.at(currentImage))
@@ -702,28 +732,8 @@ namespace PaperRenderer
 
     //----------OBJECT ADD/REMOVE FUNCTIONS----------//
 
-    void RenderPass::frameBegin(const std::unordered_map<Material *, MaterialNode> &renderTree)
-    {
-        //----------STAGING DATA PROCESSING----------//
-
-        //uint32_t oldSize = renderingData.at(currentImage).stagingData.size();
-        //setStagingData(renderTree);
-
-        //get available image
-        if(vkAcquireNextImageKHR(devicePtr->getDevice(),
-            *(swapchainPtr->getSwapchainPtr()),
-            UINT64_MAX,
-            imageSemaphores.at(currentImage),
-            VK_NULL_HANDLE, &currentImage) == VK_ERROR_OUT_OF_DATE_KHR)
-        {
-            recreateFlag = true;
-        }
-    }
-
     void RenderPass::rasterOrTrace(bool shouldRaster, const std::unordered_map<Material *, MaterialNode> &renderTree)
     {
-        frameBegin(renderTree);
-
         if(shouldRaster) //do raster, dont use ray tracing
         {
             rasterPreProcess(renderTree);

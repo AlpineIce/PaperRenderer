@@ -35,6 +35,7 @@ namespace PaperRenderer
         //synchronization and commands
         std::vector<VkSemaphore> imageSemaphores;
         std::vector<VkSemaphore> bufferCopySemaphores;
+        std::vector<VkFence> bufferCopyFences;
         std::vector<VkSemaphore> BLASBuildSemaphores;
         std::vector<VkSemaphore> TLASBuildSemaphores;
         std::vector<VkSemaphore> rasterPreprocessSemaphores;
@@ -52,9 +53,7 @@ namespace PaperRenderer
 
         //device local rendering buffer and misc data
         std::vector<IndirectRenderingData> renderingData; //includes its own device local allocation, but needs staging allocation for access
-        
         std::unordered_map<Model*, std::vector<ModelInstance*>> renderingModels;
-
         std::unique_ptr<ComputePipeline> meshPreprocessPipeline;
         
         AccelerationStructure rtAccelStructure;
@@ -73,7 +72,6 @@ namespace PaperRenderer
         void rebuildRenderDataAllocation(uint32_t currentFrame);
         
         //frame rendering functions
-        void frameBegin(const std::unordered_map<Material *, MaterialNode> &renderTree);
         void raster(const std::unordered_map<Material*, MaterialNode>& renderTree);
         void setRasterStagingData(const std::unordered_map<Material*, MaterialNode>& renderTree);
         void setRTStagingData(const std::unordered_map<Material*, MaterialNode>& renderTree);
