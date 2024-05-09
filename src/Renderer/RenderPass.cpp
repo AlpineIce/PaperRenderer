@@ -72,6 +72,25 @@ namespace PaperRenderer
 
             //dedicated allocation for rendering data
             rebuildRenderDataAllocation(i);
+
+            //create staging buffers
+            PaperMemory::BufferInfo newDataStagingBufferInfo = {};
+            newDataStagingBufferInfo.queueFamilyIndices = {}; //only uses transfer
+            newDataStagingBufferInfo.size = 256;
+            newDataStagingBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+            newDataStagingBuffers.at(i) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), newDataStagingBufferInfo);
+
+            //create staging allocations
+            PaperMemory::DeviceAllocationInfo stagingAllocationInfo = {};
+            stagingAllocationInfo.allocationSize = newDataStagingBuffers.at(i)->getMemoryRequirements().size;
+            stagingAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+            stagingAllocations.at(i) = std::make_unique<PaperMemory::DeviceAllocation>(devicePtr->getDevice(), devicePtr->getGPU(), stagingAllocationInfo);
+
+            //assign allocation
+            if(newDataStagingBuffers.at(i)->assignAllocation(stagingAllocations.at(i).get()) != 0)
+            {
+                throw std::runtime_error("Failed to assign allocation to staging buffer for rendering data");
+            }
         }
 
         //----------PREPROCESS PIPELINE----------//
@@ -267,11 +286,13 @@ namespace PaperRenderer
             for(ModelInstance* inputObject : instances)
             {
                 ShaderInputObject shaderInputObject;
-                shaderInputObject.position = glm::vec4(inputObject->getTransformation().position, inputObject->getModelPtr()->getSphericalBounds());
+                shaderInputObject.position = glm::vec4(inputObject->getTransformation().position, 0.0f);
                 shaderInputObject.rotation = glm::mat4_cast(inputObject->getTransformation().rotation);
                 shaderInputObject.scale = glm::vec4(inputObject->getTransformation().scale, 0.0f);
+                shaderInputObject.bounds = inputObject->getModelPtr()->getOBB();
                 shaderInputObject.lodCount = inputObject->getModelPtr()->getLODs().size();
                 shaderInputObject.lodsOffset = model->getLODDataOffset();
+
                 shaderInputObjects.push_back(shaderInputObject);
             }
         }
@@ -290,23 +311,28 @@ namespace PaperRenderer
 
     void RenderPass::copyStagingData()
     {
-        //create staging buffer
-        PaperMemory::BufferInfo newDataStagingBufferInfo = {};
-        newDataStagingBufferInfo.queueFamilyIndices = {}; //only uses transfer
-        newDataStagingBufferInfo.size = renderingData.at(currentImage).stagingData.size();
-        newDataStagingBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        newDataStagingBuffers.at(currentImage) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), newDataStagingBufferInfo);
 
-        //create staging allocation
-        PaperMemory::DeviceAllocationInfo stagingAllocationInfo = {};
-        stagingAllocationInfo.allocationSize = newDataStagingBuffers.at(currentImage)->getMemoryRequirements().size;
-        stagingAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-        stagingAllocations.at(currentImage) = std::make_unique<PaperMemory::DeviceAllocation>(devicePtr->getDevice(), devicePtr->getGPU(), stagingAllocationInfo);
-
-        //assign allocation
-        if(newDataStagingBuffers.at(currentImage)->assignAllocation(stagingAllocations.at(currentImage).get()) != 0)
+        //check if staging buffer and allocation need to be recreated
+        if(renderingData.at(currentImage).stagingData.size() > newDataStagingBuffers.at(currentImage)->getSize())
         {
-            throw std::runtime_error("Failed to assign allocation to staging buffer for rendering data");
+            //create staging buffer
+            PaperMemory::BufferInfo newDataStagingBufferInfo = {};
+            newDataStagingBufferInfo.queueFamilyIndices = {}; //only uses transfer
+            newDataStagingBufferInfo.size = renderingData.at(currentImage).stagingData.size() * 1.2; //20% overhead
+            newDataStagingBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+            newDataStagingBuffers.at(currentImage) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), newDataStagingBufferInfo);
+
+            //create staging allocation
+            PaperMemory::DeviceAllocationInfo stagingAllocationInfo = {};
+            stagingAllocationInfo.allocationSize = newDataStagingBuffers.at(currentImage)->getMemoryRequirements().size;
+            stagingAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+            stagingAllocations.at(currentImage) = std::make_unique<PaperMemory::DeviceAllocation>(devicePtr->getDevice(), devicePtr->getGPU(), stagingAllocationInfo);
+
+            //assign allocation
+            if(newDataStagingBuffers.at(currentImage)->assignAllocation(stagingAllocations.at(currentImage).get()) != 0)
+            {
+                throw std::runtime_error("Failed to assign allocation to staging buffer for rendering data");
+            }
         }
 
         //write data
@@ -700,14 +726,12 @@ namespace PaperRenderer
 
         if(shouldRaster) //do raster, dont use ray tracing
         {
-            setRasterStagingData(renderTree);
             rasterPreProcess(renderTree);
             raster(renderTree);
             frameEnd(renderSemaphores.at(currentImage)); //end with raster semaphore
         }
         else //do ray tracing, no raster
         {
-            setRTStagingData(renderTree);
             rayTracePreProcess(renderTree);
             frameEnd(TLASBuildSemaphores.at(currentImage)); //end with RT semaphore
         }

@@ -31,15 +31,25 @@ namespace PaperRenderer
         VkDrawIndexedIndirectCommand command;
     };
 
+    struct ModelOBB
+    {
+        float posX = 0.0f;
+        float negX = 0.0f;
+        float posY = 0.0f;
+        float negY = 0.0f;
+        float posZ = 0.0f;
+        float negZ = 0.0f;
+    };
+
     struct ShaderInputObject
     {
         //transformation
         glm::vec4 position;
         glm::vec4 scale; 
         glm::mat4 rotation; //quat -> mat4... could possibly be a mat3
+        ModelOBB bounds;
         uint32_t lodCount;
         uint32_t lodsOffset;
-        glm::vec2 padding;
     };
 
     struct ShaderLOD
@@ -81,7 +91,6 @@ namespace PaperRenderer
         class Model const* parentModel; //forward declaration of parent model used for vbo/ibo binding (too lazy to figure out function pointers)
         ModelTransform const* objectTransform;
         bool const* isVisible;
-        float const* sphericalBounds;
         uint64_t selfIndex;
     };
     

@@ -7,7 +7,8 @@ namespace PaperRenderer
 
     Model::Model(RenderEngine *renderer, PaperMemory::DeviceAllocation *allocation, const ModelCreateInfo &creationInfo)
         :rendererPtr(renderer),
-        allocationPtr(allocation)
+        allocationPtr(allocation),
+		OBB(creationInfo.OBB)
     {
 		//temporary variables for creating the singular vertex and index buffer
 		std::vector<PaperMemory::Vertex> creationVertices;

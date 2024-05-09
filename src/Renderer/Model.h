@@ -13,11 +13,13 @@ namespace PaperRenderer
     {
         std::vector<PaperMemory::Vertex> vertices;
         std::vector<uint32_t> indices;
+        ModelOBB meshOBB;
         uint32_t materialIndex;
     };
 
     struct ModelCreateInfo
     {
+        ModelOBB OBB; //should be calculated by the model loading solution; "furthest" vertex in each axis
         std::vector<std::unordered_map<uint32_t, std::vector<MeshInfo>>> LODs; //material index/slot, material associated meshes
     };
 
@@ -38,7 +40,7 @@ namespace PaperRenderer
         std::vector<LOD> LODs;
         std::unique_ptr<PaperMemory::Buffer> vbo;
         std::unique_ptr<PaperMemory::Buffer> ibo;
-        float sphericalBounds = 0.0f; //calculated as largest possible LOD size in constructor
+        ModelOBB OBB;
         uint32_t LODDataOffset;
         uint32_t bufferMeshLODsOffset;
 
@@ -53,7 +55,7 @@ namespace PaperRenderer
 
         std::vector<LOD>& getLODs() { return LODs; }
         void bindBuffers(const VkCommandBuffer& cmdBuffer) const;
-        const float& getSphericalBounds() const { return sphericalBounds; }
+        const ModelOBB& getOBB() const { return OBB; }
 
         //mutable functions used in render loop
         std::vector<ShaderLOD> getLODData(uint32_t currentBufferSize);
@@ -75,7 +77,6 @@ namespace PaperRenderer
         ModelTransform transformation = ModelTransform();
         std::vector<std::unordered_map<uint32_t, MaterialInstance const*>> materials;
         bool isVisible = true;
-
         class RenderEngine* rendererPtr;
         Model* modelPtr = NULL;
         

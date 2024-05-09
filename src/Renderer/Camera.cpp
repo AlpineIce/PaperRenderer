@@ -34,22 +34,18 @@ namespace PaperRenderer
     void Camera::updateCameraView(const CameraTranslation& newTranslation)
     {
         this->translation = newTranslation;
-        up = glm::vec3(0.0f, 1.0f, 0.0f);
-        right = glm::vec3(-1.0f, 0.0f, 0.0f);
-        forward = glm::vec3(0.0f, 0.0f, 1.0f);
 
-        //kinda from stack overflow ngl
-        glm::quat qPitch = glm::angleAxis(glm::radians(translation.pitch), right);
-        glm::quat qYaw = glm::angleAxis(glm::radians(translation.yaw), up);
-        //glm::quat qRoll = glm::angleAxis(glm::radians(0.0f), forward);
+        glm::quat yawRot = glm::angleAxis(glm::radians(newTranslation.yaw), glm::vec3(0.0f, 0.0f, -1.0f));
+        glm::quat pitchRot = glm::angleAxis(glm::radians(newTranslation.pitch - 90.0f), glm::vec3(-1.0f, 0.0f, 0.0f));
+        glm::quat qRotation =  pitchRot * yawRot;
 
-        this->translation.qRotation = qPitch * qYaw;// * qRoll; 
+        glm::quat zUpPitchRot = glm::angleAxis(glm::radians(newTranslation.pitch), glm::vec3(-1.0f, 0.0f, 0.0f));
+        this->translation.qRotation = zUpPitchRot * yawRot;
 
-        glm::mat4 mRotation = glm::mat4_cast(glm::normalize(this->translation.qRotation));
+        glm::mat4 mRotation = glm::mat4_cast(qRotation);
         glm::mat4 mTranslation = glm::mat4(1.0f);
 
-        mTranslation = glm::translate(mTranslation, -translation.position);
-        mTranslation = glm::scale(mTranslation, glm::vec3(-1.0f, 1.0f, 1.0f));
-        view = mRotation * glm::rotate(mTranslation, glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f)); //make it z up (lmao i suck at linear algebruh)
+        mTranslation = glm::translate(mTranslation, -newTranslation.position);
+        view = mRotation * mTranslation;
     }
 }

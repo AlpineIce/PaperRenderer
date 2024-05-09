@@ -383,15 +383,9 @@ namespace PaperRenderer
         synchro2.pNext = &drawParamFeatures;
         synchro2.synchronization2 = VK_TRUE;
 
-        VkPhysicalDeviceFeatures2 features2 = {};
-        features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        features2.pNext = &synchro2;
-        
-        vkGetPhysicalDeviceFeatures2(GPU, &features2);
-
         VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationFeatures = {};
         accelerationFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
-        accelerationFeatures.pNext = &features2;
+        accelerationFeatures.pNext = &synchro2;
         accelerationFeatures.accelerationStructure = VK_TRUE;
 
         VkPhysicalDeviceRayTracingPipelineFeaturesKHR  RTfeatures = {};
@@ -404,9 +398,15 @@ namespace PaperRenderer
         dynamicRenderFeatures.pNext = &RTfeatures;
         dynamicRenderFeatures.dynamicRendering = VK_TRUE;
 
+        VkPhysicalDeviceFeatures2 features2 = {};
+        features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        features2.pNext = &dynamicRenderFeatures;
+
+        vkGetPhysicalDeviceFeatures2(GPU, &features2);
+
         VkDeviceCreateInfo deviceCreateInfo = {};
         deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        deviceCreateInfo.pNext = &dynamicRenderFeatures;
+        deviceCreateInfo.pNext = &features2;
         deviceCreateInfo.flags = 0;
         deviceCreateInfo.queueCreateInfoCount = queuesCreationInfo.size();
         deviceCreateInfo.pQueueCreateInfos = queuesCreationInfo.data();

@@ -10,6 +10,7 @@ namespace PaperRenderer
     {
         float pitch = 0.0f;
         float yaw = 0.0f;
+        float roll = 0.0f;
         glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f);
         glm::quat qRotation = glm::quat(glm::mat4(1.0f));
     };

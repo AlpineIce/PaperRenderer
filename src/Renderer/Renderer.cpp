@@ -78,8 +78,7 @@ namespace PaperRenderer
                             .parentLOD = &lod.shaderLOD,
                             .parentModel = object.getModelPtr(),
                             .objectTransform = &object.getTransformation(),
-                            .isVisible = &object.getVisibility(),
-                            .sphericalBounds = &object.getModelPtr()->getSphericalBounds()
+                            .isVisible = &object.getVisibility()
                         };
 
                         //check if drawing class thing has been created

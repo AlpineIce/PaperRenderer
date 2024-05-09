@@ -29,14 +29,24 @@ layout(std430, set = 0, binding = 0) uniform InputData
     
 } inputData;
 
+struct OBB
+{
+    float posX;
+    float negX;
+    float posY;
+    float negY;
+    float posZ;
+    float negZ;
+};
+
 struct InputObject
 {
-    vec4 position; //w hold sphere extent
+    vec4 position; //w as padding
     vec4 scale;
     mat4 rotation;
+    OBB bounds;
     uint lodCount;
     uint lodOffset;
-    vec2 padding;
 };
 
 layout(std430, set = 0, binding = 1) readonly buffer InputObjects
@@ -100,21 +110,35 @@ layout(std430, buffer_reference, buffer_reference_align = 8) writeonly buffer Ou
 
 //----------FUNCTIONS----------//
 
-bool isInBounds(InputObject object)
+bool isInBounds(InputObject object, mat4 modelMatrix)
 {
-    //grab sphere cull data from the object buffer
-	vec4 sphereBounds = object.position;
+    //grab bounding box
+	OBB bounds = object.bounds;
+    
+    //construct 8 vertices
+    vec3 vertices[8];
+    vertices[0] = vec3(bounds.posX, bounds.posY, bounds.posZ);      // + + +
+    vertices[1] = vec3(bounds.posX, bounds.posY, bounds.negZ);      // + + -
+    vertices[2] = vec3(bounds.negX, bounds.posY, bounds.posZ);      // - + +
+    vertices[3] = vec3(bounds.posX, bounds.negY, bounds.posZ);      // + - +
+    vertices[4] = vec3(bounds.posX, bounds.negY, bounds.negZ);      // + - -
+    vertices[5] = vec3(bounds.negX, bounds.posY, bounds.negZ);      // - + -
+    vertices[6] = vec3(bounds.negX, bounds.negY, bounds.posZ);      // - - +
+    vertices[7] = vec3(bounds.negX, bounds.negY, bounds.negZ);      // - - -
+    
 
-	vec3 center = sphereBounds.xyz;
-	center = (inputData.view * vec4(center, 1.0)).xyz;
-	float radius = 0.0;//sphereBounds.w;
+    //check if transformed vertices are inside frustum
+    bool visible = false;
+    for(int i = 0; i < 8; i++)
+    {
+        vertices[i] = (inputData.view * modelMatrix * vec4(vertices[i], 1.0)).xyz;
 
-	bool visible = true;
+        bool vertexVisible = true;
+        vertexVisible = vertexVisible && vertices[i].z * inputData.cullingData.frustum.y - abs(vertices[i].x) * inputData.cullingData.frustum.x > 0.0;
+	    vertexVisible = vertexVisible && vertices[i].z * inputData.cullingData.frustum.w - abs(vertices[i].y) * inputData.cullingData.frustum.z > 0.0;
 
-	//frustrum culling
-	visible = visible && center.z * inputData.cullingData.frustum.y - abs(center.x) * inputData.cullingData.frustum.x > -radius;
-	visible = visible && center.z * inputData.cullingData.frustum.w - abs(center.y) * inputData.cullingData.frustum.z > -radius;
-    //visible = visible && center.z + radius > inputData.zPlanes.x && center.z - radius < inputData.zPlanes.y;
+        visible = visible || vertexVisible;
+    }
 
 	return visible;
 }
@@ -158,7 +182,15 @@ void main()
     }
     InputObject inputObject = inputObjects.objects[gID];
 
-    if(isInBounds(inputObject))
+    //transformation matrix
+    mat4 modelMatrix = mat4(
+        vec4(inputObject.scale.x, 0.0, 0.0, 0.0),
+        vec4(0.0, inputObject.scale.y, 0.0, 0.0),
+        vec4(0.0, 0.0, inputObject.scale.z, 0.0),
+        vec4(inputObject.position.xyz, 1.0));
+    modelMatrix = modelMatrix * inputObject.rotation;
+
+    if(isInBounds(inputObject, modelMatrix))
     {   
         //get LOD
         uint lodLevel = min(getLODLevel(inputObject), inputObject.lodCount - 1);
@@ -179,12 +211,6 @@ void main()
             outputCommands.commands[writeIndex] = buildDrawCommand(meshesArray.meshes[i], writeIndex);
 
             //output objects
-            mat4 modelMatrix = mat4(
-                vec4(inputObject.scale.x, 0.0, 0.0, 0.0),
-                vec4(0.0, inputObject.scale.y, 0.0, 0.0),
-                vec4(0.0, 0.0, inputObject.scale.z, 0.0),
-                vec4(inputObject.position.xyz, 1.0));
-            modelMatrix = modelMatrix * inputObject.rotation; //apply rotation before translation  TODO ROTATION IS BROKEN BECAUSE IM A RETARD WHO DOESNT KNOW LINEAR ALGEBRA
             outputObjects.objects[writeIndex] = buildOutputObject(modelMatrix);
             
         }

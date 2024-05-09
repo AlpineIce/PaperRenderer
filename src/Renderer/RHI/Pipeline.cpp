@@ -210,7 +210,7 @@ namespace PaperRenderer
         rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
         rasterInfo.lineWidth = 1.0f;
         rasterInfo.cullMode = VK_CULL_MODE_BACK_BIT;
-        rasterInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        rasterInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
         rasterInfo.depthBiasEnable = VK_FALSE;
         rasterInfo.depthBiasConstantFactor = 0.0f;
         rasterInfo.depthBiasClamp = 0.0f;
