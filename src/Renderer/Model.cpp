@@ -62,7 +62,7 @@ namespace PaperRenderer
 		PaperMemory::BufferInfo stagingBufferInfo = {};
 		stagingBufferInfo.size = size;
 		stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-		stagingBufferInfo.queueFamilyIndices = { (uint32_t)(rendererPtr->getDevice()->getQueueFamilies().transferFamilyIndex) }; //used for transfer operation only
+		stagingBufferInfo.queueFamilyIndices = { rendererPtr->getDevice()->getQueues().at(PaperMemory::QueueType::TRANSFER).queueFamilyIndex }; //used for transfer operation only
 		PaperMemory::Buffer vboStaging(rendererPtr->getDevice()->getDevice(), stagingBufferInfo);
 
 		//create staging allocation
@@ -86,8 +86,8 @@ namespace PaperRenderer
 		bufferInfo.size = size;
 		bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | usageFlags;
 		bufferInfo.queueFamilyIndices = { 
-			(uint32_t)(rendererPtr->getDevice()->getQueueFamilies().graphicsFamilyIndex), 
-			(uint32_t)(rendererPtr->getDevice()->getQueueFamilies().computeFamilyIndex)
+			rendererPtr->getDevice()->getQueues().at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex,
+            rendererPtr->getDevice()->getQueues().at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex
 		}; //used for graphics by raster and compute by RT. ownership transfer should probably be considered in the future
 		std::unique_ptr<PaperMemory::Buffer> buffer = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
 
@@ -104,10 +104,11 @@ namespace PaperRenderer
 		copyRegion.size = size;
 
 		PaperMemory::SynchronizationInfo synchronizationInfo = {};
-		synchronizationInfo.queue = rendererPtr->getDevice()->getQueues().transfer.at(0);
+		synchronizationInfo.queueType = PaperMemory::QueueType::TRANSFER;
 		synchronizationInfo.fence = PaperMemory::Commands::getUnsignaledFence(rendererPtr->getDevice()->getDevice());
 
-		PaperRenderer::PaperMemory::CommandBuffer cmdBuffer = buffer->copyFromBufferRanges(vboStaging, rendererPtr->getDevice()->getQueueFamilies().transferFamilyIndex, { copyRegion }, synchronizationInfo);
+		PaperRenderer::PaperMemory::CommandBuffer cmdBuffer = buffer->copyFromBufferRanges(
+			vboStaging, rendererPtr->getDevice()->getQueues().at(PaperMemory::QueueType::TRANSFER).queueFamilyIndex, { copyRegion }, synchronizationInfo);
 
 		//wait for fence and destroy (potential for efficiency improvements here since this is technically brute force synchronization)
 		vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &synchronizationInfo.fence, VK_TRUE, UINT64_MAX);

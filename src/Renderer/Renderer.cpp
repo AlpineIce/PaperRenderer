@@ -18,7 +18,7 @@ namespace PaperRenderer
     {
         Material::initRendererInfo(&device, &descriptors, &pipelineBuilder);
 
-        defaultMaterial = std::make_unique<DefaultMaterial>("resources/materials/Default_vert.spv", "resources/materials/Default_frag.spv");
+        defaultMaterial = std::make_unique<DefaultMaterial>("resources/shaders/Default_vert.spv", "resources/shaders/Default_frag.spv");
         defaultMaterialInstance = std::make_unique<DefaultMaterialInstance>(defaultMaterial.get());
 
         if(rtEnabled) initRT();

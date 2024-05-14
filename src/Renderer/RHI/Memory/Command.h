@@ -3,25 +3,30 @@
 
 #include <unordered_map>
 #include <vector>
+#include <mutex>
 
 namespace PaperRenderer
 {
     namespace PaperMemory
     {
-        struct QueueFamiliesIndices
-        {
-            int graphicsFamilyIndex = -1;
-            int computeFamilyIndex = -1;
-            int transferFamilyIndex = -1;
-            int presentationFamilyIndex = -1;
-        };
-
-        enum CmdPoolType
+        enum QueueType
         {
             GRAPHICS = 0,
             COMPUTE = 1,
             TRANSFER = 2,
             PRESENT = 3
+        };
+        
+        struct Queue
+        {
+            VkQueue queue;
+            std::mutex threadLock;
+        };
+
+        struct QueuesInFamily
+        {
+            uint32_t queueFamilyIndex;
+            std::vector<Queue*> queues;
         };
 
         struct SemaphorePair
@@ -33,7 +38,7 @@ namespace PaperRenderer
         //generic parameters for synchronization in queues
         struct SynchronizationInfo
         {
-            VkQueue queue;
+            QueueType queueType;
             std::vector<SemaphorePair> waitPairs = {};
             std::vector<SemaphorePair> signalPairs = {};
             VkFence fence = VK_NULL_HANDLE;
@@ -42,7 +47,7 @@ namespace PaperRenderer
         struct CommandBuffer
         {
             VkCommandBuffer buffer;
-            CmdPoolType type;
+            QueueType type;
         };
 
         class Commands
@@ -50,8 +55,8 @@ namespace PaperRenderer
         private:
             VkDevice device;
 
-            static QueueFamiliesIndices queueFamilyIndices;
-            static std::unordered_map<CmdPoolType, VkCommandPool> commandPools;
+            static std::unordered_map<QueueType, QueuesInFamily>* queuesPtr;
+            static std::unordered_map<QueueType, VkCommandPool> commandPools;
             static const uint32_t frameCount = 2;
 
             void createCommandPools();
@@ -59,7 +64,7 @@ namespace PaperRenderer
             static bool isInit;
             
         public:
-            Commands(VkDevice device, const QueueFamiliesIndices& queueFamilyIndices);
+            Commands(VkDevice device, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr);
             ~Commands();
 
             static void freeCommandBuffer(VkDevice device, CommandBuffer& commandBuffer);
@@ -69,7 +74,7 @@ namespace PaperRenderer
             static VkSemaphore getSemaphore(VkDevice device);
             static VkFence getSignaledFence(VkDevice device);
             static VkFence getUnsignaledFence(VkDevice device);
-            static VkCommandBuffer getCommandBuffer(VkDevice device, CmdPoolType type);
+            static VkCommandBuffer getCommandBuffer(VkDevice device, QueueType type);
         };
     }
 }

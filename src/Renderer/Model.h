@@ -1,5 +1,5 @@
 #pragma once
-#include "material.h"
+#include "Material.h"
 #include "RHI/IndirectDrawBuffer.h"
 
 #include <filesystem>

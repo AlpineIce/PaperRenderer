@@ -38,7 +38,7 @@ namespace PaperRenderer
         VkAccelerationStructureKHR topStructure;
         VkDeviceAddress topStructureAddress;
         std::unordered_map<Model const*, BottomStructure> bottomStructures;
-        std::vector<VkSemaphore> BottomSignalSemaphores;
+        std::vector<VkSemaphore> blasSignalSemaphores;
         bool isBuilt = false;
 
         VkDeviceSize instancesBufferSize;

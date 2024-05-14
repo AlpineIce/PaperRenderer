@@ -118,8 +118,8 @@ namespace PaperRenderer
         swapchainInfo.imageArrayLayers = 1;
         swapchainInfo.imageUsage = VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-        uint32_t queueFamilies[] = {(uint32_t)devicePtr->getQueueFamilies().graphicsFamilyIndex,
-                                    (uint32_t)devicePtr->getQueueFamilies().presentationFamilyIndex};
+        uint32_t queueFamilies[] = {devicePtr->getQueues().at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex,
+                                    devicePtr->getQueues().at(PaperMemory::QueueType::PRESENT).queueFamilyIndex};
         if(queueFamilies[0] == queueFamilies[1])
         {
             swapchainInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -181,15 +181,27 @@ namespace PaperRenderer
     {
         //find depth buffer format
         VkFormatProperties properties;
-
         vkGetPhysicalDeviceFormatProperties(devicePtr->getGPU(), VK_FORMAT_D24_UNORM_S8_UINT, &properties);
 
+        bool formatFound = false;
         if(properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
         {
             depthBufferFormat = VK_FORMAT_D24_UNORM_S8_UINT;
             depthBufferLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+
+            formatFound = true;
         }
-        else
+
+        vkGetPhysicalDeviceFormatProperties(devicePtr->getGPU(), VK_FORMAT_D16_UNORM_S8_UINT, &properties);
+        if(!formatFound && properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
+        {
+            depthBufferFormat = VK_FORMAT_D24_UNORM_S8_UINT;
+            depthBufferLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+
+            formatFound = true;
+        }
+
+        if(!formatFound)
         {
             throw std::runtime_error("No good depth buffer format");
         }

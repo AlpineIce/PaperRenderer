@@ -1,7 +1,6 @@
 #include "Device.h"
 
 #include <iostream>
-#include <list>
 #include <unordered_map>
 
 namespace PaperRenderer
@@ -37,10 +36,6 @@ namespace PaperRenderer
         
         //layers
         std::vector<const char*> layerNames;
-#ifndef NDEBUG
-        //layerNames.push_back("VK_LAYER_KHRONOS_validation");
-#endif
-
         std::vector<const char*> extensionNames;
         extensionNames.insert(extensionNames.end(), glfwExtensions.begin(), glfwExtensions.end());
 
@@ -86,22 +81,56 @@ namespace PaperRenderer
             properties.pNext = &rtPipelineProperties;
             vkGetPhysicalDeviceProperties2(physicalDevice, &properties);
 
-            if(properties.properties.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-            {
-                gpuProperties = properties;
-                GPU = physicalDevice;
-                vkGetPhysicalDeviceFeatures(GPU, &gpuFeatures);
-                deviceFound = true;
+            uint32_t extensionCount;
+            vkEnumerateDeviceExtensionProperties(physicalDevice, NULL, &extensionCount, NULL);
+            extensions.resize(extensionCount);
+            vkEnumerateDeviceExtensionProperties(physicalDevice, NULL, &extensionCount, extensions.data());
 
-                break; //break prefers discrete gpu over integrated if available
+            //raster extensions
+            bool hasSwapchain = false;
+            bool hasDynamicRendering = false;
+            bool hasSync2 = false;
+
+            //rt extensions
+            bool hasDeferredOps = false;
+            bool hasAccelStructure = false;
+            bool hasRTPipeline = false;
+
+            //check extensions
+            for(VkExtensionProperties properties : extensions)
+            {
+                //required for raster
+                hasSwapchain = hasSwapchain || std::string(properties.extensionName).find(VK_KHR_SWAPCHAIN_EXTENSION_NAME) != std::string::npos;
+                hasDynamicRendering = hasDynamicRendering || std::string(properties.extensionName).find(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) != std::string::npos;
+                hasSync2 = hasSync2 || std::string(properties.extensionName).find(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) != std::string::npos;
+
+                //optional extensions for RT
+                hasDeferredOps = hasDeferredOps || std::string(properties.extensionName).find(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) != std::string::npos;
+                hasAccelStructure = hasAccelStructure || std::string(properties.extensionName).find(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) != std::string::npos;
+                hasRTPipeline = hasRTPipeline || std::string(properties.extensionName).find(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) != std::string::npos;
             }
 
-            if(properties.properties.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
+            bool hasRequiredRasterExtensions = hasSwapchain && hasDynamicRendering && hasSync2;
+            bool hasRequiredRTExtensions = hasDeferredOps && hasAccelStructure && hasRTPipeline;
+            if(hasRequiredRasterExtensions) //only needs raster extensions to run
             {
-                gpuProperties = properties;
-                GPU = physicalDevice;
-                vkGetPhysicalDeviceFeatures(GPU, &gpuFeatures);
-                deviceFound = true;
+                rtSupport = hasRequiredRTExtensions; //enable rt if all required extensions are satisfied
+                if(properties.properties.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+                {
+                    gpuProperties = properties;
+                    GPU = physicalDevice;
+                    vkGetPhysicalDeviceFeatures(GPU, &gpuFeatures);
+                    deviceFound = true;
+
+                    break; //break prefers discrete gpu over other gpu types
+                }
+                else
+                {
+                    gpuProperties = properties;
+                    GPU = physicalDevice;
+                    vkGetPhysicalDeviceFeatures(GPU, &gpuFeatures);
+                    deviceFound = true;
+                }
             }
         }
 
@@ -118,6 +147,8 @@ namespace PaperRenderer
         {
             throw std::runtime_error("Couldn't find suitable GPU");
         }
+
+        std::cout << "RT Support: " << ((rtSupport) ? "true" : "false") << std::endl;
     }
 
     void Device::findQueueFamilies(uint32_t& queueFamilyCount, std::vector<VkQueueFamilyProperties>& queueFamiliesProperties)
@@ -126,219 +157,90 @@ namespace PaperRenderer
         queueFamiliesProperties.resize(queueFamilyCount);
         vkGetPhysicalDeviceQueueFamilyProperties(GPU, &queueFamilyCount, queueFamiliesProperties.data());
 
-        //0 = graphics
-        //1 = compute
-        //2 = transfer
-        //3 = present
-                           //type,   list of families with type
-        std::unordered_map<uint32_t, std::list<uint32_t>> queueFamilyMap;
+        //About queue family selection, queues are selected from importance, with graphics being the highest, and present being the lowest.
         for(int i = 0; i < queueFamiliesProperties.size(); i++)
         {
-            if((queueFamiliesProperties[i].queueFlags & VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT) && (queueFamilies.graphicsFamilyIndex == -1)) //graphics
+            if(queueFamiliesProperties.at(i).queueFlags & VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT && !queues.count(PaperMemory::QueueType::GRAPHICS))
             {
-                queueFamilyMap[0].push_back(i);
+                queues[PaperMemory::QueueType::GRAPHICS].queueFamilyIndex = i;
+                continue;
             }
-            if((queueFamiliesProperties[i].queueFlags & VkQueueFlagBits::VK_QUEUE_COMPUTE_BIT) && (queueFamilies.computeFamilyIndex == -1)) //compute
+            if(queueFamiliesProperties.at(i).queueFlags & VkQueueFlagBits::VK_QUEUE_COMPUTE_BIT && !queues.count(PaperMemory::QueueType::COMPUTE))
             {
-                queueFamilyMap[1].push_back(i);
+                queues[PaperMemory::QueueType::COMPUTE].queueFamilyIndex = i;
+                continue;
             }
-            if((queueFamiliesProperties[i].queueFlags & VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT) && (queueFamilies.transferFamilyIndex == -1)) //transfer
+            if(queueFamiliesProperties.at(i).queueFlags & VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT && !queues.count(PaperMemory::QueueType::TRANSFER))
             {
-                queueFamilyMap[2].push_back(i);
+                queues[PaperMemory::QueueType::TRANSFER].queueFamilyIndex = i;
+                continue;
             }
 
             VkBool32 presentSupport;
             vkGetPhysicalDeviceSurfaceSupportKHR(GPU, i, surface, &presentSupport);
-            if(presentSupport) //present on graphics queue by default
+            if(presentSupport && !queues.count(PaperMemory::QueueType::PRESENT))
             {
-                queueFamilyMap[3].push_back(i);
-            }
-        }
-
-        //filter graphics queues
-        if(queueFamilyMap[0].size() == 0) throw std::runtime_error("No graphics support from auto-selected GPU");
-        queueFamilies.graphicsFamilyIndex = queueFamilyMap[0].front();
-        for(auto& [type, families] : queueFamilyMap)
-        {
-            if(type == 0) continue;
-
-            int removeFamily = -1;
-            if(families.size() > 1)
-            {
-                for(uint32_t family : families)
-                {
-                    if((int)family == queueFamilies.graphicsFamilyIndex)
-                    {
-                        removeFamily = family;
-                        break;
-                    }
-                }
-            }
-
-            if(removeFamily != -1)
-            {
-                families.remove(removeFamily);
+                queues[PaperMemory::QueueType::PRESENT].queueFamilyIndex = i;
                 continue;
             }
         }
 
-        //filter compute queues
-        if(queueFamilyMap[1].size() == 0) throw std::runtime_error("No compute support from auto-selected GPU");
-        queueFamilies.computeFamilyIndex = queueFamilyMap[1].front();
-        for(auto& [type, families] : queueFamilyMap)
+        //now fill in any queues that need to be filled
+        if(!queues.count(PaperMemory::QueueType::GRAPHICS)) throw std::runtime_error("No suitable graphics queue family from selected GPU"); //error if no graphics
+        if(!queues.count(PaperMemory::QueueType::COMPUTE))
         {
-            if(type == 0 || type == 1) continue;
-
-            int removeFamily = -1;
-            if(families.size() > 1)
-            {
-                for(uint32_t family : families)
-                {
-                    if((int)family == queueFamilies.computeFamilyIndex)
-                    {
-                        removeFamily = family;
-                        break;
-                    }
-                }
-            }
-
-            if(removeFamily != -1)
-            {
-                families.remove(removeFamily);
-                continue;
-            }
+            queues[PaperMemory::QueueType::COMPUTE].queueFamilyIndex = queues.at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex; //shared graphics/compute queue family
         }
-
-        //filter presentation from leftover transfer
-        if(queueFamilyMap[3].size() == 0) throw std::runtime_error("No presentation support from auto-selected GPU");
-        queueFamilies.presentationFamilyIndex = queueFamilyMap[3].front();
-        for(auto& [type, families] : queueFamilyMap)
+        if(!queues.count(PaperMemory::QueueType::TRANSFER))
         {
-            if(type == 0 || type == 1 || type == 3) continue;
-
-            int removeFamily = -1;
-            if(families.size() > 1)
-            {
-                for(uint32_t family : families)
-                {
-                    if((int)family == queueFamilies.presentationFamilyIndex)
-                    {
-                        removeFamily = family;
-                        break;
-                    }
-                }
-            }
-
-            if(removeFamily != -1)
-            {
-                families.remove(removeFamily);
-                continue;
-            }
-
-            //transfer gets leftovers (lmao)
-            queueFamilies.transferFamilyIndex = queueFamilyMap[2].front();
+            queues[PaperMemory::QueueType::TRANSFER].queueFamilyIndex = queues.at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex; //shared compute/transfer queue family
+        }
+        if(!queues.count(PaperMemory::QueueType::PRESENT))
+        {
+            queues[PaperMemory::QueueType::PRESENT].queueFamilyIndex = queues.at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex; //shared present/graphics queue family 
+            //(present guaranteed on graphics)
         }
     }
 
-    void Device::createQueues(std::vector<VkDeviceQueueCreateInfo>& queuesCreationInfo,
+    void Device::createQueues(std::unordered_map<uint32_t, VkDeviceQueueCreateInfo>& queuesCreationInfo,
                               const std::vector<VkQueueFamilyProperties>& queueFamiliesProperties, 
                               float* queuePriority)
     {
-        familyOwnerships[queueFamilies.graphicsFamilyIndex]++;
-        familyOwnerships[queueFamilies.computeFamilyIndex]++;
-        familyOwnerships[queueFamilies.transferFamilyIndex]++;
-        familyOwnerships[queueFamilies.presentationFamilyIndex]++;
-
-        for(auto const& [queueFamily, owners] : familyOwnerships)
+        //Set queues creation info based on queue families which are used. Queues will be created, then distributed amongst any "queue types" sharing the same family
+        for(const auto& [queueType, queuesInFamily] : queues)
         {
-            if(owners > 0)
+            if(!queuesCreationInfo.count(queuesInFamily.queueFamilyIndex))
             {
-                queuesCreationInfo.push_back({
+                queuesCreationInfo[queuesInFamily.queueFamilyIndex] = {
                     .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
                     .pNext = NULL,
                     .flags = 0,
-                    .queueFamilyIndex = queueFamily,
-                    .queueCount = queueFamiliesProperties[queueFamily].queueCount,
+                    .queueFamilyIndex = queuesInFamily.queueFamilyIndex,
+                    .queueCount = queueFamiliesProperties.at(queuesInFamily.queueFamilyIndex).queueCount,
                     .pQueuePriorities = queuePriority
-                });
+                };
             }
         }
     }
 
-    void Device::retrieveQueues(const std::vector<VkQueueFamilyProperties>& queueFamiliesProperties)
+    void Device::retrieveQueues(std::unordered_map<uint32_t, VkDeviceQueueCreateInfo>& queuecreationInfo)
     {   
-        //only graphics queue for this family
-        if(familyOwnerships[queueFamilies.graphicsFamilyIndex] == 1) 
+        //get queues
+        for(auto& [familyIndex, properties] : queuecreationInfo)
         {
-            queues.graphics.resize(queueFamiliesProperties[queueFamilies.graphicsFamilyIndex].queueCount);
-            for(int i = 0; i < queues.graphics.size(); i++)
+            familyQueues[familyIndex] = std::vector<PaperMemory::Queue>(properties.queueCount);
+            for(uint32_t i = 0; i < properties.queueCount; i++)
             {
-                vkGetDeviceQueue(device, queueFamilies.graphicsFamilyIndex, i, &queues.graphics[i]);
+                vkGetDeviceQueue(device, familyIndex, i, &familyQueues.at(familyIndex).at(i).queue);
             }
         }
-        //only transfer queue for this family (usually guaranteed)
-        if(familyOwnerships[queueFamilies.transferFamilyIndex] == 1) 
+
+        //fill in queues. This just gives pointers to a queue created earlier, which can be shared between different QueueType
+        for(auto& [queueType, queuesInFamily] : queues)
         {
-            queues.transfer.resize(queueFamiliesProperties[queueFamilies.transferFamilyIndex].queueCount);
-            for(int i = 0; i < queues.transfer.size(); i++)
+            for(uint32_t i = 0; i < familyQueues.at(queuesInFamily.queueFamilyIndex).size(); i++)
             {
-                vkGetDeviceQueue(device, queueFamilies.transferFamilyIndex, i, &queues.transfer[i]);
-            }
-        }
-        //one transfer, 3 for compute, graphics, and present (screw intel GPU users), or just a shared present queue
-        if(familyOwnerships[queueFamilies.presentationFamilyIndex] < 4)
-        {
-            unsigned int poolSize = queueFamiliesProperties[queueFamilies.presentationFamilyIndex].queueCount;
-            unsigned int numPresentQueues = 1;
-
-            //grab the queue at the end of the family
-            queues.present.resize(numPresentQueues);
-            for(int i = 0; i < numPresentQueues; i++)
-            {
-                vkGetDeviceQueue(device, queueFamilies.presentationFamilyIndex, poolSize - numPresentQueues + i, &queues.present[i]);
-            }
-            
-            //split compute and graphics if 3 shared queues
-            unsigned int numComputeQueues = 0;
-            if(familyOwnerships[queueFamilies.presentationFamilyIndex] == 3)
-            {
-                numComputeQueues = 2;
-                queues.compute.resize(numComputeQueues);
-                //get compute queues
-                for(int i = 0; i < queues.compute.size(); i++)
-                {
-                    vkGetDeviceQueue(device, queueFamilies.computeFamilyIndex, poolSize - (numPresentQueues + numComputeQueues) + i, &queues.compute[i]);
-                }
-                //get remaining graphics queues
-                queues.graphics.resize(poolSize - (numComputeQueues + numPresentQueues));
-                for(int i = 0; i < queues.graphics.size(); i++)
-                {
-                    vkGetDeviceQueue(device, queueFamilies.graphicsFamilyIndex, i,  &queues.graphics[i]);
-                }
-
-                return;
-            }
-
-            //otherwise, presentation and compute
-            if(queueFamilies.presentationFamilyIndex == queueFamilies.computeFamilyIndex)
-            {
-                //grab remaining compute queues
-                queues.compute.resize(poolSize - numPresentQueues);
-                for(int i = 0; i < queues.compute.size(); i++)
-                {
-                    vkGetDeviceQueue(device, queueFamilies.computeFamilyIndex, i, &queues.compute[i]);
-                }
-            }
-
-            //presentation and graphics
-            if(queueFamilies.presentationFamilyIndex == queueFamilies.graphicsFamilyIndex)
-            {
-                //grab remaining graphics queues
-                queues.graphics.resize(poolSize - numPresentQueues);
-                for(int i = 0; i < queues.graphics.size(); i++)
-                {
-                    vkGetDeviceQueue(device, queueFamilies.graphicsFamilyIndex, i, &queues.graphics[i]);
-                }
+                queuesInFamily.queues.push_back(&familyQueues.at(queuesInFamily.queueFamilyIndex).at(i));
             }
         }
     }
@@ -354,38 +256,35 @@ namespace PaperRenderer
         std::vector<VkQueueFamilyProperties> queueFamiliesProperties;
         findQueueFamilies(queueFamilyCount, queueFamiliesProperties);
         
-        std::vector<VkDeviceQueueCreateInfo> queuesCreationInfo;
-        float queuePriority[16] = {0.5f};   //TODO fix this because i didnt know what the spec was telling at the time
+        std::unordered_map<uint32_t, VkDeviceQueueCreateInfo> queuesCreationInfo;
+        float queuePriority[16] = {0.5f};
         createQueues(queuesCreationInfo, queueFamiliesProperties, queuePriority);
+
+        //queues in array form
+        std::vector<VkDeviceQueueCreateInfo> queueCreateInfoVector;
+        for(const auto& [index, info] : queuesCreationInfo)
+        {
+            queueCreateInfoVector.push_back(info);
+        }
 
         //----------LOGICAL DEVICE CREATION----------//
 
-        std::vector<const char*> extensionNames;
-        extensionNames.insert(extensionNames.end(), {
-            VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-            VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-            VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-            VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME});
-
-        VkPhysicalDeviceVulkan12Features vulkan12Features = {};
-        vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-        vulkan12Features.pNext = NULL;
-        vulkan12Features.drawIndirectCount = VK_TRUE;
-        vulkan12Features.bufferDeviceAddress = VK_TRUE;
-
-        VkPhysicalDeviceShaderDrawParametersFeatures drawParamFeatures = {};
-        drawParamFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
-        drawParamFeatures.pNext = &vulkan12Features;
-        drawParamFeatures.shaderDrawParameters = VK_TRUE;
-
-        VkPhysicalDeviceSynchronization2Features synchro2;
-        synchro2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
-        synchro2.pNext = &drawParamFeatures;
-        synchro2.synchronization2 = VK_TRUE;
+        std::vector<const char*> extensionNames = {
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME
+        };
+        if(rtSupport)
+        {
+            extensionNames.insert(extensionNames.end(), {
+                VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+                VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+                VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME
+            });
+        }
+        
 
         VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationFeatures = {};
         accelerationFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
-        accelerationFeatures.pNext = &synchro2;
+        accelerationFeatures.pNext = NULL;
         accelerationFeatures.accelerationStructure = VK_TRUE;
 
         VkPhysicalDeviceRayTracingPipelineFeaturesKHR  RTfeatures = {};
@@ -393,14 +292,32 @@ namespace PaperRenderer
         RTfeatures.pNext = &accelerationFeatures;
         RTfeatures.rayTracingPipeline = VK_TRUE;
 
+        VkPhysicalDeviceShaderDrawParametersFeatures drawParamFeatures = {}; //tbh i dont even remember why i have this in here
+        drawParamFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
+        drawParamFeatures.pNext = NULL;
+        drawParamFeatures.shaderDrawParameters = VK_TRUE;
+
+        if(rtSupport) drawParamFeatures.pNext = &RTfeatures;
+
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderFeatures = {};
         dynamicRenderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
-        dynamicRenderFeatures.pNext = &RTfeatures;
+        dynamicRenderFeatures.pNext = &drawParamFeatures;
         dynamicRenderFeatures.dynamicRendering = VK_TRUE;
+
+        VkPhysicalDeviceVulkan12Features vulkan12Features = {};
+        vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+        vulkan12Features.pNext = &dynamicRenderFeatures;
+        vulkan12Features.drawIndirectCount = VK_TRUE;
+        vulkan12Features.bufferDeviceAddress = VK_TRUE;
+
+        VkPhysicalDeviceSynchronization2Features synchro2;
+        synchro2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+        synchro2.pNext = &vulkan12Features;
+        synchro2.synchronization2 = VK_TRUE;
 
         VkPhysicalDeviceFeatures2 features2 = {};
         features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        features2.pNext = &dynamicRenderFeatures;
+        features2.pNext = &synchro2;
 
         vkGetPhysicalDeviceFeatures2(GPU, &features2);
 
@@ -408,8 +325,8 @@ namespace PaperRenderer
         deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         deviceCreateInfo.pNext = &features2;
         deviceCreateInfo.flags = 0;
-        deviceCreateInfo.queueCreateInfoCount = queuesCreationInfo.size();
-        deviceCreateInfo.pQueueCreateInfos = queuesCreationInfo.data();
+        deviceCreateInfo.queueCreateInfoCount = queueCreateInfoVector.size();
+        deviceCreateInfo.pQueueCreateInfos = queueCreateInfoVector.data();
         deviceCreateInfo.pEnabledFeatures = NULL;
         deviceCreateInfo.enabledExtensionCount = extensionNames.size();
         deviceCreateInfo.ppEnabledExtensionNames = extensionNames.data();
@@ -421,9 +338,9 @@ namespace PaperRenderer
         volkLoadDevice(device);
 
         //queues
-        retrieveQueues(queueFamiliesProperties);
+        retrieveQueues(queuesCreationInfo);
 
         //command pools init
-        commands = std::make_unique<PaperMemory::Commands>(device, queueFamilies);
+        commands = std::make_unique<PaperMemory::Commands>(device, &queues);
     }
 }

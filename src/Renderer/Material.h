@@ -26,13 +26,25 @@ namespace PaperRenderer
     //material base
     class Material
     {
-    protected:
+    private:
         std::unique_ptr<RasterPipeline> rasterPipeline;
         std::unique_ptr<RTPipeline> rtPipeline;
-        DescriptorWrites descriptorWrites = {};
-        std::string matName;
 
         static MaterialRendererInfo rendererInfo;
+
+    protected:
+        std::string matName;
+        PipelineBuildInfo rasterInfo;
+        PipelineBuildInfo rtInfo;
+        
+        std::vector<ShaderPair> shaderPairs;
+        std::vector<ShaderPair> rtShaderPairs;
+        DescriptorWrites descriptorWrites = {};
+        std::unordered_map<uint32_t, DescriptorSet*> descriptorSets;
+        std::unordered_map<uint32_t, DescriptorSet*> rtDescriptorSets;
+        DescriptorSet set0Descriptors;
+        DescriptorSet set1Descriptors;
+        DescriptorSet set2Descriptors;
 
         void buildPipelines(PipelineBuildInfo const* rasterInfo, PipelineBuildInfo const* rtInfo);
 

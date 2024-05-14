@@ -6,17 +6,16 @@ namespace PaperRenderer
 {
     namespace PaperMemory
     {
-
         //----------CMD BUFFER ALLOCATOR DEFINITIONS----------//
 
         bool Commands::isInit = false;
-        QueueFamiliesIndices Commands::queueFamilyIndices;
-        std::unordered_map<CmdPoolType, VkCommandPool> Commands::commandPools;
+        std::unordered_map<QueueType, QueuesInFamily>* Commands::queuesPtr;
+        std::unordered_map<QueueType, VkCommandPool> Commands::commandPools;
 
-        Commands::Commands(VkDevice device, const QueueFamiliesIndices& queueFamilyIndices)
+        Commands::Commands(VkDevice device, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr)
             :device(device)
         {
-            this->queueFamilyIndices = queueFamilyIndices;
+            this->queuesPtr = queuesPtr;
             isInit = true;
             createCommandPools();
         }
@@ -31,37 +30,15 @@ namespace PaperRenderer
 
         void Commands::createCommandPools()
         {
-            //graphics command pool
-            VkCommandPoolCreateInfo graphicsPoolInfo = {};
-            graphicsPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-            graphicsPoolInfo.pNext = NULL;
-            graphicsPoolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-            graphicsPoolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamilyIndex;
-            vkCreateCommandPool(device, &graphicsPoolInfo, nullptr, &commandPools[GRAPHICS]);
-
-            //compute command pool
-            VkCommandPoolCreateInfo computePoolInfo = {};
-            computePoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-            computePoolInfo.pNext = NULL;
-            computePoolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-            computePoolInfo.queueFamilyIndex = queueFamilyIndices.computeFamilyIndex;
-            vkCreateCommandPool(device, &computePoolInfo, nullptr, &commandPools[COMPUTE]);
-
-            //transfer command pool
-            VkCommandPoolCreateInfo transferPoolInfo = {};
-            transferPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-            transferPoolInfo.pNext = NULL;
-            transferPoolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-            transferPoolInfo.queueFamilyIndex = queueFamilyIndices.transferFamilyIndex;
-            vkCreateCommandPool(device, &transferPoolInfo, nullptr, &commandPools[TRANSFER]);
-
-            //present command pool
-            VkCommandPoolCreateInfo presentPoolInfo = {};
-            presentPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-            presentPoolInfo.pNext = NULL;
-            presentPoolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-            presentPoolInfo.queueFamilyIndex = queueFamilyIndices.presentationFamilyIndex;
-            vkCreateCommandPool(device, &presentPoolInfo, nullptr, &commandPools[PRESENT]);
+            for(const auto& [queueType, queues] : *queuesPtr)
+            {
+                VkCommandPoolCreateInfo graphicsPoolInfo = {};
+                graphicsPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+                graphicsPoolInfo.pNext = NULL;
+                graphicsPoolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+                graphicsPoolInfo.queueFamilyIndex = queues.queueFamilyIndex;
+                vkCreateCommandPool(device, &graphicsPoolInfo, nullptr, &commandPools[queueType]);
+            }
         }
 
         void Commands::freeCommandBuffer(VkDevice device, CommandBuffer& commandBuffer)
@@ -131,7 +108,41 @@ namespace PaperRenderer
             submitInfo.signalSemaphoreInfoCount = semaphoreSignalInfos.size();
             submitInfo.pSignalSemaphoreInfos = semaphoreSignalInfos.data();
 
-            vkQueueSubmit2(synchronizationInfo.queue, 1, &submitInfo, synchronizationInfo.fence);
+            //find an "unlocked" queue with the specified type (also nested hell I know)
+            Queue* lockedQueue = NULL;
+            if(queuesPtr->count(synchronizationInfo.queueType))
+            {
+                bool threadLocked = false;
+                while(!threadLocked)
+                {
+                    for(Queue* queue : queuesPtr->at(synchronizationInfo.queueType).queues)
+                    {
+                        if(queue->threadLock.try_lock())
+                        {
+                            threadLocked = true;
+                            lockedQueue = queue;
+                            
+                            break;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                throw std::runtime_error("No queues available for specified submission type");
+            }
+            
+            //submit
+            if(lockedQueue)
+            {
+                vkQueueSubmit2(lockedQueue->queue, 1, &submitInfo, synchronizationInfo.fence);
+            }
+            else
+            {
+                throw std::runtime_error("Tried to submit to null queue");
+            }
+            
+            lockedQueue->threadLock.unlock();
         }
 
         VkSemaphore Commands::getSemaphore(VkDevice device)
@@ -174,7 +185,7 @@ namespace PaperRenderer
             return fence;
         }
 
-        VkCommandBuffer Commands::getCommandBuffer(VkDevice device, CmdPoolType type)
+        VkCommandBuffer Commands::getCommandBuffer(VkDevice device, QueueType type)
         {
             if(isInit)
             {

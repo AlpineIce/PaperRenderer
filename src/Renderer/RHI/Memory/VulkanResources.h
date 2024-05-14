@@ -3,6 +3,8 @@
 #include "Command.h"
 #include "glm/glm.hpp"
 
+#include <cstring> //linux bs
+
 namespace PaperRenderer
 {
     namespace PaperMemory

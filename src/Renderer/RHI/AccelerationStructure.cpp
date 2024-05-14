@@ -14,13 +14,13 @@ namespace PaperRenderer
         TLInstancesBuffers.resize(PaperMemory::Commands::getFrameCount());
         TLBuffers.resize(PaperMemory::Commands::getFrameCount());
         TLScratchBuffers.resize(PaperMemory::Commands::getFrameCount());
-        BottomSignalSemaphores.resize(PaperMemory::Commands::getFrameCount());
+        blasSignalSemaphores.resize(PaperMemory::Commands::getFrameCount());
 
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {
             //IMPORTANT NOTE HERE: BUFFERS ONLY USE THE COMPUTE FAMILY INDEX FOR ACCEL. STRUCTURE OPS, NOT THE GRAPHICS FAMILY
             PaperMemory::BufferInfo bufferInfo = {};
-            bufferInfo.queueFamilyIndices = { (uint32_t)(devicePtr->getQueueFamilies().computeFamilyIndex) };
+            bufferInfo.queueFamilyIndices = { devicePtr->getQueues().at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex };
             bufferInfo.size = 256; //arbitrary starting size
             
             //allocation 0
@@ -40,7 +40,7 @@ namespace PaperRenderer
             rebuildAllocations1(i);
 
             //synchronization things
-            BottomSignalSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
+            blasSignalSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
         }
     }
 
@@ -48,7 +48,7 @@ namespace PaperRenderer
     {
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {
-            vkDestroySemaphore(devicePtr->getDevice(), BottomSignalSemaphores.at(i), nullptr);
+            vkDestroySemaphore(devicePtr->getDevice(), blasSignalSemaphores.at(i), nullptr);
         }
 
         vkDestroyAccelerationStructureKHR(devicePtr->getDevice(), topStructure, nullptr);
@@ -178,21 +178,21 @@ namespace PaperRenderer
         {
             //BL buffers
             PaperMemory::BufferInfo bufferInfo0 = {};
-            bufferInfo0.queueFamilyIndices = { (uint32_t)(devicePtr->getQueueFamilies().computeFamilyIndex) };
+            bufferInfo0.queueFamilyIndices = { devicePtr->getQueues().at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex };
             bufferInfo0.size = BLBuildData.totalBuildSize * 1.2; //allocate 20% more than what's currently needed
             bufferInfo0.usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
             BLBuffers.at(currentFrame) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo0);
 
             //BL scratch
             PaperMemory::BufferInfo bufferInfo1 = {};
-            bufferInfo1.queueFamilyIndices = { (uint32_t)(devicePtr->getQueueFamilies().computeFamilyIndex) };
+            bufferInfo1.queueFamilyIndices = { devicePtr->getQueues().at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex };
             bufferInfo1.size = BLBuildData.totalScratchSize * 1.2; //allocate 20% more than what's currently needed
             bufferInfo1.usageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
             BLScratchBuffers.at(currentFrame) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo1);
 
             //TL instances
             PaperMemory::BufferInfo bufferInfo2 = {};
-            bufferInfo2.queueFamilyIndices = { (uint32_t)(devicePtr->getQueueFamilies().computeFamilyIndex) };
+            bufferInfo2.queueFamilyIndices = { devicePtr->getQueues().at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex };
             bufferInfo2.size = instancesBufferSize * 1.2; //allocate 20% more than what's currently needed
             bufferInfo2.usageFlags = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             TLInstancesBuffers.at(currentFrame) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo2);
@@ -332,7 +332,7 @@ namespace PaperRenderer
         }
 
         //command buffer and BLAS build
-        VkCommandBuffer cmdBuffer = PaperMemory::Commands::getCommandBuffer(devicePtr->getDevice(), PaperMemory::CmdPoolType::COMPUTE);
+        VkCommandBuffer cmdBuffer = PaperMemory::Commands::getCommandBuffer(devicePtr->getDevice(), PaperMemory::QueueType::COMPUTE);
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -344,16 +344,19 @@ namespace PaperRenderer
         vkCmdBuildAccelerationStructuresKHR(cmdBuffer, vectorBuildGeos.size(), vectorBuildGeos.data(), buildRangesPtrArray.data());
         vkEndCommandBuffer(cmdBuffer);
 
-        //inject BLAS build semaphore into the synchronization signal pairs
-        PaperMemory::SynchronizationInfo syncInfo = synchronizationInfo; //create copy because const
-        PaperMemory::SemaphorePair BLASSignalPair = {
-            .semaphore = BottomSignalSemaphores.at(currentFrame),
-            .stage = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
-        };
-        syncInfo.signalPairs.push_back(BLASSignalPair);
+        //synchronization
+        PaperMemory::SynchronizationInfo blasSyncInfo = {};
+        blasSyncInfo.queueType = PaperMemory::QueueType::COMPUTE;
+        blasSyncInfo.waitPairs = {};
+        blasSyncInfo.signalPairs = { { blasSignalSemaphores.at(currentFrame), VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR} };
+        blasSyncInfo.fence = VK_NULL_HANDLE;
 
-        syncInfo.queue = devicePtr->getQueues().compute.at(0); //overwrite queue because i fucked up code
-        PaperMemory::Commands::submitToQueue(devicePtr->getDevice(), syncInfo, { cmdBuffer });
+        //insert "injected" synchronization
+        blasSyncInfo.waitPairs.insert(blasSyncInfo.waitPairs.end(), synchronizationInfo.waitPairs.begin(), synchronizationInfo.waitPairs.end());
+        blasSyncInfo.signalPairs.insert(blasSyncInfo.signalPairs.end(), synchronizationInfo.signalPairs.begin(), synchronizationInfo.signalPairs.end());
+        blasSyncInfo.fence = synchronizationInfo.fence;
+
+        PaperMemory::Commands::submitToQueue(devicePtr->getDevice(), blasSyncInfo, { cmdBuffer });
 
         for(auto& ptr : buildRangesPtrArray)
         {
@@ -420,13 +423,13 @@ namespace PaperRenderer
         if(rebuildFlag)
         {
             PaperMemory::BufferInfo bufferInfo0 = {};
-            bufferInfo0.queueFamilyIndices = { (uint32_t)(devicePtr->getQueueFamilies().computeFamilyIndex) };
+            bufferInfo0.queueFamilyIndices = { devicePtr->getQueues().at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex };
             bufferInfo0.size = buildSizes.buildScratchSize * 1.2; //allocate 20% more than what's currently needed
             bufferInfo0.usageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
             TLScratchBuffers.at(currentFrame) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo0);
 
             PaperMemory::BufferInfo bufferInfo1 = {};
-            bufferInfo1.queueFamilyIndices = { (uint32_t)(devicePtr->getQueueFamilies().computeFamilyIndex) };
+            bufferInfo1.queueFamilyIndices = { devicePtr->getQueues().at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex };
             bufferInfo1.size = buildSizes.accelerationStructureSize * 1.2; //allocate 20% more than what's currently needed
             bufferInfo1.usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
             TLBuffers.at(currentFrame) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo1);
@@ -454,7 +457,7 @@ namespace PaperRenderer
         buildRange.transformOffset = 0;
         std::vector<VkAccelerationStructureBuildRangeInfoKHR*> buildRangesPtrArray = {&buildRange};
 
-        VkCommandBuffer cmdBuffer = PaperMemory::Commands::getCommandBuffer(devicePtr->getDevice(), PaperMemory::CmdPoolType::COMPUTE);
+        VkCommandBuffer cmdBuffer = PaperMemory::Commands::getCommandBuffer(devicePtr->getDevice(), PaperMemory::QueueType::COMPUTE);
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -463,63 +466,22 @@ namespace PaperRenderer
         beginInfo.pInheritanceInfo = NULL;
         
         vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-        
         vkCmdBuildAccelerationStructuresKHR(cmdBuffer, 1, &buildGeoInfo, buildRangesPtrArray.data());
-        
         vkEndCommandBuffer(cmdBuffer);
 
-        std::vector<VkSemaphoreSubmitInfo> semaphoreWaitInfos;
-        VkSemaphoreSubmitInfo semaphoreWaitInfo = {};
-        semaphoreWaitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-        semaphoreWaitInfo.pNext = NULL;
-        semaphoreWaitInfo.semaphore = BottomSignalSemaphores.at(currentFrame);
-        semaphoreWaitInfo.stageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
-        semaphoreWaitInfo.deviceIndex = 0;
-        semaphoreWaitInfos.push_back(semaphoreWaitInfo);
+        //synchronization
+        PaperMemory::SynchronizationInfo tlasSyncInfo = {};
+        tlasSyncInfo.queueType = PaperMemory::QueueType::COMPUTE;
+        tlasSyncInfo.waitPairs = { { blasSignalSemaphores.at(currentFrame), VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR} };
+        tlasSyncInfo.signalPairs = {};
+        tlasSyncInfo.fence = VK_NULL_HANDLE;
 
-        for(const PaperMemory::SemaphorePair& pair : synchronizationInfo.waitPairs)
-        {
-            VkSemaphoreSubmitInfo semaphoreInfo = {};
-            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-            semaphoreInfo.pNext = NULL;
-            semaphoreInfo.semaphore = pair.semaphore;
-            semaphoreInfo.stageMask = pair.stage;
-            semaphoreInfo.deviceIndex = 0;
+        //insert "injected" synchronization
+        tlasSyncInfo.waitPairs.insert(tlasSyncInfo.waitPairs.end(), synchronizationInfo.waitPairs.begin(), synchronizationInfo.waitPairs.end());
+        tlasSyncInfo.signalPairs.insert(tlasSyncInfo.signalPairs.end(), synchronizationInfo.signalPairs.begin(), synchronizationInfo.signalPairs.end());
+        tlasSyncInfo.fence = synchronizationInfo.fence;
 
-            semaphoreWaitInfos.push_back(semaphoreInfo);
-        }
-
-        VkCommandBufferSubmitInfo cmdBufferSubmitInfo = {};
-        cmdBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-        cmdBufferSubmitInfo.pNext = NULL;
-        cmdBufferSubmitInfo.commandBuffer = cmdBuffer;
-        cmdBufferSubmitInfo.deviceMask = 0;
-
-        std::vector<VkSemaphoreSubmitInfo> semaphoreSignalInfos;
-        for(const PaperMemory::SemaphorePair& pair : synchronizationInfo.signalPairs)
-        {
-            VkSemaphoreSubmitInfo semaphoreInfo = {};
-            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-            semaphoreInfo.pNext = NULL;
-            semaphoreInfo.semaphore = pair.semaphore;
-            semaphoreInfo.stageMask = pair.stage;
-            semaphoreInfo.deviceIndex = 0;
-
-            semaphoreSignalInfos.push_back(semaphoreInfo);
-        }
-        
-        VkSubmitInfo2 submitInfo = {};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-        submitInfo.pNext = NULL;
-        submitInfo.flags = 0;
-        submitInfo.waitSemaphoreInfoCount = semaphoreWaitInfos.size();
-        submitInfo.pWaitSemaphoreInfos = semaphoreWaitInfos.data();
-        submitInfo.commandBufferInfoCount = 1;
-        submitInfo.pCommandBufferInfos = &cmdBufferSubmitInfo;
-        submitInfo.signalSemaphoreInfoCount = semaphoreSignalInfos.size();
-        submitInfo.pSignalSemaphoreInfos = semaphoreSignalInfos.data();
-
-        vkQueueSubmit2(synchronizationInfo.queue, 1, &submitInfo, synchronizationInfo.fence);
+        PaperMemory::Commands::submitToQueue(devicePtr->getDevice(), tlasSyncInfo, { cmdBuffer });
 
         //get top address
         VkAccelerationStructureDeviceAddressInfoKHR accelerationAddressInfo{};

@@ -50,8 +50,8 @@ namespace PaperRenderer
             //rendering staging data buffer
             PaperMemory::BufferInfo renderingDataBuffersInfo = {};
             renderingDataBuffersInfo.queueFamilyIndices = { 
-                (uint32_t)(devicePtr->getQueueFamilies().graphicsFamilyIndex),
-                (uint32_t)(devicePtr->getQueueFamilies().computeFamilyIndex)};
+                devicePtr->getQueues().at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex,
+                devicePtr->getQueues().at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex};
             renderingDataBuffersInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT ;
             renderingDataBuffersInfo.size = 256; //arbitrary starting size
             renderingData.at(i).bufferData = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), renderingDataBuffersInfo);
@@ -59,8 +59,8 @@ namespace PaperRenderer
             //preprocess uniform buffers
             PaperMemory::BufferInfo preprocessBuffersInfo = {};
             preprocessBuffersInfo.queueFamilyIndices = { 
-                (uint32_t)(devicePtr->getQueueFamilies().graphicsFamilyIndex),
-                (uint32_t)(devicePtr->getQueueFamilies().computeFamilyIndex)};
+                devicePtr->getQueues().at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex,
+                devicePtr->getQueues().at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex};
             preprocessBuffersInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
             preprocessBuffersInfo.size = sizeof(RasterInputData);
             preprocessUniformBuffers.push_back(std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), preprocessBuffersInfo));
@@ -99,9 +99,9 @@ namespace PaperRenderer
 
         std::vector<ShaderPair> shaderPairs = {{
             .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-            .directory = "resources/compute/IndirectDrawBuild.spv"
+            .directory = "resources/shaders/IndirectDrawBuild.spv"
         }};
-        std::unordered_map<uint32_t, DescriptorSet> descriptorSets;
+        std::unordered_map<uint32_t, DescriptorSet*> descriptorSets;
 
         DescriptorSet set0;
         set0.setNumber = 1;
@@ -119,11 +119,11 @@ namespace PaperRenderer
         inputObjectsDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         set0.descriptorBindings[1] = inputObjectsDescriptor;
 
-        descriptorSets[0] = set0;
+        descriptorSets[0] = &set0;
 
         PipelineBuildInfo pipelineInfo;
-        pipelineInfo.descriptors = descriptorSets;
-        pipelineInfo.shaderInfo = shaderPairs;
+        pipelineInfo.descriptors = &descriptorSets;
+        pipelineInfo.shaderInfo = &shaderPairs;
         
         meshPreprocessPipeline = pipelineBuilderPtr->buildComputePipeline(pipelineInfo);
     }
@@ -354,8 +354,8 @@ namespace PaperRenderer
         {
             PaperMemory::BufferInfo bufferInfo = {};
             bufferInfo.queueFamilyIndices = {
-                (uint32_t)(devicePtr->getQueueFamilies().graphicsFamilyIndex),
-                (uint32_t)(devicePtr->getQueueFamilies().computeFamilyIndex)};
+                devicePtr->getQueues().at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex,
+                devicePtr->getQueues().at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex};
             bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
             bufferInfo.size = renderingData.at(currentImage).stagingData.size() * 1.2; //allocate 20% overhead
             renderingData.at(currentImage).bufferData = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo);
@@ -378,11 +378,12 @@ namespace PaperRenderer
             renderingData.at(currentImage).meshDrawCountsRegion
         };
         PaperRenderer::PaperMemory::SynchronizationInfo syncInfo;
-        syncInfo.queue = devicePtr->getQueues().transfer.at(0);
+        syncInfo.queueType = PaperMemory::QueueType::TRANSFER;
         syncInfo.waitPairs = {};
         syncInfo.signalPairs = { { bufferCopySemaphores.at(currentImage), VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT } };
         syncInfo.fence = bufferCopyFences.at(currentImage);
-        usedCmdBuffers.at(currentImage).push_back(renderingData.at(currentImage).bufferData->copyFromBufferRanges(*newDataStagingBuffers.at(currentImage), devicePtr->getQueueFamilies().transferFamilyIndex, copyRegions, syncInfo));
+        usedCmdBuffers.at(currentImage).push_back(renderingData.at(currentImage).bufferData->copyFromBufferRanges(
+            *newDataStagingBuffers.at(currentImage), devicePtr->getQueues().at(PaperMemory::QueueType::TRANSFER).queueFamilyIndex, copyRegions, syncInfo));
     }
 
     void RenderPass::rasterPreProcess(const std::unordered_map<Material *, MaterialNode> &renderTree)
@@ -440,7 +441,7 @@ namespace PaperRenderer
         commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         commandInfo.pInheritanceInfo = NULL;
 
-        VkCommandBuffer cullingCmdBuffer = PaperMemory::Commands::getCommandBuffer(devicePtr->getDevice(), PaperMemory::CmdPoolType::COMPUTE);
+        VkCommandBuffer cullingCmdBuffer = PaperMemory::Commands::getCommandBuffer(devicePtr->getDevice(), PaperMemory::QueueType::COMPUTE);
         vkBeginCommandBuffer(cullingCmdBuffer, &commandInfo);
 
         vkCmdBindPipeline(cullingCmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, meshPreprocessPipeline->getPipeline());
@@ -492,14 +493,14 @@ namespace PaperRenderer
 
         //submit
         PaperMemory::SynchronizationInfo syncInfo2 = {};
-        syncInfo2.queue = devicePtr->getQueues().compute.at(0);
+        syncInfo2.queueType = PaperMemory::QueueType::COMPUTE;
         syncInfo2.waitPairs = { { bufferCopySemaphores.at(currentImage), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT } };
         syncInfo2.signalPairs = { { rasterPreprocessSemaphores.at(currentImage), VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT } };
         syncInfo2.fence = VK_NULL_HANDLE;
 
         PaperMemory::Commands::submitToQueue(devicePtr->getDevice(), syncInfo2, { cullingCmdBuffer });
 
-        usedCmdBuffers.at(currentImage).push_back({ cullingCmdBuffer, PaperMemory::CmdPoolType::COMPUTE });
+        usedCmdBuffers.at(currentImage).push_back({ cullingCmdBuffer, PaperMemory::QueueType::COMPUTE });
     }
 
     void RenderPass::rayTracePreProcess(const std::unordered_map<Material *, MaterialNode> &renderTree)
@@ -534,7 +535,7 @@ namespace PaperRenderer
         copyStagingData();
 
         PaperMemory::SynchronizationInfo blasUpdateSyncInfo = {};
-        blasUpdateSyncInfo.queue = devicePtr->getQueues().compute.at(0);
+        blasUpdateSyncInfo.queueType = PaperMemory::QueueType::COMPUTE;
         blasUpdateSyncInfo.waitPairs = { { bufferCopySemaphores.at(currentImage), VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT } };
         blasUpdateSyncInfo.signalPairs = { { BLASBuildSemaphores.at(currentImage), VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT } }; //signal for TLAS
         blasUpdateSyncInfo.fence = VK_NULL_HANDLE;
@@ -542,7 +543,7 @@ namespace PaperRenderer
 
         //update TLAS
         PaperMemory::SynchronizationInfo tlasSyncInfo;
-        tlasSyncInfo.queue = devicePtr->getQueues().compute.at(0);
+        tlasSyncInfo.queueType = PaperMemory::QueueType::COMPUTE;
         tlasSyncInfo.waitPairs = { { BLASBuildSemaphores.at(currentImage), VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR } };
         tlasSyncInfo.signalPairs = { { TLASBuildSemaphores.at(currentImage), VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR } };
         tlasSyncInfo.fence = RTFences.at(currentImage);
@@ -562,7 +563,7 @@ namespace PaperRenderer
         commandInfo.pInheritanceInfo = NULL;
 
         //begin recording
-        VkCommandBuffer graphicsCmdBuffer = PaperMemory::Commands::getCommandBuffer(devicePtr->getDevice(), PaperMemory::CmdPoolType::GRAPHICS);
+        VkCommandBuffer graphicsCmdBuffer = PaperMemory::Commands::getCommandBuffer(devicePtr->getDevice(), PaperMemory::QueueType::GRAPHICS);
         vkBeginCommandBuffer(graphicsCmdBuffer, &commandInfo);
 
         //----------RENDER TARGETS----------//
@@ -715,7 +716,7 @@ namespace PaperRenderer
 
         //submit rendering to GPU   
         PaperMemory::SynchronizationInfo syncInfo = {};
-        syncInfo.queue = devicePtr->getQueues().graphics.at(0);
+        syncInfo.queueType = PaperMemory::QueueType::GRAPHICS;
         syncInfo.waitPairs = { 
             { imageSemaphores.at(currentImage), VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT },
             { rasterPreprocessSemaphores.at(currentImage), VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT }
@@ -727,7 +728,7 @@ namespace PaperRenderer
 
         PaperMemory::Commands::submitToQueue(devicePtr->getDevice(), syncInfo, { graphicsCmdBuffer });
 
-        usedCmdBuffers.at(currentImage).push_back({ graphicsCmdBuffer, PaperMemory::CmdPoolType::GRAPHICS });
+        usedCmdBuffers.at(currentImage).push_back({ graphicsCmdBuffer, PaperMemory::QueueType::GRAPHICS });
     }
 
     //----------OBJECT ADD/REMOVE FUNCTIONS----------//
@@ -784,7 +785,10 @@ namespace PaperRenderer
         presentSubmitInfo.pImageIndices = &currentImage;
         presentSubmitInfo.pResults = &returnResult;
 
-        VkResult presentResult = vkQueuePresentKHR(devicePtr->getQueues().present.at(0), &presentSubmitInfo);
+        //too lazy to properly fix this, it probably barely affects performance anyways
+        devicePtr->getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->threadLock.lock();
+        VkResult presentResult = vkQueuePresentKHR(devicePtr->getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->queue, &presentSubmitInfo);
+        devicePtr->getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->threadLock.unlock();
 
         if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) 
         {

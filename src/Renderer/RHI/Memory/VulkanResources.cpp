@@ -171,7 +171,7 @@ namespace PaperRenderer
 
         CommandBuffer Buffer::copyFromBufferRanges(Buffer &src, uint32_t transferQueueFamily, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo)
         {
-            VkCommandBuffer transferBuffer = Commands::getCommandBuffer(device, CmdPoolType::TRANSFER); //note theres only 1 transfer cmd buffer
+            VkCommandBuffer transferBuffer = Commands::getCommandBuffer(device, QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
 
             VkCommandBufferBeginInfo beginInfo = {};
             beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -258,7 +258,7 @@ namespace PaperRenderer
             imageInfo(imageInfo)
         {
             //calculate mip levels (select the least of minimum mip levels either explicitely, or from whats mathematically doable)
-            mipmapLevels = std::min((uint32_t)(std::floorl(std::log2(std::max(imageInfo.extent.width, imageInfo.extent.height))) + 1), std::max(imageInfo.maxMipLevels, (uint32_t)1));
+            mipmapLevels = std::min((uint32_t)(std::floor(std::log2(std::max(imageInfo.extent.width, imageInfo.extent.height))) + 1), std::max(imageInfo.maxMipLevels, (uint32_t)1));
             std::vector<uint32_t> uniqueIndices = imageInfo.queueFamilyIndices;
 
             //create image
@@ -348,7 +348,7 @@ namespace PaperRenderer
         {
             //change image layout
             SynchronizationInfo layoutChangeSynchronizationInfo = {
-                .queue = transferQueue,
+                .queueType = QueueType::TRANSFER,
                 .waitPairs = {},
                 .signalPairs = { 
                     { Commands::getSemaphore(device), VK_PIPELINE_STAGE_2_TRANSFER_BIT }
@@ -359,7 +359,7 @@ namespace PaperRenderer
 
             //copy staging buffer into image
             SynchronizationInfo copySynchronizationInfo = {
-                .queue = transferQueue,
+                .queueType = QueueType::TRANSFER,
                 .waitPairs = layoutChangeSynchronizationInfo.signalPairs,
                 .signalPairs = { 
                     { Commands::getSemaphore(device), VK_PIPELINE_STAGE_2_TRANSFER_BIT }
@@ -370,7 +370,7 @@ namespace PaperRenderer
 
             //generate mipmaps VK_PIPELINE_STAGE_2_TRANSFER_BIT
             SynchronizationInfo blitSynchronization = {
-                .queue = graphicsQueue,
+                .queueType = QueueType::GRAPHICS,
                 .waitPairs = copySynchronizationInfo.signalPairs,
                 .signalPairs = {},
                 .fence = Commands::getUnsignaledFence(device)
@@ -431,7 +431,7 @@ namespace PaperRenderer
 
         CommandBuffer Image::changeImageLayout(VkImage image, const SynchronizationInfo& synchronizationInfo, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
         {
-            VkCommandBuffer transferBuffer = Commands::getCommandBuffer(device, CmdPoolType::TRANSFER); //note theres only 1 transfer cmd buffer
+            VkCommandBuffer transferBuffer = Commands::getCommandBuffer(device, QueueType::TRANSFER);
 
             VkCommandBufferBeginInfo beginInfo = {};
             beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -507,7 +507,7 @@ namespace PaperRenderer
 
         CommandBuffer Image::copyBufferToImage(VkBuffer src, VkImage dst, VkExtent3D imageExtent, const SynchronizationInfo& synchronizationInfo)
         {
-            VkCommandBuffer transferBuffer = Commands::getCommandBuffer(device, CmdPoolType::TRANSFER);
+            VkCommandBuffer transferBuffer = Commands::getCommandBuffer(device, QueueType::TRANSFER);
 
             VkCommandBufferBeginInfo beginInfo = {};
             beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -542,7 +542,7 @@ namespace PaperRenderer
         
         CommandBuffer Image::generateMipmaps(VkExtent3D imageExtent, const SynchronizationInfo& synchronizationInfo)
         {
-            VkCommandBuffer blitBuffer = Commands::getCommandBuffer(device, CmdPoolType::GRAPHICS);
+            VkCommandBuffer blitBuffer = Commands::getCommandBuffer(device, QueueType::GRAPHICS);
 
             VkCommandBufferBeginInfo beginInfo = {};
             beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;

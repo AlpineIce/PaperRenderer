@@ -9,6 +9,22 @@ namespace PaperRenderer
     Material::Material(std::string materialName)
         :matName(materialName)
     {
+        //descriptor set 0 (global)
+        set0Descriptors.setNumber = 0;
+        descriptorSets[0] = &set0Descriptors;
+
+        //descriptor set 1 (material)
+        set1Descriptors.setNumber = 1;
+        descriptorSets[1] = &set1Descriptors;
+
+        //descriptor set 2 (object)
+        set2Descriptors.setNumber = 2;
+        descriptorSets[2] = &set2Descriptors;
+
+        rasterInfo.shaderInfo = &shaderPairs;
+        rasterInfo.descriptors = &descriptorSets;
+        rtInfo.descriptors = &rtDescriptorSets;
+        rtInfo.shaderInfo = &rtShaderPairs;
     }
 
     Material::~Material()
@@ -83,7 +99,6 @@ namespace PaperRenderer
     {
         //----------RASTER PIPELINE INFO----------//
 
-        std::vector<ShaderPair> shaderPairs;
         ShaderPair vert = {
             .stage = VK_SHADER_STAGE_VERTEX_BIT,
             .directory = vertexShaderPath
@@ -95,46 +110,6 @@ namespace PaperRenderer
         };
         shaderPairs.push_back(frag);
 
-        //descriptor set 0 (global)
-        DescriptorSet set0Descriptors;
-        set0Descriptors.setNumber = 0;
-        
-        VkDescriptorSetLayoutBinding lights = {};
-        lights.binding = 0;
-        lights.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        lights.descriptorCount = 1;
-        lights.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        set0Descriptors.descriptorBindings[0] = lights;
-
-        VkDescriptorSetLayoutBinding uniformDescriptor = {};
-        uniformDescriptor.binding = 1;
-        uniformDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        uniformDescriptor.descriptorCount = 1;
-        uniformDescriptor.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        set0Descriptors.descriptorBindings[1] = uniformDescriptor;
-
-        //descriptor set 1 (material)
-        DescriptorSet set1Descriptors;
-        set1Descriptors.setNumber = 1;
-
-        VkDescriptorSetLayoutBinding reservedforfutureuseidk = {};
-        reservedforfutureuseidk.binding = 0;
-        reservedforfutureuseidk.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        reservedforfutureuseidk.descriptorCount = 1;
-        reservedforfutureuseidk.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        set1Descriptors.descriptorBindings[0] = reservedforfutureuseidk;
-
-        VkDescriptorSetLayoutBinding reservedforfutureuseidk2 = {};
-        reservedforfutureuseidk2.binding = 1;
-        reservedforfutureuseidk2.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        reservedforfutureuseidk2.descriptorCount = 8;
-        reservedforfutureuseidk2.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-        set1Descriptors.descriptorBindings[1] = reservedforfutureuseidk2;
-
-        //descriptor set 2 (object)
-        DescriptorSet set2Descriptors;
-        set2Descriptors.setNumber = 1;
-
         VkDescriptorSetLayoutBinding objDescriptor = {};
         objDescriptor.binding = 0;
         objDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -142,47 +117,33 @@ namespace PaperRenderer
         objDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         set2Descriptors.descriptorBindings[0] = objDescriptor;
 
-        std::unordered_map<uint32_t, DescriptorSet> descriptorSets;
-        descriptorSets[0] = set0Descriptors;
-        descriptorSets[1] = set1Descriptors;
-        descriptorSets[2] = set2Descriptors;
-
-        PipelineBuildInfo rasterInfo;
-        rasterInfo.shaderInfo = shaderPairs;
-        rasterInfo.descriptors = descriptorSets;
-
         //----------RT PIPELINE INFO----------//
 
-        std::vector<ShaderPair> RTshaderPairs;
         ShaderPair anyHitShader = {
             .stage = VK_SHADER_STAGE_ANY_HIT_BIT_KHR,
             .directory = "resources/shaders/RT/RTanyHit.spv"
         };
-        RTshaderPairs.push_back(anyHitShader);
+        rtShaderPairs.push_back(anyHitShader);
         ShaderPair missShader = {
             .stage = VK_SHADER_STAGE_MISS_BIT_KHR,
             .directory = "resources/shaders/RT/RTmiss.spv"
         };
-        RTshaderPairs.push_back(missShader);
+        rtShaderPairs.push_back(missShader);
         ShaderPair closestShader = {
             .stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
             .directory = "resources/shaders/RT/RTclosestHit.spv"
         };
-        RTshaderPairs.push_back(closestShader);
+        rtShaderPairs.push_back(closestShader);
         ShaderPair raygenShader = {
             .stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
             .directory = "resources/shaders/RT/RTraygen.spv"
         };
-        RTshaderPairs.push_back(raygenShader);
+        rtShaderPairs.push_back(raygenShader);
         ShaderPair intersectionShader = {
             .stage = VK_SHADER_STAGE_INTERSECTION_BIT_KHR,
             .directory = "resources/shaders/RT/RTintersection.spv"
         };
-        RTshaderPairs.push_back(intersectionShader);
-
-        PipelineBuildInfo rtInfo;
-        rtInfo.descriptors = std::unordered_map<uint32_t, DescriptorSet>();
-        rtInfo.shaderInfo = RTshaderPairs;
+        rtShaderPairs.push_back(intersectionShader);
 
         buildPipelines(&rasterInfo, NULL); //no RT for now
     }
