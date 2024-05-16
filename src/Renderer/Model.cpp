@@ -7,8 +7,7 @@ namespace PaperRenderer
 
     Model::Model(RenderEngine *renderer, PaperMemory::DeviceAllocation *allocation, const ModelCreateInfo &creationInfo)
         :rendererPtr(renderer),
-        allocationPtr(allocation),
-		OBB(creationInfo.OBB)
+        allocationPtr(allocation)
     {
 		//temporary variables for creating the singular vertex and index buffer
 		std::vector<PaperMemory::Vertex> creationVertices;
@@ -45,6 +44,23 @@ namespace PaperRenderer
 			LODs.push_back(returnLOD);
 		}
 
+		//AABB processing
+		aabb.posX = -1000000.0f;
+		aabb.negX = 1000000.0f;
+		aabb.posY = -1000000.0f;
+		aabb.negY = 1000000.0f;
+		aabb.posZ = -1000000.0f;
+		aabb.negZ = 1000000.0f;
+		for(const PaperMemory::Vertex& vertex : creationVertices)
+		{
+			aabb.posX = std::max(vertex.position.x, aabb.posX);
+			aabb.negX = std::min(vertex.position.x, aabb.negX);
+			aabb.posY = std::max(vertex.position.y, aabb.posY);
+			aabb.negY = std::min(vertex.position.y, aabb.negY);
+			aabb.posZ = std::max(vertex.position.z, aabb.posZ);
+			aabb.negZ = std::min(vertex.position.z, aabb.negZ);
+		}
+		
 		vbo = createDeviceLocalBuffer(sizeof(PaperMemory::Vertex) * creationVertices.size(), creationVertices.data(), 
 			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
 		ibo = createDeviceLocalBuffer(sizeof(uint32_t) * creationIndices.size(), creationIndices.data(), 
@@ -56,9 +72,34 @@ namespace PaperRenderer
 
 	}
 
-	std::unique_ptr<PaperMemory::Buffer> Model::createDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags2KHR usageFlags)
+    VkDeviceSize Model::getMemoryAlignment(Device* device)
+    {
+		//kind of "hackish" but I'm not sure of any other way to do this
+       	VkBufferCreateInfo bufferCreateInfo = {};
+		bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferCreateInfo.pNext = NULL;
+		bufferCreateInfo.flags = 0;
+		bufferCreateInfo.size = 1000000;
+		bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+		bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		VkDeviceBufferMemoryRequirements bufferMemRequirements;
+		bufferMemRequirements.sType = VK_STRUCTURE_TYPE_DEVICE_BUFFER_MEMORY_REQUIREMENTS;
+		bufferMemRequirements.pNext = NULL;
+		bufferMemRequirements.pCreateInfo = &bufferCreateInfo;
+
+		VkMemoryRequirements2 memRequirements = {};
+		memRequirements.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
+		vkGetDeviceBufferMemoryRequirements(device->getDevice(), &bufferMemRequirements, &memRequirements);
+
+		return memRequirements.memoryRequirements.alignment * 2; //alignment for vertex and index buffer
+    }
+
+    std::unique_ptr<PaperMemory::Buffer> Model::createDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags2KHR usageFlags)
     {
 		//create staging buffer
+		std::unique_ptr<PaperMemory::DeviceAllocation> stagingAllocation;
 		PaperMemory::BufferInfo stagingBufferInfo = {};
 		stagingBufferInfo.size = size;
 		stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
@@ -69,10 +110,10 @@ namespace PaperRenderer
 		PaperMemory::DeviceAllocationInfo stagingAllocationInfo = {};
 		stagingAllocationInfo.allocationSize = vboStaging.getMemoryRequirements().size; //alignment doesnt matter here since buffer and allocation are 1:1
 		stagingAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-		PaperMemory::DeviceAllocation stagingAllocation(rendererPtr->getDevice()->getDevice(), rendererPtr->getDevice()->getGPU(), stagingAllocationInfo);
+		stagingAllocation = std::make_unique<PaperMemory::DeviceAllocation>(rendererPtr->getDevice()->getDevice(), rendererPtr->getDevice()->getGPU(), stagingAllocationInfo);
 
 		//assign staging allocation and fill with information
-		vboStaging.assignAllocation(&stagingAllocation);
+		vboStaging.assignAllocation(stagingAllocation.get());
 
 		//fill staging data
 		PaperMemory::BufferWrite write = {};

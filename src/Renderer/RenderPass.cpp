@@ -40,7 +40,6 @@ namespace PaperRenderer
             bufferCopySemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
             bufferCopyFences.at(i) = PaperMemory::Commands::getSignaledFence(devicePtr->getDevice());
             TLASBuildSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
-            TLASBuildSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
             rasterPreprocessSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
             preprocessTLASSignalSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
             renderSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
@@ -219,7 +218,7 @@ namespace PaperRenderer
             }
         }
         renderingData.at(currentImage).meshDrawCountsRegion.size = stagingData.size() - renderingData.at(currentImage).meshDrawCountsRegion.dstOffset;
-        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
+        stagingData.resize(PaperMemory::DeviceAllocation::padToMultiple(stagingData.size(), devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment));
 
         //draw commands
         renderingData.at(currentImage).meshDrawCommandsRegion = VkBufferCopy();
@@ -233,7 +232,7 @@ namespace PaperRenderer
             }
         }
         renderingData.at(currentImage).meshDrawCommandsRegion.size = stagingData.size() - renderingData.at(currentImage).meshDrawCommandsRegion.dstOffset;
-        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
+        stagingData.resize(PaperMemory::DeviceAllocation::padToMultiple(stagingData.size(), devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment));
 
         //output mesh instance data
         renderingData.at(currentImage).meshOutputObjectsRegion = VkBufferCopy();
@@ -247,7 +246,7 @@ namespace PaperRenderer
             }
         }
         renderingData.at(currentImage).meshOutputObjectsRegion.size = stagingData.size() - renderingData.at(currentImage).meshOutputObjectsRegion.dstOffset;
-        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
+        stagingData.resize(PaperMemory::DeviceAllocation::padToMultiple(stagingData.size(), devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment));
 
         //----------PREPROCESS INPUT REQUIREMENETS----------//
 
@@ -263,7 +262,7 @@ namespace PaperRenderer
             memcpy(stagingData.data() + lastSize, lodMeshData.data(), lodMeshData.size() * sizeof(LODMesh));
         }
         renderingData.at(currentImage).meshLODOffsetsRegion.size = stagingData.size() - renderingData.at(currentImage).meshLODOffsetsRegion.dstOffset;
-        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
+        stagingData.resize(PaperMemory::DeviceAllocation::padToMultiple(stagingData.size(), devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment));
 
         //LOD data          THIS **ABSOLUTELY MUST** COME AFTER MESH DATA
         renderingData.at(currentImage).LODOffsetsRegion = VkBufferCopy();
@@ -277,7 +276,7 @@ namespace PaperRenderer
             memcpy(stagingData.data() + lastSize, lodData.data(), lodData.size() * sizeof(ShaderLOD));
         }
         renderingData.at(currentImage).LODOffsetsRegion.size = stagingData.size() - renderingData.at(currentImage).LODOffsetsRegion.dstOffset;
-        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
+        stagingData.resize(PaperMemory::DeviceAllocation::padToMultiple(stagingData.size(), devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment));
         
         //get input objects (binding 1)
         renderingData.at(currentImage).inputObjectsRegion = VkBufferCopy();
@@ -292,7 +291,7 @@ namespace PaperRenderer
                 shaderInputObject.position = glm::vec4(inputObject->getTransformation().position, 0.0f);
                 shaderInputObject.rotation = glm::mat4_cast(inputObject->getTransformation().rotation);
                 shaderInputObject.scale = glm::vec4(inputObject->getTransformation().scale, 0.0f);
-                shaderInputObject.bounds = inputObject->getModelPtr()->getOBB();
+                shaderInputObject.bounds = inputObject->getModelPtr()->getAABB();
                 shaderInputObject.lodCount = inputObject->getModelPtr()->getLODs().size();
                 shaderInputObject.lodsOffset = model->getLODDataOffset();
 
@@ -304,7 +303,7 @@ namespace PaperRenderer
         memcpy(stagingData.data() + renderingData.at(currentImage).inputObjectsRegion.srcOffset, shaderInputObjects.data(), sizeof(ShaderInputObject) * shaderInputObjects.size());
 
         renderingData.at(currentImage).inputObjectsRegion.size = stagingData.size() - renderingData.at(currentImage).inputObjectsRegion.dstOffset; //input objects region
-        stagingData.resize((stagingData.size() - stagingData.size() % 128) + 128); //padding
+        stagingData.resize(PaperMemory::DeviceAllocation::padToMultiple(stagingData.size(), devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment));
     }
 
     void RenderPass::setRTStagingData(const std::unordered_map<Material *, MaterialNode> &renderTree)

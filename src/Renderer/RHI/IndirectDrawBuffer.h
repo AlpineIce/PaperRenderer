@@ -31,7 +31,7 @@ namespace PaperRenderer
         VkDrawIndexedIndirectCommand command;
     };
 
-    struct ModelOBB
+    struct AABB
     {
         float posX = 0.0f;
         float negX = 0.0f;
@@ -47,7 +47,7 @@ namespace PaperRenderer
         glm::vec4 position;
         glm::vec4 scale; 
         glm::mat4 rotation; //quat -> mat4... could possibly be a mat3
-        ModelOBB bounds;
+        AABB bounds;
         uint32_t lodCount;
         uint32_t lodsOffset;
     };

@@ -75,6 +75,10 @@ namespace PaperRenderer
         Buffer::~Buffer()
         {
             vkDestroyBuffer(device, buffer, nullptr);
+            if(hostDataPtr)
+            {
+                vkUnmapMemory(device, allocationPtr->getAllocation());
+            }
         }
 
         int Buffer::assignAllocation(DeviceAllocation *allocation)
@@ -92,6 +96,7 @@ namespace PaperRenderer
             //map memory if host visible
             if(allocation->getMemoryType().propertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT))
             {
+                canMap = true;
                 if(allocation->getMemoryType().propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) //vkFlushMappedMemoryRanges and vkInvalidateMappedMemoryRanges not needed
                 {
                     needsFlush = false;
@@ -104,39 +109,47 @@ namespace PaperRenderer
 
         int Buffer::writeToBuffer(const std::vector<BufferWrite>& writes)
         {
-            //gather ranges to flush and invalidate (if needed)
-            std::vector<VkMappedMemoryRange> toFlushRanges;
-            if(needsFlush)
+            //make sure memory is even mappable
+            if(canMap)
             {
-                for(const BufferWrite& write : writes)
+                //gather ranges to flush and invalidate (if needed)
+                std::vector<VkMappedMemoryRange> toFlushRanges;
+                if(needsFlush)
                 {
-                    VkMappedMemoryRange range = {};
-                    range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-                    range.pNext = NULL;
-                    range.memory = allocationPtr->getAllocation();
-                    range.offset = write.offset;
-                    range.size = write.size;
+                    for(const BufferWrite& write : writes)
+                    {
+                        VkMappedMemoryRange range = {};
+                        range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+                        range.pNext = NULL;
+                        range.memory = allocationPtr->getAllocation();
+                        range.offset = write.offset;
+                        range.size = write.size;
 
-                    toFlushRanges.push_back(range);
+                        toFlushRanges.push_back(range);
+                    }
+
+                    //invalidate all the ranges for coherency
+                    if(vkInvalidateMappedMemoryRanges(device, toFlushRanges.size(), toFlushRanges.data()) != VK_SUCCESS) return 1;
                 }
 
-                //invalidate all the ranges for coherency
-                if(vkInvalidateMappedMemoryRanges(device, toFlushRanges.size(), toFlushRanges.data()) != VK_SUCCESS) return 1;
-            }
+                //write data
+                for(const BufferWrite& write : writes)
+                {
+                    memcpy(hostDataPtr, (char*)write.data + write.offset, write.size); //cast to char for 1 byte increment pointer arithmetic
+                }
 
-            //write data
-            for(const BufferWrite& write : writes)
+                //flush data from cache if needed
+                if(needsFlush)
+                {
+                    if(vkFlushMappedMemoryRanges(device, toFlushRanges.size(), toFlushRanges.data()) != VK_SUCCESS) return 1;
+                }
+
+                return 0;
+            }
+            else
             {
-                memcpy(hostDataPtr, (char*)write.data + write.offset, write.size); //cast to char for 1 byte increment pointer arithmetic
+                throw std::runtime_error("Tried to write to unmappable memory");
             }
-
-            //flush data from cache if needed
-            if(needsFlush)
-            {
-                if(vkFlushMappedMemoryRanges(device, toFlushRanges.size(), toFlushRanges.data()) != VK_SUCCESS) return 1;
-            }
-
-            return 0;
         }
 
         void Buffer::transferQueueFamilyOwnership(

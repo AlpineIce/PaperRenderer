@@ -52,13 +52,9 @@ namespace PaperRenderer
             allocationCount += 1;
 
             //grab GPU properties
-            VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtPipelineProperties = {};
-            rtPipelineProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
-            rtPipelineProperties.pNext = NULL;
-
             VkPhysicalDeviceProperties2 deviceProperties = {};
             deviceProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-            deviceProperties.pNext = &rtPipelineProperties;
+            deviceProperties.pNext = NULL;
 
             vkGetPhysicalDeviceProperties2(gpu, &deviceProperties);
 
@@ -123,13 +119,23 @@ namespace PaperRenderer
 
         ResourceBindingInfo DeviceAllocation::bindBuffer(VkBuffer buffer, VkMemoryRequirements memoryRequirements)
         {
+            //get required offset
+            VkPhysicalDeviceProperties gpuProperties = {};
+            vkGetPhysicalDeviceProperties(gpu, &gpuProperties);
+
+            VkDeviceSize alignment = memoryRequirements.alignment;
+            if(allocationInfo.memoryProperties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+            {
+                alignment = std::max(alignment, gpuProperties.limits.minMemoryMapAlignment);
+            }
+
             ResourceBindingInfo resourceBindingInfo = {
-                .allocationLocation = padToMultiple(currentOffset, memoryRequirements.alignment),
+                .allocationLocation = padToMultiple(currentOffset, alignment),
                 .allocatedSize = memoryRequirements.size
             };
 
             //check if there is available space in the allocation
-            if(verifyAvaliableMemory(memoryRequirements.size, memoryRequirements.alignment))
+            if(verifyAvaliableMemory(memoryRequirements.size, alignment))
             {
                 VkBindBufferMemoryInfo bindingInfo = {};
                 bindingInfo.sType = VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO;

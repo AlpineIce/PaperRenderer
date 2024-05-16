@@ -13,13 +13,11 @@ namespace PaperRenderer
     {
         std::vector<PaperMemory::Vertex> vertices;
         std::vector<uint32_t> indices;
-        ModelOBB meshOBB;
         uint32_t materialIndex;
     };
 
     struct ModelCreateInfo
     {
-        ModelOBB OBB; //should be calculated by the model loading solution; "furthest" vertex in each axis
         std::vector<std::unordered_map<uint32_t, std::vector<MeshInfo>>> LODs; //material index/slot, material associated meshes
     };
 
@@ -40,7 +38,7 @@ namespace PaperRenderer
         std::vector<LOD> LODs;
         std::unique_ptr<PaperMemory::Buffer> vbo;
         std::unique_ptr<PaperMemory::Buffer> ibo;
-        ModelOBB OBB;
+        AABB aabb;
         uint32_t LODDataOffset;
         uint32_t bufferMeshLODsOffset;
 
@@ -53,18 +51,19 @@ namespace PaperRenderer
         Model(RenderEngine* renderer, PaperMemory::DeviceAllocation* allocation, const ModelCreateInfo& creationInfo);
         ~Model();
 
-        std::vector<LOD>& getLODs() { return LODs; }
-        void bindBuffers(const VkCommandBuffer& cmdBuffer) const;
-        const ModelOBB& getOBB() const { return OBB; }
+        static VkDeviceSize getMemoryAlignment(Device* device);
 
         //mutable functions used in render loop
         std::vector<ShaderLOD> getLODData(uint32_t currentBufferSize);
         uint32_t getLODDataOffset() const { return LODDataOffset;}
         std::vector<LODMesh> getMeshLODData(uint32_t currentBufferSize);
         uint32_t getMeshLODsOffset() const { return bufferMeshLODsOffset; }
+        void bindBuffers(const VkCommandBuffer& cmdBuffer) const;
 
         VkDeviceAddress getVBOAddress() const { return vbo->getBufferDeviceAddress(); }
         VkDeviceAddress getIBOAddress() const { return ibo->getBufferDeviceAddress(); }
+        const AABB& getAABB() const { return aabb; }
+        std::vector<LOD>& getLODs() { return LODs; }
     };
 
     //----------MODEL INSTANCE DECLARATIONS----------//
