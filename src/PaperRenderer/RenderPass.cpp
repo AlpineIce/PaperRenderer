@@ -1,5 +1,5 @@
 #include "RenderPass.h"
-#include "Renderer.h"
+#include "PaperRenderer.h"
 #include "glm/gtc/matrix_transform.hpp"
 
 namespace PaperRenderer
