@@ -90,8 +90,7 @@ namespace PaperRenderer
         for(auto& [mesh, drawBufferObjects] : drawCallTree)
         {
             //get new descriptor set
-            const uint32_t setNumber = 2;
-            VkDescriptorSet objDescriptorSet = descriptorsPtr->allocateDescriptorSet(pipelinePtr->getDescriptorSetLayouts().at(setNumber), currentFrame);
+            VkDescriptorSet objDescriptorSet = descriptorsPtr->allocateDescriptorSet(pipelinePtr->getDescriptorSetLayouts().at(DescriptorScopes::RASTER_OBJECT), currentFrame);
             
             //write uniforms
             VkDescriptorBufferInfo descriptorInfo = {};
@@ -109,7 +108,7 @@ namespace PaperRenderer
 
             //bind set
             DescriptorBind bindingInfo = {};
-            bindingInfo.setNumber = setNumber;
+            bindingInfo.descriptorScope = DescriptorScopes::RASTER_OBJECT;
             bindingInfo.set = objDescriptorSet;
             bindingInfo.layout = pipelinePtr->getLayout();
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;

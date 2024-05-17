@@ -9,22 +9,14 @@ namespace PaperRenderer
     Material::Material(std::string materialName)
         :matName(materialName)
     {
-        //descriptor set 0 (global)
-        set0Descriptors.setNumber = 0;
-        descriptorSets[0] = &set0Descriptors;
-
-        //descriptor set 1 (material)
-        set1Descriptors.setNumber = 1;
-        descriptorSets[1] = &set1Descriptors;
-
-        //descriptor set 2 (object)
-        set2Descriptors.setNumber = 2;
-        descriptorSets[2] = &set2Descriptors;
-
         rasterInfo.shaderInfo = &shaderPairs;
-        rasterInfo.descriptors = &descriptorSets;
-        rtInfo.descriptors = &rtDescriptorSets;
+        rasterInfo.descriptors = &rasterDescriptorSets;
         rtInfo.shaderInfo = &rtShaderPairs;
+        rtInfo.descriptors = &rtDescriptorSets;
+
+        rasterDescriptorSets[DescriptorScopes::RASTER_MATERIAL];
+        rasterDescriptorSets[DescriptorScopes::RASTER_MATERIAL_INSTANCE];
+        rasterDescriptorSets[DescriptorScopes::RASTER_OBJECT];
     }
 
     Material::~Material()
@@ -49,15 +41,16 @@ namespace PaperRenderer
     void Material::bind(VkCommandBuffer cmdBuffer, uint32_t currentImage) const
     {
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
-        if(descriptorWrites.bufferViewWrites.size() || descriptorWrites.bufferWrites.size() || descriptorWrites.imageWrites.size())
+
+        if(rasterDescriptorWrites.bufferViewWrites.size() || rasterDescriptorWrites.bufferWrites.size() || rasterDescriptorWrites.imageWrites.size())
         {
-            VkDescriptorSet materialDescriptorSet = rendererInfo.descriptorsPtr->allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(RasterDescriptorScopes::MATERIAL), currentImage);
-            DescriptorAllocator::writeUniforms(rendererInfo.devicePtr->getDevice(), materialDescriptorSet, descriptorWrites);
+            VkDescriptorSet materialDescriptorSet = rendererInfo.descriptorsPtr->allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(RASTER_MATERIAL), currentImage);
+            DescriptorAllocator::writeUniforms(rendererInfo.devicePtr->getDevice(), materialDescriptorSet, rasterDescriptorWrites);
 
             DescriptorBind bindingInfo = {};
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
             bindingInfo.set = materialDescriptorSet;
-            bindingInfo.setNumber = RasterDescriptorScopes::MATERIAL;
+            bindingInfo.descriptorScope = RASTER_MATERIAL;
             bindingInfo.layout = rasterPipeline->getLayout();
             
             DescriptorAllocator::bindSet(rendererInfo.devicePtr->getDevice(), cmdBuffer, bindingInfo);
@@ -79,13 +72,13 @@ namespace PaperRenderer
     {
         if(descriptorWrites.bufferViewWrites.size() || descriptorWrites.bufferWrites.size() || descriptorWrites.imageWrites.size())
         {
-            VkDescriptorSet instDescriptorSet = Material::getRendererInfo().descriptorsPtr->allocateDescriptorSet(baseMaterial->getRasterPipeline()->getDescriptorSetLayouts().at(RasterDescriptorScopes::MATERIAL_INSTANCE), currentImage);
+            VkDescriptorSet instDescriptorSet = Material::getRendererInfo().descriptorsPtr->allocateDescriptorSet(baseMaterial->getRasterPipeline()->getDescriptorSetLayouts().at(RASTER_MATERIAL_INSTANCE), currentImage);
             DescriptorAllocator::writeUniforms(Material::getRendererInfo().devicePtr->getDevice(), instDescriptorSet, descriptorWrites);
 
             DescriptorBind bindingInfo = {};
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
             bindingInfo.set = instDescriptorSet;
-            bindingInfo.setNumber = RasterDescriptorScopes::MATERIAL_INSTANCE;
+            bindingInfo.descriptorScope = RASTER_MATERIAL_INSTANCE;
             bindingInfo.layout = baseMaterial->getRasterPipeline()->getLayout();
             
             DescriptorAllocator::bindSet(Material::getRendererInfo().devicePtr->getDevice(), cmdBuffer, bindingInfo);
@@ -115,7 +108,7 @@ namespace PaperRenderer
         objDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         objDescriptor.descriptorCount = 1;
         objDescriptor.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        set2Descriptors.descriptorBindings[0] = objDescriptor;
+        rasterDescriptorSets[RASTER_OBJECT].descriptorBindings[0] = objDescriptor;
 
         //----------RT PIPELINE INFO----------//
 

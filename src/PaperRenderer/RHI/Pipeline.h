@@ -48,13 +48,6 @@ namespace PaperRenderer
         uint32_t MAX_RT_RECURSION_DEPTH = 0;
     };
 
-    enum RasterDescriptorScopes
-    {
-        MATERIAL = 0,
-        MATERIAL_INSTANCE = 1,
-        OBJECT = 2
-    };
-
     //Pipeline base class
     class Pipeline
     {
@@ -123,14 +116,13 @@ namespace PaperRenderer
 
     struct DescriptorSet
     {
-        uint32_t setNumber;
         std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> descriptorBindings; //CANNOT SKIP BINDINGS
     };
 
     struct PipelineBuildInfo
     {
         std::vector<ShaderPair>* shaderInfo;
-        std::unordered_map<uint32_t, DescriptorSet*>* descriptors;
+        std::unordered_map<uint32_t, DescriptorSet>* descriptors;
     };
 
     class PipelineBuilder
@@ -143,7 +135,7 @@ namespace PaperRenderer
         Swapchain* swapchainPtr;
 
         std::shared_ptr<Shader> createShader(const ShaderPair& pair) const;
-        std::unordered_map<uint32_t, VkDescriptorSetLayout> createDescriptorLayouts(const std::unordered_map<uint32_t, DescriptorSet*>& descriptorSets) const;
+        std::unordered_map<uint32_t, VkDescriptorSetLayout> createDescriptorLayouts(const std::unordered_map<uint32_t, DescriptorSet>& descriptorSets) const;
         VkPipelineLayout createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts) const;
         PipelineCreationInfo initPipelineInfo(PipelineBuildInfo info) const;
         RTPipelineInfo initRTinfo() const;

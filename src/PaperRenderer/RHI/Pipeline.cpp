@@ -458,13 +458,13 @@ namespace PaperRenderer
         return std::make_shared<Shader>(devicePtr, shaderFile);
     }
 
-    std::unordered_map<uint32_t, VkDescriptorSetLayout> PipelineBuilder::createDescriptorLayouts(const std::unordered_map<uint32_t, DescriptorSet*> &descriptorSets) const
+    std::unordered_map<uint32_t, VkDescriptorSetLayout> PipelineBuilder::createDescriptorLayouts(const std::unordered_map<uint32_t, DescriptorSet> &descriptorSets) const
     {
         std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
         for(const auto& [setNum, set] : descriptorSets)
         {
             std::vector<VkDescriptorSetLayoutBinding> vBindings;
-            for(const auto& [bindingNum, binding] : set->descriptorBindings)
+            for(const auto& [bindingNum, binding] : set.descriptorBindings)
             {
                 vBindings.push_back(binding);
             }
@@ -523,7 +523,6 @@ namespace PaperRenderer
             shaders[pair.stage] = createShader(pair);
         }
         pipelineInfo.shaders = shaders;
-
         pipelineInfo.setLayouts = createDescriptorLayouts(*info.descriptors);
 
         VkPipelineLayout pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts);

@@ -100,29 +100,28 @@ namespace PaperRenderer
             .stage = VK_SHADER_STAGE_COMPUTE_BIT,
             .directory = "resources/shaders/IndirectDrawBuild.spv"
         }};
-        std::unordered_map<uint32_t, DescriptorSet*> descriptorSets;
 
-        DescriptorSet set0;
-        set0.setNumber = 1;
+        DescriptorSet set;
         VkDescriptorSetLayoutBinding inputDataDescriptor = {};
         inputDataDescriptor.binding = 0;
         inputDataDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         inputDataDescriptor.descriptorCount = 1;
         inputDataDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        set0.descriptorBindings[0] = inputDataDescriptor;
+        set.descriptorBindings[0] = inputDataDescriptor;//pipelineInfo.descriptors[0]
 
         VkDescriptorSetLayoutBinding inputObjectsDescriptor = {};
         inputObjectsDescriptor.binding = 1;
         inputObjectsDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         inputObjectsDescriptor.descriptorCount = 1;
         inputObjectsDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        set0.descriptorBindings[1] = inputObjectsDescriptor;
-
-        descriptorSets[0] = &set0;
+        set.descriptorBindings[1] = inputObjectsDescriptor;
+        
+        std::unordered_map<uint32_t, DescriptorSet> sets;
+        sets[0] = set;
 
         PipelineBuildInfo pipelineInfo;
-        pipelineInfo.descriptors = &descriptorSets;
         pipelineInfo.shaderInfo = &shaderPairs;
+        pipelineInfo.descriptors = &sets;
         
         meshPreprocessPipeline = pipelineBuilderPtr->buildComputePipeline(pipelineInfo);
     }

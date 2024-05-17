@@ -36,11 +36,18 @@ namespace PaperRenderer
         std::vector<BufferViewsDescriptorWrites> bufferViewWrites = std::vector<BufferViewsDescriptorWrites>();
     };
 
+    enum DescriptorScopes
+    {
+        RASTER_MATERIAL = 0,
+        RASTER_MATERIAL_INSTANCE = 1,
+        RASTER_OBJECT = 2
+    };
+
     struct DescriptorBind
     {
         VkPipelineBindPoint bindingPoint;
         VkPipelineLayout layout;
-        uint32_t setNumber;
+        uint32_t descriptorScope;
         VkDescriptorSet set;
     };
 

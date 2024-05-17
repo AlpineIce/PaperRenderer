@@ -156,7 +156,7 @@ namespace PaperRenderer
             cmdBuffer,
             bindingInfo.bindingPoint,
             bindingInfo.layout,
-            bindingInfo.setNumber,
+            bindingInfo.descriptorScope,
             1,
             &bindingInfo.set,
             0,

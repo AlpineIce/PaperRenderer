@@ -39,12 +39,9 @@ namespace PaperRenderer
         
         std::vector<ShaderPair> shaderPairs;
         std::vector<ShaderPair> rtShaderPairs;
-        DescriptorWrites descriptorWrites = {};
-        std::unordered_map<uint32_t, DescriptorSet*> descriptorSets;
-        std::unordered_map<uint32_t, DescriptorSet*> rtDescriptorSets;
-        DescriptorSet set0Descriptors;
-        DescriptorSet set1Descriptors;
-        DescriptorSet set2Descriptors;
+        DescriptorWrites rasterDescriptorWrites = {};
+        std::unordered_map<uint32_t, DescriptorSet> rasterDescriptorSets;
+        std::unordered_map<uint32_t, DescriptorSet> rtDescriptorSets;
 
         void buildPipelines(PipelineBuildInfo const* rasterInfo, PipelineBuildInfo const* rtInfo);
 
