@@ -7,14 +7,6 @@
 
 namespace PaperRenderer
 {
-    //"helper" struct to decrease parameters needed for construction
-    struct MaterialRendererInfo
-    {
-        Device* devicePtr;
-        DescriptorAllocator* descriptorsPtr;
-        PipelineBuilder* pipelineBuilderPtr;
-    };
-
     struct GlobalUniforms
     {
         PaperMemory::Buffer* globalUBO;
@@ -29,8 +21,6 @@ namespace PaperRenderer
     private:
         std::unique_ptr<RasterPipeline> rasterPipeline;
         std::unique_ptr<RTPipeline> rtPipeline;
-
-        static MaterialRendererInfo rendererInfo;
 
     protected:
         std::string matName;
@@ -48,9 +38,6 @@ namespace PaperRenderer
     public:
         Material(std::string materialName);
         virtual ~Material();
-
-        static void initRendererInfo(Device* device, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder);
-        static MaterialRendererInfo getRendererInfo() { return rendererInfo; }
 
         virtual void bind(VkCommandBuffer cmdBuffer, uint32_t currentImage) const; //used per pipeline bind and material instance
         
@@ -80,9 +67,10 @@ namespace PaperRenderer
     class DefaultMaterial : public Material
     {
     private:
-
+        std::string vertexFileName = "Default_vert.spv";
+        std::string fragFileName = "Default_frag.spv";
     public:
-        DefaultMaterial(std::string vertexShaderPath, std::string fragmentShaderPath);
+        DefaultMaterial(std::string fileDir);
         ~DefaultMaterial() override;
 
         void bind(VkCommandBuffer cmdBuffer, uint32_t currentImage);

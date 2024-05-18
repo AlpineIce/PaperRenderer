@@ -8,24 +8,6 @@
 
 namespace PaperRenderer
 {
-    struct CullingFrustum
-    {
-        glm::vec4 frustum; //(left, right, top, bottom)
-        glm::vec2 zPlanes; //(near, far)
-        glm::vec2 padding;
-    };
-
-    struct RasterInputData
-    {
-        VkDeviceAddress bufferAddress; //used with offsets to make LOD selection possible in a compute shader
-        uint64_t padding;
-        glm::vec4 camPos;
-        glm::mat4 projection;
-        glm::mat4 view;
-        CullingFrustum frustumData;
-        uint32_t objectCount;
-    };
-
     struct ShaderDrawCommand
     {
         VkDrawIndexedIndirectCommand command;

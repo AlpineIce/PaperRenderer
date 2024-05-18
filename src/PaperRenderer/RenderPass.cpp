@@ -1,9 +1,152 @@
 #include "RenderPass.h"
 #include "PaperRenderer.h"
-#include "glm/gtc/matrix_transform.hpp"
 
 namespace PaperRenderer
 {
+    //----------PREPROCESS PIPELINES DEFINITIONS----------//
+
+    RasterPreprocessPipeline::RasterPreprocessPipeline(std::string fileDir)
+    {
+        //preprocess uniform buffers
+        for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
+        {
+            PaperMemory::BufferInfo preprocessBuffersInfo = {};
+            preprocessBuffersInfo.queueFamilyIndices = { 
+                PipelineBuilder::getRendererInfo().devicePtr->getQueues().at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex,
+                PipelineBuilder::getRendererInfo().devicePtr->getQueues().at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex};
+            preprocessBuffersInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
+            preprocessBuffersInfo.size = sizeof(UBOInputData);
+            uniformBuffers.push_back(std::make_unique<PaperMemory::Buffer>(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), preprocessBuffersInfo));
+        }
+        //uniform buffers allocation and assignment
+        VkDeviceSize ubosAllocationSize = 0;
+        for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
+        {
+            ubosAllocationSize += PaperMemory::DeviceAllocation::padToMultiple(uniformBuffers.at(i)->getMemoryRequirements().size, 
+                std::max(uniformBuffers.at(i)->getMemoryRequirements().alignment, PipelineBuilder::getRendererInfo().devicePtr->getGPUProperties().properties.limits.minMemoryMapAlignment));
+        }
+        PaperMemory::DeviceAllocationInfo uboAllocationInfo = {};
+        uboAllocationInfo.allocationSize = ubosAllocationSize;
+        uboAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT; //use coherent memory for UBOs
+        uniformBuffersAllocation = std::make_unique<PaperMemory::DeviceAllocation>(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), PipelineBuilder::getRendererInfo().devicePtr->getGPU(), uboAllocationInfo);
+        
+        for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
+        {
+            uniformBuffers.at(i)->assignAllocation(uniformBuffersAllocation.get());
+        }
+        
+        //pipeline info
+        shader = { VK_SHADER_STAGE_COMPUTE_BIT, fileDir + fileName };
+
+        VkDescriptorSetLayoutBinding inputDataDescriptor = {};
+        inputDataDescriptor.binding = 0;
+        inputDataDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        inputDataDescriptor.descriptorCount = 1;
+        inputDataDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        descriptorSets[0].descriptorBindings[0] = inputDataDescriptor;
+
+        VkDescriptorSetLayoutBinding inputObjectsDescriptor = {};
+        inputObjectsDescriptor.binding = 1;
+        inputObjectsDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        inputObjectsDescriptor.descriptorCount = 1;
+        inputObjectsDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        descriptorSets[0].descriptorBindings[1] = inputObjectsDescriptor;
+
+        buildPipeline();
+    }
+    
+    RasterPreprocessPipeline::~RasterPreprocessPipeline()
+    {
+        for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
+        {
+            uniformBuffers.at(i).reset();
+        }
+        uniformBuffersAllocation.reset();
+    }
+
+    PaperMemory::CommandBuffer RasterPreprocessPipeline::submit(Camera* camera, const IndirectRenderingData& renderingData, uint32_t currentImage, PaperMemory::SynchronizationInfo syncInfo)
+    {
+        UBOInputData uboInputData;
+        uboInputData.bufferAddress = renderingData.bufferData->getBufferDeviceAddress();
+        uboInputData.camPos = glm::vec4(camera->getTranslation().position, 1.0f);
+        uboInputData.projection = camera->getProjection();
+        uboInputData.view = camera->getViewMatrix();
+        uboInputData.objectCount = renderingData.objectCount;
+        uboInputData.frustumData = camera->getFrustum();
+
+        PaperMemory::BufferWrite write = {};
+        write.data = &uboInputData;
+        write.size = sizeof(UBOInputData);
+        write.offset = 0;
+
+        uniformBuffers.at(currentImage)->writeToBuffer({ write });
+
+        //set0 - binding 0: UBO input data
+        VkDescriptorBufferInfo bufferWrite0Info = {};
+        bufferWrite0Info.buffer = uniformBuffers.at(currentImage)->getBuffer();
+        bufferWrite0Info.offset = 0;
+        bufferWrite0Info.range = sizeof(UBOInputData);
+
+        BuffersDescriptorWrites bufferWrite0 = {};
+        bufferWrite0.binding = 0;
+        bufferWrite0.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        bufferWrite0.infos = { bufferWrite0Info };
+
+        //set0 - binding 1: input objects
+        VkDescriptorBufferInfo bufferWrite1Info = {};
+        bufferWrite1Info.buffer = renderingData.bufferData->getBuffer();
+        bufferWrite1Info.offset = renderingData.inputObjectsRegion.dstOffset;
+        bufferWrite1Info.range = renderingData.inputObjectsRegion.size;
+
+        BuffersDescriptorWrites bufferWrite1 = {};
+        bufferWrite1.binding = 1;
+        bufferWrite1.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bufferWrite1.infos = { bufferWrite1Info };
+
+        VkCommandBufferBeginInfo commandInfo;
+        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        commandInfo.pNext = NULL;
+        commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        commandInfo.pInheritanceInfo = NULL;
+
+        VkCommandBuffer cullingCmdBuffer = PaperMemory::Commands::getCommandBuffer(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), syncInfo.queueType);
+
+        vkBeginCommandBuffer(cullingCmdBuffer, &commandInfo);
+        bind(cullingCmdBuffer);
+
+        DescriptorWrites descriptorWritesInfo = {};
+        descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1 };
+        descriptorWrites[0] = descriptorWritesInfo;
+        writeDescriptorSet(cullingCmdBuffer, currentImage, 0);
+
+        //dispatch
+        workGroupSizes.x = ((renderingData.objectCount) / 128) + 1;
+        dispatch(cullingCmdBuffer);
+        
+        vkEndCommandBuffer(cullingCmdBuffer);
+
+        //submit
+        PaperMemory::Commands::submitToQueue(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), syncInfo, { cullingCmdBuffer });
+
+        return { cullingCmdBuffer, syncInfo.queueType };
+    }
+
+    RTPreprocessPipeline::RTPreprocessPipeline(std::string fileDir)
+        :ComputeShader()
+    {
+    }
+
+    RTPreprocessPipeline::~RTPreprocessPipeline()
+    {
+    }
+
+    PaperMemory::CommandBuffer RTPreprocessPipeline::submit()
+    {
+        return { VK_NULL_HANDLE, PaperMemory::QueueType::COMPUTE };
+    }
+
+    //----------RENDER PASS DEFINITIONS----------//
+    
     RenderPass::RenderPass(Swapchain* swapchain, Device* device, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder)
         :swapchainPtr(swapchain),
         devicePtr(device),
@@ -55,22 +198,6 @@ namespace PaperRenderer
             renderingDataBuffersInfo.size = 256; //arbitrary starting size
             renderingData.at(i).bufferData = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), renderingDataBuffersInfo);
 
-            //preprocess uniform buffers
-            PaperMemory::BufferInfo preprocessBuffersInfo = {};
-            preprocessBuffersInfo.queueFamilyIndices = { 
-                devicePtr->getQueues().at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex,
-                devicePtr->getQueues().at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex};
-            preprocessBuffersInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
-            preprocessBuffersInfo.size = sizeof(RasterInputData);
-            preprocessUniformBuffers.push_back(std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), preprocessBuffersInfo));
-
-            //uniform buffers allocation and assignment
-            PaperMemory::DeviceAllocationInfo uboAllocationInfo = {};
-            uboAllocationInfo.allocationSize = preprocessUniformBuffers.at(i)->getMemoryRequirements().size;
-            uboAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT; //use coherent memory for UBOs
-            uniformBuffersAllocations.push_back(std::make_unique<PaperMemory::DeviceAllocation>(devicePtr->getDevice(), devicePtr->getGPU(), uboAllocationInfo));
-            preprocessUniformBuffers.at(i)->assignAllocation(uniformBuffersAllocations.at(i).get());
-
             //dedicated allocation for rendering data
             rebuildRenderDataAllocation(i);
 
@@ -94,36 +221,9 @@ namespace PaperRenderer
             }
         }
 
-        //----------PREPROCESS PIPELINE----------//
+        //----------PREPROCESS PIPELINES----------//
 
-        std::vector<ShaderPair> shaderPairs = {{
-            .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-            .directory = "resources/shaders/IndirectDrawBuild.spv"
-        }};
-
-        DescriptorSet set;
-        VkDescriptorSetLayoutBinding inputDataDescriptor = {};
-        inputDataDescriptor.binding = 0;
-        inputDataDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        inputDataDescriptor.descriptorCount = 1;
-        inputDataDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        set.descriptorBindings[0] = inputDataDescriptor;//pipelineInfo.descriptors[0]
-
-        VkDescriptorSetLayoutBinding inputObjectsDescriptor = {};
-        inputObjectsDescriptor.binding = 1;
-        inputObjectsDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        inputObjectsDescriptor.descriptorCount = 1;
-        inputObjectsDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        set.descriptorBindings[1] = inputObjectsDescriptor;
-        
-        std::unordered_map<uint32_t, DescriptorSet> sets;
-        sets[0] = set;
-
-        PipelineBuildInfo pipelineInfo;
-        pipelineInfo.shaderInfo = &shaderPairs;
-        pipelineInfo.descriptors = &sets;
-        
-        meshPreprocessPipeline = pipelineBuilderPtr->buildComputePipeline(pipelineInfo);
+        rasterPreprocessPipeline = std::make_unique<RasterPreprocessPipeline>("resources/shaders/");
     }
 
     RenderPass::~RenderPass()
@@ -147,28 +247,6 @@ namespace PaperRenderer
                 PaperMemory::Commands::freeCommandBuffer(devicePtr->getDevice(), buffer);
             }
         }
-    }
-
-    CullingFrustum RenderPass::createCullingFrustum()
-    {
-        glm::mat4 projectionT = transpose(cameraPtr->getProjection());
-        
-		glm::vec4 frustumX = normalizePlane(projectionT[3] + projectionT[0]);
-		glm::vec4 frustumY = normalizePlane(projectionT[3] + projectionT[1]);
-
-        CullingFrustum frustum;
-        frustum.frustum.x = frustumX.x;
-		frustum.frustum.y = frustumX.z;
-		frustum.frustum.z = frustumY.y;
-		frustum.frustum.w = frustumY.z;
-        frustum.zPlanes = glm::vec2(cameraPtr->getClipNear(), cameraPtr->getClipFar());
-        
-        return frustum;
-    }
-    
-    glm::vec4 RenderPass::normalizePlane(glm::vec4 plane)
-    {
-        return plane / glm::length(glm::vec3(plane));
     }
 
     void RenderPass::rebuildRenderDataAllocation(uint32_t currentFrame)
@@ -415,90 +493,14 @@ namespace PaperRenderer
         setRasterStagingData(renderTree);
         copyStagingData();
 
-        //----------DISPATCH PREPROCESS INFO----------//
-
-        //fill in uniform buffer
-        RasterInputData preprocessInputData;
-        preprocessInputData.bufferAddress = renderingData.at(currentImage).bufferData->getBufferDeviceAddress();
-        preprocessInputData.camPos = glm::vec4(cameraPtr->getTranslation().position, 1.0f);
-        preprocessInputData.projection = cameraPtr->getProjection();
-        preprocessInputData.view = cameraPtr->getViewMatrix();
-        preprocessInputData.objectCount = renderingData.at(currentImage).objectCount;
-        preprocessInputData.frustumData = createCullingFrustum();
-
-        PaperMemory::BufferWrite write = {};
-        write.data = &preprocessInputData;
-        write.size = sizeof(RasterInputData);
-        write.offset = 0;
-
-        preprocessUniformBuffers.at(currentImage)->writeToBuffer({ write });
-        
-        VkCommandBufferBeginInfo commandInfo;
-        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        commandInfo.pNext = NULL;
-        commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        commandInfo.pInheritanceInfo = NULL;
-
-        VkCommandBuffer cullingCmdBuffer = PaperMemory::Commands::getCommandBuffer(devicePtr->getDevice(), PaperMemory::QueueType::COMPUTE);
-        vkBeginCommandBuffer(cullingCmdBuffer, &commandInfo);
-
-        vkCmdBindPipeline(cullingCmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, meshPreprocessPipeline->getPipeline());
-
-        //bind descriptor set (only 1)
-        VkDescriptorSet set0Descriptor = descriptorsPtr->allocateDescriptorSet(meshPreprocessPipeline->getDescriptorSetLayouts().at(0), currentImage);
-
-        //set0 - binding 0: UBO input data
-        VkDescriptorBufferInfo bufferWrite0Info = {};
-        bufferWrite0Info.buffer = preprocessUniformBuffers.at(currentImage)->getBuffer();
-        bufferWrite0Info.offset = 0;
-        bufferWrite0Info.range = sizeof(RasterInputData);
-
-        BuffersDescriptorWrites bufferWrite0 = {};
-        bufferWrite0.binding = 0;
-        bufferWrite0.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        bufferWrite0.infos = { bufferWrite0Info };
-
-        //set0 - binding 1: input objects
-        VkDescriptorBufferInfo bufferWrite1Info = {};
-        bufferWrite1Info.buffer = renderingData.at(currentImage).bufferData->getBuffer();
-        bufferWrite1Info.offset = renderingData.at(currentImage).inputObjectsRegion.dstOffset;
-        bufferWrite1Info.range = renderingData.at(currentImage).inputObjectsRegion.size;
-
-        BuffersDescriptorWrites bufferWrite1 = {};
-        bufferWrite1.binding = 1;
-        bufferWrite1.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        bufferWrite1.infos = { bufferWrite1Info };
-
-        //write and bind
-        DescriptorWrites descriptorWritesInfo = {};
-        descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1 };
-        DescriptorAllocator::writeUniforms(devicePtr->getDevice(), set0Descriptor, descriptorWritesInfo);
-
-        vkCmdBindDescriptorSets(cullingCmdBuffer,
-            VK_PIPELINE_BIND_POINT_COMPUTE,
-            meshPreprocessPipeline->getLayout(),
-            0, //bind point
-            1,
-            &set0Descriptor,
-            0,
-            0);
-
-        //dispatch
-        int groupcount = ((renderingData.at(currentImage).objectCount) / 128) + 1;
-        vkCmdDispatch(cullingCmdBuffer, groupcount, 1, 1);
-
-        vkEndCommandBuffer(cullingCmdBuffer);
-
-        //submit
+        //submit compute shader
         PaperMemory::SynchronizationInfo syncInfo2 = {};
         syncInfo2.queueType = PaperMemory::QueueType::COMPUTE;
         syncInfo2.waitPairs = { { bufferCopySemaphores.at(currentImage), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT } };
         syncInfo2.signalPairs = { { rasterPreprocessSemaphores.at(currentImage), VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT } };
         syncInfo2.fence = VK_NULL_HANDLE;
 
-        PaperMemory::Commands::submitToQueue(devicePtr->getDevice(), syncInfo2, { cullingCmdBuffer });
-
-        usedCmdBuffers.at(currentImage).push_back({ cullingCmdBuffer, PaperMemory::QueueType::COMPUTE });
+        usedCmdBuffers.at(currentImage).push_back(rasterPreprocessPipeline->submit(cameraPtr, renderingData.at(currentImage), currentImage, syncInfo2));
     }
 
     void RenderPass::rayTracePreProcess(const std::unordered_map<Material *, MaterialNode> &renderTree)

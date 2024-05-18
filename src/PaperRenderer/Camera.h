@@ -25,6 +25,13 @@ namespace PaperRenderer
         GLFWwindow* window;
     };
 
+    struct CameraFrustum
+    {
+        glm::vec4 frustum; //(left, right, top, bottom)
+        glm::vec2 zPlanes; //(near, far)
+        glm::vec2 padding;
+    };
+
     class Camera
     {
     private:
@@ -36,6 +43,7 @@ namespace PaperRenderer
         glm::mat4 projection;
 
         CameraTranslation translation;
+        CameraFrustum frustum; 
 
         float clipNear;
         float clipFar;
@@ -44,10 +52,15 @@ namespace PaperRenderer
         int width;
         int height;
         GLFWwindow* windowPtr;
+
+        void createFrustum();
         
     public:
         Camera(const CameraCreateInfo& creationInfo);
         ~Camera();
+
+        
+        static glm::vec4 normalizePlane(glm::vec4 plane);
 
         void setClipSpace(float near, float far);
         void updateCameraProjection(); //updates projection to match window extent
@@ -59,5 +72,6 @@ namespace PaperRenderer
         const float getClipFar() const { return clipFar; }
 
         CameraTranslation getTranslation() const { return translation; }
+        CameraFrustum getFrustum() const { return frustum; }
     };
 }

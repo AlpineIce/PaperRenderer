@@ -4,8 +4,6 @@ namespace PaperRenderer
 {
     //----------MATERIAL DEFINITIONS----------//
 
-    MaterialRendererInfo Material::rendererInfo;
-
     Material::Material(std::string materialName)
         :matName(materialName)
     {
@@ -25,17 +23,8 @@ namespace PaperRenderer
 
     void Material::buildPipelines(PipelineBuildInfo const* rasterInfo, PipelineBuildInfo const* rtInfo)
     {
-        if(rasterInfo) this->rasterPipeline = rendererInfo.pipelineBuilderPtr->buildRasterPipeline(*rasterInfo);
-        if(rtInfo) this->rtPipeline = rendererInfo.pipelineBuilderPtr->buildRTPipeline(*rtInfo);
-    }
-
-    void Material::initRendererInfo(Device* device, DescriptorAllocator *descriptors, PipelineBuilder *pipelineBuilder)
-    {
-        rendererInfo = {
-            .devicePtr = device,
-            .descriptorsPtr = descriptors,
-            .pipelineBuilderPtr = pipelineBuilder
-        };
+        if(rasterInfo) this->rasterPipeline = PipelineBuilder::getRendererInfo().pipelineBuilderPtr->buildRasterPipeline(*rasterInfo);
+        if(rtInfo) this->rtPipeline = PipelineBuilder::getRendererInfo().pipelineBuilderPtr->buildRTPipeline(*rtInfo);
     }
 
     void Material::bind(VkCommandBuffer cmdBuffer, uint32_t currentImage) const
@@ -44,8 +33,8 @@ namespace PaperRenderer
 
         if(rasterDescriptorWrites.bufferViewWrites.size() || rasterDescriptorWrites.bufferWrites.size() || rasterDescriptorWrites.imageWrites.size())
         {
-            VkDescriptorSet materialDescriptorSet = rendererInfo.descriptorsPtr->allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(RASTER_MATERIAL), currentImage);
-            DescriptorAllocator::writeUniforms(rendererInfo.devicePtr->getDevice(), materialDescriptorSet, rasterDescriptorWrites);
+            VkDescriptorSet materialDescriptorSet = PipelineBuilder::getRendererInfo().descriptorsPtr->allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(RASTER_MATERIAL), currentImage);
+            DescriptorAllocator::writeUniforms(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), materialDescriptorSet, rasterDescriptorWrites);
 
             DescriptorBind bindingInfo = {};
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -53,7 +42,7 @@ namespace PaperRenderer
             bindingInfo.descriptorScope = RASTER_MATERIAL;
             bindingInfo.layout = rasterPipeline->getLayout();
             
-            DescriptorAllocator::bindSet(rendererInfo.devicePtr->getDevice(), cmdBuffer, bindingInfo);
+            DescriptorAllocator::bindSet(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), cmdBuffer, bindingInfo);
         }
     }
 
@@ -72,8 +61,8 @@ namespace PaperRenderer
     {
         if(descriptorWrites.bufferViewWrites.size() || descriptorWrites.bufferWrites.size() || descriptorWrites.imageWrites.size())
         {
-            VkDescriptorSet instDescriptorSet = Material::getRendererInfo().descriptorsPtr->allocateDescriptorSet(baseMaterial->getRasterPipeline()->getDescriptorSetLayouts().at(RASTER_MATERIAL_INSTANCE), currentImage);
-            DescriptorAllocator::writeUniforms(Material::getRendererInfo().devicePtr->getDevice(), instDescriptorSet, descriptorWrites);
+            VkDescriptorSet instDescriptorSet = PipelineBuilder::getRendererInfo().descriptorsPtr->allocateDescriptorSet(baseMaterial->getRasterPipeline()->getDescriptorSetLayouts().at(RASTER_MATERIAL_INSTANCE), currentImage);
+            DescriptorAllocator::writeUniforms(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), instDescriptorSet, descriptorWrites);
 
             DescriptorBind bindingInfo = {};
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -81,25 +70,25 @@ namespace PaperRenderer
             bindingInfo.descriptorScope = RASTER_MATERIAL_INSTANCE;
             bindingInfo.layout = baseMaterial->getRasterPipeline()->getLayout();
             
-            DescriptorAllocator::bindSet(Material::getRendererInfo().devicePtr->getDevice(), cmdBuffer, bindingInfo);
+            DescriptorAllocator::bindSet(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), cmdBuffer, bindingInfo);
         }
     }
 
     //----------DEFAULT MATERIAL DEFINITIONS----------//
 
-    DefaultMaterial::DefaultMaterial(std::string vertexShaderPath, std::string fragmentShaderPath)
+    DefaultMaterial::DefaultMaterial(std::string fileDir)
         :Material("m_Default")
     {
         //----------RASTER PIPELINE INFO----------//
 
         ShaderPair vert = {
             .stage = VK_SHADER_STAGE_VERTEX_BIT,
-            .directory = vertexShaderPath
+            .directory = fileDir + vertexFileName
         };
         shaderPairs.push_back(vert);
         ShaderPair frag = {
             .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .directory = fragmentShaderPath
+            .directory = fileDir + fragFileName
         };
         shaderPairs.push_back(frag);
 

@@ -119,16 +119,32 @@ namespace PaperRenderer
         std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> descriptorBindings; //CANNOT SKIP BINDINGS
     };
 
+    struct ComputePipelineBuildInfo
+    {
+        ShaderPair* shaderInfo;
+        std::unordered_map<uint32_t, DescriptorSet>* descriptors;
+    };
+
     struct PipelineBuildInfo
     {
         std::vector<ShaderPair>* shaderInfo;
         std::unordered_map<uint32_t, DescriptorSet>* descriptors;
     };
 
+    //"helper" struct to decrease parameters needed for construction later on
+    struct PipelineRendererInfo
+    {
+        Device* devicePtr;
+        DescriptorAllocator* descriptorsPtr;
+        class PipelineBuilder* pipelineBuilderPtr; //epic forward declaration
+    };
+
     class PipelineBuilder
     {
     private:
         VkPipelineCache cache;
+
+        static PipelineRendererInfo rendererInfo;
 
         Device* devicePtr;
         DescriptorAllocator* descriptorsPtr;
@@ -144,8 +160,10 @@ namespace PaperRenderer
         PipelineBuilder(Device* device, DescriptorAllocator* descriptors, Swapchain* swapchain);
         ~PipelineBuilder();
 
-        std::unique_ptr<ComputePipeline> buildComputePipeline(const PipelineBuildInfo& info) const;
+        std::unique_ptr<ComputePipeline> buildComputePipeline(const ComputePipelineBuildInfo& info) const;
         std::unique_ptr<RasterPipeline> buildRasterPipeline(const PipelineBuildInfo& info) const;
         std::unique_ptr<RTPipeline> buildRTPipeline(const PipelineBuildInfo& info) const;
+
+        static PipelineRendererInfo getRendererInfo() { return rendererInfo; }
     };
 }

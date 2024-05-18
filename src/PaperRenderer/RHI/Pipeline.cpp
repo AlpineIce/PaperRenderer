@@ -4,6 +4,8 @@
 
 namespace PaperRenderer
 {
+    PipelineRendererInfo PipelineBuilder::rendererInfo;
+
     //----------SHADER DEFINITIONS----------//
 
     Shader::Shader(Device *device, std::string location)
@@ -444,6 +446,10 @@ namespace PaperRenderer
         creationInfo.initialDataSize = 0;
         creationInfo.pInitialData = NULL;
         vkCreatePipelineCache(device->getDevice(), &creationInfo, nullptr, &cache);
+        
+        rendererInfo.devicePtr = devicePtr;
+        rendererInfo.descriptorsPtr = descriptorsPtr;
+        rendererInfo.pipelineBuilderPtr = this;
     }
 
     PipelineBuilder::~PipelineBuilder()
@@ -538,9 +544,17 @@ namespace PaperRenderer
         return rtInfo;
     }
 
-    std::unique_ptr<ComputePipeline> PipelineBuilder::buildComputePipeline(const PipelineBuildInfo& info) const
+    std::unique_ptr<ComputePipeline> PipelineBuilder::buildComputePipeline(const ComputePipelineBuildInfo& info) const
     {
-        return std::make_unique<ComputePipeline>(initPipelineInfo(info));
+        //sketchy hack to avoid making more functions
+        std::vector<ShaderPair> shaders;
+        shaders.push_back(*info.shaderInfo);
+
+        PipelineBuildInfo buildInfo;
+        buildInfo.shaderInfo = &shaders;
+        buildInfo.descriptors = info.descriptors;
+
+        return std::make_unique<ComputePipeline>(initPipelineInfo(buildInfo));
     }
 
     std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const PipelineBuildInfo& info) const

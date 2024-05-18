@@ -4,6 +4,7 @@
 #include "RHI/IndirectDrawBuffer.h"
 #include "RHI/AccelerationStructure.h"
 #include "Camera.h"
+#include "ComputeShader.h"
 #include "Material.h"
 #include "Model.h"
 
@@ -24,10 +25,45 @@ namespace PaperRenderer
         std::unordered_map<MaterialInstance const*, MaterialInstanceNode> instances;
     };
 
-    struct ImageAttachments
+    //----------PREPROCESS COMPUTE PIPELINES----------//
+
+    class RasterPreprocessPipeline : public ComputeShader
     {
-        //nothing for now
+    private:
+        std::string fileName = "IndirectDrawBuild.spv";
+        std::vector<std::unique_ptr<PaperMemory::Buffer>> uniformBuffers;
+        std::unique_ptr<PaperMemory::DeviceAllocation> uniformBuffersAllocation;
+
+        struct UBOInputData
+        {
+            VkDeviceAddress bufferAddress; //used with offsets to make LOD selection possible in a compute shader
+            uint64_t padding;
+            glm::vec4 camPos;
+            glm::mat4 projection;
+            glm::mat4 view;
+            CameraFrustum frustumData;
+            uint32_t objectCount;
+        };
+
+    public:
+        RasterPreprocessPipeline(std::string fileDir);
+        ~RasterPreprocessPipeline() override;
+
+        PaperMemory::CommandBuffer submit(Camera* camera, const IndirectRenderingData& renderingData, uint32_t currentImage, PaperMemory::SynchronizationInfo syncInfo);
     };
+    
+    class RTPreprocessPipeline : public ComputeShader
+    {
+    private:
+        std::string fileName = "RTObjectBuild.spv";
+    public:
+        RTPreprocessPipeline(std::string fileDir);
+        ~RTPreprocessPipeline() override;
+
+        PaperMemory::CommandBuffer submit();
+    };
+
+    //----------RENDER PASS----------//
 
     class RenderPass
     {
@@ -46,15 +82,16 @@ namespace PaperRenderer
         std::vector<std::vector<PaperMemory::CommandBuffer>> usedCmdBuffers;
         
         //buffers and allocations
-        std::vector<std::unique_ptr<PaperMemory::DeviceAllocation>> uniformBuffersAllocations;
-        std::vector<std::unique_ptr<PaperMemory::Buffer>> preprocessUniformBuffers;
-        std::vector<std::unique_ptr<PaperMemory::DeviceAllocation>> stagingAllocations; //took me forever to learn this needs to live more than the lifetime of a function body... i love buffer addresses
+        std::vector<std::unique_ptr<PaperMemory::DeviceAllocation>> stagingAllocations;
         std::vector<std::unique_ptr<PaperMemory::Buffer>> newDataStagingBuffers;
+
+        //compute shaders
+        std::unique_ptr<RasterPreprocessPipeline> rasterPreprocessPipeline;
+        std::unique_ptr<RTPreprocessPipeline> RTPreprocessPipeline;
 
         //device local rendering buffer and misc data
         std::vector<IndirectRenderingData> renderingData; //includes its own device local allocation, but needs staging allocation for access
         std::unordered_map<Model*, std::vector<ModelInstance*>> renderingModels;
-        std::unique_ptr<ComputePipeline> meshPreprocessPipeline;
         
         AccelerationStructure rtAccelStructure;
         uint32_t currentImage;
@@ -67,8 +104,6 @@ namespace PaperRenderer
         Camera* cameraPtr = NULL;
         
         //helper functions
-        CullingFrustum createCullingFrustum();
-        glm::vec4 normalizePlane(glm::vec4 plane);
         void rebuildRenderDataAllocation(uint32_t currentFrame);
         
         //frame rendering functions
