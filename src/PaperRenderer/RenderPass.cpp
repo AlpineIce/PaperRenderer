@@ -595,7 +595,7 @@ namespace PaperRenderer
         VkRenderingAttachmentInfo depthAttachment = {};
         depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         depthAttachment.pNext = NULL;
-        depthAttachment.imageView = swapchainPtr->getDepthViews().at(currentImage);
+        depthAttachment.imageView = swapchainPtr->getDepthView();
         depthAttachment.imageLayout = swapchainPtr->getDepthLayout();
         depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;

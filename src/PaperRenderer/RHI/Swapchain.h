@@ -18,9 +18,9 @@ namespace PaperRenderer
         std::vector<VkImageView> imageViews;
 
         //depth buffer
-        std::unique_ptr<PaperMemory::DeviceAllocation> depthBuffersAllocation;
-        std::vector<std::unique_ptr<PaperMemory::Image>> depthBufferImages;
-        std::vector<VkImageView> depthBufferViews;
+        std::unique_ptr<PaperMemory::DeviceAllocation> depthBufferAllocation;
+        std::unique_ptr<PaperMemory::Image> depthBufferImage;
+        VkImageView depthBufferView;
         VkImageLayout depthBufferLayout;
         VkFormat depthBufferFormat;
         
@@ -45,7 +45,7 @@ namespace PaperRenderer
         VkExtent2D getExtent() const { return swapchainExtent; }
 
         //depth buffer
-        const std::vector<VkImageView>& getDepthViews() const { return depthBufferViews; }
+        const VkImageView& getDepthView() const { return depthBufferView; }
         VkImageLayout getDepthLayout() const { return depthBufferLayout; }
         VkFormat getDepthFormat() const { return depthBufferFormat; }
     };
