@@ -16,13 +16,13 @@ namespace PaperRenderer
     //node for objects corresponding to one material
     struct MaterialInstanceNode
     {
-        std::unique_ptr<IndirectDrawContainer> objectBuffer;
+        IndirectDrawContainer objectBuffer;
     };
 
     //node for materials corresponding to one pipeline
     struct MaterialNode
     {
-        std::unordered_map<MaterialInstance const*, MaterialInstanceNode> instances;
+        std::unordered_map<MaterialInstance*, MaterialInstanceNode> instances;
     };
 
     //----------PREPROCESS COMPUTE PIPELINES----------//
@@ -56,6 +56,15 @@ namespace PaperRenderer
     {
     private:
         std::string fileName = "RTObjectBuild.spv";
+        std::vector<std::unique_ptr<PaperMemory::Buffer>> uniformBuffers;
+        std::unique_ptr<PaperMemory::DeviceAllocation> uniformBuffersAllocation;
+
+        struct UBOInputData
+        {
+            VkDeviceAddress tlasInstancesAddress;
+            uint32_t objectCount;
+        };
+
     public:
         RTPreprocessPipeline(std::string fileDir);
         ~RTPreprocessPipeline() override;
@@ -107,7 +116,7 @@ namespace PaperRenderer
         void rebuildRenderDataAllocation(uint32_t currentFrame);
         
         //frame rendering functions
-        void raster(const std::unordered_map<Material*, MaterialNode>& renderTree);
+        void raster(std::unordered_map<Material*, MaterialNode>& renderTree);
         void setRasterStagingData(const std::unordered_map<Material*, MaterialNode>& renderTree);
         void setRTStagingData(const std::unordered_map<Material*, MaterialNode>& renderTree);
         void copyStagingData();
@@ -123,7 +132,7 @@ namespace PaperRenderer
         void setCamera(Camera* camera) { this->cameraPtr = camera; }
 
         //draw new frame
-        void rasterOrTrace(bool shouldRaster, const std::unordered_map<Material *, MaterialNode> &renderTree);
+        void rasterOrTrace(bool shouldRaster, std::unordered_map<Material *, MaterialNode> &renderTree);
 
         void addModelInstance(ModelInstance* instance, uint64_t& selfIndex);
         void removeModelInstance(ModelInstance* instance, uint64_t& reference);

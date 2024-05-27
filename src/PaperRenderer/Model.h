@@ -26,7 +26,7 @@ namespace PaperRenderer
     struct LOD //acts more like an individual model
     {
         ShaderLOD shaderLOD;
-        std::unordered_map<uint32_t, MaterialInstance const*> materials; //material index/slot, associated material
+        std::unordered_map<uint32_t, MaterialInstance*> materials; //material index/slot, associated material
         std::unordered_map<uint32_t, std::vector<LODMesh>> meshes; //material index/slot, material associated meshes
     };
 
@@ -74,13 +74,13 @@ namespace PaperRenderer
         std::vector<std::unordered_map<uint32_t, DrawBufferObject>> meshReferences;
         uint64_t selfIndex;
         ModelTransform transformation = ModelTransform();
-        std::vector<std::unordered_map<uint32_t, MaterialInstance const*>> materials;
+        std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials;
         bool isVisible = true;
         class RenderEngine* rendererPtr;
         Model* modelPtr = NULL;
         
     public:
-        ModelInstance(RenderEngine* renderer, Model* parentModel, std::vector<std::unordered_map<uint32_t, MaterialInstance const*>> materials);
+        ModelInstance(RenderEngine* renderer, Model* parentModel, const std::vector<std::unordered_map<uint32_t, MaterialInstance*>>& materials);
         ~ModelInstance();
 
         void transform(const ModelTransform& newTransform);
@@ -89,7 +89,7 @@ namespace PaperRenderer
 
         Model* getModelPtr() { return modelPtr; }
         const ModelTransform& getTransformation() const { return transformation; }
-        const std::vector<std::unordered_map<uint32_t, MaterialInstance const*>>& getMaterialInstances() const { return materials; }
+        const std::vector<std::unordered_map<uint32_t, MaterialInstance*>>& getMaterialInstances() const { return materials; }
         const bool& getVisibility() const { return isVisible; }
     };
 }

@@ -201,14 +201,15 @@ namespace PaperRenderer
 
 	//----------MODEL INSTANCE DEFINITIONS----------//
 
-    ModelInstance::ModelInstance(RenderEngine* renderer, Model* parentModel, std::vector<std::unordered_map<uint32_t, MaterialInstance const*>> materials)
+    ModelInstance::ModelInstance(RenderEngine* renderer, Model* parentModel, const std::vector<std::unordered_map<uint32_t, MaterialInstance*>>& materials)
 		:rendererPtr(renderer),
 		modelPtr(parentModel),
 		materials(materials)
     {
 		if(parentModel && renderer)
 		{
-			meshReferences.resize(modelPtr->getLODs().size());
+			this->materials.resize(modelPtr->getLODs().size());
+			this->meshReferences.resize(modelPtr->getLODs().size());
 			rendererPtr->addObject(*this, meshReferences, selfIndex);
 		}
     }

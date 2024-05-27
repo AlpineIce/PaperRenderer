@@ -69,7 +69,6 @@ namespace PaperRenderer
         private:
             VkBuffer buffer;
             VkDeviceBufferMemoryRequirements bufferMemRequirements;
-            bool canMap = false;
             bool needsFlush = true;
             void* hostDataPtr = NULL;
 

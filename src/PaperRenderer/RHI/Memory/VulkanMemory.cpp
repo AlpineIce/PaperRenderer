@@ -93,10 +93,26 @@ namespace PaperRenderer
                     throw std::runtime_error("Memory allocation failed");
                 }
             }
+
+            //map memory if host visible
+            if(memoryType.propertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT))
+            {
+                mapped = true;
+                if(memoryType.propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) //vkFlushMappedMemoryRanges and vkInvalidateMappedMemoryRanges not needed
+                {
+                    needsFlush = false;
+                }
+                vkMapMemory(device, allocation, 0, allocationSize, 0, &mappedData);
+            }
         }
 
         DeviceAllocation::~DeviceAllocation()
         {
+            if(mapped)
+            {
+                vkUnmapMemory(device, allocation);
+            }
+            
             vkFreeMemory(device, allocation, nullptr);
             
             allocationCount -= 1;
@@ -119,23 +135,13 @@ namespace PaperRenderer
 
         ResourceBindingInfo DeviceAllocation::bindBuffer(VkBuffer buffer, VkMemoryRequirements memoryRequirements)
         {
-            //get required offset
-            VkPhysicalDeviceProperties gpuProperties = {};
-            vkGetPhysicalDeviceProperties(gpu, &gpuProperties);
-
-            VkDeviceSize alignment = memoryRequirements.alignment;
-            if(allocationInfo.memoryProperties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
-            {
-                alignment = std::max(alignment, gpuProperties.limits.minMemoryMapAlignment);
-            }
-
             ResourceBindingInfo resourceBindingInfo = {
-                .allocationLocation = padToMultiple(currentOffset, alignment),
+                .allocationLocation = padToMultiple(currentOffset, memoryRequirements.alignment),
                 .allocatedSize = memoryRequirements.size
             };
 
             //check if there is available space in the allocation
-            if(verifyAvaliableMemory(memoryRequirements.size, alignment))
+            if(verifyAvaliableMemory(memoryRequirements.size, memoryRequirements.alignment))
             {
                 VkBindBufferMemoryInfo bindingInfo = {};
                 bindingInfo.sType = VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO;

@@ -553,7 +553,7 @@ namespace PaperRenderer
         throw std::runtime_error("RT incomplete, please dont use");
     }
 
-    void RenderPass::raster(const std::unordered_map<Material*, MaterialNode>& renderTree)
+    void RenderPass::raster(std::unordered_map<Material*, MaterialNode>& renderTree)
     {
         //command buffer
         VkCommandBufferBeginInfo commandInfo;
@@ -665,11 +665,11 @@ namespace PaperRenderer
         vkCmdSetScissorWithCount(graphicsCmdBuffer, 1, &renderArea);
 
         //record draw commands
-        for(const auto& [material, materialNode] : renderTree) //material
+        for(auto& [material, materialNode] : renderTree) //material
         {
             material->bind(graphicsCmdBuffer, currentImage);
 
-            for(const auto& [materialInstance, instanceNode] : materialNode.instances) //material instances
+            for(auto& [materialInstance, instanceNode] : materialNode.instances) //material instances
             {
                 materialInstance->bind(graphicsCmdBuffer, currentImage);
                 instanceNode.objectBuffer->draw(graphicsCmdBuffer, renderingData.at(currentImage), currentImage);
@@ -733,7 +733,7 @@ namespace PaperRenderer
 
     //----------OBJECT ADD/REMOVE FUNCTIONS----------//
 
-    void RenderPass::rasterOrTrace(bool shouldRaster, const std::unordered_map<Material *, MaterialNode> &renderTree)
+    void RenderPass::rasterOrTrace(bool shouldRaster, std::unordered_map<Material *, MaterialNode> &renderTree)
     {
         if(shouldRaster) //do raster, dont use ray tracing
         {

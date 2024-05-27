@@ -89,6 +89,7 @@ namespace PaperRenderer
     {
         //depth buffer
         vkDestroyImageView(devicePtr->getDevice(), depthBufferView, nullptr);
+        depthBufferImage.reset();
 
         //images
         for(VkImageView image : imageViews)
@@ -226,10 +227,7 @@ namespace PaperRenderer
         //get total allocation size
         PaperMemory::DeviceAllocationInfo depthBuffersAllocationInfo = {};
         depthBuffersAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        depthBuffersAllocationInfo.allocationSize = 0;
-
-        VkMemoryRequirements memRequirements = depthBufferImage->getMemoryRequirements();
-        depthBuffersAllocationInfo.allocationSize += ((memRequirements.size - memRequirements.size % memRequirements.alignment) + memRequirements.alignment);
+        depthBuffersAllocationInfo.allocationSize = depthBufferImage->getMemoryRequirements().size;
 
         //create depth buffer allocation
         depthBufferAllocation = std::make_unique<PaperMemory::DeviceAllocation>(devicePtr->getDevice(), devicePtr->getGPU(), depthBuffersAllocationInfo);

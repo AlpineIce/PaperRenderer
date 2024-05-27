@@ -32,6 +32,9 @@ namespace PaperRenderer
             VkMemoryType memoryType;
             VkDeviceSize currentOffset;
             const VkDeviceSize allocationSize;
+            bool mapped = false;
+            bool needsFlush = true;
+            void* mappedData = NULL;
 
             //TODO LIST OF MEMORY FRAGMENTS
 
@@ -54,6 +57,8 @@ namespace PaperRenderer
             
             const VkDeviceMemory& getAllocation() const { return allocation; }
             const VkMemoryType& getMemoryType() const { return memoryType; }
+            void* getMappedPtr() const { return mappedData; } //returns null if unmapped
+            const bool& getFlushRequirement() const { return needsFlush; }
 
             VkDeviceSize getAvailableMemorySize() const { return allocationSize - currentOffset; }
         };

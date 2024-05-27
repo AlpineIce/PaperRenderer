@@ -75,15 +75,13 @@ namespace PaperRenderer
         Buffer::~Buffer()
         {
             vkDestroyBuffer(device, buffer, nullptr);
-            if(hostDataPtr)
-            {
-                vkUnmapMemory(device, allocationPtr->getAllocation());
-            }
         }
 
         int Buffer::assignAllocation(DeviceAllocation *allocation)
         {
             VulkanResource::assignAllocation(allocation);
+
+            needsFlush = allocation->getFlushRequirement();
 
             //bind memory
             bindingInfo = allocation->bindBuffer(buffer, memRequirements.memoryRequirements);
@@ -93,16 +91,7 @@ namespace PaperRenderer
                 return 1; //error in this case should just be that its out of memory, or wrong memory type was used
             }
 
-            //map memory if host visible
-            if(allocation->getMemoryType().propertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT))
-            {
-                canMap = true;
-                if(allocation->getMemoryType().propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) //vkFlushMappedMemoryRanges and vkInvalidateMappedMemoryRanges not needed
-                {
-                    needsFlush = false;
-                }
-                vkMapMemory(device, allocation->getAllocation(), bindingInfo.allocationLocation, size, 0, &hostDataPtr);
-            }
+            hostDataPtr = (char*)allocation->getMappedPtr() + bindingInfo.allocationLocation;
 
             return 0; //success, also VK_SUCCESS
         }
@@ -110,7 +99,7 @@ namespace PaperRenderer
         int Buffer::writeToBuffer(const std::vector<BufferWrite>& writes)
         {
             //make sure memory is even mappable
-            if(canMap)
+            if(hostDataPtr)
             {
                 //gather ranges to flush and invalidate (if needed)
                 std::vector<VkMappedMemoryRange> toFlushRanges;
@@ -148,7 +137,7 @@ namespace PaperRenderer
             }
             else
             {
-                throw std::runtime_error("Tried to write to unmappable memory");
+                throw std::runtime_error("Tried to write to unmapped memory");
             }
         }
 
@@ -194,14 +183,14 @@ namespace PaperRenderer
             vkBeginCommandBuffer(transferBuffer, &beginInfo);
 
             //ownership transfer from srcQueueFamily to transferQueueFamily for buffers
-            if(src.exclusiveQueueFamilyIndex != -1 && transferQueueFamily != src.exclusiveQueueFamilyIndex) //using exlusive mode
+            /*if(src.exclusiveQueueFamilyIndex != -1 && transferQueueFamily != src.exclusiveQueueFamilyIndex) //using exlusive mode
             {
                 src.transferQueueFamilyOwnership(
                     transferBuffer,
-                    VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-                    VK_ACCESS_2_NONE,
-                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                     VK_ACCESS_2_TRANSFER_READ_BIT,
+                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                    VK_ACCESS_2_NONE,
                     src.exclusiveQueueFamilyIndex,
                     transferQueueFamily);
             }
@@ -209,25 +198,25 @@ namespace PaperRenderer
             {
                 transferQueueFamilyOwnership(
                     transferBuffer,
-                    VK_PIPELINE_STAGE_2_NONE,
-                    VK_ACCESS_2_NONE,
-                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                     VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                    VK_ACCESS_2_NONE,
                     exclusiveQueueFamilyIndex,
                     transferQueueFamily);
-            }
+            }*/
 
             vkCmdCopyBuffer(transferBuffer, src.getBuffer(), this->buffer, regions.size(), regions.data());
 
             //ownership transfer from transferQueueFamily to srcQueueFamily for buffers
-            if(src.exclusiveQueueFamilyIndex != -1 && transferQueueFamily != src.exclusiveQueueFamilyIndex) //using exlusive mode
+            /*if(src.exclusiveQueueFamilyIndex != -1 && transferQueueFamily != src.exclusiveQueueFamilyIndex) //using exlusive mode
             {
                 src.transferQueueFamilyOwnership(
                     transferBuffer,
                     VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                    VK_ACCESS_2_TRANSFER_READ_BIT,
-                    VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
                     VK_ACCESS_2_NONE,
+                    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                    VK_ACCESS_2_TRANSFER_READ_BIT,
                     transferQueueFamily,
                     src.exclusiveQueueFamilyIndex);
             }
@@ -236,12 +225,12 @@ namespace PaperRenderer
                 transferQueueFamilyOwnership(
                     transferBuffer,
                     VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                    VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                    VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
                     VK_ACCESS_2_NONE,
+                    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                    VK_ACCESS_2_TRANSFER_WRITE_BIT,
                     transferQueueFamily,
                     exclusiveQueueFamilyIndex);
-            }
+            }*/
 
             vkEndCommandBuffer(transferBuffer);
 

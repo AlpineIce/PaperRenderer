@@ -27,7 +27,7 @@ namespace PaperRenderer
         if(rtInfo) this->rtPipeline = PipelineBuilder::getRendererInfo().pipelineBuilderPtr->buildRTPipeline(*rtInfo);
     }
 
-    void Material::bind(VkCommandBuffer cmdBuffer, uint32_t currentImage) const
+    void Material::bind(VkCommandBuffer cmdBuffer, uint32_t currentImage)
     {
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
 
@@ -57,7 +57,7 @@ namespace PaperRenderer
     {
     }
 
-    void MaterialInstance::bind(VkCommandBuffer cmdBuffer, uint32_t currentImage) const
+    void MaterialInstance::bind(VkCommandBuffer cmdBuffer, uint32_t currentImage)
     {
         if(descriptorWrites.bufferViewWrites.size() || descriptorWrites.bufferWrites.size() || descriptorWrites.imageWrites.size())
         {

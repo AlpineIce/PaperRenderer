@@ -51,29 +51,28 @@ namespace PaperRenderer
         if(object.getModelPtr() != NULL)
         {
             uint32_t lodIndex = 0;
-            for(LOD& lod : object.getModelPtr()->getLODs()) //iterate LODs
+            for(uint32_t lodIndex = 0; lodIndex < object.getModelPtr()->getLODs().size(); lodIndex++)
             {
-                for(auto& [matSlot, meshes] : lod.meshes) //iterate materials in LOD
+                for(auto& [matSlot, meshes] : object.getModelPtr()->getLODs().at(lodIndex).meshes) //iterate materials in LOD
                 {
                     uint32_t meshIndex = 0;
                     for(LODMesh& mesh : meshes) //iterate meshes with associated material
                     {
-                        MaterialInstance const* materialInstance;
+                        MaterialInstance* materialInstance;
 
-                        if(lod.materials.count(matSlot))
+                        if(object.getMaterialInstances().at(lodIndex).count(matSlot))
                         {
-                            materialInstance = lod.materials.at(matSlot);
+                            materialInstance = object.getMaterialInstances().at(lodIndex).at(matSlot);
                         }
                         else //use default material if one isnt selected
                         {
                             materialInstance = defaultMaterialInstance.get();
-                            lod.materials[matSlot] = materialInstance;
                         }
 
                         //pointers to object data
                         meshReferences.at(lodIndex)[meshIndex] = {
                             .parentMesh = &mesh,
-                            .parentLOD = &lod.shaderLOD,
+                            .parentLOD = &object.getModelPtr()->getLODs().at(lodIndex).shaderLOD,
                             .parentModel = object.getModelPtr(),
                             .objectTransform = &object.getTransformation(),
                             .isVisible = &object.getVisibility()
@@ -101,7 +100,7 @@ namespace PaperRenderer
     void RenderEngine::removeObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, uint64_t& selfIndex)
     {
         uint32_t lodIndex = 0;
-        for(const LOD& lod : object.getModelPtr()->getLODs()) //iterate LODs
+        for(LOD& lod : object.getModelPtr()->getLODs()) //iterate LODs
         {
             for(const auto [matSlot, meshes] : lod.meshes) //iterate materials in LOD
             {
@@ -110,7 +109,7 @@ namespace PaperRenderer
                 {
                     if(meshReferences.at(lodIndex).count(meshIndex))
                     {
-                        MaterialInstance const* materialInstance = lod.materials.at(matSlot);
+                        MaterialInstance* materialInstance = lod.materials.at(matSlot);
                         renderTree.at((Material*)materialInstance->getBaseMaterialPtr()).instances.at(materialInstance).objectBuffer->removeElement(meshReferences.at(lodIndex).at(meshIndex));
                     }
                     meshIndex++;
