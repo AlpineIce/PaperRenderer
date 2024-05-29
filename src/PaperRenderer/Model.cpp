@@ -1,5 +1,6 @@
 #include "Model.h"
 #include "PaperRenderer.h"
+#include "RHI/IndirectDraw.h"
 
 namespace PaperRenderer
 {
@@ -34,12 +35,6 @@ namespace PaperRenderer
 					returnMeshes.push_back(returnMesh);
 				}
 				returnLOD.meshes[matIndex] = returnMeshes;
-			}
-
-			returnLOD.shaderLOD.meshCount = 0;
-			for(auto [matIndex, meshes] : returnLOD.meshes)
-			{
-				returnLOD.shaderLOD.meshCount += meshes.size();
 			}
 			LODs.push_back(returnLOD);
 		}
@@ -160,57 +155,24 @@ namespace PaperRenderer
 		return buffer;
     }
 
-	void Model::bindBuffers(const VkCommandBuffer& cmdBuffer) const
+    void Model::bindBuffers(const VkCommandBuffer& cmdBuffer) const
 	{
 		VkDeviceSize offsets[1] = { 0 };
 		vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vbo->getBuffer(), offsets);
 		vkCmdBindIndexBuffer(cmdBuffer, ibo->getBuffer(), 0, VK_INDEX_TYPE_UINT32);
 	}
 
-    std::vector<ShaderLOD> Model::getLODData(uint32_t currentBufferSize)
-    {
-        this->LODDataOffset = currentBufferSize;
-		std::vector<ShaderLOD> returnData;
-		for(auto& lod : LODs) //iterate LODs
-		{
-			for(const auto& [matIndex, lodMeshes] : lod.meshes) //iterate LODs
-			{
-				returnData.push_back(lod.shaderLOD); //lod count is set on model initialization
-			}
-		}
-		return returnData;
-    }
-
-    std::vector<LODMesh> Model::getMeshLODData(uint32_t currentBufferSize)
-    {
-		this->bufferMeshLODsOffset = currentBufferSize;
-		std::vector<LODMesh> returnData;
-		for(auto& lod : LODs) //iterate LODs
-		{
-			lod.shaderLOD.meshesLocationOffset = currentBufferSize + returnData.size() * sizeof(LODMesh);
-			for(const auto& [index, lodMeshes] : lod.meshes) //iterate LODs
-			{
-				for(auto& mesh : lodMeshes) //creates copy
-				{
-					returnData.push_back(mesh); //mesh data is set by indirect draw handler 
-				}
-			}
-		}
-		return returnData;
-    }
-
 	//----------MODEL INSTANCE DEFINITIONS----------//
 
-    ModelInstance::ModelInstance(RenderEngine* renderer, Model* parentModel, const std::vector<std::unordered_map<uint32_t, MaterialInstance*>>& materials)
-		:rendererPtr(renderer),
-		modelPtr(parentModel),
-		materials(materials)
+    ModelInstance::ModelInstance(RenderEngine *renderer, Model const *parentModel, const std::vector<std::unordered_map<uint32_t, MaterialInstance *>> &materials)
+        : rendererPtr(renderer),
+          modelPtr(parentModel),
+          materials(materials)
     {
 		if(parentModel && renderer)
 		{
 			this->materials.resize(modelPtr->getLODs().size());
-			this->meshReferences.resize(modelPtr->getLODs().size());
-			rendererPtr->addObject(*this, meshReferences, selfIndex);
+			rendererPtr->addObject(*this, meshGroupPtrs, selfIndex);
 		}
     }
 
@@ -218,8 +180,13 @@ namespace PaperRenderer
     {
 		if(modelPtr && rendererPtr)
 		{
-			rendererPtr->removeObject(*this, meshReferences, selfIndex);
+			rendererPtr->removeObject(*this, meshGroupPtrs, selfIndex);
 		}
+    }
+
+	std::vector<char> ModelInstance::getRasterPreprocessData(uint32_t currentRequiredSize)
+    {
+        return std::vector<char>();
     }
 
     void ModelInstance::transform(const ModelTransform &newTransform)

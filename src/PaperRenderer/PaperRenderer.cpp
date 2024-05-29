@@ -46,77 +46,58 @@ namespace PaperRenderer
         rtAccelStructure.createBottomLevel(bottomData);*/
     }
 
-    void RenderEngine::addObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, uint64_t& selfIndex)
+    void RenderEngine::addObject(ModelInstance& object, std::list<CommonMeshGroup*>& meshGroupPtrs, uint64_t& selfIndex)
     {
-        if(object.getModelPtr() != NULL)
+        if(object.getParentModelPtr() != NULL)
         {
             uint32_t lodIndex = 0;
-            for(uint32_t lodIndex = 0; lodIndex < object.getModelPtr()->getLODs().size(); lodIndex++)
+            for(uint32_t lodIndex = 0; lodIndex < object.getParentModelPtr()->getLODs().size(); lodIndex++)
             {
-                for(auto& [matSlot, meshes] : object.getModelPtr()->getLODs().at(lodIndex).meshes) //iterate materials in LOD
+                for(const auto& [matSlot, meshes] : object.getParentModelPtr()->getLODs().at(lodIndex).meshes) //iterate materials in LOD
                 {
-                    uint32_t meshIndex = 0;
-                    for(LODMesh& mesh : meshes) //iterate meshes with associated material
+                    //get material instance
+                    MaterialInstance* materialInstance;
+                    if(object.getMaterialInstances().at(lodIndex).count(matSlot))
                     {
-                        MaterialInstance* materialInstance;
-
-                        if(object.getMaterialInstances().at(lodIndex).count(matSlot))
-                        {
-                            materialInstance = object.getMaterialInstances().at(lodIndex).at(matSlot);
-                        }
-                        else //use default material if one isnt selected
-                        {
-                            materialInstance = defaultMaterialInstance.get();
-                        }
-
-                        //pointers to object data
-                        meshReferences.at(lodIndex)[meshIndex] = {
-                            .parentMesh = &mesh,
-                            .parentLOD = &object.getModelPtr()->getLODs().at(lodIndex).shaderLOD,
-                            .parentModel = object.getModelPtr(),
-                            .objectTransform = &object.getTransformation(),
-                            .isVisible = &object.getVisibility()
-                        };
-
-                        //check if drawing class thing has been created
-                        if(!renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance].objectBuffer)
-                        {
-                            renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance].objectBuffer = 
-                                std::make_unique<IndirectDrawContainer>(&device, &descriptors, materialInstance->getBaseMaterialPtr()->getRasterPipeline());
-                        }
-
-                        //add reference
-                        renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance].objectBuffer->addElement(meshReferences.at(lodIndex).at(meshIndex));
-
-                        meshIndex++;
+                        materialInstance = object.getMaterialInstances().at(lodIndex).at(matSlot);
                     }
+                    else //use default material if one isn't selected
+                    {
+                        materialInstance = defaultMaterialInstance.get();
+                    }
+
+                    //get meshes using same material
+                    std::vector<PaperRenderer::LODMesh const*> similarMeshes;
+                    for(const LODMesh& mesh : meshes) //iterate meshes with associated material
+                    {
+                        similarMeshes.push_back(&mesh);
+                    }
+
+                    //check if mesh group class is created
+                    if(!renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances.count(materialInstance))
+                    {
+                        renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance].meshGroups = 
+                            std::make_unique<CommonMeshGroup>(&device, &descriptors, materialInstance->getBaseMaterialPtr()->getRasterPipeline());
+                    }
+
+                    //add reference
+                    renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance].meshGroups->addInstanceMeshes(&object, similarMeshes);
+                    meshGroupPtrs.push_back(renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance].meshGroups.get());
                 }
-                lodIndex++;
             }
             rendering.addModelInstance(&object, selfIndex);
         }
     }
 
-    void RenderEngine::removeObject(ModelInstance& object, std::vector<std::unordered_map<uint32_t, DrawBufferObject>>& meshReferences, uint64_t& selfIndex)
+    void RenderEngine::removeObject(ModelInstance& object, std::list<CommonMeshGroup*>& meshGroupPtrs, uint64_t& selfIndex)
     {
         uint32_t lodIndex = 0;
-        for(LOD& lod : object.getModelPtr()->getLODs()) //iterate LODs
+        for(auto index = meshGroupPtrs.begin(); index != meshGroupPtrs.end(); index++)
         {
-            for(const auto [matSlot, meshes] : lod.meshes) //iterate materials in LOD
-            {
-                uint32_t meshIndex = 0;
-                for(const auto [matSlot, meshes] : lod.meshes) //iterate materials in LOD
-                {
-                    if(meshReferences.at(lodIndex).count(meshIndex))
-                    {
-                        MaterialInstance* materialInstance = lod.materials.at(matSlot);
-                        renderTree.at((Material*)materialInstance->getBaseMaterialPtr()).instances.at(materialInstance).objectBuffer->removeElement(meshReferences.at(lodIndex).at(meshIndex));
-                    }
-                    meshIndex++;
-                }
-            }
-            lodIndex++;
+            (*index)->removeInstanceMeshes(&object);
+            meshGroupPtrs.pop_front();
         }
+        
         rendering.removeModelInstance(&object, selfIndex);
     }
 

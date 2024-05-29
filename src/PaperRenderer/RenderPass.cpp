@@ -274,56 +274,26 @@ namespace PaperRenderer
         std::vector<char>& stagingData = renderingData.at(currentImage).stagingData;
         stagingData.clear();
 
-        //----------MESH REQUIREMENETS----------//
-
-        //draw counts
-        renderingData.at(currentImage).meshDrawCountsRegion = VkBufferCopy();
-        renderingData.at(currentImage).meshDrawCountsRegion.srcOffset = stagingData.size();
-        renderingData.at(currentImage).meshDrawCountsRegion.dstOffset = stagingData.size();
-        for(const auto& [material, materialNode] : renderTree)
-        {
-            for(const auto& [materialInstance, instanceNode] : materialNode.instances) //memcpy because it needs to be cleared //TODO NEEDS TO HAPPEN AFTER VERTEX SHADER STAGE
-            {
-                uint32_t lastSize = stagingData.size();
-                std::vector<uint32_t> data;
-                stagingData.resize(stagingData.size() + instanceNode.objectBuffer->getDrawCountsSize(stagingData.size()));
-                for(uint32_t i = 0; i < (stagingData.size() - lastSize) / sizeof(uint32_t); i++)
-                {
-                    data.push_back(0);
-                }
-                memcpy(stagingData.data() + lastSize, data.data(), stagingData.size() - lastSize);
-            }
-        }
-        renderingData.at(currentImage).meshDrawCountsRegion.size = stagingData.size() - renderingData.at(currentImage).meshDrawCountsRegion.dstOffset;
-        stagingData.resize(PaperMemory::DeviceAllocation::padToMultiple(stagingData.size(), devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment));
-
-        //draw commands
-        renderingData.at(currentImage).meshDrawCommandsRegion = VkBufferCopy();
-        renderingData.at(currentImage).meshDrawCommandsRegion.srcOffset = stagingData.size();
-        renderingData.at(currentImage).meshDrawCommandsRegion.dstOffset = stagingData.size();
+        //mesh data
         for(const auto& [material, materialNode] : renderTree)
         {
             for(const auto& [materialInstance, instanceNode] : materialNode.instances)
             {
-                stagingData.resize(stagingData.size() + instanceNode.objectBuffer->getDrawCommandsSize(stagingData.size()));
+                std::vector<char> insertionData = instanceNode.meshGroups->getPreprocessData(stagingData.size());
+                stagingData.insert(stagingData.end(), insertionData.begin(), insertionData.end());
             }
         }
-        renderingData.at(currentImage).meshDrawCommandsRegion.size = stagingData.size() - renderingData.at(currentImage).meshDrawCommandsRegion.dstOffset;
-        stagingData.resize(PaperMemory::DeviceAllocation::padToMultiple(stagingData.size(), devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment));
 
-        //output mesh instance data
-        renderingData.at(currentImage).meshOutputObjectsRegion = VkBufferCopy();
-        renderingData.at(currentImage).meshOutputObjectsRegion.srcOffset = stagingData.size();
-        renderingData.at(currentImage).meshOutputObjectsRegion.dstOffset = stagingData.size();
-        for(const auto& [material, materialNode] : renderTree)
+        //model instances
+        for(auto& [model, instances] : renderingModels)
         {
-            for(const auto& [materialInstance, instanceNode] : materialNode.instances)
+            for(ModelInstance* inputObject : instances)
             {
-                stagingData.resize(stagingData.size() + instanceNode.objectBuffer->getOutputObjectSize(stagingData.size()));
+                std::vector<char> insertionData = inputObject->getRasterPreprocessData(stagingData.size());
             }
         }
-        renderingData.at(currentImage).meshOutputObjectsRegion.size = stagingData.size() - renderingData.at(currentImage).meshOutputObjectsRegion.dstOffset;
-        stagingData.resize(PaperMemory::DeviceAllocation::padToMultiple(stagingData.size(), devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment));
+/*  
+
 
         //----------PREPROCESS INPUT REQUIREMENETS----------//
 
@@ -368,8 +338,8 @@ namespace PaperRenderer
                 shaderInputObject.position = glm::vec4(inputObject->getTransformation().position, 0.0f);
                 shaderInputObject.rotation = glm::mat4_cast(inputObject->getTransformation().rotation);
                 shaderInputObject.scale = glm::vec4(inputObject->getTransformation().scale, 0.0f);
-                shaderInputObject.bounds = inputObject->getModelPtr()->getAABB();
-                shaderInputObject.lodCount = inputObject->getModelPtr()->getLODs().size();
+                shaderInputObject.bounds = inputObject->getParentModelPtr()->getAABB();
+                shaderInputObject.lodCount = inputObject->getParentModelPtr()->getLODs().size();
                 shaderInputObject.lodsOffset = model->getLODDataOffset();
 
                 shaderInputObjects.push_back(shaderInputObject);
@@ -380,7 +350,7 @@ namespace PaperRenderer
         memcpy(stagingData.data() + renderingData.at(currentImage).inputObjectsRegion.srcOffset, shaderInputObjects.data(), sizeof(ShaderInputObject) * shaderInputObjects.size());
 
         renderingData.at(currentImage).inputObjectsRegion.size = stagingData.size() - renderingData.at(currentImage).inputObjectsRegion.dstOffset; //input objects region
-        stagingData.resize(PaperMemory::DeviceAllocation::padToMultiple(stagingData.size(), devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment));
+        stagingData.resize(PaperMemory::DeviceAllocation::padToMultiple(stagingData.size(), devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment));/**/
     }
 
     void RenderPass::setRTStagingData(const std::unordered_map<Material *, MaterialNode> &renderTree)
@@ -448,10 +418,7 @@ namespace PaperRenderer
         
         //copy to dedicated buffer
         std::vector<VkBufferCopy> copyRegions = {
-            renderingData.at(currentImage).inputObjectsRegion,
-            renderingData.at(currentImage).LODOffsetsRegion,
-            renderingData.at(currentImage).meshLODOffsetsRegion,
-            renderingData.at(currentImage).meshDrawCountsRegion
+            renderingData.at(currentImage).inputObjectsRegion
         };
         PaperRenderer::PaperMemory::SynchronizationInfo syncInfo;
         syncInfo.queueType = PaperMemory::QueueType::TRANSFER;
@@ -672,7 +639,7 @@ namespace PaperRenderer
             for(auto& [materialInstance, instanceNode] : materialNode.instances) //material instances
             {
                 materialInstance->bind(graphicsCmdBuffer, currentImage);
-                instanceNode.objectBuffer->draw(graphicsCmdBuffer, renderingData.at(currentImage), currentImage);
+                instanceNode.meshGroups->draw(graphicsCmdBuffer, renderingData.at(currentImage).bufferData->getBuffer(), currentImage);
             }
         }
 
@@ -798,22 +765,22 @@ namespace PaperRenderer
 
     void RenderPass::addModelInstance(ModelInstance* instance, uint64_t& selfIndex)
     {   
-        selfIndex = renderingModels[instance->getModelPtr()].size();
-        renderingModels[instance->getModelPtr()].push_back(instance);
+        selfIndex = renderingModels[instance->getParentModelPtr()].size();
+        renderingModels[instance->getParentModelPtr()].push_back(instance);
     }
 
     void RenderPass::removeModelInstance(ModelInstance* instance, uint64_t& selfIndex)
     {
         //replace object index with the last element in the vector, change last elements self index to match, remove last element with pop_back()
-        if(renderingModels.at(instance->getModelPtr()).size() > 1)
+        if(renderingModels.at(instance->getParentModelPtr()).size() > 1)
         {
-            renderingModels.at(instance->getModelPtr()).at(selfIndex) = renderingModels.at(instance->getModelPtr()).back();
-            renderingModels.at(instance->getModelPtr()).at(selfIndex)->setRendererIndex(selfIndex);
-            renderingModels.at(instance->getModelPtr()).pop_back();
+            renderingModels.at(instance->getParentModelPtr()).at(selfIndex) = renderingModels.at(instance->getParentModelPtr()).back();
+            renderingModels.at(instance->getParentModelPtr()).at(selfIndex)->setRendererIndex(selfIndex);
+            renderingModels.at(instance->getParentModelPtr()).pop_back();
         }
         else
         {
-            renderingModels.at(instance->getModelPtr()).clear();
+            renderingModels.at(instance->getParentModelPtr()).clear();
         }
         
         selfIndex = UINT64_MAX;

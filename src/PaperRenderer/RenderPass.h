@@ -1,7 +1,7 @@
 #pragma once
 #include "RHI/Swapchain.h"
 #include "RHI/Pipeline.h"
-#include "RHI/IndirectDrawBuffer.h"
+#include "RHI/IndirectDraw.h"
 #include "RHI/AccelerationStructure.h"
 #include "Camera.h"
 #include "ComputeShader.h"
@@ -16,13 +16,23 @@ namespace PaperRenderer
     //node for objects corresponding to one material
     struct MaterialInstanceNode
     {
-        IndirectDrawContainer objectBuffer;
+        std::unique_ptr<CommonMeshGroup> meshGroups;
     };
 
     //node for materials corresponding to one pipeline
     struct MaterialNode
     {
         std::unordered_map<MaterialInstance*, MaterialInstanceNode> instances;
+    };
+
+    struct IndirectRenderingData
+    {
+        uint32_t objectCount;
+        VkBufferCopy inputObjectsRegion;
+
+        std::vector<char> stagingData;
+        std::unique_ptr<PaperMemory::DeviceAllocation> bufferAllocation;
+        std::unique_ptr<PaperMemory::Buffer> bufferData; //THE UBER-BUFFER
     };
 
     //----------PREPROCESS COMPUTE PIPELINES----------//
@@ -77,6 +87,24 @@ namespace PaperRenderer
     class RenderPass
     {
     private:
+        //structs
+        struct ShaderInputObject
+        {
+            //transformation
+            glm::vec4 position;
+            glm::vec4 scale; 
+            glm::mat4 rotation; //quat -> mat4... could possibly be a mat3
+            AABB bounds;
+            uint32_t lodCount;
+            uint32_t lodsOffset;
+        };
+
+        struct ShaderLOD
+        {
+            uint32_t meshCount;
+            uint32_t meshesLocationOffset;
+        };
+
         //synchronization and commands
         std::vector<VkSemaphore> imageSemaphores;
         std::vector<VkSemaphore> bufferCopySemaphores;
@@ -100,7 +128,7 @@ namespace PaperRenderer
 
         //device local rendering buffer and misc data
         std::vector<IndirectRenderingData> renderingData; //includes its own device local allocation, but needs staging allocation for access
-        std::unordered_map<Model*, std::vector<ModelInstance*>> renderingModels;
+        std::unordered_map<Model const*, std::vector<ModelInstance*>> renderingModels;
         
         AccelerationStructure rtAccelStructure;
         uint32_t currentImage;

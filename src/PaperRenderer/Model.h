@@ -1,9 +1,10 @@
 #pragma once
 #include "Material.h"
-#include "RHI/IndirectDrawBuffer.h"
+#include "RHI/IndirectDraw.h"
 
 #include <filesystem>
 #include <unordered_map>
+#include <list>
 
 namespace PaperRenderer
 {
@@ -23,11 +24,35 @@ namespace PaperRenderer
 
     //----------MODEL INFORMATION----------//
 
+    struct LODMesh
+    {
+        uint32_t vboOffset;
+        uint32_t vertexCount;
+        uint32_t iboOffset;
+        uint32_t indexCount;        
+    };
+
     struct LOD //acts more like an individual model
     {
-        ShaderLOD shaderLOD;
         std::unordered_map<uint32_t, MaterialInstance*> materials; //material index/slot, associated material
         std::unordered_map<uint32_t, std::vector<LODMesh>> meshes; //material index/slot, material associated meshes
+    };
+
+    struct AABB
+    {
+        float posX = 0.0f;
+        float negX = 0.0f;
+        float posY = 0.0f;
+        float negY = 0.0f;
+        float posZ = 0.0f;
+        float negZ = 0.0f;
+    };
+
+    struct ModelTransform
+    {
+        glm::vec3 position = glm::vec3(0.0f); //world position
+        glm::vec3 scale = glm::vec3(1.0f); //local scale
+        glm::quat rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f); //local rotation
     };
 
     //----------MODEL DECLARATION----------//
@@ -39,8 +64,6 @@ namespace PaperRenderer
         std::unique_ptr<PaperMemory::Buffer> vbo;
         std::unique_ptr<PaperMemory::Buffer> ibo;
         AABB aabb;
-        uint32_t LODDataOffset;
-        uint32_t bufferMeshLODsOffset;
 
         class RenderEngine* rendererPtr;
         PaperMemory::DeviceAllocation* allocationPtr;
@@ -53,17 +76,12 @@ namespace PaperRenderer
 
         static VkDeviceSize getMemoryAlignment(Device* device);
 
-        //mutable functions used in render loop
-        std::vector<ShaderLOD> getLODData(uint32_t currentBufferSize);
-        uint32_t getLODDataOffset() const { return LODDataOffset;}
-        std::vector<LODMesh> getMeshLODData(uint32_t currentBufferSize);
-        uint32_t getMeshLODsOffset() const { return bufferMeshLODsOffset; }
         void bindBuffers(const VkCommandBuffer& cmdBuffer) const;
 
         VkDeviceAddress getVBOAddress() const { return vbo->getBufferDeviceAddress(); }
         VkDeviceAddress getIBOAddress() const { return ibo->getBufferDeviceAddress(); }
         const AABB& getAABB() const { return aabb; }
-        std::vector<LOD>& getLODs() { return LODs; }
+        const std::vector<LOD>& getLODs() const { return LODs; }
     };
 
     //----------MODEL INSTANCE DECLARATIONS----------//
@@ -71,25 +89,32 @@ namespace PaperRenderer
     class ModelInstance
     {
     private:
-        std::vector<std::unordered_map<uint32_t, DrawBufferObject>> meshReferences;
-        uint64_t selfIndex;
-        ModelTransform transformation = ModelTransform();
         std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials;
+        std::list<CommonMeshGroup*> meshGroupPtrs;
+
+        ModelTransform transformation = ModelTransform();
+        uint64_t selfIndex;
         bool isVisible = true;
+
         class RenderEngine* rendererPtr;
-        Model* modelPtr = NULL;
+        Model const* modelPtr = NULL;
+
+        void setRendererIndex(uint64_t newIndex) { this->selfIndex = newIndex; }
+        std::vector<char> getRasterPreprocessData(uint32_t currentRequiredSize);
         
     public:
-        ModelInstance(RenderEngine* renderer, Model* parentModel, const std::vector<std::unordered_map<uint32_t, MaterialInstance*>>& materials);
+        ModelInstance(RenderEngine* renderer, Model const* parentModel, const std::vector<std::unordered_map<uint32_t, MaterialInstance*>>& materials);
         ~ModelInstance();
 
         void transform(const ModelTransform& newTransform);
         void setVisibility(bool newVisibility) { this->isVisible = newVisibility; }
-        void setRendererIndex(uint64_t newIndex) { this->selfIndex = newIndex; } //FOR RENDERER USE ONLY
-
-        Model* getModelPtr() { return modelPtr; }
+        
+        Model const* getParentModelPtr() const { return modelPtr; }
         const ModelTransform& getTransformation() const { return transformation; }
         const std::vector<std::unordered_map<uint32_t, MaterialInstance*>>& getMaterialInstances() const { return materials; }
         const bool& getVisibility() const { return isVisible; }
+
+        friend class CommonMeshGroup;
+        friend class RenderPass;
     };
 }

@@ -59,7 +59,7 @@ namespace PaperRenderer
         bottomStructures.clear();
     }
 
-    void AccelerationStructure::verifyBufferSizes(const std::unordered_map<Model*, std::vector<ModelInstance*>> &modelInstances, uint32_t currentFrame)
+    void AccelerationStructure::verifyBufferSizes(const std::unordered_map<Model const*, std::vector<ModelInstance*>> &modelInstances, uint32_t currentFrame)
     {
         BLBuildData = BottomBuildData{}; //reset build data
 
@@ -77,7 +77,7 @@ namespace PaperRenderer
         instancesBufferSize = vectorModelInstances.size() * sizeof(VkAccelerationStructureInstanceKHR);
 
         //setup bottom level geometries
-        for(Model* model : BLBuildData.buildModels)
+        for(Model const* model : BLBuildData.buildModels)
         {
             std::vector<VkAccelerationStructureGeometryKHR> modelGeometries;
             std::vector<uint32_t> modelPrimitiveCounts;
@@ -254,7 +254,7 @@ namespace PaperRenderer
         }
     }
 
-    PaperMemory::CommandBuffer AccelerationStructure::updateBLAS(const std::unordered_map<Model*, std::vector<ModelInstance*>> &modelInstances, const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame)
+    PaperMemory::CommandBuffer AccelerationStructure::updateBLAS(const std::unordered_map<Model const*, std::vector<ModelInstance*>> &modelInstances, const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame)
     {
         verifyBufferSizes(modelInstances, currentFrame);
         return createBottomLevel(synchronizationInfo, currentFrame);
