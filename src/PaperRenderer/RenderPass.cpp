@@ -284,73 +284,24 @@ namespace PaperRenderer
             }
         }
 
-        //model instances
-        for(auto& [model, instances] : renderingModels)
+        //model instances mesh data
+        std::vector<ModelInstance::ShaderInputObject> shaderInputObjects;
+        for(ModelInstance* inputObject : renderingModels)
         {
-            for(ModelInstance* inputObject : instances)
-            {
-                std::vector<char> insertionData = inputObject->getRasterPreprocessData(stagingData.size());
-            }
+            std::vector<char> insertionData = inputObject->getRasterPreprocessData(stagingData.size());
+            stagingData.insert(stagingData.end(), insertionData.begin(), insertionData.end());
+
+            shaderInputObjects.push_back(inputObject->getShaderInputObject());
         }
-/*  
 
-
-        //----------PREPROCESS INPUT REQUIREMENETS----------//
-
-        //LOD mesh data
-        renderingData.at(currentImage).meshLODOffsetsRegion = VkBufferCopy();
-        renderingData.at(currentImage).meshLODOffsetsRegion.srcOffset = stagingData.size();
-        renderingData.at(currentImage).meshLODOffsetsRegion.dstOffset = stagingData.size();
-        for(auto& [model, instances] : renderingModels)
-        {
-            uint32_t lastSize = stagingData.size();
-            std::vector<LODMesh> lodMeshData = model->getMeshLODData(stagingData.size());
-            stagingData.resize(stagingData.size() + lodMeshData.size() * sizeof(LODMesh));
-            memcpy(stagingData.data() + lastSize, lodMeshData.data(), lodMeshData.size() * sizeof(LODMesh));
-        }
-        renderingData.at(currentImage).meshLODOffsetsRegion.size = stagingData.size() - renderingData.at(currentImage).meshLODOffsetsRegion.dstOffset;
-        stagingData.resize(PaperMemory::DeviceAllocation::padToMultiple(stagingData.size(), devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment));
-
-        //LOD data          THIS **ABSOLUTELY MUST** COME AFTER MESH DATA
-        renderingData.at(currentImage).LODOffsetsRegion = VkBufferCopy();
-        renderingData.at(currentImage).LODOffsetsRegion.srcOffset = stagingData.size();
-        renderingData.at(currentImage).LODOffsetsRegion.dstOffset = stagingData.size();
-        for(auto& [model, instances] : renderingModels)
-        {
-            uint32_t lastSize = stagingData.size();
-            std::vector<ShaderLOD> lodData = model->getLODData(stagingData.size());
-            stagingData.resize(stagingData.size() + lodData.size() * sizeof(ShaderLOD));
-            memcpy(stagingData.data() + lastSize, lodData.data(), lodData.size() * sizeof(ShaderLOD));
-        }
-        renderingData.at(currentImage).LODOffsetsRegion.size = stagingData.size() - renderingData.at(currentImage).LODOffsetsRegion.dstOffset;
-        stagingData.resize(PaperMemory::DeviceAllocation::padToMultiple(stagingData.size(), devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment));
+        //shader input objects
+        uint32_t inputObjectsCopyLocation = PaperMemory::DeviceAllocation::padToMultiple(stagingData.size(), devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment);
+        stagingData.resize(inputObjectsCopyLocation + shaderInputObjects.size() * sizeof(ModelInstance::ShaderInputObject));
+        memcpy(stagingData.data() + inputObjectsCopyLocation, shaderInputObjects.data(), shaderInputObjects.size() * sizeof(ModelInstance::ShaderInputObject));
         
-        //get input objects (binding 1)
-        renderingData.at(currentImage).inputObjectsRegion = VkBufferCopy();
-        renderingData.at(currentImage).inputObjectsRegion.srcOffset = stagingData.size();
-        renderingData.at(currentImage).inputObjectsRegion.dstOffset = stagingData.size();
-        std::vector<ShaderInputObject> shaderInputObjects;
-        for(auto& [model, instances] : renderingModels) //material
-        {
-            for(ModelInstance* inputObject : instances)
-            {
-                ShaderInputObject shaderInputObject;
-                shaderInputObject.position = glm::vec4(inputObject->getTransformation().position, 0.0f);
-                shaderInputObject.rotation = glm::mat4_cast(inputObject->getTransformation().rotation);
-                shaderInputObject.scale = glm::vec4(inputObject->getTransformation().scale, 0.0f);
-                shaderInputObject.bounds = inputObject->getParentModelPtr()->getAABB();
-                shaderInputObject.lodCount = inputObject->getParentModelPtr()->getLODs().size();
-                shaderInputObject.lodsOffset = model->getLODDataOffset();
-
-                shaderInputObjects.push_back(shaderInputObject);
-            }
-        }
+        renderingData.at(currentImage).inputObjectsRegion.dstOffset = inputObjectsCopyLocation;
+        renderingData.at(currentImage).inputObjectsRegion.size = shaderInputObjects.size() * sizeof(ModelInstance::ShaderInputObject);
         renderingData.at(currentImage).objectCount = shaderInputObjects.size();
-        stagingData.resize(stagingData.size() + shaderInputObjects.size() * sizeof(ShaderInputObject));
-        memcpy(stagingData.data() + renderingData.at(currentImage).inputObjectsRegion.srcOffset, shaderInputObjects.data(), sizeof(ShaderInputObject) * shaderInputObjects.size());
-
-        renderingData.at(currentImage).inputObjectsRegion.size = stagingData.size() - renderingData.at(currentImage).inputObjectsRegion.dstOffset; //input objects region
-        stagingData.resize(PaperMemory::DeviceAllocation::padToMultiple(stagingData.size(), devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment));/**/
     }
 
     void RenderPass::setRTStagingData(const std::unordered_map<Material *, MaterialNode> &renderTree)
@@ -417,8 +368,12 @@ namespace PaperRenderer
         vkResetFences(devicePtr->getDevice(), waitFences.size(), waitFences.data());
         
         //copy to dedicated buffer
+        VkBufferCopy copyRegion = {};
+        copyRegion.dstOffset = 0;
+        copyRegion.srcOffset = 0;
+        copyRegion.size = renderingData.at(currentImage).stagingData.size();
         std::vector<VkBufferCopy> copyRegions = {
-            renderingData.at(currentImage).inputObjectsRegion
+            copyRegion
         };
         PaperRenderer::PaperMemory::SynchronizationInfo syncInfo;
         syncInfo.queueType = PaperMemory::QueueType::TRANSFER;
@@ -765,22 +720,22 @@ namespace PaperRenderer
 
     void RenderPass::addModelInstance(ModelInstance* instance, uint64_t& selfIndex)
     {   
-        selfIndex = renderingModels[instance->getParentModelPtr()].size();
-        renderingModels[instance->getParentModelPtr()].push_back(instance);
+        selfIndex = renderingModels.size();
+        renderingModels.push_back(instance);
     }
 
     void RenderPass::removeModelInstance(ModelInstance* instance, uint64_t& selfIndex)
     {
         //replace object index with the last element in the vector, change last elements self index to match, remove last element with pop_back()
-        if(renderingModels.at(instance->getParentModelPtr()).size() > 1)
+        if(renderingModels.size() > 1)
         {
-            renderingModels.at(instance->getParentModelPtr()).at(selfIndex) = renderingModels.at(instance->getParentModelPtr()).back();
-            renderingModels.at(instance->getParentModelPtr()).at(selfIndex)->setRendererIndex(selfIndex);
-            renderingModels.at(instance->getParentModelPtr()).pop_back();
+            renderingModels.at(selfIndex) = renderingModels.back();
+            renderingModels.at(selfIndex)->setRendererIndex(selfIndex);
+            renderingModels.pop_back();
         }
         else
         {
-            renderingModels.at(instance->getParentModelPtr()).clear();
+            renderingModels.clear();
         }
         
         selfIndex = UINT64_MAX;

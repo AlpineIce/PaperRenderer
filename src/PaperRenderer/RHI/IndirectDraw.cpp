@@ -43,16 +43,17 @@ namespace PaperRenderer
             shaderMesh.vertexCount = mesh->vertexCount;
             shaderMesh.iboOffset = mesh->iboOffset;
             shaderMesh.indexCount = mesh->indexCount;
+            shaderMesh.padding = 420;
 
             //get size requirements
             uint32_t instanceCount = meshData.instanceCount;
 
             shaderMesh.drawCountsOffset = dynamicOffset;
             meshData.drawCountsOffset = dynamicOffset;
-            dynamicOffset += PaperMemory::DeviceAllocation::padToMultiple(sizeof(uint32_t), 4); //draw commands offset (below) must be padded to 4 bytes per spec
+            dynamicOffset = PaperMemory::DeviceAllocation::padToMultiple(dynamicOffset + sizeof(uint32_t), 4); //draw commands offset (below) must be padded to 4 bytes per spec
             shaderMesh.drawCommandsOffset = dynamicOffset;
             meshData.drawCommandsOffset = dynamicOffset;
-            dynamicOffset += PaperMemory::DeviceAllocation::padToMultiple(sizeof(VkDrawIndexedIndirectCommand) * instanceCount,
+            dynamicOffset = PaperMemory::DeviceAllocation::padToMultiple(dynamicOffset + sizeof(VkDrawIndexedIndirectCommand) * instanceCount,
                 devicePtr->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment); //output objects (below) must be padded to min storage buffer alignment
             shaderMesh.outputObjectsOffset = dynamicOffset;
             meshData.outputObjectsOffset = dynamicOffset;
@@ -87,10 +88,9 @@ namespace PaperRenderer
                 meshesData[mesh].parentModelPtr = instance->getParentModelPtr();
             }
 
+            instance->meshReferences[mesh] = this;
             meshesData.at(mesh).instanceCount++;
         }
-
-        instance->meshGroupPtrs.push_back(this);
 
         addAndRemoveLock.unlock();
     }
@@ -98,13 +98,13 @@ namespace PaperRenderer
     void CommonMeshGroup::removeInstanceMeshes(ModelInstance *instance)
     {
         addAndRemoveLock.lock();
-
-        instanceMeshes.erase(instance);
-        instance->meshGroupPtrs.remove(this);
+        
         for(LODMesh const* mesh : this->instanceMeshes.at(instance))
         {
+            instance->meshReferences.at(mesh) = NULL;
             meshesData.at(mesh).instanceCount--;
         }
+        instanceMeshes.erase(instance);
 
         addAndRemoveLock.unlock();
     }

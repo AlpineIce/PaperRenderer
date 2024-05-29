@@ -172,7 +172,7 @@ namespace PaperRenderer
 		if(parentModel && renderer)
 		{
 			this->materials.resize(modelPtr->getLODs().size());
-			rendererPtr->addObject(*this, meshGroupPtrs, selfIndex);
+			rendererPtr->addObject(*this, meshReferences, selfIndex);
 		}
     }
 
@@ -180,13 +180,67 @@ namespace PaperRenderer
     {
 		if(modelPtr && rendererPtr)
 		{
-			rendererPtr->removeObject(*this, meshGroupPtrs, selfIndex);
+			rendererPtr->removeObject(*this, meshReferences, selfIndex);
 		}
     }
 
 	std::vector<char> ModelInstance::getRasterPreprocessData(uint32_t currentRequiredSize)
     {
-        return std::vector<char>();
+		struct ShaderInstanceData
+		{
+			std::vector<ShaderLOD> shaderLODs;
+			std::vector<ShaderMeshReference> shaderMeshReferences;
+		};
+
+		ShaderInstanceData instanceData = {};
+		uint32_t dynamicOffset = currentRequiredSize;
+
+		//shader LODs
+		lodsOffset = dynamicOffset;
+		dynamicOffset += sizeof(ShaderLOD) * modelPtr->getLODs().size();
+		for(uint32_t i = 0; i < modelPtr->getLODs().size(); i++)
+		{
+			ShaderLOD lod = {};
+			lod.meshReferenceCount = 0;
+			lod.meshReferencesOffset = dynamicOffset;
+			for(const auto& [matIndex, meshes] : modelPtr->getLODs().at(i).meshes)
+			{
+				lod.meshReferenceCount += meshes.size();
+				for(const LODMesh& mesh : meshes)
+				{
+					instanceData.shaderMeshReferences.push_back({ meshReferences.at(&mesh)->getMeshesData().at(&mesh).shaderMeshOffset });
+					dynamicOffset += sizeof(ShaderMeshReference);
+				}
+			}
+			instanceData.shaderLODs.push_back(lod);
+		}
+
+		//copy data
+		preprocessData.clear();
+		uint32_t lastSize = 0;
+
+		preprocessData.resize(preprocessData.size() + sizeof(ShaderLOD) * instanceData.shaderLODs.size());
+		memcpy(preprocessData.data() + lastSize, instanceData.shaderLODs.data(), sizeof(ShaderLOD) * instanceData.shaderLODs.size());
+		lastSize = preprocessData.size();
+		
+		preprocessData.resize(preprocessData.size() + sizeof(ShaderMeshReference) * instanceData.shaderLODs.size());
+		memcpy(preprocessData.data() + lastSize, instanceData.shaderMeshReferences.data(), sizeof(ShaderMeshReference) * instanceData.shaderMeshReferences.size());
+		lastSize = preprocessData.size();
+
+		return preprocessData;
+    }
+
+    ModelInstance::ShaderInputObject ModelInstance::getShaderInputObject() const
+    {
+		ShaderInputObject inputObject = {};
+		inputObject.position = glm::vec4(transformation.position, 1.0f);
+		inputObject.scale = glm::vec4(transformation.scale, 1.0f);
+		inputObject.rotation = glm::mat4_cast(transformation.rotation); //TODO SHADER QUATERNION
+		inputObject.bounds = modelPtr->getAABB();
+		inputObject.lodCount = modelPtr->getLODs().size();
+		inputObject.lodsOffset = lodsOffset;
+
+        return inputObject;
     }
 
     void ModelInstance::transform(const ModelTransform &newTransform)

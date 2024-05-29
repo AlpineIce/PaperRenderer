@@ -59,22 +59,12 @@ namespace PaperRenderer
         bottomStructures.clear();
     }
 
-    void AccelerationStructure::verifyBufferSizes(const std::unordered_map<Model const*, std::vector<ModelInstance*>> &modelInstances, uint32_t currentFrame)
+    void AccelerationStructure::verifyBufferSizes(const std::vector<ModelInstance*>& modelInstances, uint32_t currentFrame)
     {
         BLBuildData = BottomBuildData{}; //reset build data
 
-        //get model and instance data in neater format
-        std::vector<ModelInstance*> vectorModelInstances;
-        for(const auto& [model, instances] : modelInstances)
-        {
-            BLBuildData.buildModels.push_back(model);
-            for(auto instance = instances.begin(); instance != instances.end(); instance++)
-            {
-                vectorModelInstances.push_back(*instance);
-            }
-        }
-        instancesCount = vectorModelInstances.size();
-        instancesBufferSize = vectorModelInstances.size() * sizeof(VkAccelerationStructureInstanceKHR);
+        instancesCount = modelInstances.size();
+        instancesBufferSize = modelInstances.size() * sizeof(VkAccelerationStructureInstanceKHR);
 
         //setup bottom level geometries
         for(Model const* model : BLBuildData.buildModels)
@@ -254,7 +244,7 @@ namespace PaperRenderer
         }
     }
 
-    PaperMemory::CommandBuffer AccelerationStructure::updateBLAS(const std::unordered_map<Model const*, std::vector<ModelInstance*>> &modelInstances, const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame)
+    PaperMemory::CommandBuffer AccelerationStructure::updateBLAS(const std::vector<ModelInstance*>& modelInstances, const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame)
     {
         verifyBufferSizes(modelInstances, currentFrame);
         return createBottomLevel(synchronizationInfo, currentFrame);

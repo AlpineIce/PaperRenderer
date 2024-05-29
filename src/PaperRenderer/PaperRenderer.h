@@ -44,8 +44,8 @@ namespace PaperRenderer
         ~RenderEngine();
 
         //add/remove objects to render tree
-        void addObject(ModelInstance& object, std::list<CommonMeshGroup*>& meshGroupPtrs, uint64_t& selfIndex);
-        void removeObject(ModelInstance& object, std::list<CommonMeshGroup*>& meshGroupPtrs, uint64_t& selfIndex);
+        void addObject(ModelInstance& object, std::unordered_map<LODMesh const*, CommonMeshGroup*>& meshReferences, uint64_t& selfIndex);
+        void removeObject(ModelInstance& object, std::unordered_map<LODMesh const*, CommonMeshGroup*>& meshReferences, uint64_t& selfIndex);
 
         //overwrite camera pointer used for rendering
         void setCamera(Camera* camera);

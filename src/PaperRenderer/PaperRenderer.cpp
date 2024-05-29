@@ -46,7 +46,7 @@ namespace PaperRenderer
         rtAccelStructure.createBottomLevel(bottomData);*/
     }
 
-    void RenderEngine::addObject(ModelInstance& object, std::list<CommonMeshGroup*>& meshGroupPtrs, uint64_t& selfIndex)
+    void RenderEngine::addObject(ModelInstance& object, std::unordered_map<LODMesh const*, CommonMeshGroup*>& meshReferences, uint64_t& selfIndex)
     {
         if(object.getParentModelPtr() != NULL)
         {
@@ -82,20 +82,17 @@ namespace PaperRenderer
 
                     //add reference
                     renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance].meshGroups->addInstanceMeshes(&object, similarMeshes);
-                    meshGroupPtrs.push_back(renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance].meshGroups.get());
                 }
             }
             rendering.addModelInstance(&object, selfIndex);
         }
     }
 
-    void RenderEngine::removeObject(ModelInstance& object, std::list<CommonMeshGroup*>& meshGroupPtrs, uint64_t& selfIndex)
+    void RenderEngine::removeObject(ModelInstance& object, std::unordered_map<LODMesh const*, CommonMeshGroup*>& meshReferences, uint64_t& selfIndex)
     {
-        uint32_t lodIndex = 0;
-        for(auto index = meshGroupPtrs.begin(); index != meshGroupPtrs.end(); index++)
+        for(auto& [mesh, reference] : meshReferences)
         {
-            (*index)->removeInstanceMeshes(&object);
-            meshGroupPtrs.pop_front();
+            if(reference) reference->removeInstanceMeshes(&object);
         }
         
         rendering.removeModelInstance(&object, selfIndex);

@@ -65,5 +65,7 @@ namespace PaperRenderer
         void removeInstanceMeshes(class ModelInstance* instance);
 
         void draw(const VkCommandBuffer& cmdBuffer, const VkBuffer& dataBuffer, uint32_t currentFrame);
+
+        const std::unordered_map<struct LODMesh const*, MeshInstancesData>& getMeshesData() const { return meshesData; }
     };
 }

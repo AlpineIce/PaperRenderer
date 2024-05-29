@@ -54,12 +54,33 @@ layout(std430, set = 0, binding = 1) readonly buffer InputObjects
     InputObject objects[];
 } inputObjects;
 
-struct LODMesh
+struct MeshReference
+{
+    uint meshOffset;
+};
+
+layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer MeshReferences
+{
+    MeshReference references[];
+};
+
+struct LOD
+{
+    uint meshesReferencesOffset;
+    uint meshReferenceCount;
+};
+
+layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer LODs
+{
+    LOD lods[];
+};
+
+struct Mesh
 {
     uint vboOffset;
-    uint vboSize;
+    uint vertexCount;
     uint iboOffset;
-    uint iboSize;
+    uint indexCount;
 
     uint drawCountsOffset;
     uint drawCommandsOffset;
@@ -67,15 +88,9 @@ struct LODMesh
     uint padding;
 };
 
-layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer LODMeshes
+layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer MeshPointer
 {
-    LODMesh meshes[];
-};
-
-layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer LOD
-{
-    uint meshCount;
-    uint meshesLocationOffset;
+    Mesh mesh;
 };
 
 layout(std430, buffer_reference, buffer_reference_align = 8) buffer DrawCounts
@@ -175,13 +190,13 @@ uint getLODLevel(InputObject object)
     return lodLevel;
 }
 
-DrawCommand buildDrawCommand(LODMesh lodData, uint writeIndex)
+DrawCommand buildDrawCommand(Mesh mesh, uint writeIndex)
 {
     DrawCommand drawCommand;
-    drawCommand.indexCount = lodData.iboSize;
+    drawCommand.indexCount = mesh.indexCount;
     drawCommand.instanceCount = 1;
-    drawCommand.firstIndex = lodData.iboOffset;
-    drawCommand.vertexOffset = int(lodData.vboOffset);
+    drawCommand.firstIndex = mesh.iboOffset;
+    drawCommand.vertexOffset = int(mesh.vboOffset);
     drawCommand.firstInstance = writeIndex;
 
     return drawCommand;
@@ -213,25 +228,27 @@ void main()
         vec4(inputObject.position.xyz, 1.0));
     modelMatrix = modelMatrix * inputObject.rotation;
 
-    if(isInBounds(inputObject, modelMatrix))
+    if(true)
     {   
-        //get LOD
+        //get LOD and mesh references
         uint lodLevel = min(getLODLevel(inputObject), inputObject.lodCount - 1);
-        LOD lod = LOD(uint64_t(inputData.bufferReference) + inputObject.lodOffset + lodLevel * 8);
-        LODMeshes meshesArray = LODMeshes(uint64_t(inputData.bufferReference) + lod.meshesLocationOffset);
+        LOD lod = LODs(uint64_t(inputData.bufferReference) + inputObject.lodOffset).lods[lodLevel];
+        MeshReferences meshReferences = MeshReferences(uint64_t(inputData.bufferReference) + lod.meshesReferencesOffset);
 
         //loop through LOD meshes and create draw calls with counts
-        for(uint i = 0; i < lod.meshCount; i++)
+        for(uint i = 0; i < lod.meshReferenceCount; i++)
         {
+            Mesh mesh = MeshPointer(uint64_t(inputData.bufferReference) + meshReferences.references[i].meshOffset).mesh;
+
             //draw counts and output objects
-            DrawCounts drawCounts = DrawCounts(uint64_t(inputData.bufferReference) + meshesArray.meshes[i].drawCountsOffset);
-            DrawCommands outputCommands = DrawCommands(uint64_t(inputData.bufferReference) + meshesArray.meshes[i].drawCommandsOffset);
-            OutputObjects outputObjects = OutputObjects(uint64_t(inputData.bufferReference) + meshesArray.meshes[i].outputObjectsOffset);
+            DrawCounts drawCounts = DrawCounts(uint64_t(inputData.bufferReference) + mesh.drawCountsOffset);
+            DrawCommands outputCommands = DrawCommands(uint64_t(inputData.bufferReference) + mesh.drawCommandsOffset);
+            OutputObjects outputObjects = OutputObjects(uint64_t(inputData.bufferReference) + mesh.outputObjectsOffset);
 
             uint writeIndex = atomicAdd(drawCounts.count, 1);
 
             //draw commands
-            outputCommands.commands[writeIndex] = buildDrawCommand(meshesArray.meshes[i], writeIndex);
+            outputCommands.commands[writeIndex] = buildDrawCommand(mesh, writeIndex);
 
             //output objects
             outputObjects.objects[writeIndex] = buildOutputObject(modelMatrix);

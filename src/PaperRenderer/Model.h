@@ -89,8 +89,32 @@ namespace PaperRenderer
     class ModelInstance
     {
     private:
+        struct ShaderInputObject
+        {
+            //transformation
+            glm::vec4 position;
+            glm::vec4 scale; 
+            glm::mat4 rotation; //quat -> mat4... could possibly be a mat3
+            AABB bounds;
+            uint32_t lodCount = 0;
+            uint32_t lodsOffset = 0;
+        };
+
+        struct ShaderLOD
+        {
+            uint32_t meshReferencesOffset = 0;
+            uint32_t meshReferenceCount = 0;
+        };
+
+        struct ShaderMeshReference
+        {
+            uint32_t meshOffset = 0;
+        };
+        
+        uint32_t lodsOffset;
+        std::vector<char> preprocessData;
         std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials;
-        std::list<CommonMeshGroup*> meshGroupPtrs;
+        std::unordered_map<LODMesh const*, CommonMeshGroup*> meshReferences;
 
         ModelTransform transformation = ModelTransform();
         uint64_t selfIndex;
@@ -101,6 +125,7 @@ namespace PaperRenderer
 
         void setRendererIndex(uint64_t newIndex) { this->selfIndex = newIndex; }
         std::vector<char> getRasterPreprocessData(uint32_t currentRequiredSize);
+        ShaderInputObject getShaderInputObject() const;
         
     public:
         ModelInstance(RenderEngine* renderer, Model const* parentModel, const std::vector<std::unordered_map<uint32_t, MaterialInstance*>>& materials);

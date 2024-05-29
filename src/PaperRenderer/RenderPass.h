@@ -28,8 +28,7 @@ namespace PaperRenderer
     struct IndirectRenderingData
     {
         uint32_t objectCount;
-        VkBufferCopy inputObjectsRegion;
-
+        VkBufferCopy inputObjectsRegion; //not actually used for a copy, but is used for storing input objects size and location
         std::vector<char> stagingData;
         std::unique_ptr<PaperMemory::DeviceAllocation> bufferAllocation;
         std::unique_ptr<PaperMemory::Buffer> bufferData; //THE UBER-BUFFER
@@ -87,24 +86,6 @@ namespace PaperRenderer
     class RenderPass
     {
     private:
-        //structs
-        struct ShaderInputObject
-        {
-            //transformation
-            glm::vec4 position;
-            glm::vec4 scale; 
-            glm::mat4 rotation; //quat -> mat4... could possibly be a mat3
-            AABB bounds;
-            uint32_t lodCount;
-            uint32_t lodsOffset;
-        };
-
-        struct ShaderLOD
-        {
-            uint32_t meshCount;
-            uint32_t meshesLocationOffset;
-        };
-
         //synchronization and commands
         std::vector<VkSemaphore> imageSemaphores;
         std::vector<VkSemaphore> bufferCopySemaphores;
@@ -128,7 +109,7 @@ namespace PaperRenderer
 
         //device local rendering buffer and misc data
         std::vector<IndirectRenderingData> renderingData; //includes its own device local allocation, but needs staging allocation for access
-        std::unordered_map<Model const*, std::vector<ModelInstance*>> renderingModels;
+        std::vector<ModelInstance*> renderingModels;
         
         AccelerationStructure rtAccelStructure;
         uint32_t currentImage;

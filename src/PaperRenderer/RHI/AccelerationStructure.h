@@ -58,7 +58,7 @@ namespace PaperRenderer
 
         Device* devicePtr;
 
-        void verifyBufferSizes(const std::unordered_map<Model const*, std::vector<ModelInstance*>> &modelInstances, uint32_t currentFrame);
+        void verifyBufferSizes(const std::vector<ModelInstance*>& modelInstances, uint32_t currentFrame);
         void rebuildAllocations0(uint32_t currentFrame);
         void rebuildAllocations1(uint32_t currentFrame);
         PaperMemory::CommandBuffer createBottomLevel(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
@@ -68,7 +68,7 @@ namespace PaperRenderer
         AccelerationStructure(Device* device);
         ~AccelerationStructure();
 
-        PaperMemory::CommandBuffer updateBLAS(const std::unordered_map<Model const*, std::vector<ModelInstance*>> &modelInstances, const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
+        PaperMemory::CommandBuffer updateBLAS(const std::vector<ModelInstance*>& modelInstances, const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
         PaperMemory::CommandBuffer updateTLAS(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
 
         const std::unordered_map<Model const*, BottomStructure>& getBottomStructures() const { return bottomStructures; }
