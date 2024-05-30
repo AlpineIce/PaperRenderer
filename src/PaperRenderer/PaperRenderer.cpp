@@ -50,16 +50,16 @@ namespace PaperRenderer
     {
         if(object.getParentModelPtr() != NULL)
         {
-            uint32_t lodIndex = 0;
             for(uint32_t lodIndex = 0; lodIndex < object.getParentModelPtr()->getLODs().size(); lodIndex++)
             {
-                for(const auto& [matSlot, meshes] : object.getParentModelPtr()->getLODs().at(lodIndex).meshes) //iterate materials in LOD
+
+                for(uint32_t matIndex = 0; matIndex < object.getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.size(); matIndex++) //iterate materials in LOD
                 {
                     //get material instance
                     MaterialInstance* materialInstance;
-                    if(object.getMaterialInstances().at(lodIndex).count(matSlot))
+                    if(object.getMaterialInstances().at(lodIndex).at(matIndex))
                     {
-                        materialInstance = object.getMaterialInstances().at(lodIndex).at(matSlot);
+                        materialInstance = object.getMaterialInstances().at(lodIndex).at(matIndex);
                     }
                     else //use default material if one isn't selected
                     {
@@ -68,7 +68,7 @@ namespace PaperRenderer
 
                     //get meshes using same material
                     std::vector<PaperRenderer::LODMesh const*> similarMeshes;
-                    for(const LODMesh& mesh : meshes) //iterate meshes with associated material
+                    for(const LODMesh& mesh : object.getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex)) //iterate meshes with associated material
                     {
                         similarMeshes.push_back(&mesh);
                     }

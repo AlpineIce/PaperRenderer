@@ -74,7 +74,7 @@ namespace PaperRenderer
             std::vector<VkAccelerationStructureBuildRangeInfoKHR> modelBuildRangeInfos;
 
             //get per mesh group geometry data
-            for(const auto& [matIndex, meshes] : model->getLODs().at(0).meshes) //use LOD 0 for BLAS
+            for(const std::vector<LODMesh> meshes : model->getLODs().at(0).meshMaterialData) //use LOD 0 for BLAS
             {
                 for(const LODMesh& mesh : meshes) //per mesh in mesh group data
                 {

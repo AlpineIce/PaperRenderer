@@ -7,15 +7,22 @@
 
 namespace PaperRenderer
 {
-    struct GlobalUniforms
+    //material base
+    enum MaterialFlagBits
     {
-        PaperMemory::Buffer* globalUBO;
-        PaperMemory::Buffer* lightingInfoBuffer;
-        uint32_t maxPointLights;
-        glm::vec3 camPos;
+        doubleSided = 0x00000001, //TODO
+        invertedFaces = 0x00000002, //TODO
+        wireFrame = 0x00000004, //TODO
+        alphaBlend = 0x00000008, //TODO
+    };
+    typedef uint32_t MaterialFlags;
+
+    struct MaterialProperties
+    {
+        std::vector<VkVertexInputAttributeDescription> vertexAttributes; //a good start is vec3 position, vec3 normal, vec2 UVs. Attributes are assumed to be in order
+        MaterialFlags materialFlags = 0; //values are false by default
     };
 
-    //material base
     class Material
     {
     private:

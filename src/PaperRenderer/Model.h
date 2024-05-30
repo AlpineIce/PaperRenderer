@@ -34,8 +34,7 @@ namespace PaperRenderer
 
     struct LOD //acts more like an individual model
     {
-        std::unordered_map<uint32_t, MaterialInstance*> materials; //material index/slot, associated material
-        std::unordered_map<uint32_t, std::vector<LODMesh>> meshes; //material index/slot, material associated meshes
+        std::vector<std::vector<LODMesh>> meshMaterialData; //material index, meshes in material slot
     };
 
     struct AABB
@@ -113,7 +112,7 @@ namespace PaperRenderer
         
         uint32_t lodsOffset;
         std::vector<char> preprocessData;
-        std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials;
+        std::vector<std::vector<MaterialInstance*>> materials;
         std::unordered_map<LODMesh const*, CommonMeshGroup*> meshReferences;
 
         ModelTransform transformation = ModelTransform();
@@ -136,7 +135,7 @@ namespace PaperRenderer
         
         Model const* getParentModelPtr() const { return modelPtr; }
         const ModelTransform& getTransformation() const { return transformation; }
-        const std::vector<std::unordered_map<uint32_t, MaterialInstance*>>& getMaterialInstances() const { return materials; }
+        const std::vector<std::vector<MaterialInstance*>>& getMaterialInstances() const { return materials; } //LOD index, material slot
         const bool& getVisibility() const { return isVisible; }
 
         friend class CommonMeshGroup;

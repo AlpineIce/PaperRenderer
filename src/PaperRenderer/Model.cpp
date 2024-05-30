@@ -18,9 +18,9 @@ namespace PaperRenderer
 		for(const std::unordered_map<uint32_t, std::vector<MeshInfo>>& lod : creationInfo.LODs)
 		{
 			LOD returnLOD;
+			returnLOD.meshMaterialData.resize(lod.size());
 			for(const auto& [matIndex, meshes] : lod)
 			{
-				std::vector<LODMesh> returnMeshes;
 				for(const MeshInfo& mesh : meshes)
 				{
 					LODMesh returnMesh;
@@ -32,9 +32,8 @@ namespace PaperRenderer
 					creationVertices.insert(creationVertices.end(), mesh.vertices.begin(), mesh.vertices.end());
 					creationIndices.insert(creationIndices.end(), mesh.indices.begin(), mesh.indices.end());
 
-					returnMeshes.push_back(returnMesh);
+					returnLOD.meshMaterialData.at(matIndex).push_back(returnMesh);
 				}
-				returnLOD.meshes[matIndex] = returnMeshes;
 			}
 			LODs.push_back(returnLOD);
 		}
@@ -164,11 +163,32 @@ namespace PaperRenderer
 
 	//----------MODEL INSTANCE DEFINITIONS----------//
 
-    ModelInstance::ModelInstance(RenderEngine *renderer, Model const *parentModel, const std::vector<std::unordered_map<uint32_t, MaterialInstance *>> &materials)
-        : rendererPtr(renderer),
-          modelPtr(parentModel),
-          materials(materials)
+    ModelInstance::ModelInstance(RenderEngine *renderer, Model const *parentModel, const std::vector<std::unordered_map<uint32_t, MaterialInstance*>> &materials)
+    	:rendererPtr(renderer),
+        modelPtr(parentModel)
     {
+		this->materials.resize(modelPtr->getLODs().size());
+		for(uint32_t lodIndex = 0; lodIndex < this->materials.size(); lodIndex++)
+		{
+			this->materials.at(lodIndex).resize(modelPtr->getLODs().at(lodIndex).meshMaterialData.size(), NULL); //default value of NULL
+		}
+
+		for(uint32_t lodIndex = 0; lodIndex < materials.size(); lodIndex++)
+		{
+			if(this->materials.size() > lodIndex)
+			{
+				for(const auto& [matSlot, matInstance] : materials.at(lodIndex))
+				{
+					if(this->materials.at(lodIndex).size() > matSlot)
+					{
+						this->materials.at(lodIndex).at(matSlot) = matInstance;
+					}
+					else break;
+				}
+			}
+			else break;
+		}
+		
 		if(parentModel && renderer)
 		{
 			this->materials.resize(modelPtr->getLODs().size());
@@ -203,10 +223,10 @@ namespace PaperRenderer
 			ShaderLOD lod = {};
 			lod.meshReferenceCount = 0;
 			lod.meshReferencesOffset = dynamicOffset;
-			for(const auto& [matIndex, meshes] : modelPtr->getLODs().at(i).meshes)
+			for(const std::vector<LODMesh>& matSlot : modelPtr->getLODs().at(i).meshMaterialData)
 			{
-				lod.meshReferenceCount += meshes.size();
-				for(const LODMesh& mesh : meshes)
+				lod.meshReferenceCount += matSlot.size();
+				for(const LODMesh& mesh : matSlot)
 				{
 					instanceData.shaderMeshReferences.push_back({ meshReferences.at(&mesh)->getMeshesData().at(&mesh).shaderMeshOffset });
 					dynamicOffset += sizeof(ShaderMeshReference);
