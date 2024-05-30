@@ -223,7 +223,7 @@ namespace PaperRenderer
 		memcpy(preprocessData.data() + lastSize, instanceData.shaderLODs.data(), sizeof(ShaderLOD) * instanceData.shaderLODs.size());
 		lastSize = preprocessData.size();
 		
-		preprocessData.resize(preprocessData.size() + sizeof(ShaderMeshReference) * instanceData.shaderLODs.size());
+		preprocessData.resize(preprocessData.size() + sizeof(ShaderMeshReference) * instanceData.shaderMeshReferences.size());
 		memcpy(preprocessData.data() + lastSize, instanceData.shaderMeshReferences.data(), sizeof(ShaderMeshReference) * instanceData.shaderMeshReferences.size());
 		lastSize = preprocessData.size();
 

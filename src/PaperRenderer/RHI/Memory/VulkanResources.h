@@ -36,7 +36,7 @@ namespace PaperRenderer
         {
             VkDeviceSize offset;
             VkDeviceSize size;
-            void* data;
+            void const* data;
         };
 
         //----------RESOURCE BASE CLASS DECLARATIONS----------//
