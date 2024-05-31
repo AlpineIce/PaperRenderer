@@ -173,6 +173,16 @@ namespace PaperRenderer
 			this->materials.at(lodIndex).resize(modelPtr->getLODs().at(lodIndex).meshMaterialData.size(), NULL); //default value of NULL
 		}
 
+		shaderMeshOffsetReferences.resize(modelPtr->getLODs().size());
+		for(uint32_t lodIndex = 0; lodIndex < modelPtr->getLODs().size(); lodIndex++)
+		{
+			shaderMeshOffsetReferences.at(lodIndex).resize(modelPtr->getLODs().at(lodIndex).meshMaterialData.size());
+			for(uint32_t matIndex = 0; matIndex < modelPtr->getLODs().at(lodIndex).meshMaterialData.size(); matIndex++)
+			{
+				shaderMeshOffsetReferences.at(lodIndex).at(matIndex).resize(modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).size());
+			}
+		}
+
 		for(uint32_t lodIndex = 0; lodIndex < materials.size(); lodIndex++)
 		{
 			if(this->materials.size() > lodIndex)
@@ -218,17 +228,17 @@ namespace PaperRenderer
 		//shader LODs
 		lodsOffset = dynamicOffset;
 		dynamicOffset += sizeof(ShaderLOD) * modelPtr->getLODs().size();
-		for(uint32_t i = 0; i < modelPtr->getLODs().size(); i++)
+		for(uint32_t lodIndex = 0; lodIndex < modelPtr->getLODs().size(); lodIndex++)
 		{
 			ShaderLOD lod = {};
 			lod.meshReferenceCount = 0;
 			lod.meshReferencesOffset = dynamicOffset;
-			for(const std::vector<LODMesh>& matSlot : modelPtr->getLODs().at(i).meshMaterialData)
+			for(uint32_t matIndex = 0; matIndex < modelPtr->getLODs()[lodIndex].meshMaterialData.size(); matIndex++)
 			{
-				lod.meshReferenceCount += matSlot.size();
-				for(const LODMesh& mesh : matSlot)
+				lod.meshReferenceCount += modelPtr->getLODs()[lodIndex].meshMaterialData[matIndex].size();
+				for(uint32_t meshIndex = 0; meshIndex < modelPtr->getLODs()[lodIndex].meshMaterialData[matIndex].size(); meshIndex++)
 				{
-					instanceData.shaderMeshReferences.push_back({ meshReferences.at(&mesh)->getMeshesData().at(&mesh).shaderMeshOffset });
+					instanceData.shaderMeshReferences.push_back({ *shaderMeshOffsetReferences[lodIndex][matIndex][meshIndex] });
 					dynamicOffset += sizeof(ShaderMeshReference);
 				}
 			}

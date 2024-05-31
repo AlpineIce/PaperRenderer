@@ -67,10 +67,14 @@ namespace PaperRenderer
                     }
 
                     //get meshes using same material
-                    std::vector<PaperRenderer::LODMesh const*> similarMeshes;
-                    for(const LODMesh& mesh : object.getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex)) //iterate meshes with associated material
+                    std::vector<InstancedMeshData> similarMeshes;
+                    for(uint32_t meshIndex = 0; meshIndex < object.getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex).size(); meshIndex++)
                     {
-                        similarMeshes.push_back(&mesh);
+                        InstancedMeshData meshData = {};
+                        meshData.meshPtr = &object.getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex);
+                        meshData.shaderMeshOffsetPtr = &object.shaderMeshOffsetReferences.at(lodIndex).at(matIndex).at(meshIndex);
+
+                        similarMeshes.push_back(meshData);
                     }
 
                     //check if mesh group class is created

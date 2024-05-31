@@ -8,6 +8,12 @@
 
 namespace PaperRenderer
 {
+    struct InstancedMeshData
+    {
+        struct LODMesh const* meshPtr;
+        uint32_t** shaderMeshOffsetPtr; //only necessary for performance through avoiding the unordered map "search"
+    };
+
     class CommonMeshGroup
     {
     private:
@@ -49,7 +55,7 @@ namespace PaperRenderer
         std::mutex addAndRemoveLock;
         std::vector<char> preprocessData;
         std::unordered_map<struct LODMesh const*, MeshInstancesData> meshesData;
-        std::unordered_map<class ModelInstance*, std::vector<struct LODMesh const*>> instanceMeshes;
+        std::unordered_map<class ModelInstance*, std::vector<InstancedMeshData>> instanceMeshes;
 
         Device* devicePtr;
         DescriptorAllocator* descriptorsPtr;
@@ -61,7 +67,7 @@ namespace PaperRenderer
 
         std::vector<char> getPreprocessData(uint32_t currentRequiredSize); //should initialize this data chunk to 0
 
-        void addInstanceMeshes(class ModelInstance* instance, std::vector<struct LODMesh const*> instanceMeshes);
+        void addInstanceMeshes(class ModelInstance* instance, const std::vector<InstancedMeshData>& instanceMeshesData);
         void removeInstanceMeshes(class ModelInstance* instance);
 
         void draw(const VkCommandBuffer& cmdBuffer, const VkBuffer& dataBuffer, uint32_t currentFrame);

@@ -288,10 +288,13 @@ namespace PaperRenderer
         std::vector<ModelInstance::ShaderInputObject> shaderInputObjects;
         for(ModelInstance* inputObject : renderingModels)
         {
-            std::vector<char> insertionData = inputObject->getRasterPreprocessData(stagingData.size());
-            stagingData.insert(stagingData.end(), insertionData.begin(), insertionData.end());
+            if(inputObject->getVisibility())
+            {
+                std::vector<char> insertionData = inputObject->getRasterPreprocessData(stagingData.size());
+                stagingData.insert(stagingData.end(), insertionData.begin(), insertionData.end());
 
-            shaderInputObjects.push_back(inputObject->getShaderInputObject());
+                shaderInputObjects.push_back(inputObject->getShaderInputObject());
+            }
         }
 
         //shader input objects

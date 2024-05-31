@@ -76,20 +76,21 @@ namespace PaperRenderer
         return preprocessData;
     }
 
-    void CommonMeshGroup::addInstanceMeshes(ModelInstance* instance, std::vector<LODMesh const*> instanceMeshes)
+    void CommonMeshGroup::addInstanceMeshes(ModelInstance* instance, const std::vector<InstancedMeshData>& instanceMeshesData)
     {
         addAndRemoveLock.lock();
         
-        this->instanceMeshes[instance].insert(this->instanceMeshes[instance].end(), instanceMeshes.begin(), instanceMeshes.end());
-        for(LODMesh const* mesh : instanceMeshes)
+        this->instanceMeshes[instance].insert(this->instanceMeshes[instance].end(), instanceMeshesData.begin(), instanceMeshesData.end());
+        for(const InstancedMeshData& meshData : instanceMeshesData)
         {
-            if(!meshesData.count(mesh))
+            if(!meshesData.count(meshData.meshPtr))
             {
-                meshesData[mesh].parentModelPtr = instance->getParentModelPtr();
+                meshesData[meshData.meshPtr].parentModelPtr = instance->getParentModelPtr();
             }
 
-            instance->meshReferences[mesh] = this;
-            meshesData.at(mesh).instanceCount++;
+            instance->meshReferences[meshData.meshPtr] = this;
+            *meshData.shaderMeshOffsetPtr = &meshesData.at(meshData.meshPtr).shaderMeshOffset;
+            meshesData.at(meshData.meshPtr).instanceCount++;
         }
 
         addAndRemoveLock.unlock();
@@ -99,10 +100,10 @@ namespace PaperRenderer
     {
         addAndRemoveLock.lock();
         
-        for(LODMesh const* mesh : this->instanceMeshes.at(instance))
+        for(InstancedMeshData& meshData : this->instanceMeshes.at(instance))
         {
-            instance->meshReferences.at(mesh) = NULL;
-            meshesData.at(mesh).instanceCount--;
+            instance->meshReferences.at(meshData.meshPtr) = NULL;
+            meshesData.at(meshData.meshPtr).instanceCount--;
         }
         instanceMeshes.erase(instance);
 

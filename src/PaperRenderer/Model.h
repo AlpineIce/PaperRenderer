@@ -113,6 +113,7 @@ namespace PaperRenderer
         uint32_t lodsOffset;
         std::vector<char> preprocessData;
         std::vector<std::vector<MaterialInstance*>> materials;
+        std::vector<std::vector<std::vector<uint32_t*>>> shaderMeshOffsetReferences;//LODs, material slots, meshes
         std::unordered_map<LODMesh const*, CommonMeshGroup*> meshReferences;
 
         ModelTransform transformation = ModelTransform();
@@ -139,6 +140,7 @@ namespace PaperRenderer
         const bool& getVisibility() const { return isVisible; }
 
         friend class CommonMeshGroup;
+        friend class RenderEngine;
         friend class RenderPass;
     };
 }
