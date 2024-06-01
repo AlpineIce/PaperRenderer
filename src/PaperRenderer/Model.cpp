@@ -265,7 +265,7 @@ namespace PaperRenderer
 		ShaderInputObject inputObject = {};
 		inputObject.position = glm::vec4(transformation.position, 1.0f);
 		inputObject.scale = glm::vec4(transformation.scale, 1.0f);
-		inputObject.rotation = glm::mat4_cast(transformation.rotation); //TODO SHADER QUATERNION
+		inputObject.qRotation = transformation.rotation; //TODO SHADER QUATERNION
 		inputObject.bounds = modelPtr->getAABB();
 		inputObject.lodCount = modelPtr->getLODs().size();
 		inputObject.lodsOffset = lodsOffset;

@@ -93,7 +93,7 @@ namespace PaperRenderer
             //transformation
             glm::vec4 position;
             glm::vec4 scale; 
-            glm::mat4 rotation; //quat -> mat4... could possibly be a mat3
+            glm::quat qRotation; //quat -> mat4... could possibly be a mat3
             AABB bounds;
             uint32_t lodCount = 0;
             uint32_t lodsOffset = 0;

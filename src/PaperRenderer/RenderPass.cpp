@@ -491,6 +491,40 @@ namespace PaperRenderer
         VkCommandBuffer graphicsCmdBuffer = PaperMemory::Commands::getCommandBuffer(devicePtr->getDevice(), PaperMemory::QueueType::GRAPHICS);
         vkBeginCommandBuffer(graphicsCmdBuffer, &commandInfo);
 
+        //transition image layout from undefined to color optimal
+        VkImageMemoryBarrier2 colorImageBarrier = {};
+        colorImageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+        colorImageBarrier.pNext = NULL;
+        colorImageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        colorImageBarrier.srcAccessMask = VK_ACCESS_NONE;
+        colorImageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        colorImageBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        colorImageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        colorImageBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        colorImageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        colorImageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        colorImageBarrier.image = swapchainPtr->getImages()->at(currentImage);
+        colorImageBarrier.subresourceRange =  {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        };
+
+        VkDependencyInfo dependencyInfo = {};
+        dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        dependencyInfo.pNext = NULL;
+        dependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        dependencyInfo.memoryBarrierCount = 0;
+        dependencyInfo.pMemoryBarriers = NULL;
+        dependencyInfo.bufferMemoryBarrierCount = 0;
+        dependencyInfo.pBufferMemoryBarriers = NULL;
+        dependencyInfo.imageMemoryBarrierCount = 1;
+        dependencyInfo.pImageMemoryBarriers = &colorImageBarrier;
+        
+        vkCmdPipelineBarrier2(graphicsCmdBuffer, &dependencyInfo);
+
         //----------RENDER TARGETS----------//
 
         VkClearValue clearValue = {};
@@ -542,39 +576,6 @@ namespace PaperRenderer
         renderInfo.pDepthAttachment = &depthAttachment;
         renderInfo.pStencilAttachment = &stencilAttachment;
 
-        VkImageMemoryBarrier2 colorImageBarrier = {};
-        colorImageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-        colorImageBarrier.pNext = NULL;
-        colorImageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-        colorImageBarrier.srcAccessMask = VK_ACCESS_NONE;
-        colorImageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-        colorImageBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        colorImageBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        colorImageBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        colorImageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        colorImageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        colorImageBarrier.image = swapchainPtr->getImages()->at(currentImage);
-        colorImageBarrier.subresourceRange =  {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        };
-
-        VkDependencyInfo dependencyInfo = {};
-        dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-        dependencyInfo.pNext = NULL;
-        dependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-        dependencyInfo.memoryBarrierCount = 0;
-        dependencyInfo.pMemoryBarriers = NULL;
-        dependencyInfo.bufferMemoryBarrierCount = 0;
-        dependencyInfo.pBufferMemoryBarriers = NULL;
-        dependencyInfo.imageMemoryBarrierCount = 1;
-        dependencyInfo.pImageMemoryBarriers = &colorImageBarrier;
-        
-        vkCmdPipelineBarrier2(graphicsCmdBuffer, &dependencyInfo);
-
         vkCmdBeginRendering(graphicsCmdBuffer, &renderInfo);
 
         //dynamic viewport and scissor specified in pipelines
@@ -604,6 +605,7 @@ namespace PaperRenderer
         //end render "pass"
         vkCmdEndRendering(graphicsCmdBuffer);
 
+        //transition image layout from color optimal to present src
         VkImageMemoryBarrier2 imageBarrier = {};
         imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
         imageBarrier.pNext = NULL;
