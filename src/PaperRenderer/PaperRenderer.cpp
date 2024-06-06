@@ -1,9 +1,7 @@
 #include "PaperRenderer.h"
 
 #include <iostream>
-#include <filesystem>
-#include <sstream>
-#include <fstream>
+#include <math.h>
 
 namespace PaperRenderer
 {
@@ -14,13 +12,22 @@ namespace PaperRenderer
         swapchain(&device, &window, false),
         descriptors(&device),
         pipelineBuilder(&device, &descriptors, &swapchain),
-        rendering(&swapchain, &device, &descriptors, &pipelineBuilder)
+        defaultMaterial("resources/shaders/"),
+        defaultMaterialInstance(&defaultMaterial)
     {
-        defaultMaterial = std::make_unique<DefaultMaterial>("resources/shaders/");
-        defaultMaterialInstance = std::make_unique<DefaultMaterialInstance>(defaultMaterial.get());
+        //synchronization
+        bufferCopyFences.resize(PaperMemory::Commands::getFrameCount());
+        imageSemaphores.resize(PaperMemory::Commands::getFrameCount());
+        for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
+        {
+            bufferCopyFences.at(i) = PaperMemory::Commands::getSignaledFence(device.getDevice());
+            imageSemaphores.at(i) = PaperMemory::Commands::getSemaphore(device.getDevice());
+        }
 
-        if(rtEnabled) initRT();
+        //buffers
+        rebuildInstancesbuffers();
 
+        //finish up
         vkDeviceWaitIdle(device.getDevice());
         std::cout << "Renderer initialization complete" << std::endl;
     }
@@ -28,22 +35,55 @@ namespace PaperRenderer
     RenderEngine::~RenderEngine()
     {
         vkDeviceWaitIdle(device.getDevice());
+        
+        for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
+        {
+            vkDestroyFence(device.getDevice(), bufferCopyFences.at(i), nullptr);
+            vkDestroySemaphore(device.getDevice(), imageSemaphores.at(i), nullptr);
+
+            //free cmd buffers
+            PaperMemory::Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers.at(i));
+            usedCmdBuffers.at(i).clear();
+        }
     }
 
-    void RenderEngine::initRT()
+    void RenderEngine::rebuildInstancesbuffers()
     {
-        /*BottomAccelerationStructureData bottomData;
-        for(auto& [name, model] : models)
+        //create copy of old host visible data if old was valid
+        std::vector<char> oldData;
+        if(hostInstancesDataBuffer)
         {
-            AccelerationStructureModelReference modelRef;
-            modelRef.modelPointer = model.get();
-            for(const ModelMesh& mesh : model->getModelMeshes())
-            {
-                modelRef.meshes.push_back(&mesh);
-            }
-            bottomData.models.push_back(modelRef);
+            oldData.resize(hostInstancesDataBuffer->getSize());
+            memcpy(oldData.data(), hostInstancesDataBuffer->getHostDataPtr(), hostInstancesDataBuffer->getSize());
         }
-        rtAccelStructure.createBottomLevel(bottomData);*/
+        //host visible
+        PaperMemory::DeviceAllocationInfo hostAllocationInfo = {};
+        hostAllocationInfo.allocFlags = 0;
+        hostAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+        hostAllocationInfo.allocationSize = std::max((unsigned long long)(renderingModels.size() * 1.4), sizeof(ModelInstance::ShaderInputObject) * 128); //minimum of the size of 128 objects; otherwise 140% of required size
+        hostInstancesDataAllocation = std::make_unique<PaperMemory::DeviceAllocation>(device.getDevice(), device.getGPU(), hostAllocationInfo);
+
+        PaperMemory::BufferInfo hostBufferInfo = {};
+        hostBufferInfo.queueFamilyIndices = { device.getQueues().at(PaperMemory::QueueType::TRANSFER).queueFamilyIndex };
+        hostBufferInfo.size = std::max((unsigned long long)(renderingModels.size() * 1.4), sizeof(ModelInstance::ShaderInputObject) * 128); //minimum of the size of 128 objects; otherwise 140% of required size
+        hostBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
+        hostInstancesDataBuffer = std::make_unique<PaperMemory::Buffer>(device.getDevice(), hostBufferInfo);
+
+        //copy new data if needed
+        memcpy(hostInstancesDataBuffer->getHostDataPtr(), oldData.data(), oldData.size());
+
+        //device local
+        PaperMemory::DeviceAllocationInfo deviceAllocationInfo = {};
+        deviceAllocationInfo.allocFlags = VkMemoryAllocateFlagBits::VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+        deviceAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+        deviceAllocationInfo.allocationSize = hostInstancesDataAllocation->getMemorySize();
+        deviceInstancesDataAllocation = std::make_unique<PaperMemory::DeviceAllocation>(device.getDevice(), device.getGPU(), deviceAllocationInfo);
+
+        PaperMemory::BufferInfo deviceBufferInfo = {};
+        deviceBufferInfo.queueFamilyIndices = { device.getQueues().at(PaperMemory::QueueType::TRANSFER).queueFamilyIndex };
+        deviceBufferInfo.size = hostInstancesDataBuffer->getSize();
+        deviceBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
+        deviceInstancesDataBuffer = std::make_unique<PaperMemory::Buffer>(device.getDevice(), deviceBufferInfo);
     }
 
     void RenderEngine::addObject(ModelInstance& object, std::unordered_map<LODMesh const*, CommonMeshGroup*>& meshReferences, uint64_t& selfIndex)
@@ -63,7 +103,7 @@ namespace PaperRenderer
                     }
                     else //use default material if one isn't selected
                     {
-                        materialInstance = defaultMaterialInstance.get();
+                        materialInstance = &defaultMaterialInstance;
                     }
 
                     //get meshes using same material
@@ -88,7 +128,20 @@ namespace PaperRenderer
                     renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance].meshGroups->addInstanceMeshes(&object, similarMeshes);
                 }
             }
-            rendering.addModelInstance(&object, selfIndex);
+
+            //self reference
+            selfIndex = renderingModels.size();
+            renderingModels.push_back(&object);
+
+            //check buffer size and rebuild if too small
+            if(hostInstancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderInputObject) < renderingModels.size())
+            {
+                rebuildInstancesbuffers(); //TODO THIS NEEDS TO WAIT ON BOTH FRAME FENCES
+            }
+
+            //copy initial data into host visible instances data
+            ModelInstance::ShaderInputObject shaderInputObject = object.getShaderInputObject();
+            memcpy((ModelInstance::ShaderInputObject*)hostInstancesDataBuffer->getHostDataPtr() + selfIndex, &shaderInputObject, sizeof(ModelInstance::ShaderInputObject));
         }
     }
 
@@ -99,54 +152,120 @@ namespace PaperRenderer
             if(reference) reference->removeInstanceMeshes(&object);
         }
         
-        rendering.removeModelInstance(&object, selfIndex);
-    }
-
-    void RenderEngine::setCamera(Camera *camera)
-    {
-        this->rendering.setCamera(camera);
-    }
-
-    void RenderEngine::drawAllReferences()
-    {
-        //start command buffer and bind pipeline
-        rendering.rasterOrTrace(!rtEnabled, renderTree);
-
-        //RT pass
-        /*if(rtEnabled)
+        if(renderingModels.size() > 1)
         {
-            TopAccelerationData accelData = {};
-            for(const auto& [pipelineType, pipelineNode] : renderTree) //pipeline
+            //new reference for last element and remove
+            renderingModels.at(selfIndex) = renderingModels.back();
+            renderingModels.at(selfIndex)->setRendererIndex(selfIndex);
+            renderingModels.pop_back();
+
+            //check buffer size and rebuild if unnecessarily large by a factor of 2
+            if(hostInstancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderInputObject) > renderingModels.size() * 2)
             {
-                for(const auto& [materialName, materialNode] : pipelineNode.materials) //material
-                {
-                    for(const auto& [mesh, node] : materialNode.objectBuffer->getDrawCallTree()) //similar objects
-                    {
-                        for(auto object = node.objects.begin(); object != node.objects.end(); object++)
-                        {
-                            Model const* modelPtr;
-                            (*object)->;
-                            VkTransformMatrixKHR matrix;
-                            matrix.matrix[0][0] = (*((*object)->modelMatrix))[0][0];
-                            matrix.matrix[0][1] = (*((*object)->modelMatrix))[0][1];
-                            matrix.matrix[0][2] = (*((*object)->modelMatrix))[0][2];
-                            matrix.matrix[0][3] = (*((*object)->modelMatrix))[0][3];
-
-                            matrix.matrix[1][0] = (*((*object)->modelMatrix))[1][0];
-                            matrix.matrix[1][1] = (*((*object)->modelMatrix))[1][1];
-                            matrix.matrix[1][2] = (*((*object)->modelMatrix))[1][2];
-                            matrix.matrix[1][3] = (*((*object)->modelMatrix))[1][3];
-
-                            matrix.matrix[2][0] = (*((*object)->modelMatrix))[2][0];
-                            matrix.matrix[2][1] = (*((*object)->modelMatrix))[2][1];
-                            matrix.matrix[2][2] = (*((*object)->modelMatrix))[2][2];
-                            matrix.matrix[2][3] = (*((*object)->modelMatrix))[2][3];
-                        }
-                    }
-                }
+                rebuildInstancesbuffers(); //TODO THIS NEEDS TO WAIT ON BOTH FRAME FENCES
             }
-            rtAccelStructure.createTopLevel(accelData);
-        }*/
+
+            //re-copy data
+            memcpy((
+                ModelInstance::ShaderInputObject*)hostInstancesDataBuffer->getHostDataPtr() + selfIndex, 
+                (ModelInstance::ShaderInputObject*)hostInstancesDataBuffer->getHostDataPtr() + renderingModels.size(), //isn't n - 1 because element was already removed with pop_back()
+                sizeof(ModelInstance::ShaderInputObject));
+        }
+        else
+        {
+            renderingModels.clear();
+        }
+        
+        selfIndex = UINT64_MAX;
+    }
+
+    const VkSemaphore& RenderEngine::beginFrame(std::vector<VkFence>& waitFences)
+    {
+        //copy host visible buffer into device local buffer TODO OPTIMIZE THIS TO ONLY UPDATE CHANGED REGIONS
+        VkBufferCopy region;
+        region.srcOffset = 0;
+        region.dstOffset = 0;
+        region.size = hostInstancesDataBuffer->getSize();
+
+        PaperMemory::SynchronizationInfo syncInfo = {};
+        syncInfo.queueType = PaperMemory::QueueType::TRANSFER;
+        syncInfo.waitPairs = {};
+        syncInfo.signalPairs = {};
+        syncInfo.fence = bufferCopyFences.at(currentImage);
+        usedCmdBuffers.at(currentImage).push_back(deviceInstancesDataBuffer->copyFromBufferRanges(*hostInstancesDataBuffer.get(), device.getQueues().at(PaperMemory::QueueType::TRANSFER).queueFamilyIndex, { region }, syncInfo));
+        
+        std::vector<VkFence> frameFences = waitFences;
+        frameFences.push_back(bufferCopyFences.at(currentImage));
+
+        //wait for fences
+        vkWaitForFences(device.getDevice(), frameFences.size(), frameFences.data(), VK_TRUE, UINT64_MAX);
+
+        //get available image
+        VkResult imageAquireResult = vkAcquireNextImageKHR(device.getDevice(),
+            swapchain.getSwapchain(),
+            UINT64_MAX,
+            imageSemaphores.at(currentImage),
+            VK_NULL_HANDLE, &currentImage);
+
+        if(imageAquireResult == VK_ERROR_OUT_OF_DATE_KHR || imageAquireResult == VK_SUBOPTIMAL_KHR)
+        {
+            swapchain.recreate();
+            if(cameraPtr) cameraPtr->updateCameraProjection();
+
+            //try again
+            imageAquireResult = vkAcquireNextImageKHR(device.getDevice(),
+                swapchain.getSwapchain(),
+                UINT64_MAX,
+                imageSemaphores.at(currentImage),
+                VK_NULL_HANDLE, &currentImage);
+        }
+
+        //reset fences
+        vkResetFences(device.getDevice(), frameFences.size(), frameFences.data());
+
+        //free command buffers and reset descriptor pool
+        PaperMemory::Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers.at(currentImage));
+        usedCmdBuffers.at(currentImage).clear();
+        descriptors.refreshPools(currentImage);
+
+        return imageSemaphores.at(currentImage);
+    }
+
+    void RenderEngine::endFrame(const std::vector<VkSemaphore>& waitSemaphores)
+    {
+        //presentation
+        VkResult returnResult;
+        VkPresentInfoKHR presentSubmitInfo = {};
+        presentSubmitInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        presentSubmitInfo.pNext = NULL;
+        presentSubmitInfo.waitSemaphoreCount = waitSemaphores.size();
+        presentSubmitInfo.pWaitSemaphores = waitSemaphores.data();
+        presentSubmitInfo.swapchainCount = 1;
+        presentSubmitInfo.pSwapchains = &swapchain.getSwapchain();
+        presentSubmitInfo.pImageIndices = &currentImage;
+        presentSubmitInfo.pResults = &returnResult;
+
+        //too lazy to properly fix this, it probably barely affects performance anyways
+        device.getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->threadLock.lock();
+        VkResult presentResult = vkQueuePresentKHR(device.getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->queue, &presentSubmitInfo);
+        device.getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->threadLock.unlock();
+
+        if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) 
+        {
+            swapchain.recreate();
+            cameraPtr->updateCameraProjection();
+        }
+
+        //increment frame counter
+        if(currentImage == 0)
+        {
+            currentImage = 1;
+        }
+        else
+        {
+            currentImage = 0;
+        }
+
         glfwPollEvents();
     }
 }

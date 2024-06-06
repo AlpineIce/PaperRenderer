@@ -131,29 +131,13 @@ namespace PaperRenderer
         return { cullingCmdBuffer, syncInfo.queueType };
     }
 
-    RTPreprocessPipeline::RTPreprocessPipeline(std::string fileDir)
-        :ComputeShader()
-    {
-    }
-
-    RTPreprocessPipeline::~RTPreprocessPipeline()
-    {
-    }
-
-    PaperMemory::CommandBuffer RTPreprocessPipeline::submit()
-    {
-        return { VK_NULL_HANDLE, PaperMemory::QueueType::COMPUTE };
-    }
-
     //----------RENDER PASS DEFINITIONS----------//
     
-    RenderPass::RenderPass(Swapchain* swapchain, Device* device, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder)
+    OldRenderPass::RenderPass(Swapchain* swapchain, Device* device, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder)
         :swapchainPtr(swapchain),
         devicePtr(device),
         descriptorsPtr(descriptors),
-        pipelineBuilderPtr(pipelineBuilder),
-        currentImage(0),
-        rtAccelStructure(device)
+        pipelineBuilderPtr(pipelineBuilder)
     {
         //THE UBER-BUFFER
         newDataStagingBuffers.resize(PaperMemory::Commands::getFrameCount());
@@ -161,17 +145,12 @@ namespace PaperRenderer
         renderingData.resize(PaperMemory::Commands::getFrameCount());
 
         //synchronization objects
-        imageSemaphores.resize(PaperMemory::Commands::getFrameCount());
         bufferCopySemaphores.resize(PaperMemory::Commands::getFrameCount());
         bufferCopyFences.resize(PaperMemory::Commands::getFrameCount());
-        BLASBuildSemaphores.resize(PaperMemory::Commands::getFrameCount());
-        TLASBuildSemaphores.resize(PaperMemory::Commands::getFrameCount());
         rasterPreprocessSemaphores.resize(PaperMemory::Commands::getFrameCount());
         preprocessTLASSignalSemaphores.resize(PaperMemory::Commands::getFrameCount());
         renderSemaphores.resize(PaperMemory::Commands::getFrameCount());
-        RTFences.resize(PaperMemory::Commands::getFrameCount());
         renderFences.resize(PaperMemory::Commands::getFrameCount());
-        usedCmdBuffers.resize(PaperMemory::Commands::getFrameCount());
 
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {
@@ -179,14 +158,11 @@ namespace PaperRenderer
             descriptorsPtr->refreshPools(i);
 
             //synchronization stuff
-            imageSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
             bufferCopySemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
             bufferCopyFences.at(i) = PaperMemory::Commands::getSignaledFence(devicePtr->getDevice());
-            TLASBuildSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
             rasterPreprocessSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
             preprocessTLASSignalSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
             renderSemaphores.at(i) = PaperMemory::Commands::getSemaphore(devicePtr->getDevice());
-            RTFences.at(i) = PaperMemory::Commands::getSignaledFence(devicePtr->getDevice());
             renderFences.at(i) = PaperMemory::Commands::getSignaledFence(devicePtr->getDevice());
 
             //rendering staging data buffer
@@ -226,30 +202,20 @@ namespace PaperRenderer
         rasterPreprocessPipeline = std::make_unique<RasterPreprocessPipeline>("resources/shaders/");
     }
 
-    RenderPass::~RenderPass()
+    OldRenderPass::~RenderPass()
     {
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {
-            vkDestroySemaphore(devicePtr->getDevice(), imageSemaphores.at(i), nullptr);
             vkDestroySemaphore(devicePtr->getDevice(), bufferCopySemaphores.at(i), nullptr);
             vkDestroyFence(devicePtr->getDevice(), bufferCopyFences.at(i), nullptr);
-            vkDestroySemaphore(devicePtr->getDevice(), BLASBuildSemaphores.at(i), nullptr);
-            vkDestroySemaphore(devicePtr->getDevice(), TLASBuildSemaphores.at(i), nullptr);
             vkDestroySemaphore(devicePtr->getDevice(), rasterPreprocessSemaphores.at(i), nullptr);
             vkDestroySemaphore(devicePtr->getDevice(), preprocessTLASSignalSemaphores.at(i), nullptr);
             vkDestroySemaphore(devicePtr->getDevice(), renderSemaphores.at(i), nullptr);
-            vkDestroyFence(devicePtr->getDevice(), RTFences.at(i), nullptr);
             vkDestroyFence(devicePtr->getDevice(), renderFences.at(i), nullptr);
-
-            //free cmd buffers
-            for(PaperMemory::CommandBuffer& buffer : usedCmdBuffers.at(i))
-            {
-                PaperMemory::Commands::freeCommandBuffer(devicePtr->getDevice(), buffer);
-            }
         }
     }
 
-    void RenderPass::rebuildRenderDataAllocation(uint32_t currentFrame)
+    void OldRenderPass::rebuildRenderDataAllocation(uint32_t currentFrame)
     {
         //dedicated allocation for rendering data
         PaperMemory::DeviceAllocationInfo dedicatedAllocationInfo = {};
@@ -268,7 +234,7 @@ namespace PaperRenderer
         }
     }
 
-    void RenderPass::setRasterStagingData(const std::unordered_map<Material *, MaterialNode> &renderTree)
+    void OldRenderPass::setRasterStagingData(const std::unordered_map<Material*, MaterialNode> &renderTree)
     {
         //clear old
         std::vector<char>& stagingData = renderingData.at(currentImage).stagingData;
@@ -307,113 +273,8 @@ namespace PaperRenderer
         renderingData.at(currentImage).objectCount = shaderInputObjects.size();
     }
 
-    void RenderPass::setRTStagingData(const std::unordered_map<Material *, MaterialNode> &renderTree)
+    void OldRenderPass::rasterPreProcess(const std::unordered_map<Material*, MaterialNode> &renderTree)
     {
-
-    }
-
-    void RenderPass::copyStagingData()
-    {
-
-        //check if staging buffer and allocation need to be recreated
-        if(renderingData.at(currentImage).stagingData.size() > newDataStagingBuffers.at(currentImage)->getSize())
-        {
-            //create staging buffer
-            PaperMemory::BufferInfo newDataStagingBufferInfo = {};
-            newDataStagingBufferInfo.queueFamilyIndices = {}; //only uses transfer
-            newDataStagingBufferInfo.size = renderingData.at(currentImage).stagingData.size() * 1.2; //20% overhead
-            newDataStagingBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-            newDataStagingBuffers.at(currentImage) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), newDataStagingBufferInfo);
-
-            //create staging allocation
-            PaperMemory::DeviceAllocationInfo stagingAllocationInfo = {};
-            stagingAllocationInfo.allocationSize = newDataStagingBuffers.at(currentImage)->getMemoryRequirements().size;
-            stagingAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-            stagingAllocations.at(currentImage) = std::make_unique<PaperMemory::DeviceAllocation>(devicePtr->getDevice(), devicePtr->getGPU(), stagingAllocationInfo);
-
-            //assign allocation
-            if(newDataStagingBuffers.at(currentImage)->assignAllocation(stagingAllocations.at(currentImage).get()) != 0)
-            {
-                throw std::runtime_error("Failed to assign allocation to staging buffer for rendering data");
-            }
-        }
-
-        //write data
-        PaperMemory::BufferWrite stagingWriteInfo = {};
-        stagingWriteInfo.data = renderingData.at(currentImage).stagingData.data();
-        stagingWriteInfo.size = renderingData.at(currentImage).stagingData.size();
-        stagingWriteInfo.offset = 0;
-        if(newDataStagingBuffers.at(currentImage)->writeToBuffer({ stagingWriteInfo }) != 0)
-        {
-            throw std::runtime_error("Failed to write to staging buffer");
-        }
-
-        //check if buffer rebuild is needed (ONLY ONE BUFFER ASSOCIATED WITH THIS ALLOCATION)
-        if(renderingData.at(currentImage).stagingData.size() > renderingData.at(currentImage).bufferData->getSize() || //allocate new if oversized
-            renderingData.at(currentImage).stagingData.size() < renderingData.at(currentImage).stagingData.size() * 0.5) //trim if below 50%
-        {
-            PaperMemory::BufferInfo bufferInfo = {};
-            bufferInfo.queueFamilyIndices = {
-                devicePtr->getQueues().at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex,
-                devicePtr->getQueues().at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex};
-            bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
-            bufferInfo.size = renderingData.at(currentImage).stagingData.size() * 1.2; //allocate 20% overhead
-            renderingData.at(currentImage).bufferData = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo);
-
-            rebuildRenderDataAllocation(currentImage); //function also assigns allocation to buffer
-        }
-
-        //wait for fences
-        std::vector<VkFence> waitFences = {
-            bufferCopyFences.at(currentImage) //wait for raster to finish
-        };
-        vkWaitForFences(devicePtr->getDevice(), waitFences.size(), waitFences.data(), VK_TRUE, 3000000000);
-        vkResetFences(devicePtr->getDevice(), waitFences.size(), waitFences.data());
-        
-        //copy to dedicated buffer
-        VkBufferCopy copyRegion = {};
-        copyRegion.dstOffset = 0;
-        copyRegion.srcOffset = 0;
-        copyRegion.size = renderingData.at(currentImage).stagingData.size();
-        std::vector<VkBufferCopy> copyRegions = {
-            copyRegion
-        };
-        PaperRenderer::PaperMemory::SynchronizationInfo syncInfo;
-        syncInfo.queueType = PaperMemory::QueueType::TRANSFER;
-        syncInfo.waitPairs = {};
-        syncInfo.signalPairs = { { bufferCopySemaphores.at(currentImage), VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT } };
-        syncInfo.fence = bufferCopyFences.at(currentImage);
-        usedCmdBuffers.at(currentImage).push_back(renderingData.at(currentImage).bufferData->copyFromBufferRanges(
-            *newDataStagingBuffers.at(currentImage), devicePtr->getQueues().at(PaperMemory::QueueType::TRANSFER).queueFamilyIndex, copyRegions, syncInfo));
-    }
-
-    void RenderPass::rasterPreProcess(const std::unordered_map<Material *, MaterialNode> &renderTree)
-    {
-        //wait for fences
-        std::vector<VkFence> waitFences = {
-            renderFences.at(currentImage) //wait for raster to finish
-        };
-        vkWaitForFences(devicePtr->getDevice(), waitFences.size(), waitFences.data(), VK_TRUE, 3000000000); //i give up on fixing the resize deadlock
-        vkResetFences(devicePtr->getDevice(), waitFences.size(), waitFences.data());
-
-        //get available image
-        if(vkAcquireNextImageKHR(devicePtr->getDevice(),
-            *(swapchainPtr->getSwapchainPtr()),
-            UINT64_MAX,
-            imageSemaphores.at(currentImage),
-            VK_NULL_HANDLE, &currentImage) == VK_ERROR_OUT_OF_DATE_KHR)
-        {
-            recreateFlag = true;
-        }
-
-        //free command buffers and reset descriptor pool
-        for(PaperMemory::CommandBuffer& buffer : usedCmdBuffers.at(currentImage))
-        {
-            PaperMemory::Commands::freeCommandBuffer(devicePtr->getDevice(), buffer);
-        }
-        usedCmdBuffers.at(currentImage).clear();
-        descriptorsPtr->refreshPools(currentImage);
-
         //set staging data (comes after fence for latency reasons), and copy
         setRasterStagingData(renderTree);
         copyStagingData();
@@ -428,33 +289,8 @@ namespace PaperRenderer
         usedCmdBuffers.at(currentImage).push_back(rasterPreprocessPipeline->submit(cameraPtr, renderingData.at(currentImage), currentImage, syncInfo2));
     }
 
-    void RenderPass::rayTracePreProcess(const std::unordered_map<Material *, MaterialNode> &renderTree)
+    void OldRenderPass::rayTracePreProcess(const std::unordered_map<Material *, MaterialNode> &renderTree)
     {
-        //wait for fences
-        std::vector<VkFence> BLASWaitFences = {
-            RTFences.at(currentImage)
-        };
-        vkWaitForFences(devicePtr->getDevice(), BLASWaitFences.size(), BLASWaitFences.data(), VK_TRUE, 3000000000);
-        vkResetFences(devicePtr->getDevice(), BLASWaitFences.size(), BLASWaitFences.data());
-
-        //get available image
-        if(vkAcquireNextImageKHR(devicePtr->getDevice(),
-            *(swapchainPtr->getSwapchainPtr()),
-            UINT64_MAX,
-            imageSemaphores.at(currentImage),
-            VK_NULL_HANDLE, &currentImage) == VK_ERROR_OUT_OF_DATE_KHR)
-        {
-            recreateFlag = true;
-        }
-
-        //free command buffers and reset descriptor pool
-        for(PaperMemory::CommandBuffer& buffer : usedCmdBuffers.at(currentImage))
-        {
-            PaperMemory::Commands::freeCommandBuffer(devicePtr->getDevice(), buffer);
-        }
-        usedCmdBuffers.at(currentImage).clear();
-        descriptorsPtr->refreshPools(currentImage);
-
         //set staging data (comes after fence for latency reasons), and copy
         setRTStagingData(renderTree);
         copyStagingData();
@@ -544,7 +380,7 @@ namespace PaperRenderer
         colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         colorAttachment.pNext = NULL;
         colorAttachment.imageView = swapchainPtr->getImageViews()->at(currentImage);
-        colorAttachment.imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
+        colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         colorAttachment.clearValue = clearValue;
@@ -656,93 +492,5 @@ namespace PaperRenderer
         PaperMemory::Commands::submitToQueue(devicePtr->getDevice(), syncInfo, { graphicsCmdBuffer });
 
         usedCmdBuffers.at(currentImage).push_back({ graphicsCmdBuffer, PaperMemory::QueueType::GRAPHICS });
-    }
-
-    //----------OBJECT ADD/REMOVE FUNCTIONS----------//
-
-    void RenderPass::rasterOrTrace(bool shouldRaster, std::unordered_map<Material *, MaterialNode> &renderTree)
-    {
-        if(shouldRaster) //do raster, dont use ray tracing
-        {
-            rasterPreProcess(renderTree);
-            raster(renderTree);
-            frameEnd(renderSemaphores.at(currentImage)); //end with raster semaphore
-        }
-        else //do ray tracing, no raster
-        {
-            rayTracePreProcess(renderTree);
-            frameEnd(TLASBuildSemaphores.at(currentImage)); //end with RT semaphore
-        }
-
-        if(recreateFlag)
-        {
-            recreateFlag = false;
-            swapchainPtr->recreate();
-            cameraPtr->updateCameraProjection();
-            
-            return;
-        }
-
-        //increment frame counter
-        if(currentImage == 0)
-        {
-            currentImage = 1;
-        }
-        else
-        {
-            currentImage = 0;
-        }
-    }
-
-    void RenderPass::frameEnd(VkSemaphore waitSemaphore)
-    {
-        //presentation
-        std::vector<VkSemaphore> presentWaitSemaphores = {
-            waitSemaphore
-        };
-
-        VkResult returnResult;
-        VkPresentInfoKHR presentSubmitInfo = {};
-        presentSubmitInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-        presentSubmitInfo.pNext = NULL;
-        presentSubmitInfo.waitSemaphoreCount = presentWaitSemaphores.size();
-        presentSubmitInfo.pWaitSemaphores = presentWaitSemaphores.data();
-        presentSubmitInfo.swapchainCount = 1;
-        presentSubmitInfo.pSwapchains = swapchainPtr->getSwapchainPtr();
-        presentSubmitInfo.pImageIndices = &currentImage;
-        presentSubmitInfo.pResults = &returnResult;
-
-        //too lazy to properly fix this, it probably barely affects performance anyways
-        devicePtr->getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->threadLock.lock();
-        VkResult presentResult = vkQueuePresentKHR(devicePtr->getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->queue, &presentSubmitInfo);
-        devicePtr->getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->threadLock.unlock();
-
-        if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) 
-        {
-            recreateFlag = true;
-        }
-    }
-
-    void RenderPass::addModelInstance(ModelInstance* instance, uint64_t& selfIndex)
-    {   
-        selfIndex = renderingModels.size();
-        renderingModels.push_back(instance);
-    }
-
-    void RenderPass::removeModelInstance(ModelInstance* instance, uint64_t& selfIndex)
-    {
-        //replace object index with the last element in the vector, change last elements self index to match, remove last element with pop_back()
-        if(renderingModels.size() > 1)
-        {
-            renderingModels.at(selfIndex) = renderingModels.back();
-            renderingModels.at(selfIndex)->setRendererIndex(selfIndex);
-            renderingModels.pop_back();
-        }
-        else
-        {
-            renderingModels.clear();
-        }
-        
-        selfIndex = UINT64_MAX;
     }
 }

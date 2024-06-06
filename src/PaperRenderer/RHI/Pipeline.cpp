@@ -150,7 +150,7 @@ namespace PaperRenderer
 
         //pipeline info from here on
         std::vector<VkFormat> renderTargetFormats = {
-            *swapchain->getFormatPtr()
+            swapchain->getFormat()
         };
 
         VkPipelineRenderingCreateInfo renderingInfo = {};

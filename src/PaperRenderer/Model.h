@@ -116,7 +116,6 @@ namespace PaperRenderer
         std::vector<std::vector<std::vector<uint32_t*>>> shaderMeshOffsetReferences;//LODs, material slots, meshes
         std::unordered_map<LODMesh const*, CommonMeshGroup*> meshReferences;
 
-        ModelTransform transformation = ModelTransform();
         uint64_t selfIndex;
         bool isVisible = true;
 
@@ -135,7 +134,7 @@ namespace PaperRenderer
         void setVisibility(bool newVisibility) { this->isVisible = newVisibility; }
         
         Model const* getParentModelPtr() const { return modelPtr; }
-        const ModelTransform& getTransformation() const { return transformation; }
+        ModelTransform getTransformation() const;
         const std::vector<std::vector<MaterialInstance*>>& getMaterialInstances() const { return materials; } //LOD index, material slot
         const bool& getVisibility() const { return isVisible; }
 

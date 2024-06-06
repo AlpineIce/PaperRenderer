@@ -40,8 +40,8 @@ namespace PaperRenderer
 
         std::vector<VkImageView>* getImageViews() { return &imageViews; }
         std::vector<VkImage>* getImages() { return &swapchainImages; }
-        VkFormat* getFormatPtr() { return &swapchainImageFormat; }
-        VkSwapchainKHR* getSwapchainPtr() { return &swapchain; }
+        const VkFormat& getFormat() { return swapchainImageFormat; }
+        const VkSwapchainKHR& getSwapchain() { return swapchain; }
         VkExtent2D getExtent() const { return swapchainExtent; }
 
         //depth buffer

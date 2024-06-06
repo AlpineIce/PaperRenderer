@@ -41,11 +41,14 @@ namespace PaperRenderer
             }
         }
 
-        void Commands::freeCommandBuffer(VkDevice device, CommandBuffer& commandBuffer)
+        void Commands::freeCommandBuffers(VkDevice device, std::vector<CommandBuffer>& commandBuffers)
         {
             if(isInit)
             {
-                vkFreeCommandBuffers(device, commandPools.at(commandBuffer.type), 1, &commandBuffer.buffer);
+                for(CommandBuffer& cmdBuffer : commandBuffers)
+                {
+                    vkFreeCommandBuffers(device, commandPools.at(cmdBuffer.type), 1, &cmdBuffer.buffer);
+                }
             }
             else
             {

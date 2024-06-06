@@ -60,6 +60,7 @@ namespace PaperRenderer
             void* getMappedPtr() const { return mappedData; } //returns null if unmapped
             const bool& getFlushRequirement() const { return needsFlush; }
 
+            VkDeviceSize getMemorySize() const { return allocationSize; }
             VkDeviceSize getAvailableMemorySize() const { return allocationSize - currentOffset; }
         };
     }

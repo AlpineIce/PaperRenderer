@@ -387,10 +387,8 @@ namespace PaperRenderer
             vkDestroyFence(device, blitSynchronization.fence, nullptr);
 
             //destroy old command buffers
-            for(CommandBuffer& buffer : creationBuffers)
-            {
-                Commands::freeCommandBuffer(device, buffer);
-            }
+            Commands::freeCommandBuffers(device, creationBuffers);
+            creationBuffers.clear();
         }
 
         VkSampler Image::getNewSampler(const Image& image, VkDevice device, VkPhysicalDevice gpu)

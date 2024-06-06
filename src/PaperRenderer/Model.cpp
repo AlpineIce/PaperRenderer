@@ -149,7 +149,8 @@ namespace PaperRenderer
 		vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &synchronizationInfo.fence, VK_TRUE, UINT64_MAX);
 		vkDestroyFence(rendererPtr->getDevice()->getDevice(), synchronizationInfo.fence, nullptr);
 
-		PaperRenderer::PaperMemory::Commands::freeCommandBuffer(rendererPtr->getDevice()->getDevice(), cmdBuffer);
+		std::vector<PaperMemory::CommandBuffer> cmdBuffers = { cmdBuffer };
+		PaperRenderer::PaperMemory::Commands::freeCommandBuffers(rendererPtr->getDevice()->getDevice(), cmdBuffers);
 
 		return buffer;
     }
@@ -263,9 +264,9 @@ namespace PaperRenderer
     ModelInstance::ShaderInputObject ModelInstance::getShaderInputObject() const
     {
 		ShaderInputObject inputObject = {};
-		inputObject.position = glm::vec4(transformation.position, 1.0f);
-		inputObject.scale = glm::vec4(transformation.scale, 1.0f);
-		inputObject.qRotation = transformation.rotation; //TODO SHADER QUATERNION
+		inputObject.position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+		inputObject.scale = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+		inputObject.qRotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 		inputObject.bounds = modelPtr->getAABB();
 		inputObject.lodCount = modelPtr->getLODs().size();
 		inputObject.lodsOffset = lodsOffset;
@@ -275,6 +276,21 @@ namespace PaperRenderer
 
     void ModelInstance::transform(const ModelTransform &newTransform)
     {
-		transformation = newTransform;
+		ModelInstance::ShaderInputObject& shaderObject = *((ModelInstance::ShaderInputObject*)rendererPtr->getHostInstancesBufferPtr()->getHostDataPtr() + selfIndex);
+		shaderObject.position = glm::vec4(newTransform.position, 1.0f);
+		shaderObject.scale = glm::vec4(newTransform.scale, 1.0f);
+		shaderObject.qRotation = newTransform.rotation;
+
+    }
+    ModelTransform ModelInstance::getTransformation() const
+    {
+		const ModelInstance::ShaderInputObject& shaderObject = *((ModelInstance::ShaderInputObject*)rendererPtr->getHostInstancesBufferPtr()->getHostDataPtr() + selfIndex);
+
+		ModelTransform transformation;
+		transformation.position = shaderObject.position;
+		transformation.scale = shaderObject.scale;
+		transformation.rotation = shaderObject.qRotation;
+		
+		return transformation;
     }
 }

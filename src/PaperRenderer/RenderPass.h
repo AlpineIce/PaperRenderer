@@ -10,21 +10,6 @@
 
 namespace PaperRenderer
 {
-    //leaf node including the mesh and any uniforms/push constants to be set for rendering. 
-    //Ownership should be within actors, not the render tree, which includes a pointer instead
-
-    //node for objects corresponding to one material
-    struct MaterialInstanceNode
-    {
-        std::unique_ptr<CommonMeshGroup> meshGroups;
-    };
-
-    //node for materials corresponding to one pipeline
-    struct MaterialNode
-    {
-        std::unordered_map<MaterialInstance*, MaterialInstanceNode> instances;
-    };
-
     struct IndirectRenderingData
     {
         uint32_t objectCount;
@@ -61,43 +46,18 @@ namespace PaperRenderer
         PaperMemory::CommandBuffer submit(Camera* camera, const IndirectRenderingData& renderingData, uint32_t currentImage, PaperMemory::SynchronizationInfo syncInfo);
     };
     
-    class RTPreprocessPipeline : public ComputeShader
-    {
-    private:
-        std::string fileName = "RTObjectBuild.spv";
-        std::vector<std::unique_ptr<PaperMemory::Buffer>> uniformBuffers;
-        std::unique_ptr<PaperMemory::DeviceAllocation> uniformBuffersAllocation;
-
-        struct UBOInputData
-        {
-            VkDeviceAddress tlasInstancesAddress;
-            uint32_t objectCount;
-        };
-
-    public:
-        RTPreprocessPipeline(std::string fileDir);
-        ~RTPreprocessPipeline() override;
-
-        PaperMemory::CommandBuffer submit();
-    };
-
     //----------RENDER PASS----------//
 
-    class RenderPass
+    class OldRenderPass
     {
     private:
         //synchronization and commands
-        std::vector<VkSemaphore> imageSemaphores;
         std::vector<VkSemaphore> bufferCopySemaphores;
         std::vector<VkFence> bufferCopyFences;
-        std::vector<VkSemaphore> BLASBuildSemaphores;
-        std::vector<VkSemaphore> TLASBuildSemaphores;
         std::vector<VkSemaphore> rasterPreprocessSemaphores;
         std::vector<VkSemaphore> preprocessTLASSignalSemaphores;
         std::vector<VkSemaphore> renderSemaphores;
-        std::vector<VkFence> RTFences;
         std::vector<VkFence> renderFences;
-        std::vector<std::vector<PaperMemory::CommandBuffer>> usedCmdBuffers;
         
         //buffers and allocations
         std::vector<std::unique_ptr<PaperMemory::DeviceAllocation>> stagingAllocations;
@@ -105,21 +65,14 @@ namespace PaperRenderer
 
         //compute shaders
         std::unique_ptr<RasterPreprocessPipeline> rasterPreprocessPipeline;
-        std::unique_ptr<RTPreprocessPipeline> RTPreprocessPipeline;
 
         //device local rendering buffer and misc data
         std::vector<IndirectRenderingData> renderingData; //includes its own device local allocation, but needs staging allocation for access
-        std::vector<ModelInstance*> renderingModels;
-        
-        AccelerationStructure rtAccelStructure;
-        uint32_t currentImage;
-        bool recreateFlag = false;
 
         Swapchain* swapchainPtr;
         Device* devicePtr;
         DescriptorAllocator* descriptorsPtr;
         PipelineBuilder* pipelineBuilderPtr;
-        Camera* cameraPtr = NULL;
         
         //helper functions
         void rebuildRenderDataAllocation(uint32_t currentFrame);
@@ -127,23 +80,35 @@ namespace PaperRenderer
         //frame rendering functions
         void raster(std::unordered_map<Material*, MaterialNode>& renderTree);
         void setRasterStagingData(const std::unordered_map<Material*, MaterialNode>& renderTree);
-        void setRTStagingData(const std::unordered_map<Material*, MaterialNode>& renderTree);
-        void copyStagingData();
         void rasterPreProcess(const std::unordered_map<Material*, MaterialNode>& renderTree);
         void rayTracePreProcess(const std::unordered_map<Material*, MaterialNode>& renderTree);
-        void frameEnd(VkSemaphore waitSemaphore);
 
     public:
-        RenderPass(Swapchain* swapchain, Device* device, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder);
-        ~RenderPass();
-
-        //set camera
-        void setCamera(Camera* camera) { this->cameraPtr = camera; }
-
-        //draw new frame
-        void rasterOrTrace(bool shouldRaster, std::unordered_map<Material *, MaterialNode> &renderTree);
+        OldRenderPass(Swapchain* swapchain, Device* device, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder);
+        ~OldRenderPass();
 
         void addModelInstance(ModelInstance* instance, uint64_t& selfIndex);
         void removeModelInstance(ModelInstance* instance, uint64_t& reference);
+    };
+
+    struct RenderPassInfo
+    {
+        
+    };
+
+    class RenderPass
+    {
+    protected:
+        std::vector<VkRenderingAttachmentInfo> colorAttachments;
+        VkRenderingAttachmentInfo const* depthAttachment = NULL;
+        VkRenderingAttachmentInfo const* stencilAttachment = NULL;
+        std::vector<VkViewport> viewports = {};
+        std::vector<VkRect2D> scissors = {};
+        VkRect2D renderArea = {};
+    public:
+        RenderPass();
+        virtual ~RenderPass();
+
+        virtual void render(VkCommandBuffer cmdBuffer);
     };
 }

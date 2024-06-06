@@ -67,7 +67,7 @@ namespace PaperRenderer
             Commands(VkDevice device, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr);
             ~Commands();
 
-            static void freeCommandBuffer(VkDevice device, CommandBuffer& commandBuffer);
+            static void freeCommandBuffers(VkDevice device, std::vector<CommandBuffer>& commandBuffers);
             static void submitToQueue(VkDevice device, const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers);
             static uint32_t getFrameCount() { return frameCount; }
 
