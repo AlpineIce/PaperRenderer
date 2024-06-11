@@ -7,11 +7,6 @@
 
 namespace PaperRenderer
 {   
-    enum VertexLayout
-    {
-        VEC3VEC3VEC2 = 0
-    };
-
     //----------SHADER DECLARATIONS----------//
 
     class Shader
@@ -32,6 +27,16 @@ namespace PaperRenderer
     };
 
     //----------PIPELINE DECLARATIONS----------//
+
+    
+
+    struct PipelineProperties
+    {
+        std::vector<VkVertexInputAttributeDescription> vertexAttributes; //a good start is vec3 position, vec3 normal, vec2 UVs. Attributes are assumed to be in order
+        VkVertexInputBindingDescription vertexDescription;
+        std::vector<VkFormat> colorAttachmentFormats;
+        VkFormat depthAttachmentFormat = VK_FORMAT_UNDEFINED;
+    };
 
     struct PipelineCreationInfo
     {
@@ -85,10 +90,9 @@ namespace PaperRenderer
         //vertex layout
         std::vector<VkVertexInputAttributeDescription> vertexAttributes;
         VkVertexInputBindingDescription vertexDescription = {};
-        VertexLayout vertexLayout;
 
     public:
-        RasterPipeline(const PipelineCreationInfo& creationInfo, Swapchain* swapchain);
+        RasterPipeline(const PipelineCreationInfo& creationInfo, const PipelineProperties& pipelineProperties, Swapchain* swapchain);
         ~RasterPipeline() override;
 
     };
@@ -100,7 +104,7 @@ namespace PaperRenderer
         VkDeferredOperationKHR deferredOperation;
 
     public:
-        RTPipeline(const PipelineCreationInfo& creationInfo, const RTPipelineInfo& rtInfo);
+        RTPipeline(const PipelineCreationInfo& creationInfo, const PipelineProperties& pipelineProperties, const RTPipelineInfo& rtInfo);
         ~RTPipeline() override;
 
         bool isBuilt();
@@ -127,6 +131,7 @@ namespace PaperRenderer
 
     struct PipelineBuildInfo
     {
+        PipelineProperties pipelineProperties = {};
         std::vector<ShaderPair>* shaderInfo;
         std::unordered_map<uint32_t, DescriptorSet>* descriptors;
     };

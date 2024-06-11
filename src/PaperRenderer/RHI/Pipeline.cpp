@@ -120,46 +120,19 @@ namespace PaperRenderer
 
     //----------RASTER PIPELINE DEFINITIONS---------//
 
-    RasterPipeline::RasterPipeline(const PipelineCreationInfo& creationInfo, Swapchain* swapchain)
-        :Pipeline(creationInfo)
+    RasterPipeline::RasterPipeline(const PipelineCreationInfo& creationInfo, const PipelineProperties& pipelineProperties, Swapchain* swapchain)
+        :Pipeline(creationInfo),
+        vertexAttributes(pipelineProperties.vertexAttributes),
+        vertexDescription(pipelineProperties.vertexDescription)
     {
-        vertexDescription.binding = 0;
-        vertexDescription.stride = sizeof(PaperMemory::Vertex);
-        vertexDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        //vertex position
-        vertexAttributes.push_back(VkVertexInputAttributeDescription{
-            .location = 0,
-            .binding = 0,
-            .format = VK_FORMAT_R32G32B32_SFLOAT, //vec3
-            .offset = offsetof(PaperMemory::Vertex, position)
-        });
-        //normals
-        vertexAttributes.push_back(VkVertexInputAttributeDescription{
-            .location = 1,
-            .binding = 0,
-            .format = VK_FORMAT_R32G32B32_SFLOAT, //vec3
-            .offset = offsetof(PaperMemory::Vertex, normal)
-        });
-        //texture Coordinates
-        vertexAttributes.push_back(VkVertexInputAttributeDescription{
-            .location = 2,
-            .binding = 0,
-            .format = VK_FORMAT_R32G32_SFLOAT, //vec2
-            .offset = offsetof(PaperMemory::Vertex, texCoord)
-        });
-
         //pipeline info from here on
-        std::vector<VkFormat> renderTargetFormats = {
-            swapchain->getFormat()
-        };
-
         VkPipelineRenderingCreateInfo renderingInfo = {};
         renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
         renderingInfo.pNext = NULL;
         renderingInfo.viewMask = 0;
-        renderingInfo.colorAttachmentCount = renderTargetFormats.size();
-        renderingInfo.pColorAttachmentFormats = renderTargetFormats.data();
-        renderingInfo.depthAttachmentFormat = swapchain->getDepthFormat();
+        renderingInfo.colorAttachmentCount = pipelineProperties.colorAttachmentFormats.size();
+        renderingInfo.pColorAttachmentFormats = pipelineProperties.colorAttachmentFormats.data();
+        renderingInfo.depthAttachmentFormat = pipelineProperties.depthAttachmentFormat;
         renderingInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
 
         std::vector<VkDynamicState> dynamicStates = {
@@ -316,7 +289,7 @@ namespace PaperRenderer
 
     //----------RT PIPELINE DEFINITTIONS----------//
 
-    RTPipeline::RTPipeline(const PipelineCreationInfo& creationInfo, const RTPipelineInfo& rtInfo)
+    RTPipeline::RTPipeline(const PipelineCreationInfo& creationInfo, const PipelineProperties& pipelineProperties, const RTPipelineInfo& rtInfo)
         :Pipeline(creationInfo),
         rtInfo(rtInfo)
     {
@@ -559,11 +532,11 @@ namespace PaperRenderer
 
     std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const PipelineBuildInfo& info) const
     {
-        return std::make_unique<RasterPipeline>(initPipelineInfo(info), swapchainPtr);
+        return std::make_unique<RasterPipeline>(initPipelineInfo(info), info.pipelineProperties, swapchainPtr);
     }
 
     std::unique_ptr<RTPipeline> PipelineBuilder::buildRTPipeline(const PipelineBuildInfo& info) const
     {
-        return std::make_unique<RTPipeline>(initPipelineInfo(info), initRTinfo());
+        return std::make_unique<RTPipeline>(initPipelineInfo(info), info.pipelineProperties, initRTinfo());
     }
 }

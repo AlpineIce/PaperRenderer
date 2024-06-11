@@ -6,30 +6,21 @@
 
 layout (local_size_x = 128) in;
 
-//----------GLOBAL INPUT DATA----------//
+//----------UNIFORM INPUT DATA----------//
 
-layout(std430, buffer_reference, buffer_reference_align = 8) PreprocessBufferReference;
-
-struct CullingData
+layout(std430, set = 0, binding = 0) uniform InputData //TODO CREATE CULLING FRUSTUM FROM PROJECTION
 {
-    vec4 frustum; //(left, right, top, bottom)
-    vec2 zPlanes; //(near, far)
-    vec2 padding;
-};
-
-layout(std430, set = 0, binding = 0) uniform InputData
-{
-    PreprocessBufferReference bufferReference;
-    uint64_t padding;
     vec4 camPos;
     mat4 projection;
     mat4 view;
-    CullingData cullingData;
     uint objectCount;
     
 } inputData;
 
-struct OBB
+//----------MODEL INPUT DATA----------//
+
+//model
+struct AABB
 {
     float posX;
     float negX;
@@ -39,66 +30,107 @@ struct OBB
     float negZ;
 };
 
-struct InputObject
+struct Model
 {
-    vec4 position; //w as padding
-    vec4 scale;
-    vec4 qRotation; //quaternion
-    OBB bounds;
+    AABB bounds;
     uint lodCount;
-    uint lodOffset;
+    uint lodsOffset;
+}
+
+layout(std430, buffer_reference, buffer_reference_align = 32) readonly buffer InputModels
+{
+    Model models[];
 };
 
-layout(std430, set = 0, binding = 1) readonly buffer InputObjects
+//lods
+struct ModelLOD
 {
-    InputObject objects[];
-} inputObjects;
-
-struct MeshReference
-{
-    uint meshOffset;
+    uint materialCount;
+    uint meshGroupOffset;
 };
 
-layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer MeshReferences
+layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer ModelLODs
 {
-    MeshReference references[];
+    ModelLOD LODs[];
 };
 
-struct LOD
+//mesh group
+struct ModelLODMeshGroup
 {
-    uint meshesReferencesOffset;
-    uint meshReferenceCount;
+    uint meshCount;
+    uint meshesOffset;
 };
 
-layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer LODs
+layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer ModelLODMeshGroups
 {
-    LOD lods[];
+    ModelLODMeshGroup groups[];
 };
 
-struct Mesh
+//mesh
+struct ModelMeshData
 {
     uint vboOffset;
     uint vertexCount;
     uint iboOffset;
     uint indexCount;
-
-    uint drawCountsOffset;
-    uint drawCommandsOffset;
-    uint outputObjectsOffset;
-    uint padding;
 };
 
-layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer MeshPointer
+layout(std430, buffer_reference, buffer_reference_align = 16) readonly buffer ModelLODMeshGroupMeshes
 {
-    Mesh mesh;
+    ModelMeshData meshesData[];
 };
 
-layout(std430, buffer_reference, buffer_reference_align = 8) buffer DrawCounts
+//----------MODEL INSTANCE INPUT DATA----------//
+
+//model instance
+struct ModelInstance
+{
+    vec4 position; //w as padding
+    vec4 scale;
+    vec4 qRotation; //quaternion
+    uint64_t modelPtr;
+    uint64_t LODsMaterialDataPtr; //count grabbed from model and is assumed to be in order
+};
+
+layout(std430, set = 0, binding = 1) readonly buffer InputInstances
+{
+    ModelInstance modelInstances[];
+} inputInstances;
+
+//instance lods
+struct InstanceLOD
+{
+    uint64_t materialsPtr;
+};
+
+layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer InstanceLODs
+{
+    InstanceLOD lods[]; //count grabbed from model and is assumed to be in order
+};
+
+//material data
+struct InstanceMaterialData
+{
+    uint64_t drawCountsPtr;
+    uint64_t drawCommandsPtr;
+    uint64_t outputObjectsPtr;
+};
+
+layout(std430, buffer_reference, buffer_reference_align = 24) readonly buffer InstanceMaterialDatas
+{
+    InstanceMaterialData datas[]; //count grabbed from model and is assumed to be in order
+};
+
+//----------OUTPUT DATA----------//
+
+//draw counts
+layout(std430, buffer_reference, buffer_reference_align = 4) buffer DrawCounts
 {
     uint count;
 };
 
-struct DrawCommand //20 bytes
+//draw commands
+struct DrawCommand
 {
     uint indexCount;
     uint instanceCount;
@@ -107,18 +139,19 @@ struct DrawCommand //20 bytes
     uint firstInstance;
 };
 
-layout(std430, buffer_reference, buffer_reference_align = 8) writeonly buffer DrawCommands
+layout(std430, buffer_reference, buffer_reference_align = 20) writeonly buffer DrawCommands
 {
     DrawCommand commands[];
 };
 
+//output object matrices
 struct OutputObject
 {
     mat4 model;
     mat4 objectTransform;
 };
 
-layout(std430, buffer_reference, buffer_reference_align = 8) writeonly buffer OutputObjects
+layout(std430, buffer_reference, buffer_reference_align = 128) writeonly buffer OutputObjects
 {
     OutputObject objects[];
 };
@@ -176,7 +209,7 @@ mat4 getModelMatrix(InputObject inputObject)
 
 bool isInBounds(InputObject object, mat4 modelMatrix)
 {
-    OBB bounds = object.bounds;
+    AABB bounds = object.bounds;
                 
     //construct 8 vertices
     vec3 vertices[8];
@@ -190,31 +223,31 @@ bool isInBounds(InputObject object, mat4 modelMatrix)
     vertices[7] = vec3(bounds.negX, bounds.negY, bounds.negZ);      // - - -
 
     //transform vertices and construct AABB
-    OBB AABB;
-    AABB.negX = 1000000.0f;
-    AABB.negY = 1000000.0f;
-    AABB.negZ = 1000000.0f;
-    AABB.posX = -1000000.0f;
-    AABB.posY = -1000000.0f;
-    AABB.posZ = -1000000.0f;
+    AABB aabb;
+    aabb.negX = 1000000.0f;
+    aabb.negY = 1000000.0f;
+    aabb.negZ = 1000000.0f;
+    aabb.posX = -1000000.0f;
+    aabb.posY = -1000000.0f;
+    aabb.posZ = -1000000.0f;
     for(int i = 0; i < 8; i++)
     {
         vertices[i] = (inputData.view * modelMatrix * vec4(vertices[i], 1.0)).xyz;
-        AABB.posX = max(vertices[i].x, AABB.posX);
-        AABB.negX = min(vertices[i].x, AABB.negX);
-        AABB.posY = max(vertices[i].y, AABB.posY);
-        AABB.negY = min(vertices[i].y, AABB.negY);
-        AABB.posZ = max(vertices[i].z, AABB.posZ);
-        AABB.negZ = min(vertices[i].z, AABB.negZ);
+        aabb.posX = max(vertices[i].x, aabb.posX);
+        aabb.negX = min(vertices[i].x, aabb.negX);
+        aabb.posY = max(vertices[i].y, aabb.posY);
+        aabb.negY = min(vertices[i].y, aabb.negY);
+        aabb.posZ = max(vertices[i].z, aabb.posZ);
+        aabb.negZ = min(vertices[i].z, aabb.negZ);
     }
     
     //visibility test
     bool visible = true;
-    visible = visible && AABB.negZ < 0.0; //z test (cut everything behind)
-    visible = visible && !((AABB.posX < ((inputData.cullingData.frustum.y / inputData.cullingData.frustum.x) * -AABB.negZ)) || //check left
-                           (AABB.negX > ((inputData.cullingData.frustum.y / inputData.cullingData.frustum.x) * AABB.negZ))); //check right
-    visible = visible && !((AABB.posY < (inputData.cullingData.frustum.z * AABB.negZ)) || //check top
-                           (AABB.negY > (inputData.cullingData.frustum.z * -AABB.negZ))); //check bottom
+    visible = visible && aabb.negZ < 0.0; //z test (cut everything behind)
+    visible = visible && !((aabb.posX < ((inputData.cullingData.frustum.y / inputData.cullingData.frustum.x) * -aabb.negZ)) || //check left
+                           (aabb.negX > ((inputData.cullingData.frustum.y / inputData.cullingData.frustum.x) * aabb.negZ))); //check right
+    visible = visible && !((aabb.posY < (inputData.cullingData.frustum.z * aabb.negZ)) || //check top
+                           (aabb.negY > (inputData.cullingData.frustum.z * -aabb.negZ))); //check bottom
     
 	return visible;
 }
@@ -222,7 +255,7 @@ bool isInBounds(InputObject object, mat4 modelMatrix)
 uint getLODLevel(InputObject object)
 {
     //get largest OBB extent to be used as size
-    OBB bounds = object.bounds;
+    AABB bounds = object.bounds;
     float xLength = bounds.posX - bounds.negX;
     float yLength = bounds.posY - bounds.negY;
     float zLength = bounds.posZ - bounds.negZ;

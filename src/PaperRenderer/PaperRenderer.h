@@ -15,6 +15,7 @@ namespace PaperRenderer
     struct RendererCreationStruct
     {
         std::string appName;
+        std::string shadersDir;
         unsigned int resX;
         unsigned int resY;
     };
@@ -27,68 +28,70 @@ namespace PaperRenderer
         Swapchain swapchain;
         DescriptorAllocator descriptors;
         PipelineBuilder pipelineBuilder;
-        RenderPass rendering;
-        Camera* cameraPtr = NULL;
+        RasterPreprocessPipeline rasterPreprocessPipeline;
 
         std::string appName;
+        std::string shadersDir;
         bool rtEnabled = false;
 
         //frame rendering stuff
         std::vector<VkFence> bufferCopyFences;
-        std::vector<VkSemaphore> imageSemaphores;
         std::vector<std::vector<PaperMemory::CommandBuffer>> usedCmdBuffers;
+        std::vector<ModelInstance*> renderingModelInstances;
+        std::vector<Model*> renderingModels;
 
-        //----------RENDER TREE----------//
+        //----------BUFFERS AND MEMORY----------//
 
-        //node for objects corresponding to one material instance
-        struct MaterialInstanceNode
-        {
-            std::unique_ptr<CommonMeshGroup> meshGroups;
-        };
+        //allocations
+        std::unique_ptr<PaperMemory::DeviceAllocation> hostDataAllocation;
+        std::unique_ptr<PaperMemory::DeviceAllocation> deviceDataAllocation;
 
-        //node for materials corresponding to one material
-        struct MaterialNode
-        {
-            std::unordered_map<MaterialInstance*, MaterialInstanceNode> instances;
-        };
-
-        std::unordered_map<Material*, MaterialNode> renderTree;
-        std::vector<ModelInstance*> renderingModels;
-
-        DefaultMaterial defaultMaterial;
-        DefaultMaterialInstance defaultMaterialInstance;
-
-        //host visible version; acts like a staging buffer; can theoretically be modified throughout rendering process with a read/write race hazard
-        std::unique_ptr<PaperMemory::DeviceAllocation> hostInstancesDataAllocation;
+        //host visible buffers
+        const float instancesDataOverhead = 1.4f;
         std::unique_ptr<PaperMemory::Buffer> hostInstancesDataBuffer;
-
-        //device local version; updated once per frame from host visible version
-        std::unique_ptr<PaperMemory::DeviceAllocation> deviceInstancesDataAllocation;
+        const float modelsDataOverhead = 1.1f;
+        std::unique_ptr<PaperMemory::FragmentableBuffer> hostModelDataBuffer;
+        
+        //device local buffers (mirror of host visible buffers)
         std::unique_ptr<PaperMemory::Buffer> deviceInstancesDataBuffer;
-
+        std::unique_ptr<PaperMemory::Buffer> deviceModelDataBuffer;
+        
+        void rebuildAllocations();
+        void rebuildModelDataBuffer();
         void rebuildInstancesbuffers();
+
+        //----------END OF BUFFERS AND MEMORY----------//
+
+        void addModelData(Model& model, uint64_t& selfIndex);
+        void removeModelData(Model& model, uint64_t& selfIndex);
+        void addObject(ModelInstance& object, uint64_t& selfIndex);
+        void removeObject(ModelInstance& object, uint64_t& selfIndex);
+
+        friend Model;
+        friend ModelInstance;
 
         uint32_t currentImage = 0;
     public:
         RenderEngine(RendererCreationStruct creationInfo);
         ~RenderEngine();
 
-        //add/remove objects to render tree
-        void addObject(ModelInstance& object, std::unordered_map<LODMesh const*, CommonMeshGroup*>& meshReferences, uint64_t& selfIndex);
-        void removeObject(ModelInstance& object, std::unordered_map<LODMesh const*, CommonMeshGroup*>& meshReferences, uint64_t& selfIndex);
-
-        //overwrite camera pointer used for rendering
-        void setCamera(Camera* camera) { this->cameraPtr = camera; }
-
         //draw all the items in the render tree
-        const VkSemaphore& beginFrame(std::vector<VkFence>& waitFences); //returns reference to signaled semaphore for the aquired frame, takes in fence(s) to wait on (usually from the rendering of the last frame) and resets them
-        void endFrame(const std::vector<VkSemaphore>& waitSemaphores); //takes in pre-signaled semaphore(s) that presentation will wait on
+        int beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore& imageAquireSignalSemaphore); //returns 0 if no swapchain rebuild occured; returns 1 otherwise
+        int endFrame(const std::vector<VkSemaphore>& waitSemaphores); //returns 0 if no swapchain rebuild occured; returns 1 otherwise
 
         bool getRTstatus() const { return rtEnabled; }
         void setRTstatus(bool newStatus) { this->rtEnabled = newStatus; }
 
+        void recycleCommandBuffer(PaperMemory::CommandBuffer& commandBuffer);
+
+        uint32_t const* getCurrentFramePtr() const { return &currentImage; }
+        RasterPreprocessPipeline* getRasterPreprocessPipeline() { return &rasterPreprocessPipeline; }
         PaperMemory::Buffer const* getHostInstancesBufferPtr() const { return hostInstancesDataBuffer.get(); }
+        PaperMemory::Buffer const* getDeviceInstancesBufferPtr() const { return deviceInstancesDataBuffer.get(); }
         GLFWwindow* getGLFWwindow() const { return window.getWindow(); }
         Device* getDevice() { return &device; }
+        const VkExtent2D& getResolution() const { return swapchain.getExtent(); }
+        const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
+        std::string getShadersDir() const { return shadersDir; }
     };
 }

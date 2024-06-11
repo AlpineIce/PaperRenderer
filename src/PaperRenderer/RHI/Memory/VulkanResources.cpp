@@ -34,32 +34,13 @@ namespace PaperRenderer
         Buffer::Buffer(VkDevice device, const BufferInfo& bufferInfo)
             :VulkanResource(device)
         {
-            std::vector<uint32_t> uniqueIndices = bufferInfo.queueFamilyIndices;
-
             VkBufferCreateInfo bufferCreateInfo = {};
             bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
             bufferCreateInfo.pNext = NULL;
             bufferCreateInfo.flags = 0;
             bufferCreateInfo.size = bufferInfo.size;
             bufferCreateInfo.usage = bufferInfo.usageFlags;
-            bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            if(bufferInfo.queueFamilyIndices.size() != 1) //use concurrent sharing mode if more than one queue family
-            {
-                std::sort(uniqueIndices.begin(), uniqueIndices.end());
-                auto result = std::unique(uniqueIndices.begin(), uniqueIndices.end());
-                uniqueIndices.erase(result, uniqueIndices.end());
-                
-                if(uniqueIndices.size() > 1)
-                {
-                    bufferCreateInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
-                    bufferCreateInfo.queueFamilyIndexCount = uniqueIndices.size();
-                    bufferCreateInfo.pQueueFamilyIndices = uniqueIndices.data();
-                }
-            }
-            else //guaranteed to be exactly 1 queue family index
-            {
-                exclusiveQueueFamilyIndex = bufferInfo.queueFamilyIndices.at(0);
-            }
+            bufferCreateInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
             
             vkCreateBuffer(device, &bufferCreateInfo, nullptr, &buffer);
 
@@ -96,7 +77,7 @@ namespace PaperRenderer
             return 0; //success, also VK_SUCCESS
         }
 
-        int Buffer::writeToBuffer(const std::vector<BufferWrite>& writes)
+        int Buffer::writeToBuffer(const std::vector<BufferWrite>& writes) const
         {
             //make sure memory is even mappable
             if(hostDataPtr)
@@ -171,7 +152,7 @@ namespace PaperRenderer
             vkCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
         }
 
-        CommandBuffer Buffer::copyFromBufferRanges(Buffer &src, uint32_t transferQueueFamily, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo)
+        CommandBuffer Buffer::copyFromBufferRanges(Buffer &src, uint32_t transferQueueFamily, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
         {
             VkCommandBuffer transferBuffer = Commands::getCommandBuffer(device, QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
 
@@ -181,57 +162,7 @@ namespace PaperRenderer
             beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
             vkBeginCommandBuffer(transferBuffer, &beginInfo);
-
-            //ownership transfer from srcQueueFamily to transferQueueFamily for buffers
-            /*if(src.exclusiveQueueFamilyIndex != -1 && transferQueueFamily != src.exclusiveQueueFamilyIndex) //using exlusive mode
-            {
-                src.transferQueueFamilyOwnership(
-                    transferBuffer,
-                    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                    VK_ACCESS_2_TRANSFER_READ_BIT,
-                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                    VK_ACCESS_2_NONE,
-                    src.exclusiveQueueFamilyIndex,
-                    transferQueueFamily);
-            }
-            if(exclusiveQueueFamilyIndex != -1 && transferQueueFamily != exclusiveQueueFamilyIndex)
-            {
-                transferQueueFamilyOwnership(
-                    transferBuffer,
-                    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                    VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                    VK_ACCESS_2_NONE,
-                    exclusiveQueueFamilyIndex,
-                    transferQueueFamily);
-            }*/
-
             vkCmdCopyBuffer(transferBuffer, src.getBuffer(), this->buffer, regions.size(), regions.data());
-
-            //ownership transfer from transferQueueFamily to srcQueueFamily for buffers
-            /*if(src.exclusiveQueueFamilyIndex != -1 && transferQueueFamily != src.exclusiveQueueFamilyIndex) //using exlusive mode
-            {
-                src.transferQueueFamilyOwnership(
-                    transferBuffer,
-                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                    VK_ACCESS_2_NONE,
-                    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                    VK_ACCESS_2_TRANSFER_READ_BIT,
-                    transferQueueFamily,
-                    src.exclusiveQueueFamilyIndex);
-            }
-            if(exclusiveQueueFamilyIndex != -1 && transferQueueFamily != exclusiveQueueFamilyIndex)
-            {
-                transferQueueFamilyOwnership(
-                    transferBuffer,
-                    VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                    VK_ACCESS_2_NONE,
-                    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                    VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                    transferQueueFamily,
-                    exclusiveQueueFamilyIndex);
-            }*/
-
             vkEndCommandBuffer(transferBuffer);
 
             std::vector<VkCommandBuffer> commandBuffers = {
@@ -253,6 +184,56 @@ namespace PaperRenderer
             return vkGetBufferDeviceAddress(device, &deviceAddressInfo);
         }
 
+        //----------FRAGMENTABLE BUFFER DEFINITIONS----------//
+
+        FragmentableBuffer::FragmentableBuffer(VkDevice device, const BufferInfo &bufferInfo, DeviceAllocation *startingAllocation, float fragmentationThreshold, float maxFreeSizeThreshold, float rebuildOverheadPercentag)
+            :device(device),
+            allocationPtr(startingAllocation),
+            fragmentationThreshold(fragmentationThreshold),
+            maxFreeSizeThreshold(maxFreeSizeThreshold),
+            rebuildOverheadPercentage(rebuildOverheadPercentage)
+            
+        {
+            buffer = std::make_unique<Buffer>(device, bufferInfo);
+            dataPtr = buffer->getHostDataPtr();
+
+            if(startingAllocation->getMemoryType().propertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
+            {
+                buffer->assignAllocation(startingAllocation);
+            }
+            else
+            {
+                throw std::runtime_error("Tried to assign allocation which was created with neither VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT or VK_MEMORY_PROPERTY_HOST_COHERENT_BIT to a fragmentable buffer");
+            }
+        }
+
+        FragmentableBuffer::~FragmentableBuffer()
+        {
+        }
+
+        void FragmentableBuffer::verifyFragmentation()
+        {
+        }
+
+        FragmentableBuffer::ReadWriteResult FragmentableBuffer::writeToRange(void *data, VkDeviceSize offset, VkDeviceSize size)
+        {
+            return ReadWriteResult();
+        }
+
+        FragmentableBuffer::ReadWriteResult FragmentableBuffer::removeFromRange(VkDeviceSize offset, VkDeviceSize size)
+        {
+            return ReadWriteResult();
+        }
+
+        void FragmentableBuffer::assignNewAllocation(DeviceAllocation *newAllocation)
+        {
+
+        }
+
+        void FragmentableBuffer::compact()
+        {
+        }
+
         //----------IMAGE DEFINITIONS----------//
 
         Image::Image(VkDevice device, const ImageInfo& imageInfo)
@@ -261,7 +242,6 @@ namespace PaperRenderer
         {
             //calculate mip levels (select the least of minimum mip levels either explicitely, or from whats mathematically doable)
             mipmapLevels = std::min((uint32_t)(std::floor(std::log2(std::max(imageInfo.extent.width, imageInfo.extent.height))) + 1), std::max(imageInfo.maxMipLevels, (uint32_t)1));
-            std::vector<uint32_t> uniqueIndices = imageInfo.queueFamilyIndices;
 
             //create image
             VkImageCreateInfo imageCreateInfo = {};
@@ -276,19 +256,7 @@ namespace PaperRenderer
             imageCreateInfo.samples = imageInfo.samples;
             imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
             imageCreateInfo.usage = imageInfo.usage; //VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-            imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            if(imageInfo.queueFamilyIndices.size() > 1) //use concurrent sharing mode if more than one queue family
-            {
-                std::sort(uniqueIndices.begin(), uniqueIndices.end());
-                auto result = std::unique(uniqueIndices.begin(), uniqueIndices.end());
-                uniqueIndices.erase(result, uniqueIndices.end());
-                if(uniqueIndices.size() > 1)
-                {
-                    imageCreateInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
-                    imageCreateInfo.queueFamilyIndexCount = uniqueIndices.size();
-                    imageCreateInfo.pQueueFamilyIndices = uniqueIndices.data();
-                }
-            }
+            imageCreateInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
             imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
             
             vkCreateImage(device, &imageCreateInfo, nullptr, &image);

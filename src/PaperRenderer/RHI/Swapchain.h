@@ -17,20 +17,12 @@ namespace PaperRenderer
         std::vector<VkImage> swapchainImages;
         std::vector<VkImageView> imageViews;
 
-        //depth buffer
-        std::unique_ptr<PaperMemory::DeviceAllocation> depthBufferAllocation;
-        std::unique_ptr<PaperMemory::Image> depthBufferImage;
-        VkImageView depthBufferView;
-        VkImageLayout depthBufferLayout;
-        VkFormat depthBufferFormat;
-        
         Device* devicePtr;
         Window* windowPtr;
         bool vsync;
 
         void buildSwapchain();
         void createImageViews();
-        void createDepthBuffer();
 
     public:
         Swapchain(Device* device, Window* window, bool enableVsync);
@@ -38,15 +30,10 @@ namespace PaperRenderer
 
         void recreate();
 
-        std::vector<VkImageView>* getImageViews() { return &imageViews; }
-        std::vector<VkImage>* getImages() { return &swapchainImages; }
+        std::vector<VkImageView> const* getImageViews() { return &imageViews; }
+        std::vector<VkImage> const* getImages() { return &swapchainImages; }
         const VkFormat& getFormat() { return swapchainImageFormat; }
         const VkSwapchainKHR& getSwapchain() { return swapchain; }
-        VkExtent2D getExtent() const { return swapchainExtent; }
-
-        //depth buffer
-        const VkImageView& getDepthView() const { return depthBufferView; }
-        VkImageLayout getDepthLayout() const { return depthBufferLayout; }
-        VkFormat getDepthFormat() const { return depthBufferFormat; }
+        const VkExtent2D& getExtent() const { return swapchainExtent; } //AKA resolution
     };
 }

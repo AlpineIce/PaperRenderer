@@ -1,8 +1,9 @@
 #pragma once
 #define VK_NO_PROTOTYPES
-#include "Volk/volk.h"
+#include "volk.h"
 
 #include <atomic>
+#include <memory>
 
 namespace PaperRenderer
 {

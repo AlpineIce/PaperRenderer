@@ -12,7 +12,13 @@ namespace PaperRenderer
 
     struct MeshInfo
     {
-        std::vector<PaperMemory::Vertex> vertices;
+        std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+        VkVertexInputBindingDescription vertexDescription;
+
+        ///where the vertexDescription stride represents the total size of a vertex, the position offset represents the offset in bytes of a vec3 (4 byte floats, 12 bytes total)
+        ///of where the position data is. position is required since its used in creating an AABB for culling purposes
+        uint32_t vertexPositionOffset;
+        std::vector<char> verticesData;
         std::vector<uint32_t> indices;
         uint32_t materialIndex;
     };
@@ -26,6 +32,10 @@ namespace PaperRenderer
 
     struct LODMesh
     {
+        std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+        VkVertexInputBindingDescription vertexDescription;
+        uint32_t vertexPositionOffset;
+        
         uint32_t vboOffset;
         uint32_t vertexCount;
         uint32_t iboOffset;
@@ -47,7 +57,7 @@ namespace PaperRenderer
         float negZ = 0.0f;
     };
 
-    struct ModelTransform
+    struct ModelTransformation
     {
         glm::vec3 position = glm::vec3(0.0f); //world position
         glm::vec3 scale = glm::vec3(1.0f); //local scale
@@ -64,10 +74,45 @@ namespace PaperRenderer
         std::unique_ptr<PaperMemory::Buffer> ibo;
         AABB aabb;
 
+        //shader data
+        struct ShaderModel
+        {
+            AABB bounds;
+            uint32_t lodCount;
+            uint32_t lodsOffset;
+        };
+
+        struct ShaderModelLOD
+        {
+            uint32_t materialCount;
+            uint32_t meshGroupOffset;
+        };
+
+        struct ShaderModelLODMeshGroup
+        {
+            uint32_t meshCount;
+            uint32_t meshesOffset;
+        };
+
+        struct ShaderModelMeshData
+        {
+            uint32_t vboOffset;
+            uint32_t vertexCount;
+            uint32_t iboOffset;
+            uint32_t indexCount;
+        };
+
+        uint64_t selfIndex;
+        std::vector<char> shaderData;
+
+        void setShaderData();
+
         class RenderEngine* rendererPtr;
         PaperMemory::DeviceAllocation* allocationPtr;
 
         std::unique_ptr<PaperMemory::Buffer> createDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags2KHR usageFlags);
+
+        friend class RenderEngine;
 
     public:
         Model(RenderEngine* renderer, PaperMemory::DeviceAllocation* allocation, const ModelCreateInfo& creationInfo);
@@ -81,6 +126,7 @@ namespace PaperRenderer
         VkDeviceAddress getIBOAddress() const { return ibo->getBufferDeviceAddress(); }
         const AABB& getAABB() const { return aabb; }
         const std::vector<LOD>& getLODs() const { return LODs; }
+        const std::vector<char>& getShaderData() const { return shaderData; }
     };
 
     //----------MODEL INSTANCE DECLARATIONS----------//
@@ -88,15 +134,14 @@ namespace PaperRenderer
     class ModelInstance
     {
     private:
-        struct ShaderInputObject
+        /*struct ShaderModelInstance
         {
             //transformation
             glm::vec4 position;
             glm::vec4 scale; 
             glm::quat qRotation; //quat -> mat4... could possibly be a mat3
-            AABB bounds;
-            uint32_t lodCount = 0;
-            uint32_t lodsOffset = 0;
+            VkDeviceAddress modelPtr;
+            VkDeviceAddress LODsMaterialDataPtr;
         };
 
         struct ShaderLOD
@@ -108,13 +153,17 @@ namespace PaperRenderer
         struct ShaderMeshReference
         {
             uint32_t meshOffset = 0;
+        };*/
+
+        struct ShaderModelInstance
+        {
+            glm::vec4 position;
+            glm::vec4 scale; 
+            glm::quat qRotation;
+            VkDeviceAddress modelPtr;
         };
-        
-        uint32_t lodsOffset;
-        std::vector<char> preprocessData;
-        std::vector<std::vector<MaterialInstance*>> materials;
-        std::vector<std::vector<std::vector<uint32_t*>>> shaderMeshOffsetReferences;//LODs, material slots, meshes
-        std::unordered_map<LODMesh const*, CommonMeshGroup*> meshReferences;
+
+        ShaderModelInstance getShaderInstance() const;
 
         uint64_t selfIndex;
         bool isVisible = true;
@@ -122,24 +171,21 @@ namespace PaperRenderer
         class RenderEngine* rendererPtr;
         Model const* modelPtr = NULL;
 
-        void setRendererIndex(uint64_t newIndex) { this->selfIndex = newIndex; }
-        std::vector<char> getRasterPreprocessData(uint32_t currentRequiredSize);
-        ShaderInputObject getShaderInputObject() const;
+        friend class RenderEngine;
+        friend class RasterPreprocessPipeline;
+
+        //void setRendererIndex(uint64_t newIndex) { this->selfIndex = newIndex; }
+        //std::vector<char> getRasterPreprocessData(uint32_t currentRequiredSize);
         
     public:
-        ModelInstance(RenderEngine* renderer, Model const* parentModel, const std::vector<std::unordered_map<uint32_t, MaterialInstance*>>& materials);
+        ModelInstance(RenderEngine* renderer, Model const* parentModel);
         ~ModelInstance();
 
-        void transform(const ModelTransform& newTransform);
+        void setTransformation(const ModelTransformation& newTransformation);
         void setVisibility(bool newVisibility) { this->isVisible = newVisibility; }
         
         Model const* getParentModelPtr() const { return modelPtr; }
-        ModelTransform getTransformation() const;
-        const std::vector<std::vector<MaterialInstance*>>& getMaterialInstances() const { return materials; } //LOD index, material slot
+        ModelTransformation getTransformation() const;
         const bool& getVisibility() const { return isVisible; }
-
-        friend class CommonMeshGroup;
-        friend class RenderEngine;
-        friend class RenderPass;
     };
 }

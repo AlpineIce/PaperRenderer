@@ -80,7 +80,7 @@ namespace PaperRenderer
     {
         addAndRemoveLock.lock();
         
-        this->instanceMeshes[instance].insert(this->instanceMeshes[instance].end(), instanceMeshesData.begin(), instanceMeshesData.end());
+        /*this->instanceMeshes[instance].insert(this->instanceMeshes[instance].end(), instanceMeshesData.begin(), instanceMeshesData.end());
         for(const InstancedMeshData& meshData : instanceMeshesData)
         {
             if(!meshesData.count(meshData.meshPtr))
@@ -88,10 +88,10 @@ namespace PaperRenderer
                 meshesData[meshData.meshPtr].parentModelPtr = instance->getParentModelPtr();
             }
 
-            instance->meshReferences[meshData.meshPtr] = this;
+            //instance->meshReferences[meshData.meshPtr] = this;
             *meshData.shaderMeshOffsetPtr = &meshesData.at(meshData.meshPtr).shaderMeshOffset;
             meshesData.at(meshData.meshPtr).instanceCount++;
-        }
+        }*/
 
         addAndRemoveLock.unlock();
     }
@@ -100,12 +100,12 @@ namespace PaperRenderer
     {
         addAndRemoveLock.lock();
         
-        for(InstancedMeshData& meshData : this->instanceMeshes.at(instance))
+        /*for(InstancedMeshData& meshData : this->instanceMeshes.at(instance))
         {
             instance->meshReferences.at(meshData.meshPtr) = NULL;
             meshesData.at(meshData.meshPtr).instanceCount--;
         }
-        instanceMeshes.erase(instance);
+        instanceMeshes.erase(instance);*/
 
         addAndRemoveLock.unlock();
     }

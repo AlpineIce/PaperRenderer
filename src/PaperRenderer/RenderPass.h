@@ -10,16 +10,13 @@
 
 namespace PaperRenderer
 {
-    struct IndirectRenderingData
-    {
-        uint32_t objectCount;
-        VkBufferCopy inputObjectsRegion; //not actually used for a copy, but is used for storing input objects size and location
-        std::vector<char> stagingData;
-        std::unique_ptr<PaperMemory::DeviceAllocation> bufferAllocation;
-        std::unique_ptr<PaperMemory::Buffer> bufferData; //THE UBER-BUFFER
-    };
+    //----------PREPROCESS COMPUTE PIPELINE----------//
 
-    //----------PREPROCESS COMPUTE PIPELINES----------//
+    struct RasterPreprocessSubmitInfo
+    {
+        Camera const* camera;
+        //todo buffer address to the LODs data
+    };
 
     class RasterPreprocessPipeline : public ComputeShader
     {
@@ -39,76 +36,76 @@ namespace PaperRenderer
             uint32_t objectCount;
         };
 
+        class RenderEngine* rendererPtr;
+
     public:
-        RasterPreprocessPipeline(std::string fileDir);
+        RasterPreprocessPipeline(RenderEngine* renderer, std::string fileDir);
         ~RasterPreprocessPipeline() override;
 
-        PaperMemory::CommandBuffer submit(Camera* camera, const IndirectRenderingData& renderingData, uint32_t currentImage, PaperMemory::SynchronizationInfo syncInfo);
+        void submit(const PaperMemory::SynchronizationInfo& syncInfo, const RasterPreprocessSubmitInfo& submitInfo);
     };
     
     //----------RENDER PASS----------//
 
-    class OldRenderPass
-    {
-    private:
-        //synchronization and commands
-        std::vector<VkSemaphore> bufferCopySemaphores;
-        std::vector<VkFence> bufferCopyFences;
-        std::vector<VkSemaphore> rasterPreprocessSemaphores;
-        std::vector<VkSemaphore> preprocessTLASSignalSemaphores;
-        std::vector<VkSemaphore> renderSemaphores;
-        std::vector<VkFence> renderFences;
-        
-        //buffers and allocations
-        std::vector<std::unique_ptr<PaperMemory::DeviceAllocation>> stagingAllocations;
-        std::vector<std::unique_ptr<PaperMemory::Buffer>> newDataStagingBuffers;
-
-        //compute shaders
-        std::unique_ptr<RasterPreprocessPipeline> rasterPreprocessPipeline;
-
-        //device local rendering buffer and misc data
-        std::vector<IndirectRenderingData> renderingData; //includes its own device local allocation, but needs staging allocation for access
-
-        Swapchain* swapchainPtr;
-        Device* devicePtr;
-        DescriptorAllocator* descriptorsPtr;
-        PipelineBuilder* pipelineBuilderPtr;
-        
-        //helper functions
-        void rebuildRenderDataAllocation(uint32_t currentFrame);
-        
-        //frame rendering functions
-        void raster(std::unordered_map<Material*, MaterialNode>& renderTree);
-        void setRasterStagingData(const std::unordered_map<Material*, MaterialNode>& renderTree);
-        void rasterPreProcess(const std::unordered_map<Material*, MaterialNode>& renderTree);
-        void rayTracePreProcess(const std::unordered_map<Material*, MaterialNode>& renderTree);
-
-    public:
-        OldRenderPass(Swapchain* swapchain, Device* device, DescriptorAllocator* descriptors, PipelineBuilder* pipelineBuilder);
-        ~OldRenderPass();
-
-        void addModelInstance(ModelInstance* instance, uint64_t& selfIndex);
-        void removeModelInstance(ModelInstance* instance, uint64_t& reference);
-    };
-
     struct RenderPassInfo
     {
-        
+        std::vector<VkRenderingAttachmentInfo> colorAttachments;
+        VkRenderingAttachmentInfo const* depthAttachment = NULL;
+        VkRenderingAttachmentInfo const* stencilAttachment = NULL;
+        std::vector<VkViewport> viewports;
+        std::vector<VkRect2D> scissors;
+        VkRect2D renderArea = {};
+        VkDependencyInfo const* preRenderBarriers = NULL;
+        VkDependencyInfo const* postRenderBarriers = NULL;
+    };
+
+    struct RenderPassSynchronizationInfo
+    {
+        std::vector<PaperMemory::SemaphorePair> preprocessWaitPairs;
+        std::vector<PaperMemory::SemaphorePair> renderWaitPairs;
+        std::vector<PaperMemory::SemaphorePair> renderSignalPairs;
+        VkFence renderSignalFence;
     };
 
     class RenderPass
     {
-    protected:
-        std::vector<VkRenderingAttachmentInfo> colorAttachments;
-        VkRenderingAttachmentInfo const* depthAttachment = NULL;
-        VkRenderingAttachmentInfo const* stencilAttachment = NULL;
-        std::vector<VkViewport> viewports = {};
-        std::vector<VkRect2D> scissors = {};
-        VkRect2D renderArea = {};
-    public:
-        RenderPass();
-        virtual ~RenderPass();
+    private:
+        //node for objects corresponding to one material instance
+        struct MaterialInstanceNode
+        {
+            MaterialInstance* materialInstancePtr = NULL;
+            std::unique_ptr<CommonMeshGroup> meshGroups;
+        };
 
-        virtual void render(VkCommandBuffer cmdBuffer);
+        //node for materials corresponding to one material
+        struct MaterialNode
+        {
+            Material* materialPtr = NULL;
+            std::vector<MaterialInstanceNode> instances;
+        };
+        std::vector<MaterialNode> renderTree; //render tree
+
+        //misc
+        std::vector<VkSemaphore> preprocessSignalSemaphores;
+        Material* defaultMaterial = NULL;
+        MaterialInstance* defaultMaterialInstance = NULL;
+
+        RenderEngine* rendererPtr;
+        Camera* cameraPtr;
+        Material* defaultMaterialPtr;
+        MaterialInstance* defaultMaterialInstancePtr;
+        RenderPassInfo const* renderPassInfoPtr;
+        
+    public:
+        RenderPass(RenderEngine* renderer, Camera* camera, Material* defaultMaterial, MaterialInstance* defaultMaterialInstance, RenderPassInfo const* renderPassInfo);
+        ~RenderPass();
+
+        void render(const RenderPassSynchronizationInfo& syncInfo);
+
+        void addInstance(ModelInstance* instance, const std::vector<std::unordered_map<uint32_t, MaterialInstance*>>& materials);
+        void removeInstance(ModelInstance* instance);
+
+        void setDefaultMaterial(Material* material) { this->defaultMaterial = material; }
+        void setDefaultMaterialInstance(MaterialInstance* materialInstance) { this->defaultMaterialInstance = materialInstance; }
     };
 }

@@ -1,4 +1,5 @@
 #include "Model.h"
+#include "RenderPass.h"
 #include "PaperRenderer.h"
 #include "RHI/IndirectDraw.h"
 
@@ -11,32 +12,8 @@ namespace PaperRenderer
         allocationPtr(allocation)
     {
 		//temporary variables for creating the singular vertex and index buffer
-		std::vector<PaperMemory::Vertex> creationVertices;
+		std::vector<char> creationVerticesData;
 		std::vector<uint32_t> creationIndices;
-
-		//fill in variables with the input LOD data
-		for(const std::unordered_map<uint32_t, std::vector<MeshInfo>>& lod : creationInfo.LODs)
-		{
-			LOD returnLOD;
-			returnLOD.meshMaterialData.resize(lod.size());
-			for(const auto& [matIndex, meshes] : lod)
-			{
-				for(const MeshInfo& mesh : meshes)
-				{
-					LODMesh returnMesh;
-					returnMesh.vboOffset = creationVertices.size();
-					returnMesh.vertexCount =  mesh.vertices.size();
-					returnMesh.iboOffset = creationIndices.size();
-					returnMesh.indexCount =  mesh.indices.size();
-
-					creationVertices.insert(creationVertices.end(), mesh.vertices.begin(), mesh.vertices.end());
-					creationIndices.insert(creationIndices.end(), mesh.indices.begin(), mesh.indices.end());
-
-					returnLOD.meshMaterialData.at(matIndex).push_back(returnMesh);
-				}
-			}
-			LODs.push_back(returnLOD);
-		}
 
 		//AABB processing
 		aabb.posX = -1000000.0f;
@@ -45,26 +22,118 @@ namespace PaperRenderer
 		aabb.negY = 1000000.0f;
 		aabb.posZ = -1000000.0f;
 		aabb.negZ = 1000000.0f;
-		for(const PaperMemory::Vertex& vertex : creationVertices)
+
+		//fill in variables with the input LOD data
+		for(const std::unordered_map<uint32_t, std::vector<MeshInfo>>& lod : creationInfo.LODs)
 		{
-			aabb.posX = std::max(vertex.position.x, aabb.posX);
-			aabb.negX = std::min(vertex.position.x, aabb.negX);
-			aabb.posY = std::max(vertex.position.y, aabb.posY);
-			aabb.negY = std::min(vertex.position.y, aabb.negY);
-			aabb.posZ = std::max(vertex.position.z, aabb.posZ);
-			aabb.negZ = std::min(vertex.position.z, aabb.negZ);
+			LOD returnLOD;
+			for(const auto& [matIndex, meshes] : lod)
+			{
+				for(const MeshInfo& mesh : meshes)
+				{
+					LODMesh returnMesh;
+					returnMesh.vertexPositionOffset = mesh.vertexPositionOffset;
+					returnMesh.vboOffset = creationVerticesData.size();
+					returnMesh.vertexCount =  mesh.verticesData.size();
+					returnMesh.iboOffset = creationIndices.size();
+					returnMesh.indexCount =  mesh.indices.size();
+
+					creationVerticesData.insert(creationVerticesData.end(), mesh.verticesData.begin(), mesh.verticesData.end());
+					creationIndices.insert(creationIndices.end(), mesh.indices.begin(), mesh.indices.end());
+
+					returnLOD.meshMaterialData.at(matIndex).push_back(returnMesh);
+
+					//AABB processing
+					uint32_t vertexCount = creationVerticesData.size() / mesh.vertexDescription.stride;
+					for(uint32_t i = 0; i < vertexCount; i++)
+					{
+						const glm::vec3& vertexPosition = *(glm::vec3*)(creationVerticesData.data() + (i * mesh.vertexDescription.stride) + mesh.vertexPositionOffset);
+
+						aabb.posX = std::max(vertexPosition.x, aabb.posX);
+						aabb.negX = std::min(vertexPosition.x, aabb.negX);
+						aabb.posY = std::max(vertexPosition.y, aabb.posY);
+						aabb.negY = std::min(vertexPosition.y, aabb.negY);
+						aabb.posZ = std::max(vertexPosition.z, aabb.posZ);
+						aabb.negZ = std::min(vertexPosition.z, aabb.negZ);
+					}
+				}
+			}
+			LODs.push_back(returnLOD);
 		}
 		
-		vbo = createDeviceLocalBuffer(sizeof(PaperMemory::Vertex) * creationVertices.size(), creationVertices.data(), 
+		vbo = createDeviceLocalBuffer(creationVerticesData.size(), creationVerticesData.data(), 
 			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
 		ibo = createDeviceLocalBuffer(sizeof(uint32_t) * creationIndices.size(), creationIndices.data(), 
 			VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
+
+		//TODO ADD SHADER DATA INTO A BUFFER
+		setShaderData();
 	}
 
 	Model::~Model()
 	{
 
 	}
+
+	void Model::setShaderData()
+    {
+		std::vector<char> newData;
+		uint32_t dynamicOffset = 0;
+
+		//model data
+		dynamicOffset += sizeof(ShaderModel);
+		newData.resize(dynamicOffset);
+
+		ShaderModel shaderModel = {};
+		shaderModel.bounds = aabb;
+		shaderModel.lodCount = LODs.size();
+		shaderModel.lodsOffset = dynamicOffset;
+
+		memcpy(newData.data(), &shaderModel, sizeof(ShaderModel));
+
+		//model LODs data
+		dynamicOffset += sizeof(ShaderModelLOD) * LODs.size();
+		newData.resize(dynamicOffset);
+
+		for(uint32_t lodIndex = 0; lodIndex < LODs.size(); lodIndex++)
+		{
+			ShaderModelLOD modelLOD = {};
+			modelLOD.materialCount = LODs.at(lodIndex).meshMaterialData.size();
+			modelLOD.meshGroupOffset = dynamicOffset;
+
+			memcpy(newData.data() + shaderModel.lodsOffset + sizeof(ShaderModelLOD) * lodIndex, &modelLOD, sizeof(ShaderModelLOD));
+			
+			//LOD mesh groups data
+			dynamicOffset += sizeof(ShaderModelLODMeshGroup) * LODs.at(lodIndex).meshMaterialData.size();
+			newData.resize(dynamicOffset);
+
+			for(uint32_t matIndex = 0; matIndex < LODs.at(lodIndex).meshMaterialData.size(); matIndex++)
+			{
+				ShaderModelLODMeshGroup materialMeshGroup = {};
+				materialMeshGroup.meshCount = LODs.at(lodIndex).meshMaterialData.at(matIndex).size();
+				materialMeshGroup.meshesOffset = dynamicOffset;
+
+				memcpy(newData.data() + modelLOD.meshGroupOffset + sizeof(ShaderModelLODMeshGroup) * matIndex, &materialMeshGroup, sizeof(ShaderModelLODMeshGroup));
+
+				//LOD mesh group meshes data
+				dynamicOffset += sizeof(ShaderModelMeshData) * LODs.at(lodIndex).meshMaterialData.at(matIndex).size();
+				newData.resize(dynamicOffset);
+
+				for(uint32_t meshIndex = 0; meshIndex < LODs.at(lodIndex).meshMaterialData.at(matIndex).size(); meshIndex++)
+				{
+					ShaderModelMeshData meshData = {};
+					meshData.iboOffset = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex).iboOffset;
+					meshData.indexCount = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex).indexCount;
+					meshData.vboOffset = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex).vboOffset;
+					meshData.vertexCount = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex).vertexCount;
+					
+					memcpy(newData.data() + materialMeshGroup.meshesOffset + sizeof(ShaderModelMeshData) * meshIndex, &meshData, sizeof(ShaderModelMeshData));
+				}
+			}
+		}
+        
+		shaderData = newData;
+    }
 
     VkDeviceSize Model::getMemoryAlignment(Device* device)
     {
@@ -90,14 +159,13 @@ namespace PaperRenderer
 		return memRequirements.memoryRequirements.alignment * 2; //alignment for vertex and index buffer
     }
 
-    std::unique_ptr<PaperMemory::Buffer> Model::createDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags2KHR usageFlags)
+    std::unique_ptr<PaperMemory::Buffer> Model::createDeviceLocalBuffer(VkDeviceSize size, void *data, VkBufferUsageFlags2KHR usageFlags)
     {
 		//create staging buffer
 		std::unique_ptr<PaperMemory::DeviceAllocation> stagingAllocation;
 		PaperMemory::BufferInfo stagingBufferInfo = {};
 		stagingBufferInfo.size = size;
 		stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-		stagingBufferInfo.queueFamilyIndices = { rendererPtr->getDevice()->getQueues().at(PaperMemory::QueueType::TRANSFER).queueFamilyIndex }; //used for transfer operation only
 		PaperMemory::Buffer vboStaging(rendererPtr->getDevice()->getDevice(), stagingBufferInfo);
 
 		//create staging allocation
@@ -120,10 +188,6 @@ namespace PaperRenderer
 		PaperMemory::BufferInfo bufferInfo = {};
 		bufferInfo.size = size;
 		bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | usageFlags;
-		bufferInfo.queueFamilyIndices = { 
-			rendererPtr->getDevice()->getQueues().at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex,
-            rendererPtr->getDevice()->getQueues().at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex
-		}; //used for graphics by raster and compute by RT. ownership transfer should probably be considered in the future
 		std::unique_ptr<PaperMemory::Buffer> buffer = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
 
 		//assign memory
@@ -164,67 +228,36 @@ namespace PaperRenderer
 
 	//----------MODEL INSTANCE DEFINITIONS----------//
 
-    ModelInstance::ModelInstance(RenderEngine *renderer, Model const *parentModel, const std::vector<std::unordered_map<uint32_t, MaterialInstance*>> &materials)
+    ModelInstance::ModelInstance(RenderEngine *renderer, Model const *parentModel)
     	:rendererPtr(renderer),
         modelPtr(parentModel)
     {
-		this->materials.resize(modelPtr->getLODs().size());
-		for(uint32_t lodIndex = 0; lodIndex < this->materials.size(); lodIndex++)
-		{
-			this->materials.at(lodIndex).resize(modelPtr->getLODs().at(lodIndex).meshMaterialData.size(), NULL); //default value of NULL
-		}
-
-		shaderMeshOffsetReferences.resize(modelPtr->getLODs().size());
-		for(uint32_t lodIndex = 0; lodIndex < modelPtr->getLODs().size(); lodIndex++)
-		{
-			shaderMeshOffsetReferences.at(lodIndex).resize(modelPtr->getLODs().at(lodIndex).meshMaterialData.size());
-			for(uint32_t matIndex = 0; matIndex < modelPtr->getLODs().at(lodIndex).meshMaterialData.size(); matIndex++)
-			{
-				shaderMeshOffsetReferences.at(lodIndex).at(matIndex).resize(modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).size());
-			}
-		}
-
-		for(uint32_t lodIndex = 0; lodIndex < materials.size(); lodIndex++)
-		{
-			if(this->materials.size() > lodIndex)
-			{
-				for(const auto& [matSlot, matInstance] : materials.at(lodIndex))
-				{
-					if(this->materials.at(lodIndex).size() > matSlot)
-					{
-						this->materials.at(lodIndex).at(matSlot) = matInstance;
-					}
-					else break;
-				}
-			}
-			else break;
-		}
-		
-		if(parentModel && renderer)
-		{
-			this->materials.resize(modelPtr->getLODs().size());
-			rendererPtr->addObject(*this, meshReferences, selfIndex);
-		}
+		rendererPtr->addObject(*this, selfIndex);
     }
 
     ModelInstance::~ModelInstance()
     {
-		if(modelPtr && rendererPtr)
-		{
-			rendererPtr->removeObject(*this, meshReferences, selfIndex);
-		}
+		rendererPtr->removeObject(*this, selfIndex);
     }
 
-	std::vector<char> ModelInstance::getRasterPreprocessData(uint32_t currentRequiredSize)
+    ModelInstance::ShaderModelInstance ModelInstance::getShaderInstance() const
     {
-		struct ShaderInstanceData
-		{
-			std::vector<ShaderLOD> shaderLODs;
-			std::vector<ShaderMeshReference> shaderMeshReferences;
-		};
 
-		ShaderInstanceData instanceData = {};
-		uint32_t dynamicOffset = currentRequiredSize;
+		ShaderModelInstance shaderModelInstance = {};
+		shaderModelInstance.position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+		shaderModelInstance.qRotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+		shaderModelInstance.scale = glm::vec4(1.0f);
+		shaderModelInstance.modelPtr = 0; //TODO
+
+		return shaderModelInstance;
+		
+		/*std::vector<char> newData;
+		uint32_t dynamicOffset = 0;
+
+		dynamicOffset += sizeof(ShaderModelInstance);
+		newData.resize(dynamicOffset);
+
+		ShaderModelInstance instanceData = {};
 
 		//shader LODs
 		lodsOffset = dynamicOffset;
@@ -258,39 +291,25 @@ namespace PaperRenderer
 		memcpy(preprocessData.data() + lastSize, instanceData.shaderMeshReferences.data(), sizeof(ShaderMeshReference) * instanceData.shaderMeshReferences.size());
 		lastSize = preprocessData.size();
 
-		return preprocessData;
+		shaderdata = newData;*/
     }
 
-    ModelInstance::ShaderInputObject ModelInstance::getShaderInputObject() const
+    void ModelInstance::setTransformation(const ModelTransformation &newTransformation)
     {
-		ShaderInputObject inputObject = {};
-		inputObject.position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-		inputObject.scale = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
-		inputObject.qRotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-		inputObject.bounds = modelPtr->getAABB();
-		inputObject.lodCount = modelPtr->getLODs().size();
-		inputObject.lodsOffset = lodsOffset;
-
-        return inputObject;
+		ModelInstance::ShaderModelInstance& shaderObject = *((ModelInstance::ShaderModelInstance*)rendererPtr->getHostInstancesBufferPtr()->getHostDataPtr() + selfIndex);
+		shaderObject.position = glm::vec4(newTransformation.position, 1.0f);
+		shaderObject.scale = glm::vec4(newTransformation.scale, 1.0f);
+		shaderObject.qRotation = newTransformation.rotation;
     }
-
-    void ModelInstance::transform(const ModelTransform &newTransform)
+    ModelTransformation ModelInstance::getTransformation() const
     {
-		ModelInstance::ShaderInputObject& shaderObject = *((ModelInstance::ShaderInputObject*)rendererPtr->getHostInstancesBufferPtr()->getHostDataPtr() + selfIndex);
-		shaderObject.position = glm::vec4(newTransform.position, 1.0f);
-		shaderObject.scale = glm::vec4(newTransform.scale, 1.0f);
-		shaderObject.qRotation = newTransform.rotation;
+		ModelInstance::ShaderModelInstance& shaderObject = *((ModelInstance::ShaderModelInstance*)rendererPtr->getHostInstancesBufferPtr()->getHostDataPtr() + selfIndex);
 
-    }
-    ModelTransform ModelInstance::getTransformation() const
-    {
-		const ModelInstance::ShaderInputObject& shaderObject = *((ModelInstance::ShaderInputObject*)rendererPtr->getHostInstancesBufferPtr()->getHostDataPtr() + selfIndex);
-
-		ModelTransform transformation;
+		ModelTransformation transformation;
 		transformation.position = shaderObject.position;
-		transformation.scale = shaderObject.scale;
 		transformation.rotation = shaderObject.qRotation;
-		
+		transformation.scale = shaderObject.scale;
+
 		return transformation;
     }
 }
