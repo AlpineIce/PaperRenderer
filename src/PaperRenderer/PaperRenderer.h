@@ -49,16 +49,17 @@ namespace PaperRenderer
         //host visible buffers
         const float instancesDataOverhead = 1.4f;
         std::unique_ptr<PaperMemory::Buffer> hostInstancesDataBuffer;
-        const float modelsDataOverhead = 1.1f;
+        const float modelsDataOverhead = 1.2f;
         std::unique_ptr<PaperMemory::FragmentableBuffer> hostModelDataBuffer;
         
         //device local buffers (mirror of host visible buffers)
         std::unique_ptr<PaperMemory::Buffer> deviceInstancesDataBuffer;
         std::unique_ptr<PaperMemory::Buffer> deviceModelDataBuffer;
         
-        void rebuildAllocations();
-        void rebuildModelDataBuffer();
+        void rebuildBuffersAndAllocations();
         void rebuildInstancesbuffers();
+        void rebuildModelDataBuffers(VkDeviceSize rebuildSize);
+        void handleModelDataCompaction(std::vector<PaperMemory::CompactionResult> results);
 
         //----------END OF BUFFERS AND MEMORY----------//
 

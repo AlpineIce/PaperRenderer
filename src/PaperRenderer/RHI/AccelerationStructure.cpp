@@ -21,6 +21,7 @@ namespace PaperRenderer
             //IMPORTANT NOTE HERE: BUFFERS ONLY USE THE COMPUTE FAMILY INDEX FOR ACCEL. STRUCTURE OPS, NOT THE GRAPHICS FAMILY
             PaperMemory::BufferInfo bufferInfo = {};
             bufferInfo.size = 256; //arbitrary starting size
+            bufferInfo.queueFamiliesIndices = devicePtr->getQueueFamiliesIndices();
             
             //allocation 0
             bufferInfo.usageFlags =    VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
@@ -169,18 +170,21 @@ namespace PaperRenderer
             PaperMemory::BufferInfo bufferInfo0 = {};
             bufferInfo0.size = BLBuildData.totalBuildSize * 1.2; //allocate 20% more than what's currently needed
             bufferInfo0.usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+            bufferInfo0.queueFamiliesIndices = devicePtr->getQueueFamiliesIndices();
             BLBuffers.at(currentFrame) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo0);
 
             //BL scratch
             PaperMemory::BufferInfo bufferInfo1 = {};
             bufferInfo1.size = BLBuildData.totalScratchSize * 1.2; //allocate 20% more than what's currently needed
             bufferInfo1.usageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+            bufferInfo1.queueFamiliesIndices = devicePtr->getQueueFamiliesIndices();
             BLScratchBuffers.at(currentFrame) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo1);
 
             //TL instances
             PaperMemory::BufferInfo bufferInfo2 = {};
             bufferInfo2.size = instancesBufferSize * 1.2; //allocate 20% more than what's currently needed
             bufferInfo2.usageFlags = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            bufferInfo1.queueFamiliesIndices = devicePtr->getQueueFamiliesIndices();
             TLInstancesBuffers.at(currentFrame) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo2);
 
             rebuildAllocations0(currentFrame);
@@ -412,11 +416,13 @@ namespace PaperRenderer
             bufferInfo0.size = buildSizes.buildScratchSize * 1.2; //allocate 20% more than what's currently needed
             bufferInfo0.usageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
             TLScratchBuffers.at(currentFrame) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo0);
+            bufferInfo0.queueFamiliesIndices = devicePtr->getQueueFamiliesIndices();
 
             PaperMemory::BufferInfo bufferInfo1 = {};
             bufferInfo1.size = buildSizes.accelerationStructureSize * 1.2; //allocate 20% more than what's currently needed
             bufferInfo1.usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
             TLBuffers.at(currentFrame) = std::make_unique<PaperMemory::Buffer>(devicePtr->getDevice(), bufferInfo1);
+            bufferInfo1.queueFamiliesIndices = devicePtr->getQueueFamiliesIndices();
 
             rebuildAllocations1(currentFrame);
         }

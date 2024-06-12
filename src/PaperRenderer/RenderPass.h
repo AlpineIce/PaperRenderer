@@ -27,12 +27,11 @@ namespace PaperRenderer
 
         struct UBOInputData
         {
-            VkDeviceAddress bufferAddress; //used with offsets to make LOD selection possible in a compute shader
-            uint64_t padding;
             glm::vec4 camPos;
             glm::mat4 projection;
             glm::mat4 view;
-            CameraFrustum frustumData;
+            VkDeviceAddress modelInstancesPtr;
+            VkDeviceAddress modelDataPtr;
             uint32_t objectCount;
         };
 
@@ -84,6 +83,9 @@ namespace PaperRenderer
             std::vector<MaterialInstanceNode> instances;
         };
         std::vector<MaterialNode> renderTree; //render tree
+
+        //instances
+        std::vector<ModelInstance*> renderPassInstances; //TODO THIS NEEDS TO BE A DEDICATED BUFFER!!!
 
         //misc
         std::vector<VkSemaphore> preprocessSignalSemaphores;

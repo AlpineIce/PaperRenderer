@@ -13,36 +13,17 @@ namespace PaperRenderer
         swapchain(&device, &window, false),
         descriptors(&device),
         pipelineBuilder(&device, &descriptors, &swapchain),
-        rasterPreprocessPipeline(this, shadersDir)
+        rasterPreprocessPipeline(this, creationInfo.shadersDir)
     {
-        //synchronization
+        //synchronization and cmd buffers
         bufferCopyFences.resize(PaperMemory::Commands::getFrameCount());
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {
-            bufferCopyFences.at(i) = PaperMemory::Commands::getSignaledFence(device.getDevice());
+            bufferCopyFences.at(i) = PaperMemory::Commands::getUnsignaledFence(device.getDevice());
         }
+        usedCmdBuffers.resize(PaperMemory::Commands::getFrameCount());
 
-        //buffers and allocations
-        PaperMemory::DeviceAllocationInfo hostAllocationInfo = {};
-        hostAllocationInfo.allocationSize = 1024;
-        hostAllocationInfo.allocFlags = 0;
-        hostAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-        hostDataAllocation = std::make_unique<PaperMemory::DeviceAllocation>(device.getDevice(), device.getGPU(), hostAllocationInfo);
-
-        PaperMemory::DeviceAllocationInfo deviceAllocationInfo = {};
-        deviceAllocationInfo.allocationSize = 1024;
-        deviceAllocationInfo.allocFlags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-        deviceAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        deviceDataAllocation = std::make_unique<PaperMemory::DeviceAllocation>(device.getDevice(), device.getGPU(), deviceAllocationInfo);
-
-        rebuildInstancesbuffers();
-
-        PaperMemory::BufferInfo modelsBufferInfo = {};
-        modelsBufferInfo.size = 256;
-        modelsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
-        hostModelDataBuffer = std::make_unique<PaperMemory::FragmentableBuffer>(device.getDevice(), modelsBufferInfo, hostDataAllocation.get(), 0.2f, 0.6f, 1.2f);
-
-        hostModelDataBuffer->setOutOfMemoryCallback([this](){ rebuildAllocations(); return hostDataAllocation.get(); });
+        rebuildBuffersAndAllocations();
 
         //finish up
         vkDeviceWaitIdle(device.getDevice());
@@ -63,51 +44,103 @@ namespace PaperRenderer
         }
     }
 
-    void RenderEngine::rebuildAllocations()
+    void RenderEngine::rebuildBuffersAndAllocations()
     {
-        VkDeviceSize newAllocationSize = 0;
-        newAllocationSize += std::max((VkDeviceSize)(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance) * instancesDataOverhead), (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
-        //TODO COMPACTION EVENT
-        hostModelDataBuffer->compact();
-        newAllocationSize += hostModelDataBuffer->getStackLocation();
+        //copy old data into temporary variables and "delete" buffers
+        std::vector<char> oldModelInstancesData(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance));
+        if(hostInstancesDataBuffer)
+        {
+            memcpy(oldModelInstancesData.data(), hostInstancesDataBuffer->getHostDataPtr(), oldModelInstancesData.size());
+            hostInstancesDataBuffer.reset();
+        }
+        
+        VkDeviceSize oldModelsDataSize = 4096;
+        if(hostModelDataBuffer) oldModelsDataSize = hostModelDataBuffer->getStackLocation();
+        std::vector<char> oldModelsData;
+        if(hostModelDataBuffer)
+        {
+            oldModelsData.resize(oldModelsDataSize);
+            memcpy(oldModelsData.data(), hostModelDataBuffer->getBufferPtr(), oldModelsData.size());
+            hostModelDataBuffer.reset();
+        }
+        
+        //delete old allocations (technically not needed)
+        hostDataAllocation.reset();
+        deviceDataAllocation.reset();
 
-        //copy old data into temporary variables
-        std::vector<char> renderingModelInstancesData(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance));
-        memcpy(renderingModelInstancesData.data(), hostInstancesDataBuffer->getHostDataPtr(), renderingModelInstancesData.size());
+        //rebuild buffers
+        rebuildInstancesbuffers();
+        rebuildModelDataBuffers(oldModelsDataSize);
 
-        std::vector<char> renderingModelsData(hostModelDataBuffer->getStackLocation());
-        memcpy(renderingModelsData.data(), hostModelDataBuffer->getBufferPtr(), renderingModelsData.size());
+        //get allocation size requirements
+        VkDeviceSize hostAllocationSize = 0;
+        hostAllocationSize += std::max(hostInstancesDataBuffer->getMemoryRequirements().size, (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
+        hostAllocationSize = PaperMemory::DeviceAllocation::padToMultiple(hostAllocationSize, hostInstancesDataBuffer->getMemoryRequirements().alignment); //pad buffer to allocation requirement
+        hostAllocationSize += hostModelDataBuffer->getBufferPtr()->getMemoryRequirements().size;
 
-        //rebuild allocations
+        VkDeviceSize deviceAllocationSize = 0;
+        deviceAllocationSize += std::max(deviceInstancesDataBuffer->getMemoryRequirements().size, (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
+        deviceAllocationSize = PaperMemory::DeviceAllocation::padToMultiple(deviceAllocationSize, deviceInstancesDataBuffer->getMemoryRequirements().alignment); //pad buffer to allocation requirement
+        deviceAllocationSize += deviceModelDataBuffer->getMemoryRequirements().size;
+
+        //create new allocations
+        PaperMemory::DeviceAllocationInfo hostAllocationInfo = {};
+        hostAllocationInfo.allocationSize = hostAllocationSize;
+        hostAllocationInfo.allocFlags = 0;
+        hostAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+        hostDataAllocation = std::make_unique<PaperMemory::DeviceAllocation>(device.getDevice(), device.getGPU(), hostAllocationInfo);
+
+        PaperMemory::DeviceAllocationInfo deviceAllocationInfo = {};
+        deviceAllocationInfo.allocationSize = deviceAllocationSize;
+        deviceAllocationInfo.allocFlags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+        deviceAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        deviceDataAllocation = std::make_unique<PaperMemory::DeviceAllocation>(device.getDevice(), device.getGPU(), deviceAllocationInfo);
+
+        //assign allocations and copy old data back in
+        hostInstancesDataBuffer->assignAllocation(hostDataAllocation.get());
+        memcpy(hostInstancesDataBuffer->getHostDataPtr(), oldModelInstancesData.data(), oldModelInstancesData.size());
+        hostModelDataBuffer->assignAllocation(hostDataAllocation.get());
+        hostModelDataBuffer->newWrite(oldModelsData.data(), oldModelsData.size(), NULL); //location isn't needed
+
+        deviceInstancesDataBuffer->assignAllocation(deviceDataAllocation.get());
+        deviceModelDataBuffer->assignAllocation(deviceDataAllocation.get());
     }
 
-    void RenderEngine::rebuildModelDataBuffer()
+    void RenderEngine::rebuildModelDataBuffers(VkDeviceSize rebuildSize)
     {
+        PaperMemory::BufferInfo hostModelsBufferInfo = {};
+        hostModelsBufferInfo.size = rebuildSize * modelsDataOverhead;
+        hostModelsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
+        hostModelsBufferInfo.queueFamiliesIndices = device.getQueueFamiliesIndices();
+        hostModelDataBuffer = std::make_unique<PaperMemory::FragmentableBuffer>(device.getDevice(), hostModelsBufferInfo);
+        hostModelDataBuffer->setCompactionCallback([this](std::vector<PaperMemory::CompactionResult> results){ handleModelDataCompaction(results); });
 
+        PaperMemory::BufferInfo deviceModelsBufferInfo = {};
+        deviceModelsBufferInfo.size = hostModelsBufferInfo.size;
+        deviceModelsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
+        deviceModelsBufferInfo.queueFamiliesIndices = device.getQueueFamiliesIndices();
+        deviceModelDataBuffer = std::make_unique<PaperMemory::Buffer>(device.getDevice(), deviceModelsBufferInfo);
+    }
+
+    void RenderEngine::handleModelDataCompaction(std::vector<PaperMemory::CompactionResult> results)
+    {
+        std::cout << "SHIT SHIT SHIT COMPACTION EVENT!!!" << std::endl;
     }
 
     void RenderEngine::rebuildInstancesbuffers()
     {
-        //create copy of old host visible data if old was valid
-        std::vector<char> oldData;
-        if(hostInstancesDataBuffer)
-        {
-            oldData.resize(hostInstancesDataBuffer->getSize());
-            memcpy(oldData.data(), hostInstancesDataBuffer->getHostDataPtr(), hostInstancesDataBuffer->getSize());
-        }
         //host visible
         PaperMemory::BufferInfo hostBufferInfo = {};
         hostBufferInfo.size = std::max((VkDeviceSize)(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance) * instancesDataOverhead), (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
         hostBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
+        hostBufferInfo.queueFamiliesIndices = device.getQueueFamiliesIndices();
         hostInstancesDataBuffer = std::make_unique<PaperMemory::Buffer>(device.getDevice(), hostBufferInfo);
-
-        //copy new data if needed
-        if(oldData.size()) memcpy(hostInstancesDataBuffer->getHostDataPtr(), oldData.data(), oldData.size());
 
         //device local
         PaperMemory::BufferInfo deviceBufferInfo = {};
-        deviceBufferInfo.size = hostInstancesDataBuffer->getSize();
+        deviceBufferInfo.size = hostBufferInfo.size; //same size as host visible buffer
         deviceBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
+        deviceBufferInfo.queueFamiliesIndices = device.getQueueFamiliesIndices();
         deviceInstancesDataBuffer = std::make_unique<PaperMemory::Buffer>(device.getDevice(), deviceBufferInfo);
     }
 
@@ -115,13 +148,12 @@ namespace PaperRenderer
     {
         selfIndex = renderingModels.size();
         renderingModels.push_back(&model);
+        
 
         //copy initial data into host visible instances data
         std::vector<char> shaderData = model.getShaderData();
-        
-        VkDeviceSize stackPtr = hostModelDataBuffer->getStackLocation();
-        
-        hostModelDataBuffer->writeToRange(shaderData.data(), stackPtr, shaderData.size());
+
+        hostModelDataBuffer->newWrite(shaderData.data(), shaderData.size(), &model.shaderDataLocation);
     }
 
     void RenderEngine::removeModelData(Model &model, uint64_t &selfIndex)
@@ -137,6 +169,9 @@ namespace PaperRenderer
         {
             renderingModels.clear();
         }
+
+        //remove from buffer
+        hostModelDataBuffer->removeFromRange(model.shaderDataLocation, model.getShaderData().size());
         
         selfIndex = UINT64_MAX;
     }
@@ -191,7 +226,7 @@ namespace PaperRenderer
             //check buffer size and rebuild if too small
             if(hostInstancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128)
             {
-                rebuildInstancesbuffers(); //TODO SYNCHRONIZATION
+                rebuildBuffersAndAllocations(); //TODO SYNCHRONIZATION
             }
 
             //copy initial data into host visible instances data
@@ -240,14 +275,14 @@ namespace PaperRenderer
         VkBufferCopy region;
         region.srcOffset = 0;
         region.dstOffset = 0;
-        region.size = hostInstancesDataBuffer->getSize();
+        region.size = renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance);
 
         PaperMemory::SynchronizationInfo syncInfo = {};
         syncInfo.queueType = PaperMemory::QueueType::TRANSFER;
         syncInfo.waitPairs = {};
         syncInfo.signalPairs = {};
         syncInfo.fence = bufferCopyFences.at(currentImage);
-        usedCmdBuffers.at(currentImage).push_back(deviceInstancesDataBuffer->copyFromBufferRanges(*hostInstancesDataBuffer.get(), device.getQueues().at(PaperMemory::QueueType::TRANSFER).queueFamilyIndex, { region }, syncInfo));
+        usedCmdBuffers.at(currentImage).push_back(deviceInstancesDataBuffer->copyFromBufferRanges(*hostInstancesDataBuffer.get(), { region }, syncInfo));
         
         std::vector<VkFence> frameFences = waitFences;
         frameFences.push_back(bufferCopyFences.at(currentImage));

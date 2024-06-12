@@ -27,14 +27,6 @@ namespace PaperRenderer
         VkSurfaceKHR surface;
         bool rtSupport = false;
 
-        struct QueueFamiliesIndices
-        {
-            int graphicsFamilyIndex = -1;
-            int computeFamilyIndex = -1;
-            int transferFamilyIndex = -1;
-            int presentationFamilyIndex = -1;
-        } queueFamilies;
-
         void createContext(std::string appName);
         void findGPU();
         void findQueueFamilies(uint32_t& queueFamilyCount, std::vector<VkQueueFamilyProperties>& queueFamiliesProperties);
@@ -57,7 +49,6 @@ namespace PaperRenderer
         VkPhysicalDeviceFeatures getGPUFeatures() const { return gpuFeatures; }
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR getRTproperties() const { return rtPipelineProperties; }
         const std::unordered_map<PaperMemory::QueueType, PaperMemory::QueuesInFamily>& getQueues() const { return queues; }
-        
-        
+        PaperMemory::QueueFamiliesIndices getQueueFamiliesIndices() const;
     };
 }

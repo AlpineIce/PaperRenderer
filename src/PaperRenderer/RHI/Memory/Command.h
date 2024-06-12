@@ -29,6 +29,14 @@ namespace PaperRenderer
             std::vector<Queue*> queues;
         };
 
+        struct QueueFamiliesIndices
+        {
+            int graphicsFamilyIndex = -1;
+            int computeFamilyIndex = -1;
+            int transferFamilyIndex = -1;
+            int presentationFamilyIndex = -1;
+        };
+
         struct SemaphorePair
         {
             VkSemaphore semaphore;

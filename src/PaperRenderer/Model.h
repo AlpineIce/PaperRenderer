@@ -103,6 +103,7 @@ namespace PaperRenderer
         };
 
         uint64_t selfIndex;
+        VkDeviceSize shaderDataLocation = UINT64_MAX;
         std::vector<char> shaderData;
 
         void setShaderData();
@@ -160,7 +161,8 @@ namespace PaperRenderer
             glm::vec4 position;
             glm::vec4 scale; 
             glm::quat qRotation;
-            VkDeviceAddress modelPtr;
+            uint32_t modelDataOffset;
+            glm::vec3 padding;
         };
 
         ShaderModelInstance getShaderInstance() const;

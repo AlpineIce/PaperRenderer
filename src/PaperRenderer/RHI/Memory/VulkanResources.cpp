@@ -41,6 +41,20 @@ namespace PaperRenderer
             bufferCreateInfo.size = bufferInfo.size;
             bufferCreateInfo.usage = bufferInfo.usageFlags;
             bufferCreateInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
+
+            std::vector<uint32_t> queueFamilyIndices;
+            if(bufferInfo.queueFamiliesIndices.graphicsFamilyIndex != -1) queueFamilyIndices.push_back(bufferInfo.queueFamiliesIndices.graphicsFamilyIndex);
+            if(bufferInfo.queueFamiliesIndices.computeFamilyIndex != -1) queueFamilyIndices.push_back(bufferInfo.queueFamiliesIndices.computeFamilyIndex);
+            if(bufferInfo.queueFamiliesIndices.transferFamilyIndex != -1) queueFamilyIndices.push_back(bufferInfo.queueFamiliesIndices.transferFamilyIndex);
+            if(bufferInfo.queueFamiliesIndices.presentationFamilyIndex != -1) queueFamilyIndices.push_back(bufferInfo.queueFamiliesIndices.presentationFamilyIndex);
+            std::sort(queueFamilyIndices.begin(), queueFamilyIndices.end());
+            auto uniqueIndices = std::unique(queueFamilyIndices.begin(), queueFamilyIndices.end());
+            queueFamilyIndices.erase(uniqueIndices, queueFamilyIndices.end());
+
+            if(!queueFamilyIndices.size()) throw std::runtime_error("Tried to create buffer with no queue family indices referenced");
+            
+            bufferCreateInfo.queueFamilyIndexCount = queueFamilyIndices.size();
+            bufferCreateInfo.pQueueFamilyIndices = queueFamilyIndices.data();
             
             vkCreateBuffer(device, &bufferCreateInfo, nullptr, &buffer);
 
@@ -122,37 +136,7 @@ namespace PaperRenderer
             }
         }
 
-        void Buffer::transferQueueFamilyOwnership(
-            VkCommandBuffer cmdBuffer,
-            VkPipelineStageFlags2 srcStageMask,
-            VkAccessFlags2 srcAccessMask,
-            VkPipelineStageFlags2 dstStageMask,
-            VkAccessFlags2 dstAccessMask,
-            uint32_t srcFamily,
-            uint32_t dstFamily)
-        {
-            VkBufferMemoryBarrier2 ownershipTransferBarrier = {};
-            ownershipTransferBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
-            ownershipTransferBarrier.pNext = NULL;
-            ownershipTransferBarrier.srcStageMask = srcStageMask;
-            ownershipTransferBarrier.srcAccessMask = srcAccessMask;
-            ownershipTransferBarrier.dstStageMask = dstStageMask;
-            ownershipTransferBarrier.dstAccessMask = dstAccessMask;
-            ownershipTransferBarrier.srcQueueFamilyIndex = srcFamily;
-            ownershipTransferBarrier.dstQueueFamilyIndex = dstFamily;
-            ownershipTransferBarrier.buffer = buffer;
-            ownershipTransferBarrier.offset = 0;
-            ownershipTransferBarrier.size = VK_WHOLE_SIZE;
-
-            VkDependencyInfo dependencyInfo = {};
-            dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-            dependencyInfo.pNext = NULL;
-            dependencyInfo.bufferMemoryBarrierCount = 1;
-            dependencyInfo.pBufferMemoryBarriers = &ownershipTransferBarrier;
-            vkCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
-        }
-
-        CommandBuffer Buffer::copyFromBufferRanges(Buffer &src, uint32_t transferQueueFamily, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
+        CommandBuffer Buffer::copyFromBufferRanges(Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
         {
             VkCommandBuffer transferBuffer = Commands::getCommandBuffer(device, QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
 
@@ -186,25 +170,10 @@ namespace PaperRenderer
 
         //----------FRAGMENTABLE BUFFER DEFINITIONS----------//
 
-        FragmentableBuffer::FragmentableBuffer(VkDevice device, const BufferInfo &bufferInfo, DeviceAllocation *startingAllocation, float fragmentationThreshold, float maxFreeSizeThreshold, float rebuildOverheadPercentag)
-            :device(device),
-            allocationPtr(startingAllocation),
-            fragmentationThreshold(fragmentationThreshold),
-            maxFreeSizeThreshold(maxFreeSizeThreshold),
-            rebuildOverheadPercentage(rebuildOverheadPercentage)
-            
+        FragmentableBuffer::FragmentableBuffer(VkDevice device, const BufferInfo &bufferInfo)
+            :device(device)
         {
             buffer = std::make_unique<Buffer>(device, bufferInfo);
-            dataPtr = buffer->getHostDataPtr();
-
-            if(startingAllocation->getMemoryType().propertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
-            {
-                buffer->assignAllocation(startingAllocation);
-            }
-            else
-            {
-                throw std::runtime_error("Tried to assign allocation which was created with neither VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT or VK_MEMORY_PROPERTY_HOST_COHERENT_BIT to a fragmentable buffer");
-            }
         }
 
         FragmentableBuffer::~FragmentableBuffer()
@@ -215,23 +184,81 @@ namespace PaperRenderer
         {
         }
 
-        FragmentableBuffer::ReadWriteResult FragmentableBuffer::writeToRange(void *data, VkDeviceSize offset, VkDeviceSize size)
+        void FragmentableBuffer::assignAllocation(DeviceAllocation* newAllocation)
         {
-            return ReadWriteResult();
+            if(newAllocation->getMemoryType().propertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
+            {
+                buffer->assignAllocation(newAllocation);
+                allocationPtr = newAllocation;
+            }
+            else
+            {
+                throw std::runtime_error("Tried to assign allocation which was created with neither VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT or VK_MEMORY_PROPERTY_HOST_COHERENT_BIT to a fragmentable buffer");
+            }
         }
 
-        FragmentableBuffer::ReadWriteResult FragmentableBuffer::removeFromRange(VkDeviceSize offset, VkDeviceSize size)
+        FragmentableBuffer::WriteResult FragmentableBuffer::newWrite(void* data, VkDeviceSize size, VkDeviceSize* returnLocation)
         {
-            return ReadWriteResult();
+            WriteResult result = SUCCESS;
+            if(stackLocation + size > buffer->getSize())
+            {
+                //if compaction gives back no results then there's no more available memory
+                if(!compact().size() || stackLocation + size > buffer->getSize())
+                {
+                    if(returnLocation) *returnLocation = UINT64_MAX;
+
+                    result = OUT_OF_MEMORY;
+                    return result;
+                }
+
+                //otherwise the compaction succeeded and enough available memory was created;
+                result = COMPACTED;
+            }
+            
+            memcpy((char*)buffer->getHostDataPtr() + stackLocation, data, size);
+            if(returnLocation) *returnLocation = stackLocation;
+
+            stackLocation += size;
+
+            return result;
         }
 
-        void FragmentableBuffer::assignNewAllocation(DeviceAllocation *newAllocation)
+        void FragmentableBuffer::removeFromRange(VkDeviceSize offset, VkDeviceSize size)
         {
-
+            Chunk memoryFragment = {
+                .location = offset,
+                .size = size
+            };
+            memoryFragments.push(memoryFragment);
         }
 
-        void FragmentableBuffer::compact()
+        std::vector<CompactionResult> FragmentableBuffer::compact()
         {
+            std::vector<CompactionResult> compactionLocations;
+
+            //if statement because the compaction callback shouldnt be invoked if no memory fragments exists, which leads to no effective compaction
+            if(memoryFragments.size())
+            {
+                while(memoryFragments.size())
+                {
+                    //move data from memory fragment (location + size) into (location), subtract (size) from (stackLocation), and remove memory fragment from stack
+                    const Chunk& chunk = memoryFragments.top();
+                    memmove((char*)buffer->getHostDataPtr() + chunk.location, (char*)buffer->getHostDataPtr() + chunk.location + chunk.size, stackLocation - (chunk.location + chunk.size));
+                    stackLocation -= chunk.size;
+                    memoryFragments.pop();
+
+                    //create compaction result
+                    compactionLocations.push_back({
+                        .location = chunk.location + chunk.size,
+                        .shiftSize = chunk.size
+                    });
+                }
+
+                //call callback function
+                if(compactionCallback) compactionCallback(compactionLocations);
+            }
+
+            return compactionLocations;
         }
 
         //----------IMAGE DEFINITIONS----------//
@@ -258,6 +285,18 @@ namespace PaperRenderer
             imageCreateInfo.usage = imageInfo.usage; //VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
             imageCreateInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
             imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+            std::vector<uint32_t> queueFamilyIndices;
+            if(imageInfo.queueFamiliesIndices.graphicsFamilyIndex != -1) queueFamilyIndices.push_back(imageInfo.queueFamiliesIndices.graphicsFamilyIndex);
+            if(imageInfo.queueFamiliesIndices.computeFamilyIndex != -1) queueFamilyIndices.push_back(imageInfo.queueFamiliesIndices.computeFamilyIndex);
+            if(imageInfo.queueFamiliesIndices.transferFamilyIndex != -1) queueFamilyIndices.push_back(imageInfo.queueFamiliesIndices.transferFamilyIndex);
+            if(imageInfo.queueFamiliesIndices.presentationFamilyIndex != -1) queueFamilyIndices.push_back(imageInfo.queueFamiliesIndices.presentationFamilyIndex);
+            std::sort(queueFamilyIndices.begin(), queueFamilyIndices.end());
+            auto uniqueIndices = std::unique(queueFamilyIndices.begin(), queueFamilyIndices.end());
+            queueFamilyIndices.erase(uniqueIndices, queueFamilyIndices.end());
+            
+            imageCreateInfo.queueFamilyIndexCount = queueFamilyIndices.size();
+            imageCreateInfo.pQueueFamilyIndices = queueFamilyIndices.data();
             
             vkCreateImage(device, &imageCreateInfo, nullptr, &image);
 

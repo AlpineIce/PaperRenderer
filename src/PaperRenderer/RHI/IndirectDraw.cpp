@@ -39,11 +39,6 @@ namespace PaperRenderer
             dynamicOffset += PaperMemory::DeviceAllocation::padToMultiple(sizeof(ShaderMesh), 4); //draw counts offset (below) must be padded to 4 bytes per spec
 
             ShaderMesh shaderMesh;
-            shaderMesh.vboOffset = mesh->vboOffset;
-            shaderMesh.vertexCount = mesh->vertexCount;
-            shaderMesh.iboOffset = mesh->iboOffset;
-            shaderMesh.indexCount = mesh->indexCount;
-            shaderMesh.padding = 420;
 
             //get size requirements
             uint32_t instanceCount = meshData.instanceCount;

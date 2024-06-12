@@ -29,6 +29,7 @@ namespace PaperRenderer
 			LOD returnLOD;
 			for(const auto& [matIndex, meshes] : lod)
 			{
+				returnLOD.meshMaterialData.resize(lod.size());
 				for(const MeshInfo& mesh : meshes)
 				{
 					LODMesh returnMesh;
@@ -37,7 +38,7 @@ namespace PaperRenderer
 					returnMesh.vertexCount =  mesh.verticesData.size();
 					returnMesh.iboOffset = creationIndices.size();
 					returnMesh.indexCount =  mesh.indices.size();
-
+					
 					creationVerticesData.insert(creationVerticesData.end(), mesh.verticesData.begin(), mesh.verticesData.end());
 					creationIndices.insert(creationIndices.end(), mesh.indices.begin(), mesh.indices.end());
 
@@ -66,13 +67,14 @@ namespace PaperRenderer
 		ibo = createDeviceLocalBuffer(sizeof(uint32_t) * creationIndices.size(), creationIndices.data(), 
 			VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
 
-		//TODO ADD SHADER DATA INTO A BUFFER
+		//set shader data and add to renderer
 		setShaderData();
+		rendererPtr->addModelData(*this, selfIndex);
 	}
 
 	Model::~Model()
 	{
-
+		rendererPtr->removeModelData(*this, selfIndex);
 	}
 
 	void Model::setShaderData()
@@ -145,7 +147,7 @@ namespace PaperRenderer
 		bufferCreateInfo.size = 1000000;
 		bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
 			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
-		bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		bufferCreateInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
 
 		VkDeviceBufferMemoryRequirements bufferMemRequirements;
 		bufferMemRequirements.sType = VK_STRUCTURE_TYPE_DEVICE_BUFFER_MEMORY_REQUIREMENTS;
@@ -166,6 +168,7 @@ namespace PaperRenderer
 		PaperMemory::BufferInfo stagingBufferInfo = {};
 		stagingBufferInfo.size = size;
 		stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+		stagingBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
 		PaperMemory::Buffer vboStaging(rendererPtr->getDevice()->getDevice(), stagingBufferInfo);
 
 		//create staging allocation
@@ -188,6 +191,7 @@ namespace PaperRenderer
 		PaperMemory::BufferInfo bufferInfo = {};
 		bufferInfo.size = size;
 		bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | usageFlags;
+		bufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
 		std::unique_ptr<PaperMemory::Buffer> buffer = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
 
 		//assign memory
@@ -206,8 +210,7 @@ namespace PaperRenderer
 		synchronizationInfo.queueType = PaperMemory::QueueType::TRANSFER;
 		synchronizationInfo.fence = PaperMemory::Commands::getUnsignaledFence(rendererPtr->getDevice()->getDevice());
 
-		PaperRenderer::PaperMemory::CommandBuffer cmdBuffer = buffer->copyFromBufferRanges(
-			vboStaging, rendererPtr->getDevice()->getQueues().at(PaperMemory::QueueType::TRANSFER).queueFamilyIndex, { copyRegion }, synchronizationInfo);
+		PaperRenderer::PaperMemory::CommandBuffer cmdBuffer = buffer->copyFromBufferRanges(vboStaging, { copyRegion }, synchronizationInfo);
 
 		//wait for fence and destroy (potential for efficiency improvements here since this is technically brute force synchronization)
 		vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &synchronizationInfo.fence, VK_TRUE, UINT64_MAX);
@@ -247,7 +250,7 @@ namespace PaperRenderer
 		shaderModelInstance.position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 		shaderModelInstance.qRotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 		shaderModelInstance.scale = glm::vec4(1.0f);
-		shaderModelInstance.modelPtr = 0; //TODO
+		shaderModelInstance.modelDataOffset = 0; //TODO
 
 		return shaderModelInstance;
 		
@@ -301,6 +304,7 @@ namespace PaperRenderer
 		shaderObject.scale = glm::vec4(newTransformation.scale, 1.0f);
 		shaderObject.qRotation = newTransformation.rotation;
     }
+
     ModelTransformation ModelInstance::getTransformation() const
     {
 		ModelInstance::ShaderModelInstance& shaderObject = *((ModelInstance::ShaderModelInstance*)rendererPtr->getHostInstancesBufferPtr()->getHostDataPtr() + selfIndex);

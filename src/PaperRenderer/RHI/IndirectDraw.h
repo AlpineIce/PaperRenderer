@@ -14,26 +14,23 @@ namespace PaperRenderer
         uint32_t** shaderMeshOffsetPtr; //only necessary for performance through avoiding the unordered map "search"
     };
 
+    struct RenderPassInstance
+    {
+        uint32_t modelInstanceOffset;
+        uint32_t modelInstanceDataOffset;
+        uint32_t materialDataOffset;
+        bool isVisible;
+    };
+
     class CommonMeshGroup
     {
     private:
         struct ShaderMesh
         {
-            uint32_t vboOffset;
-            uint32_t vertexCount;
-            uint32_t iboOffset;
-            uint32_t indexCount;
-
             uint32_t drawCountsOffset;
             uint32_t drawCommandsOffset;
             uint32_t outputObjectsOffset;
             uint32_t padding;
-        };
-
-        struct ShaderLODData
-        {
-            uint32_t meshesOffset;
-            uint32_t meshCount;
         };
 
         struct ShaderOutputObject

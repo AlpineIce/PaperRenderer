@@ -343,4 +343,14 @@ namespace PaperRenderer
         //command pools init
         commands = std::make_unique<PaperMemory::Commands>(device, &queues);
     }
+    PaperMemory::QueueFamiliesIndices Device::getQueueFamiliesIndices() const
+    {
+        PaperMemory::QueueFamiliesIndices queueFamiliesIndices = {};
+        queueFamiliesIndices.graphicsFamilyIndex = queues.at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex;
+        queueFamiliesIndices.computeFamilyIndex = queues.at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex;
+        queueFamiliesIndices.transferFamilyIndex = queues.at(PaperMemory::QueueType::TRANSFER).queueFamilyIndex;
+        queueFamiliesIndices.presentationFamilyIndex = queues.at(PaperMemory::QueueType::PRESENT).queueFamilyIndex;
+
+        return queueFamiliesIndices;
+    }
 }

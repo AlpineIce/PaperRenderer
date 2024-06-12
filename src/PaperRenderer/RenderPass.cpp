@@ -14,6 +14,7 @@ namespace PaperRenderer
             PaperMemory::BufferInfo preprocessBuffersInfo = {};
             preprocessBuffersInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
             preprocessBuffersInfo.size = sizeof(UBOInputData);
+            preprocessBuffersInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
             uniformBuffers.push_back(std::make_unique<PaperMemory::Buffer>(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), preprocessBuffersInfo));
         }
         //uniform buffers allocation and assignment
@@ -70,7 +71,7 @@ namespace PaperRenderer
         uboInputData.projection = submitInfo.camera->getProjection();
         uboInputData.view = submitInfo.camera->getViewMatrix();
         uboInputData.objectCount = rendererPtr->getModelInstanceReferences().size();
-        uboInputData.frustumData = submitInfo.camera->getFrustum();
+        //uboInputData.frustumData = submitInfo.camera->getFrustum();
 
         PaperMemory::BufferWrite write = {};
         write.data = &uboInputData;
@@ -175,7 +176,6 @@ namespace PaperRenderer
         defaultMaterialPtr(defaultMaterial),
         defaultMaterialInstancePtr(defaultMaterialInstance),
         renderPassInfoPtr(renderPassInfo)
-
     {
         preprocessSignalSemaphores.resize(PaperMemory::Commands::getFrameCount());
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
