@@ -3,10 +3,11 @@
 
 namespace PaperRenderer
 {
-    CommonMeshGroup::CommonMeshGroup(Device *device, DescriptorAllocator* descriptor, RasterPipeline const* pipeline)
+    CommonMeshGroup::CommonMeshGroup(Device *device, DescriptorAllocator* descriptor, RasterPipeline const* pipeline, class RenderPass const* renderPass)
         :devicePtr(device),
         descriptorsPtr(descriptor),
-        pipelinePtr(pipeline)
+        pipelinePtr(pipeline),
+        renderPassPtr(renderPass)
     {
     }
 
@@ -71,22 +72,21 @@ namespace PaperRenderer
         return preprocessData;
     }
 
-    void CommonMeshGroup::addInstanceMeshes(ModelInstance* instance, const std::vector<InstancedMeshData>& instanceMeshesData)
+    void CommonMeshGroup::addInstanceMeshes(ModelInstance* instance, const std::vector<LODMesh const*>& instanceMeshesData)
     {
         addAndRemoveLock.lock();
         
-        /*this->instanceMeshes[instance].insert(this->instanceMeshes[instance].end(), instanceMeshesData.begin(), instanceMeshesData.end());
-        for(const InstancedMeshData& meshData : instanceMeshesData)
+        this->instanceMeshes[instance].insert(this->instanceMeshes[instance].end(), instanceMeshesData.begin(), instanceMeshesData.end());
+        for(LODMesh const* meshData : instanceMeshesData)
         {
-            if(!meshesData.count(meshData.meshPtr))
+            if(!meshesData.count(meshData))
             {
-                meshesData[meshData.meshPtr].parentModelPtr = instance->getParentModelPtr();
+                meshesData[meshData].parentModelPtr = instance->getParentModelPtr();
             }
 
-            //instance->meshReferences[meshData.meshPtr] = this;
-            *meshData.shaderMeshOffsetPtr = &meshesData.at(meshData.meshPtr).shaderMeshOffset;
-            meshesData.at(meshData.meshPtr).instanceCount++;
-        }*/
+            instance->renderPassSelfReferences.at(renderPassPtr).meshGroupReferences[meshData] = this;
+            meshesData.at(meshData).instanceCount++;
+        }
 
         addAndRemoveLock.unlock();
     }
@@ -95,12 +95,12 @@ namespace PaperRenderer
     {
         addAndRemoveLock.lock();
         
-        /*for(InstancedMeshData& meshData : this->instanceMeshes.at(instance))
+        for(LODMesh const* meshData : this->instanceMeshes.at(instance))
         {
-            instance->meshReferences.at(meshData.meshPtr) = NULL;
-            meshesData.at(meshData.meshPtr).instanceCount--;
+            instance->renderPassSelfReferences.at(renderPassPtr).meshGroupReferences.erase(meshData);
+            meshesData.at(meshData).instanceCount--;
         }
-        instanceMeshes.erase(instance);*/
+        instanceMeshes.erase(instance);
 
         addAndRemoveLock.unlock();
     }

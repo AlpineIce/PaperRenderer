@@ -31,3 +31,5 @@ target_include_directories(glm INTERFACE "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR
 add_subdirectory("lib/volk")
 target_link_libraries(${PROJECT_NAME} PUBLIC volk)
 target_include_directories(volk PUBLIC "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/lib/volk>$<INSTALL_INTERFACE:lib/volk>")
+
+#VMA

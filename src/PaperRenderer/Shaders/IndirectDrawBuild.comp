@@ -94,62 +94,58 @@ struct ModelInstance
     //defining a 12 byte padding here just breaks it
 };
 
-layout(std430, set = 0, binding = 1) readonly buffer InputInstances
+layout(std430, buffer_reference) readonly buffer InputInstances
 {
     ModelInstance modelInstances[];
-} inputInstances;
-
-//instance lods
-struct InstanceLOD
-{
-    uint64_t materialsPtr;
 };
 
-layout(std430, buffer_reference) readonly buffer InstanceLODs
-{
-    InstanceLOD lods[]; //count grabbed from model and is assumed to be in order
-};
-
-//material data
-struct InstanceMaterialData
-{
-    uint64_t drawCountsPtr;
-    uint64_t drawCommandsPtr;
-    uint64_t outputObjectsPtr;
-};
-
-layout(std430, buffer_reference) readonly buffer InstanceMaterialDatas
-{
-    InstanceMaterialData datas[]; //count grabbed from model and is assumed to be in order
-};
-
-//----------PER RENDER PASS INSTANCE DATA----------//
+//----------PER RENDER PASS INSTANCE DATA (also the main input data)----------//
 
 struct RenderPassInstance
 {
-    uint modelInstanceOffset;
     uint modelInstanceDataOffset;
-    uint materialDataOffset;
+    uint LODsMaterialDataOffset;
     bool isVisible;
 }
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
-// GIANT TODO GIANT TODO GIANT TODO
 
+layout(std430, set = 0, binding = 1) readonly buffer RenderPassInstances
+{
+    RenderPassInstance datas[];
+};
+
+//mesh groups
+struct LODMaterialData
+{
+    uint meshGroupsOffset;
+};
+
+layout(std430, buffer_reference) readonly buffer LODsMaterialData
+{
+    LODMaterialData materialDatas[]; //count grabbed from model and is assumed to be in order
+};
+
+struct MaterialMeshGroup
+{
+    uint indirectDrawDatasOffset;
+};
+
+layout(std430, buffer_reference) readonly buffer LODsMaterialMeshGroups
+{
+    MaterialMeshGroup datas[]; //count grabbed from model and is assumed to be in order
+};
+
+//mesh group data
+struct IndirectDrawData
+{
+    uint drawCountsOffset;
+    uint drawCommandsOffset;
+    uint outputObjectsOffset;
+};
+
+layout(std430, buffer_reference) readonly buffer IndirectDrawDatas
+{
+    IndirectDrawData datas[]; //count grabbed from model and is assumed to be in order
+};
 
 //----------OUTPUT DATA----------//
 

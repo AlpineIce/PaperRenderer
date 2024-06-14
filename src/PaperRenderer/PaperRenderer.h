@@ -63,10 +63,10 @@ namespace PaperRenderer
 
         //----------END OF BUFFERS AND MEMORY----------//
 
-        void addModelData(Model& model, uint64_t& selfIndex);
-        void removeModelData(Model& model, uint64_t& selfIndex);
-        void addObject(ModelInstance& object, uint64_t& selfIndex);
-        void removeObject(ModelInstance& object, uint64_t& selfIndex);
+        void addModelData(Model* model);
+        void removeModelData(Model* model);
+        void addObject(ModelInstance* object);
+        void removeObject(ModelInstance* object);
 
         friend Model;
         friend ModelInstance;
@@ -91,6 +91,7 @@ namespace PaperRenderer
         PaperMemory::Buffer const* getDeviceInstancesBufferPtr() const { return deviceInstancesDataBuffer.get(); }
         GLFWwindow* getGLFWwindow() const { return window.getWindow(); }
         Device* getDevice() { return &device; }
+        DescriptorAllocator* getDescriptorAllocator() { return &descriptors; }
         const VkExtent2D& getResolution() const { return swapchain.getExtent(); }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
         std::string getShadersDir() const { return shadersDir; }

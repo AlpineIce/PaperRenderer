@@ -69,12 +69,12 @@ namespace PaperRenderer
 
 		//set shader data and add to renderer
 		setShaderData();
-		rendererPtr->addModelData(*this, selfIndex);
+		rendererPtr->addModelData(this);
 	}
 
 	Model::~Model()
 	{
-		rendererPtr->removeModelData(*this, selfIndex);
+		rendererPtr->removeModelData(this);
 	}
 
 	void Model::setShaderData()
@@ -101,7 +101,7 @@ namespace PaperRenderer
 		{
 			ShaderModelLOD modelLOD = {};
 			modelLOD.materialCount = LODs.at(lodIndex).meshMaterialData.size();
-			modelLOD.meshGroupOffset = dynamicOffset;
+			modelLOD.meshGroupsOffset = dynamicOffset;
 
 			memcpy(newData.data() + shaderModel.lodsOffset + sizeof(ShaderModelLOD) * lodIndex, &modelLOD, sizeof(ShaderModelLOD));
 			
@@ -115,7 +115,7 @@ namespace PaperRenderer
 				materialMeshGroup.meshCount = LODs.at(lodIndex).meshMaterialData.at(matIndex).size();
 				materialMeshGroup.meshesOffset = dynamicOffset;
 
-				memcpy(newData.data() + modelLOD.meshGroupOffset + sizeof(ShaderModelLODMeshGroup) * matIndex, &materialMeshGroup, sizeof(ShaderModelLODMeshGroup));
+				memcpy(newData.data() + modelLOD.meshGroupsOffset + sizeof(ShaderModelLODMeshGroup) * matIndex, &materialMeshGroup, sizeof(ShaderModelLODMeshGroup));
 
 				//LOD mesh group meshes data
 				dynamicOffset += sizeof(ShaderModelMeshData) * LODs.at(lodIndex).meshMaterialData.at(matIndex).size();
@@ -231,16 +231,64 @@ namespace PaperRenderer
 
 	//----------MODEL INSTANCE DEFINITIONS----------//
 
-    ModelInstance::ModelInstance(RenderEngine *renderer, Model const *parentModel)
-    	:rendererPtr(renderer),
-        modelPtr(parentModel)
+    void ModelInstance::setRenderPassInstanceData(RenderPass const* renderPass)
     {
-		rendererPtr->addObject(*this, selfIndex);
+		std::vector<char> newData;
+		uint32_t dynamicOffset = 0;
+
+		for(uint32_t lodIndex = 0; lodIndex < modelPtr->getLODs().size(); lodIndex++)
+		{
+			LODMaterialData lodMaterialData = {};
+			lodMaterialData.meshGroupsOffset = dynamicOffset;
+
+			memcpy(newData.data() + sizeof(LODMaterialData) * lodIndex, &lodMaterialData, sizeof(LODMaterialData));
+			
+			//LOD mesh groups data
+			dynamicOffset += sizeof(MaterialMeshGroup) * modelPtr->getLODs().at(lodIndex).meshMaterialData.size();
+			newData.resize(dynamicOffset);
+
+			for(uint32_t matIndex = 0; matIndex < modelPtr->getLODs().at(lodIndex).meshMaterialData.size(); matIndex++)
+			{
+				MaterialMeshGroup materialMeshGroup = {};
+				materialMeshGroup.indirectDrawDatasOffset = dynamicOffset;
+
+				memcpy(newData.data() + lodMaterialData.meshGroupsOffset + sizeof(MaterialMeshGroup) * matIndex, &materialMeshGroup, sizeof(MaterialMeshGroup));
+
+				//LOD mesh group meshes data
+				dynamicOffset += sizeof(IndirectDrawData) * modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).size();
+				newData.resize(dynamicOffset);
+
+				for(uint32_t meshIndex = 0; meshIndex < modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).size(); meshIndex++)
+				{
+					LODMesh const* lodMeshPtr = &modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex);
+					IndirectDrawData indirectDrawData = {}; 
+					indirectDrawData.drawCountsOffset = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(lodMeshPtr)->getMeshesData().at(lodMeshPtr).drawCountsOffset;
+					indirectDrawData.drawCommandsOffset = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(lodMeshPtr)->getMeshesData().at(lodMeshPtr).drawCommandsOffset;
+					indirectDrawData.outputObjectsOffset = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(lodMeshPtr)->getMeshesData().at(lodMeshPtr).outputObjectsOffset;
+					
+					memcpy(newData.data() + materialMeshGroup.indirectDrawDatasOffset + sizeof(IndirectDrawData) * meshIndex, &indirectDrawData, sizeof(IndirectDrawData));
+				}
+			}
+		}
+
+		renderPassSelfReferences.at(renderPass).renderPassInstanceData = newData;
+    }
+
+    std::vector<char> ModelInstance::getRenderPassInstanceData(RenderPass const* renderPass) const
+    {
+        return renderPassSelfReferences.at(renderPass).renderPassInstanceData;
+    }
+
+    ModelInstance::ModelInstance(RenderEngine *renderer, Model const* parentModel)
+        : rendererPtr(renderer),
+          modelPtr(parentModel)
+    {
+		rendererPtr->addObject(this);
     }
 
     ModelInstance::~ModelInstance()
     {
-		rendererPtr->removeObject(*this, selfIndex);
+		rendererPtr->removeObject(this);
     }
 
     ModelInstance::ShaderModelInstance ModelInstance::getShaderInstance() const
@@ -299,7 +347,7 @@ namespace PaperRenderer
 
     void ModelInstance::setTransformation(const ModelTransformation &newTransformation)
     {
-		ModelInstance::ShaderModelInstance& shaderObject = *((ModelInstance::ShaderModelInstance*)rendererPtr->getHostInstancesBufferPtr()->getHostDataPtr() + selfIndex);
+		ModelInstance::ShaderModelInstance& shaderObject = *((ModelInstance::ShaderModelInstance*)rendererPtr->getHostInstancesBufferPtr()->getHostDataPtr() + rendererSelfIndex);
 		shaderObject.position = glm::vec4(newTransformation.position, 1.0f);
 		shaderObject.scale = glm::vec4(newTransformation.scale, 1.0f);
 		shaderObject.qRotation = newTransformation.rotation;
@@ -307,7 +355,7 @@ namespace PaperRenderer
 
     ModelTransformation ModelInstance::getTransformation() const
     {
-		ModelInstance::ShaderModelInstance& shaderObject = *((ModelInstance::ShaderModelInstance*)rendererPtr->getHostInstancesBufferPtr()->getHostDataPtr() + selfIndex);
+		const ModelInstance::ShaderModelInstance& shaderObject = *((ModelInstance::ShaderModelInstance*)rendererPtr->getHostInstancesBufferPtr()->getHostDataPtr() + rendererSelfIndex);
 
 		ModelTransformation transformation;
 		transformation.position = shaderObject.position;
@@ -315,5 +363,17 @@ namespace PaperRenderer
 		transformation.scale = shaderObject.scale;
 
 		return transformation;
+    }
+
+    bool ModelInstance::getVisibility(RenderPass *renderPass) const
+    {
+        const bool& visibility = false;
+
+		return visibility;
+    }
+
+	void ModelInstance::setVisibility(RenderPass *renderPass, bool newVisibility)
+    {
+
     }
 }

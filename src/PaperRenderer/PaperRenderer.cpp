@@ -55,7 +55,11 @@ namespace PaperRenderer
         }
         
         VkDeviceSize oldModelsDataSize = 4096;
-        if(hostModelDataBuffer) oldModelsDataSize = hostModelDataBuffer->getStackLocation();
+        if(hostModelDataBuffer)
+        {
+            hostModelDataBuffer->compact();
+            oldModelsDataSize = hostModelDataBuffer->getStackLocation();
+        }
         std::vector<char> oldModelsData;
         if(hostModelDataBuffer)
         {
@@ -144,26 +148,28 @@ namespace PaperRenderer
         deviceInstancesDataBuffer = std::make_unique<PaperMemory::Buffer>(device.getDevice(), deviceBufferInfo);
     }
 
-    void RenderEngine::addModelData(Model &model, uint64_t &selfIndex)
+    void RenderEngine::addModelData(Model* model)
     {
-        selfIndex = renderingModels.size();
-        renderingModels.push_back(&model);
+        model->selfIndex = renderingModels.size();
+        renderingModels.push_back(model);
         
 
         //copy initial data into host visible instances data
-        std::vector<char> shaderData = model.getShaderData();
+        std::vector<char> shaderData = model->getShaderData();
 
-        hostModelDataBuffer->newWrite(shaderData.data(), shaderData.size(), &model.shaderDataLocation);
+        hostModelDataBuffer->newWrite(shaderData.data(), shaderData.size(), &model->shaderDataLocation);
     }
 
-    void RenderEngine::removeModelData(Model &model, uint64_t &selfIndex)
+    void RenderEngine::removeModelData(Model* model)
     {
         if(renderingModels.size() > 1)
         {
             //new reference for last element and remove
-            renderingModels.at(selfIndex) = renderingModels.back();
-            renderingModels.at(selfIndex)->selfIndex = selfIndex;
+            renderingModels.at(model->selfIndex) = renderingModels.back();
+            renderingModels.at(model->selfIndex)->selfIndex = model->selfIndex;
             renderingModels.pop_back();
+
+            //(no need to copy data because fragmentable buffer)
         }
         else
         {
@@ -171,57 +177,18 @@ namespace PaperRenderer
         }
 
         //remove from buffer
-        hostModelDataBuffer->removeFromRange(model.shaderDataLocation, model.getShaderData().size());
+        hostModelDataBuffer->removeFromRange(model->shaderDataLocation, model->getShaderData().size());
         
-        selfIndex = UINT64_MAX;
+        model->selfIndex = UINT64_MAX;
     }
 
-    void RenderEngine::addObject(ModelInstance& object, uint64_t& selfIndex)
+    void RenderEngine::addObject(ModelInstance* object)
     {
-        if(object.getParentModelPtr() != NULL)
+        if(object->getParentModelPtr() != NULL)
         {
-            /*for(uint32_t lodIndex = 0; lodIndex < object.getParentModelPtr()->getLODs().size(); lodIndex++)
-            {
-
-                for(uint32_t matIndex = 0; matIndex < object.getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.size(); matIndex++) //iterate materials in LOD
-                {
-                    //get material instance
-                    MaterialInstance* materialInstance;
-                    if(object.getMaterialInstances().at(lodIndex).at(matIndex))
-                    {
-                        materialInstance = object.getMaterialInstances().at(lodIndex).at(matIndex);
-                    }
-                    else //use default material if one isn't selected
-                    {
-                        materialInstance = &defaultMaterialInstance;
-                    }
-
-                    //get meshes using same material
-                    std::vector<InstancedMeshData> similarMeshes;
-                    for(uint32_t meshIndex = 0; meshIndex < object.getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex).size(); meshIndex++)
-                    {
-                        InstancedMeshData meshData = {};
-                        meshData.meshPtr = &object.getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex);
-                        meshData.shaderMeshOffsetPtr = &object.shaderMeshOffsetReferences.at(lodIndex).at(matIndex).at(meshIndex);
-
-                        similarMeshes.push_back(meshData);
-                    }
-
-                    //check if mesh group class is created
-                    if(!renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances.count(materialInstance))
-                    {
-                        renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance].meshGroups = 
-                            std::make_unique<CommonMeshGroup>(&device, &descriptors, materialInstance->getBaseMaterialPtr()->getRasterPipeline());
-                    }
-
-                    //add reference
-                    renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance].meshGroups->addInstanceMeshes(&object, similarMeshes);
-                }
-            }*/
-
             //self reference
-            selfIndex = renderingModelInstances.size();
-            renderingModelInstances.push_back(&object);
+            object->rendererSelfIndex = renderingModelInstances.size();
+            renderingModelInstances.push_back(object);
 
             //check buffer size and rebuild if too small
             if(hostInstancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128)
@@ -230,23 +197,18 @@ namespace PaperRenderer
             }
 
             //copy initial data into host visible instances data
-            ModelInstance::ShaderModelInstance shaderModelInstance = object.getShaderInstance();
-            memcpy((ModelInstance::ShaderModelInstance*)hostInstancesDataBuffer->getHostDataPtr() + selfIndex, &shaderModelInstance, sizeof(ModelInstance::ShaderModelInstance));
+            ModelInstance::ShaderModelInstance shaderModelInstance = object->getShaderInstance();
+            memcpy((ModelInstance::ShaderModelInstance*)hostInstancesDataBuffer->getHostDataPtr() + object->rendererSelfIndex, &shaderModelInstance, sizeof(ModelInstance::ShaderModelInstance));
         }
     }
 
-    void RenderEngine::removeObject(ModelInstance& object, uint64_t& selfIndex)
+    void RenderEngine::removeObject(ModelInstance* object)
     {
-        /*for(auto& [mesh, reference] : meshReferences)
-        {
-            if(reference) reference->removeInstanceMeshes(&object);
-        }*/
-        
         if(renderingModelInstances.size() > 1)
         {
             //new reference for last element and remove
-            renderingModelInstances.at(selfIndex) = renderingModelInstances.back();
-            renderingModelInstances.at(selfIndex)->selfIndex = selfIndex;
+            renderingModelInstances.at(object->rendererSelfIndex) = renderingModelInstances.back();
+            renderingModelInstances.at(object->rendererSelfIndex)->rendererSelfIndex = object->rendererSelfIndex;
             renderingModelInstances.pop_back();
 
             //check buffer size and rebuild if unnecessarily large by a factor of 2
@@ -257,7 +219,7 @@ namespace PaperRenderer
 
             //re-copy data
             memcpy((
-                ModelInstance::ShaderModelInstance*)hostInstancesDataBuffer->getHostDataPtr() + selfIndex, 
+                ModelInstance::ShaderModelInstance*)hostInstancesDataBuffer->getHostDataPtr() + object->rendererSelfIndex, 
                 (ModelInstance::ShaderModelInstance*)hostInstancesDataBuffer->getHostDataPtr() + renderingModelInstances.size(), //isn't n - 1 because element was already removed with pop_back()
                 sizeof(ModelInstance::ShaderModelInstance));
         }
@@ -266,7 +228,7 @@ namespace PaperRenderer
             renderingModelInstances.clear();
         }
         
-        selfIndex = UINT64_MAX;
+        object->rendererSelfIndex = UINT64_MAX;
     }
 
     int RenderEngine::beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore& imageAquireSignalSemaphore)

@@ -69,23 +69,31 @@ namespace PaperRenderer
     class RenderPass
     {
     private:
-        //node for objects corresponding to one material instance
-        struct MaterialInstanceNode
-        {
-            MaterialInstance* materialInstancePtr = NULL;
-            std::unique_ptr<CommonMeshGroup> meshGroups;
-        };
-
         //node for materials corresponding to one material
         struct MaterialNode
         {
-            Material* materialPtr = NULL;
-            std::vector<MaterialInstanceNode> instances;
+            //objects corresponding to one material instance
+            std::unordered_map<MaterialInstance*, std::unique_ptr<CommonMeshGroup>> instances;
         };
-        std::vector<MaterialNode> renderTree; //render tree
+        std::unordered_map<Material*, MaterialNode> renderTree; //render tree
 
-        //instances
+        float instancesOverhead = 1.5f;
         std::vector<ModelInstance*> renderPassInstances; //TODO THIS NEEDS TO BE A DEDICATED BUFFER!!!
+        
+        //allocations
+        static std::unique_ptr<PaperMemory::DeviceAllocation> hostInstancesAllocation;
+        static std::unique_ptr<PaperMemory::DeviceAllocation> deviceInstancesAllocation;
+        static std::list<RenderPass*> renderPasses;
+
+        //buffers
+        std::unique_ptr<PaperMemory::Buffer> hostInstancesBuffer;
+        std::unique_ptr<PaperMemory::Buffer> deviceInstancesBuffer;
+
+        std::unique_ptr<PaperMemory::FragmentableBuffer> hostInstancesDataBuffer;
+        std::unique_ptr<PaperMemory::Buffer> deviceInstancesDataBuffer;
+
+        static void rebuildAllocationsAndBuffers(RenderEngine* renderer);
+        void rebuildBuffers();
 
         //misc
         std::vector<VkSemaphore> preprocessSignalSemaphores;
@@ -104,7 +112,7 @@ namespace PaperRenderer
 
         void render(const RenderPassSynchronizationInfo& syncInfo);
 
-        void addInstance(ModelInstance* instance, const std::vector<std::unordered_map<uint32_t, MaterialInstance*>>& materials);
+        void addInstance(ModelInstance* instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials);
         void removeInstance(ModelInstance* instance);
 
         void setDefaultMaterial(Material* material) { this->defaultMaterial = material; }

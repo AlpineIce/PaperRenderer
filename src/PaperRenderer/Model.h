@@ -85,7 +85,7 @@ namespace PaperRenderer
         struct ShaderModelLOD
         {
             uint32_t materialCount;
-            uint32_t meshGroupOffset;
+            uint32_t meshGroupsOffset;
         };
 
         struct ShaderModelLODMeshGroup
@@ -135,27 +135,7 @@ namespace PaperRenderer
     class ModelInstance
     {
     private:
-        /*struct ShaderModelInstance
-        {
-            //transformation
-            glm::vec4 position;
-            glm::vec4 scale; 
-            glm::quat qRotation; //quat -> mat4... could possibly be a mat3
-            VkDeviceAddress modelPtr;
-            VkDeviceAddress LODsMaterialDataPtr;
-        };
-
-        struct ShaderLOD
-        {
-            uint32_t meshReferencesOffset = 0;
-            uint32_t meshReferenceCount = 0;
-        };
-
-        struct ShaderMeshReference
-        {
-            uint32_t meshOffset = 0;
-        };*/
-
+        //per instance data
         struct ShaderModelInstance
         {
             glm::vec4 position;
@@ -167,27 +147,61 @@ namespace PaperRenderer
 
         ShaderModelInstance getShaderInstance() const;
 
-        uint64_t selfIndex;
-        bool isVisible = true;
+        //per render pass data
+        struct RenderPassInstance
+        {
+            uint32_t modelInstanceDataOffset;
+            uint32_t LODsMaterialDataOffset;
+            bool isVisible;
+        };
+
+        struct LODMaterialData
+        {
+            uint32_t meshGroupsOffset;
+        };
+
+        struct MaterialMeshGroup
+        {
+            uint32_t indirectDrawDatasOffset;
+        };
+
+        struct IndirectDrawData
+        {
+            uint32_t drawCountsOffset;
+            uint32_t drawCommandsOffset;
+            uint32_t outputObjectsOffset;
+        };
+
+        void setRenderPassInstanceData(class RenderPass const* renderPass);
+        std::vector<char> getRenderPassInstanceData(class RenderPass const* renderPass) const;
+
+        uint32_t rendererSelfIndex;
+
+        struct RenderPassData
+        {
+            std::vector<char> renderPassInstanceData;
+            std::unordered_map<LODMesh const*, CommonMeshGroup*> meshGroupReferences;
+            uint32_t selfIndex;
+        };
+        std::unordered_map<class RenderPass const*, RenderPassData> renderPassSelfReferences;
 
         class RenderEngine* rendererPtr;
         Model const* modelPtr = NULL;
 
         friend class RenderEngine;
+        friend class RenderPass;
         friend class RasterPreprocessPipeline;
-
-        //void setRendererIndex(uint64_t newIndex) { this->selfIndex = newIndex; }
-        //std::vector<char> getRasterPreprocessData(uint32_t currentRequiredSize);
+        friend class CommonMeshGroup;
         
     public:
         ModelInstance(RenderEngine* renderer, Model const* parentModel);
         ~ModelInstance();
 
         void setTransformation(const ModelTransformation& newTransformation);
-        void setVisibility(bool newVisibility) { this->isVisible = newVisibility; }
+        void setVisibility(class RenderPass* renderPass, bool newVisibility); //renderPass can be NULL if setting the visibility for all is desired
         
         Model const* getParentModelPtr() const { return modelPtr; }
         ModelTransformation getTransformation() const;
-        const bool& getVisibility() const { return isVisible; }
+        bool getVisibility(class RenderPass* renderPass) const;
     };
 }

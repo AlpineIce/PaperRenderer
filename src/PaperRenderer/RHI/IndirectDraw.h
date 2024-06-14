@@ -8,12 +8,6 @@
 
 namespace PaperRenderer
 {
-    struct InstancedMeshData
-    {
-        struct LODMesh const* meshPtr;
-        uint32_t** shaderMeshOffsetPtr; //only necessary for performance through avoiding the unordered map "search"
-    };
-
     struct RenderPassInstance
     {
         uint32_t modelInstanceOffset;
@@ -52,19 +46,20 @@ namespace PaperRenderer
         std::mutex addAndRemoveLock;
         std::vector<char> preprocessData;
         std::unordered_map<struct LODMesh const*, MeshInstancesData> meshesData;
-        std::unordered_map<class ModelInstance*, std::vector<InstancedMeshData>> instanceMeshes;
+        std::unordered_map<class ModelInstance*, std::vector<struct LODMesh const*>> instanceMeshes;
 
         Device* devicePtr;
         DescriptorAllocator* descriptorsPtr;
         RasterPipeline const* pipelinePtr;
+        class RenderPass const* renderPassPtr;
 
     public:
-        CommonMeshGroup(Device *device, DescriptorAllocator* descriptor, RasterPipeline const* pipeline);
+        CommonMeshGroup(Device *device, DescriptorAllocator* descriptor, RasterPipeline const* pipeline, class RenderPass const* renderPass);
         ~CommonMeshGroup();
 
         std::vector<char> getPreprocessData(uint32_t currentRequiredSize); //should initialize this data chunk to 0
 
-        void addInstanceMeshes(class ModelInstance* instance, const std::vector<InstancedMeshData>& instanceMeshesData);
+        void addInstanceMeshes(class ModelInstance* instance, const std::vector<struct LODMesh const*>& instanceMeshesData);
         void removeInstanceMeshes(class ModelInstance* instance);
 
         void draw(const VkCommandBuffer& cmdBuffer, const VkBuffer& dataBuffer, uint32_t currentFrame);
