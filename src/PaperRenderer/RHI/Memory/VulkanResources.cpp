@@ -200,6 +200,8 @@ namespace PaperRenderer
         FragmentableBuffer::WriteResult FragmentableBuffer::newWrite(void* data, VkDeviceSize size, VkDeviceSize* returnLocation)
         {
             WriteResult result = SUCCESS;
+            desiredLocation += size;
+
             if(stackLocation + size > buffer->getSize())
             {
                 //if compaction gives back no results then there's no more available memory
@@ -219,6 +221,7 @@ namespace PaperRenderer
             if(returnLocation) *returnLocation = stackLocation;
 
             stackLocation += size;
+            desiredLocation = stackLocation;
 
             return result;
         }

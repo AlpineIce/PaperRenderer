@@ -12,12 +12,6 @@ namespace PaperRenderer
 {
     //----------PREPROCESS COMPUTE PIPELINE----------//
 
-    struct RasterPreprocessSubmitInfo
-    {
-        Camera const* camera;
-        //todo buffer address to the LODs data
-    };
-
     class RasterPreprocessPipeline : public ComputeShader
     {
     private:
@@ -30,7 +24,7 @@ namespace PaperRenderer
             glm::vec4 camPos;
             glm::mat4 projection;
             glm::mat4 view;
-            VkDeviceAddress modelInstancesPtr;
+            VkDeviceAddress materialDataPtr;
             VkDeviceAddress modelDataPtr;
             uint32_t objectCount;
         };
@@ -41,7 +35,7 @@ namespace PaperRenderer
         RasterPreprocessPipeline(RenderEngine* renderer, std::string fileDir);
         ~RasterPreprocessPipeline() override;
 
-        void submit(const PaperMemory::SynchronizationInfo& syncInfo, const RasterPreprocessSubmitInfo& submitInfo);
+        void submit(const PaperMemory::SynchronizationInfo& syncInfo, const RenderPass& renderPass);
     };
     
     //----------RENDER PASS----------//
@@ -78,7 +72,7 @@ namespace PaperRenderer
         std::unordered_map<Material*, MaterialNode> renderTree; //render tree
 
         float instancesOverhead = 1.5f;
-        std::vector<ModelInstance*> renderPassInstances; //TODO THIS NEEDS TO BE A DEDICATED BUFFER!!!
+        std::vector<ModelInstance*> renderPassInstances;
         
         //allocations
         static std::unique_ptr<PaperMemory::DeviceAllocation> hostInstancesAllocation;
@@ -86,6 +80,7 @@ namespace PaperRenderer
         static std::list<RenderPass*> renderPasses;
 
         //buffers
+        std::unique_ptr<PaperMemory::Buffer> debugBuffer;
         std::unique_ptr<PaperMemory::Buffer> hostInstancesBuffer;
         std::unique_ptr<PaperMemory::Buffer> deviceInstancesBuffer;
 
@@ -93,10 +88,14 @@ namespace PaperRenderer
         std::unique_ptr<PaperMemory::Buffer> deviceInstancesDataBuffer;
 
         static void rebuildAllocationsAndBuffers(RenderEngine* renderer);
-        void rebuildBuffers();
+        void rebuildBuffers(VkDeviceSize newMaterialDataBufferSize);
+        void handleMaterialDataCompaction(std::vector<PaperMemory::CompactionResult> results);
+        void handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances);
 
         //misc
         std::vector<VkSemaphore> preprocessSignalSemaphores;
+        std::vector<VkSemaphore> instancesBufferCopySemaphores;
+        std::vector<VkSemaphore> materialDataBufferCopySemaphores;
         Material* defaultMaterial = NULL;
         MaterialInstance* defaultMaterialInstance = NULL;
 
@@ -105,6 +104,8 @@ namespace PaperRenderer
         Material* defaultMaterialPtr;
         MaterialInstance* defaultMaterialInstancePtr;
         RenderPassInfo const* renderPassInfoPtr;
+
+        friend RasterPreprocessPipeline;
         
     public:
         RenderPass(RenderEngine* renderer, Camera* camera, Material* defaultMaterial, MaterialInstance* defaultMaterialInstance, RenderPassInfo const* renderPassInfo);

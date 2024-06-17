@@ -16,10 +16,8 @@ namespace PaperRenderer
         rasterPreprocessPipeline(this, creationInfo.shadersDir)
     {
         //synchronization and cmd buffers
-        bufferCopyFences.resize(PaperMemory::Commands::getFrameCount());
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {
-            bufferCopyFences.at(i) = PaperMemory::Commands::getUnsignaledFence(device.getDevice());
         }
         usedCmdBuffers.resize(PaperMemory::Commands::getFrameCount());
 
@@ -36,8 +34,6 @@ namespace PaperRenderer
         
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {
-            vkDestroyFence(device.getDevice(), bufferCopyFences.at(i), nullptr);
-
             //free cmd buffers
             PaperMemory::Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers.at(i));
             usedCmdBuffers.at(i).clear();
@@ -55,16 +51,14 @@ namespace PaperRenderer
         }
         
         VkDeviceSize oldModelsDataSize = 4096;
+        std::vector<char> oldModelsData;
         if(hostModelDataBuffer)
         {
             hostModelDataBuffer->compact();
             oldModelsDataSize = hostModelDataBuffer->getStackLocation();
-        }
-        std::vector<char> oldModelsData;
-        if(hostModelDataBuffer)
-        {
+
             oldModelsData.resize(oldModelsDataSize);
-            memcpy(oldModelsData.data(), hostModelDataBuffer->getBufferPtr(), oldModelsData.size());
+            memcpy(oldModelsData.data(), hostModelDataBuffer->getBuffer()->getHostDataPtr(), oldModelsData.size());
             hostModelDataBuffer.reset();
         }
         
@@ -80,7 +74,7 @@ namespace PaperRenderer
         VkDeviceSize hostAllocationSize = 0;
         hostAllocationSize += std::max(hostInstancesDataBuffer->getMemoryRequirements().size, (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
         hostAllocationSize = PaperMemory::DeviceAllocation::padToMultiple(hostAllocationSize, hostInstancesDataBuffer->getMemoryRequirements().alignment); //pad buffer to allocation requirement
-        hostAllocationSize += hostModelDataBuffer->getBufferPtr()->getMemoryRequirements().size;
+        hostAllocationSize += hostModelDataBuffer->getBuffer()->getMemoryRequirements().size;
 
         VkDeviceSize deviceAllocationSize = 0;
         deviceAllocationSize += std::max(deviceInstancesDataBuffer->getMemoryRequirements().size, (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
@@ -128,7 +122,7 @@ namespace PaperRenderer
 
     void RenderEngine::handleModelDataCompaction(std::vector<PaperMemory::CompactionResult> results)
     {
-        std::cout << "SHIT SHIT SHIT COMPACTION EVENT!!!" << std::endl;
+        std::cout << "Model data compaction event" << std::endl;
     }
 
     void RenderEngine::rebuildInstancesbuffers()
@@ -143,7 +137,7 @@ namespace PaperRenderer
         //device local
         PaperMemory::BufferInfo deviceBufferInfo = {};
         deviceBufferInfo.size = hostBufferInfo.size; //same size as host visible buffer
-        deviceBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
+        deviceBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
         deviceBufferInfo.queueFamiliesIndices = device.getQueueFamiliesIndices();
         deviceInstancesDataBuffer = std::make_unique<PaperMemory::Buffer>(device.getDevice(), deviceBufferInfo);
     }
@@ -158,6 +152,9 @@ namespace PaperRenderer
         std::vector<char> shaderData = model->getShaderData();
 
         hostModelDataBuffer->newWrite(shaderData.data(), shaderData.size(), &model->shaderDataLocation);
+
+        char data[128];
+        memcpy(data, hostModelDataBuffer->getBuffer()->getHostDataPtr(), 128);
     }
 
     void RenderEngine::removeModelData(Model* model)
@@ -231,26 +228,10 @@ namespace PaperRenderer
         object->rendererSelfIndex = UINT64_MAX;
     }
 
-    int RenderEngine::beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore& imageAquireSignalSemaphore)
+    int RenderEngine::beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore& imageAquireSignalSemaphore, const PaperMemory::SynchronizationInfo& isntancesCopySync, const PaperMemory::SynchronizationInfo& modelsCopySync)
     {
-        //copy host visible buffer into device local buffer TODO OPTIMIZE THIS TO ONLY UPDATE CHANGED REGIONS
-        VkBufferCopy region;
-        region.srcOffset = 0;
-        region.dstOffset = 0;
-        region.size = renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance);
-
-        PaperMemory::SynchronizationInfo syncInfo = {};
-        syncInfo.queueType = PaperMemory::QueueType::TRANSFER;
-        syncInfo.waitPairs = {};
-        syncInfo.signalPairs = {};
-        syncInfo.fence = bufferCopyFences.at(currentImage);
-        usedCmdBuffers.at(currentImage).push_back(deviceInstancesDataBuffer->copyFromBufferRanges(*hostInstancesDataBuffer.get(), { region }, syncInfo));
-        
-        std::vector<VkFence> frameFences = waitFences;
-        frameFences.push_back(bufferCopyFences.at(currentImage));
-
         //wait for fences
-        vkWaitForFences(device.getDevice(), frameFences.size(), frameFences.data(), VK_TRUE, UINT64_MAX);
+        vkWaitForFences(device.getDevice(), waitFences.size(), waitFences.data(), VK_TRUE, UINT64_MAX);
 
         //get available image
         VkResult imageAquireResult = vkAcquireNextImageKHR(device.getDevice(),
@@ -275,12 +256,29 @@ namespace PaperRenderer
         }
 
         //reset fences
-        vkResetFences(device.getDevice(), frameFences.size(), frameFences.data());
+        vkResetFences(device.getDevice(), waitFences.size(), waitFences.data());
 
         //free command buffers and reset descriptor pool
         PaperMemory::Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers.at(currentImage));
         usedCmdBuffers.at(currentImage).clear();
         descriptors.refreshPools(currentImage);
+
+        //copy instances
+        VkBufferCopy instancesRegion;
+        instancesRegion.srcOffset = 0;
+        instancesRegion.dstOffset = 0;
+        instancesRegion.size = renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance);
+        usedCmdBuffers.at(currentImage).push_back(deviceInstancesDataBuffer->copyFromBufferRanges(*hostInstancesDataBuffer.get(), { instancesRegion }, isntancesCopySync));
+
+        //copy models
+        VkBufferCopy modelsRegion;
+        modelsRegion.srcOffset = 0;
+        modelsRegion.dstOffset = 0;
+        modelsRegion.size = hostModelDataBuffer->getStackLocation();
+        usedCmdBuffers.at(currentImage).push_back(deviceModelDataBuffer->copyFromBufferRanges(*hostModelDataBuffer->getBuffer(), { modelsRegion }, modelsCopySync));
+
+        char data[128];
+        memcpy(data, hostModelDataBuffer->getBuffer()->getHostDataPtr(), 128);
 
         return returnResult;
     }
@@ -332,6 +330,14 @@ namespace PaperRenderer
         {
             usedCmdBuffers.at(currentImage).push_back(commandBuffer);
             commandBuffer.buffer = VK_NULL_HANDLE;
+        }
+    }
+
+    void RenderEngine::recycleCommandBuffer(PaperMemory::CommandBuffer &&commandBuffer)
+    {
+        if(commandBuffer.buffer)
+        {
+            usedCmdBuffers.at(currentImage).push_back(commandBuffer);
         }
     }
 }

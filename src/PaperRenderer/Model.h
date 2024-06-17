@@ -114,6 +114,7 @@ namespace PaperRenderer
         std::unique_ptr<PaperMemory::Buffer> createDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags2KHR usageFlags);
 
         friend class RenderEngine;
+        friend class ModelInstance;
 
     public:
         Model(RenderEngine* renderer, PaperMemory::DeviceAllocation* allocation, const ModelCreateInfo& creationInfo);
@@ -150,9 +151,10 @@ namespace PaperRenderer
         //per render pass data
         struct RenderPassInstance
         {
-            uint32_t modelInstanceDataOffset;
+            uint32_t modelInstanceIndex;
             uint32_t LODsMaterialDataOffset;
             bool isVisible;
+            float padding;
         };
 
         struct LODMaterialData
@@ -167,9 +169,11 @@ namespace PaperRenderer
 
         struct IndirectDrawData
         {
-            uint32_t drawCountsOffset;
-            uint32_t drawCommandsOffset;
-            uint32_t outputObjectsOffset;
+            VkDeviceAddress bufferAddress = 0;
+            uint32_t drawCountsOffset = UINT32_MAX;
+            uint32_t drawCommandsOffset = UINT32_MAX;
+            uint32_t outputObjectsOffset = UINT32_MAX;
+            uint32_t padding;
         };
 
         void setRenderPassInstanceData(class RenderPass const* renderPass);

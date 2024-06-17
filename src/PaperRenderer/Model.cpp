@@ -24,6 +24,7 @@ namespace PaperRenderer
 		aabb.negZ = 1000000.0f;
 
 		//fill in variables with the input LOD data
+		VkDeviceSize dynamicVertexOffset = 0;
 		for(const std::unordered_map<uint32_t, std::vector<MeshInfo>>& lod : creationInfo.LODs)
 		{
 			LOD returnLOD;
@@ -34,13 +35,15 @@ namespace PaperRenderer
 				{
 					LODMesh returnMesh;
 					returnMesh.vertexPositionOffset = mesh.vertexPositionOffset;
-					returnMesh.vboOffset = creationVerticesData.size();
-					returnMesh.vertexCount =  mesh.verticesData.size();
+					returnMesh.vboOffset = dynamicVertexOffset;
+					returnMesh.vertexCount =  mesh.verticesData.size() / mesh.vertexDescription.stride;
 					returnMesh.iboOffset = creationIndices.size();
 					returnMesh.indexCount =  mesh.indices.size();
-					
+
 					creationVerticesData.insert(creationVerticesData.end(), mesh.verticesData.begin(), mesh.verticesData.end());
 					creationIndices.insert(creationIndices.end(), mesh.indices.begin(), mesh.indices.end());
+
+					dynamicVertexOffset += returnMesh.vertexCount;
 
 					returnLOD.meshMaterialData.at(matIndex).push_back(returnMesh);
 
@@ -124,10 +127,10 @@ namespace PaperRenderer
 				for(uint32_t meshIndex = 0; meshIndex < LODs.at(lodIndex).meshMaterialData.at(matIndex).size(); meshIndex++)
 				{
 					ShaderModelMeshData meshData = {};
-					meshData.iboOffset = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex).iboOffset;
-					meshData.indexCount = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex).indexCount;
 					meshData.vboOffset = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex).vboOffset;
 					meshData.vertexCount = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex).vertexCount;
+					meshData.iboOffset = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex).iboOffset;
+					meshData.indexCount = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex).indexCount;
 					
 					memcpy(newData.data() + materialMeshGroup.meshesOffset + sizeof(ShaderModelMeshData) * meshIndex, &meshData, sizeof(ShaderModelMeshData));
 				}
@@ -231,10 +234,26 @@ namespace PaperRenderer
 
 	//----------MODEL INSTANCE DEFINITIONS----------//
 
-    void ModelInstance::setRenderPassInstanceData(RenderPass const* renderPass)
+    ModelInstance::ModelInstance(RenderEngine *renderer, Model const* parentModel)
+        : rendererPtr(renderer),
+          modelPtr(parentModel)
+    {
+		rendererPtr->addObject(this);
+    }
+
+    ModelInstance::~ModelInstance()
+    {
+		rendererPtr->removeObject(this);
+    }
+
+	void ModelInstance::setRenderPassInstanceData(RenderPass const* renderPass)
     {
 		std::vector<char> newData;
+		newData.reserve(renderPassSelfReferences.at(renderPass).renderPassInstanceData.size());
 		uint32_t dynamicOffset = 0;
+
+		dynamicOffset += sizeof(LODMaterialData) * modelPtr->getLODs().size();
+		newData.resize(dynamicOffset);
 
 		for(uint32_t lodIndex = 0; lodIndex < modelPtr->getLODs().size(); lodIndex++)
 		{
@@ -261,10 +280,16 @@ namespace PaperRenderer
 				for(uint32_t meshIndex = 0; meshIndex < modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).size(); meshIndex++)
 				{
 					LODMesh const* lodMeshPtr = &modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex);
-					IndirectDrawData indirectDrawData = {}; 
-					indirectDrawData.drawCountsOffset = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(lodMeshPtr)->getMeshesData().at(lodMeshPtr).drawCountsOffset;
-					indirectDrawData.drawCommandsOffset = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(lodMeshPtr)->getMeshesData().at(lodMeshPtr).drawCommandsOffset;
-					indirectDrawData.outputObjectsOffset = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(lodMeshPtr)->getMeshesData().at(lodMeshPtr).outputObjectsOffset;
+					IndirectDrawData indirectDrawData = {};
+					
+					//Call this sketchy idgaf (it is). The goal here is just to get the size requirement more so than the data if there really isnt any "count"
+					if(renderPassSelfReferences.at(renderPass).meshGroupReferences.count(lodMeshPtr))
+					{
+						indirectDrawData.bufferAddress = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(lodMeshPtr)->getBufferAddress();
+						indirectDrawData.drawCountsOffset = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(lodMeshPtr)->getMeshesData().at(lodMeshPtr).drawCountsOffset;
+						indirectDrawData.drawCommandsOffset = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(lodMeshPtr)->getMeshesData().at(lodMeshPtr).drawCommandsOffset;
+						indirectDrawData.outputObjectsOffset = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(lodMeshPtr)->getMeshesData().at(lodMeshPtr).outputObjectsOffset;
+					}
 					
 					memcpy(newData.data() + materialMeshGroup.indirectDrawDatasOffset + sizeof(IndirectDrawData) * meshIndex, &indirectDrawData, sizeof(IndirectDrawData));
 				}
@@ -279,75 +304,20 @@ namespace PaperRenderer
         return renderPassSelfReferences.at(renderPass).renderPassInstanceData;
     }
 
-    ModelInstance::ModelInstance(RenderEngine *renderer, Model const* parentModel)
-        : rendererPtr(renderer),
-          modelPtr(parentModel)
-    {
-		rendererPtr->addObject(this);
-    }
-
-    ModelInstance::~ModelInstance()
-    {
-		rendererPtr->removeObject(this);
-    }
-
     ModelInstance::ShaderModelInstance ModelInstance::getShaderInstance() const
     {
-
 		ShaderModelInstance shaderModelInstance = {};
 		shaderModelInstance.position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 		shaderModelInstance.qRotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 		shaderModelInstance.scale = glm::vec4(1.0f);
-		shaderModelInstance.modelDataOffset = 0; //TODO
+		shaderModelInstance.modelDataOffset = modelPtr->shaderDataLocation; //TODO
 
 		return shaderModelInstance;
-		
-		/*std::vector<char> newData;
-		uint32_t dynamicOffset = 0;
-
-		dynamicOffset += sizeof(ShaderModelInstance);
-		newData.resize(dynamicOffset);
-
-		ShaderModelInstance instanceData = {};
-
-		//shader LODs
-		lodsOffset = dynamicOffset;
-		dynamicOffset += sizeof(ShaderLOD) * modelPtr->getLODs().size();
-		for(uint32_t lodIndex = 0; lodIndex < modelPtr->getLODs().size(); lodIndex++)
-		{
-			ShaderLOD lod = {};
-			lod.meshReferenceCount = 0;
-			lod.meshReferencesOffset = dynamicOffset;
-			for(uint32_t matIndex = 0; matIndex < modelPtr->getLODs()[lodIndex].meshMaterialData.size(); matIndex++)
-			{
-				lod.meshReferenceCount += modelPtr->getLODs()[lodIndex].meshMaterialData[matIndex].size();
-				for(uint32_t meshIndex = 0; meshIndex < modelPtr->getLODs()[lodIndex].meshMaterialData[matIndex].size(); meshIndex++)
-				{
-					instanceData.shaderMeshReferences.push_back({ *shaderMeshOffsetReferences[lodIndex][matIndex][meshIndex] });
-					dynamicOffset += sizeof(ShaderMeshReference);
-				}
-			}
-			instanceData.shaderLODs.push_back(lod);
-		}
-
-		//copy data
-		preprocessData.clear();
-		uint32_t lastSize = 0;
-
-		preprocessData.resize(preprocessData.size() + sizeof(ShaderLOD) * instanceData.shaderLODs.size());
-		memcpy(preprocessData.data() + lastSize, instanceData.shaderLODs.data(), sizeof(ShaderLOD) * instanceData.shaderLODs.size());
-		lastSize = preprocessData.size();
-		
-		preprocessData.resize(preprocessData.size() + sizeof(ShaderMeshReference) * instanceData.shaderMeshReferences.size());
-		memcpy(preprocessData.data() + lastSize, instanceData.shaderMeshReferences.data(), sizeof(ShaderMeshReference) * instanceData.shaderMeshReferences.size());
-		lastSize = preprocessData.size();
-
-		shaderdata = newData;*/
     }
 
     void ModelInstance::setTransformation(const ModelTransformation &newTransformation)
     {
-		ModelInstance::ShaderModelInstance& shaderObject = *((ModelInstance::ShaderModelInstance*)rendererPtr->getHostInstancesBufferPtr()->getHostDataPtr() + rendererSelfIndex);
+		ModelInstance::ShaderModelInstance& shaderObject = *((ModelInstance::ShaderModelInstance*)rendererPtr->hostInstancesDataBuffer->getHostDataPtr() + rendererSelfIndex);
 		shaderObject.position = glm::vec4(newTransformation.position, 1.0f);
 		shaderObject.scale = glm::vec4(newTransformation.scale, 1.0f);
 		shaderObject.qRotation = newTransformation.rotation;
@@ -355,7 +325,7 @@ namespace PaperRenderer
 
     ModelTransformation ModelInstance::getTransformation() const
     {
-		const ModelInstance::ShaderModelInstance& shaderObject = *((ModelInstance::ShaderModelInstance*)rendererPtr->getHostInstancesBufferPtr()->getHostDataPtr() + rendererSelfIndex);
+		const ModelInstance::ShaderModelInstance& shaderObject = *((ModelInstance::ShaderModelInstance*)rendererPtr->hostInstancesDataBuffer->getHostDataPtr() + rendererSelfIndex);
 
 		ModelTransformation transformation;
 		transformation.position = shaderObject.position;

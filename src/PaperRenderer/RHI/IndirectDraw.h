@@ -5,17 +5,10 @@
 #include "glm/gtx/quaternion.hpp"
 
 #include <unordered_map>
+#include <functional>
 
 namespace PaperRenderer
 {
-    struct RenderPassInstance
-    {
-        uint32_t modelInstanceOffset;
-        uint32_t modelInstanceDataOffset;
-        uint32_t materialDataOffset;
-        bool isVisible;
-    };
-
     class CommonMeshGroup
     {
     private:
@@ -36,34 +29,46 @@ namespace PaperRenderer
         struct MeshInstancesData
         {
             class Model const* parentModelPtr = NULL;
-            uint32_t shaderMeshOffset = 0;
+            uint32_t lastRebuildInstanceCount = 0; //includes extra overhead
             uint32_t instanceCount = 0;
             uint32_t drawCountsOffset = 0;
             uint32_t drawCommandsOffset = 0;
             uint32_t outputObjectsOffset = 0;
         };
 
+        //buffers and allocation
+        static std::unique_ptr<PaperMemory::DeviceAllocation> drawDataAllocation;
+        static std::list<CommonMeshGroup*> commonMeshGroups;
+        std::unique_ptr<PaperMemory::Buffer> drawDataBuffer; //no need for a host visible copy since this is only written by compute shaders and read by the graphics pipeline. Draw counts does get reset to 0 though
+
+        uint32_t drawCountsRange = 0;
+        float instanceCountOverhead = 1.3;
+        static void rebuildAllocationAndBuffers(class RenderEngine* renderer);
+        void rebuildBuffer();
+
+        std::function<void(std::vector<class ModelInstance*>)> rebuildCallbackFunction = NULL;
+
         std::mutex addAndRemoveLock;
-        std::vector<char> preprocessData;
-        std::unordered_map<struct LODMesh const*, MeshInstancesData> meshesData;
+        std::unordered_map<struct LODMesh const*, struct MeshInstancesData> meshesData;
         std::unordered_map<class ModelInstance*, std::vector<struct LODMesh const*>> instanceMeshes;
 
-        Device* devicePtr;
-        DescriptorAllocator* descriptorsPtr;
-        RasterPipeline const* pipelinePtr;
+        class RenderEngine* rendererPtr;
         class RenderPass const* renderPassPtr;
+        RasterPipeline const* pipelinePtr;
 
     public:
-        CommonMeshGroup(Device *device, DescriptorAllocator* descriptor, RasterPipeline const* pipeline, class RenderPass const* renderPass);
+        CommonMeshGroup(class RenderEngine* renderer, class RenderPass const* renderPass, RasterPipeline const* pipeline);
         ~CommonMeshGroup();
 
-        std::vector<char> getPreprocessData(uint32_t currentRequiredSize); //should initialize this data chunk to 0
+        void setBufferRebuildCallback(std::function<void(std::vector<class ModelInstance*>)> callback) { this->rebuildCallbackFunction = callback; }
 
         void addInstanceMeshes(class ModelInstance* instance, const std::vector<struct LODMesh const*>& instanceMeshesData);
         void removeInstanceMeshes(class ModelInstance* instance);
 
-        void draw(const VkCommandBuffer& cmdBuffer, const VkBuffer& dataBuffer, uint32_t currentFrame);
+        void draw(const VkCommandBuffer& cmdBuffer, uint32_t currentFrame);
+        void clearDrawCounts(const VkCommandBuffer& cmdBuffer);
 
+        VkDeviceAddress getBufferAddress() const { return drawDataBuffer->getBufferDeviceAddress(); }
         const std::unordered_map<struct LODMesh const*, MeshInstancesData>& getMeshesData() const { return meshesData; }
     };
 }

@@ -100,6 +100,7 @@ namespace PaperRenderer
         {
         private:
             std::unique_ptr<Buffer> buffer;
+            VkDeviceSize desiredLocation = 0;
             VkDeviceSize stackLocation = 0;
 
             struct Chunk
@@ -139,8 +140,9 @@ namespace PaperRenderer
 
             std::vector<CompactionResult> compact(); //inkoves on demand compaction; useful for when recreating an allocation to get the actual current size requirement
 
-            Buffer const* getBufferPtr() { return buffer.get(); }
+            Buffer* getBuffer() { return buffer.get(); }
             const VkDeviceSize& getStackLocation() const { return stackLocation; } //returns the location relative to the start of the buffer (always 0) of where unwritten data is
+            const VkDeviceSize& getDesiredLocation() const { return desiredLocation; } //useful if write failed to give a the stackLocation + (size of last write)
         };
 
         //----------IMAGE DECLARATIONS----------//

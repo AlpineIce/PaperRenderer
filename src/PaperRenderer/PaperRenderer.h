@@ -35,7 +35,6 @@ namespace PaperRenderer
         bool rtEnabled = false;
 
         //frame rendering stuff
-        std::vector<VkFence> bufferCopyFences;
         std::vector<std::vector<PaperMemory::CommandBuffer>> usedCmdBuffers;
         std::vector<ModelInstance*> renderingModelInstances;
         std::vector<Model*> renderingModels;
@@ -70,27 +69,29 @@ namespace PaperRenderer
 
         friend Model;
         friend ModelInstance;
+        friend RenderPass;
+        friend RasterPreprocessPipeline;
 
         uint32_t currentImage = 0;
     public:
         RenderEngine(RendererCreationStruct creationInfo);
         ~RenderEngine();
 
-        //draw all the items in the render tree
-        int beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore& imageAquireSignalSemaphore); //returns 0 if no swapchain rebuild occured; returns 1 otherwise
-        int endFrame(const std::vector<VkSemaphore>& waitSemaphores); //returns 0 if no swapchain rebuild occured; returns 1 otherwise
+        //returns 0 if no swapchain rebuild occured; returns 1 otherwise
+        int beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore& imageAquireSignalSemaphore, const PaperMemory::SynchronizationInfo& isntancesCopySync, const PaperMemory::SynchronizationInfo& modelsCopySynce);
+        //returns 0 if no swapchain rebuild occured; returns 1 otherwise
+        int endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
 
         bool getRTstatus() const { return rtEnabled; }
         void setRTstatus(bool newStatus) { this->rtEnabled = newStatus; }
 
         void recycleCommandBuffer(PaperMemory::CommandBuffer& commandBuffer);
+        void recycleCommandBuffer(PaperMemory::CommandBuffer&& commandBuffer);
 
         uint32_t const* getCurrentFramePtr() const { return &currentImage; }
-        RasterPreprocessPipeline* getRasterPreprocessPipeline() { return &rasterPreprocessPipeline; }
-        PaperMemory::Buffer const* getHostInstancesBufferPtr() const { return hostInstancesDataBuffer.get(); }
-        PaperMemory::Buffer const* getDeviceInstancesBufferPtr() const { return deviceInstancesDataBuffer.get(); }
         GLFWwindow* getGLFWwindow() const { return window.getWindow(); }
         Device* getDevice() { return &device; }
+        RasterPreprocessPipeline* getRasterPreprocessPipeline() { return &rasterPreprocessPipeline; }
         DescriptorAllocator* getDescriptorAllocator() { return &descriptors; }
         const VkExtent2D& getResolution() const { return swapchain.getExtent(); }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
