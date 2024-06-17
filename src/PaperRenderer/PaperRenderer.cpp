@@ -206,23 +206,29 @@ namespace PaperRenderer
             //new reference for last element and remove
             renderingModelInstances.at(object->rendererSelfIndex) = renderingModelInstances.back();
             renderingModelInstances.at(object->rendererSelfIndex)->rendererSelfIndex = object->rendererSelfIndex;
+
+            //re-copy data
+            memcpy(
+                (ModelInstance::ShaderModelInstance*)hostInstancesDataBuffer->getHostDataPtr() + object->rendererSelfIndex, 
+                (ModelInstance::ShaderModelInstance*)hostInstancesDataBuffer->getHostDataPtr() + renderingModelInstances.size() - 1,
+                sizeof(ModelInstance::ShaderModelInstance));
+
             renderingModelInstances.pop_back();
 
             //check buffer size and rebuild if unnecessarily large by a factor of 2
             if(hostInstancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) > renderingModelInstances.size() * 2 && renderingModelInstances.size() > 128)
             {
-                rebuildInstancesbuffers(); //TODO THIS NEEDS TO WAIT ON BOTH FRAME FENCES
+                rebuildBuffersAndAllocations(); //TODO THIS NEEDS TO WAIT ON BOTH FRAME FENCES
             }
-
-            //re-copy data
-            memcpy((
-                ModelInstance::ShaderModelInstance*)hostInstancesDataBuffer->getHostDataPtr() + object->rendererSelfIndex, 
-                (ModelInstance::ShaderModelInstance*)hostInstancesDataBuffer->getHostDataPtr() + renderingModelInstances.size(), //isn't n - 1 because element was already removed with pop_back()
-                sizeof(ModelInstance::ShaderModelInstance));
         }
         else
         {
             renderingModelInstances.clear();
+        }
+
+        if(renderingModelInstances.size() == 1)
+        {
+            int a = 3;
         }
         
         object->rendererSelfIndex = UINT64_MAX;
@@ -276,9 +282,6 @@ namespace PaperRenderer
         modelsRegion.dstOffset = 0;
         modelsRegion.size = hostModelDataBuffer->getStackLocation();
         usedCmdBuffers.at(currentImage).push_back(deviceModelDataBuffer->copyFromBufferRanges(*hostModelDataBuffer->getBuffer(), { modelsRegion }, modelsCopySync));
-
-        char data[128];
-        memcpy(data, hostModelDataBuffer->getBuffer()->getHostDataPtr(), 128);
 
         return returnResult;
     }

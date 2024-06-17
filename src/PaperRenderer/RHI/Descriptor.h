@@ -17,7 +17,7 @@ namespace PaperRenderer
 
     struct ImagesDescriptorWrites
     {
-        std::vector<VkDescriptorImageInfo> infos; //VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+        std::vector<VkDescriptorImageInfo> infos;
         VkDescriptorType type;
         uint32_t binding;
     };

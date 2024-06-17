@@ -163,7 +163,7 @@ namespace PaperRenderer
         {
         private:
             VkImage image;
-            ImageInfo imageInfo;
+            const ImageInfo imageInfo;
             VkDeviceImageMemoryRequirements imageMemRequirements;
             uint32_t mipmapLevels;
             std::vector<CommandBuffer> creationBuffers;
@@ -198,6 +198,7 @@ namespace PaperRenderer
             static VkSampler getNewSampler(const Image& image, VkDevice device, VkPhysicalDevice gpu);
 
             const VkImage& getImage() const { return image; }
+            const VkExtent3D getExtent() const { return imageInfo.extent; }
 
             const VkDeviceImageMemoryRequirements& getImageMemoryRequirements() const { return imageMemRequirements; }
         };

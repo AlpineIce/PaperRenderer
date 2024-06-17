@@ -28,7 +28,7 @@ namespace PaperRenderer
         }
         PaperMemory::DeviceAllocationInfo uboAllocationInfo = {};
         uboAllocationInfo.allocationSize = ubosAllocationSize;
-        uboAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT; //use coherent memory for UBOs
+        uboAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT; //use coherent memory for UBOs
         uniformBuffersAllocation = std::make_unique<PaperMemory::DeviceAllocation>(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), PipelineBuilder::getRendererInfo().devicePtr->getGPU(), uboAllocationInfo);
         
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
@@ -207,6 +207,15 @@ namespace PaperRenderer
         }
 
         renderPasses.remove(this);
+
+        if(!renderPasses.size())
+        {
+            this->debugBuffer.reset();
+            this->hostInstancesBuffer.reset();
+            this->deviceInstancesBuffer.reset();
+            hostInstancesAllocation.reset();
+            deviceInstancesAllocation.reset();
+        }
     }
 
     void RenderPass::rebuildAllocationsAndBuffers(RenderEngine* renderer)
@@ -399,7 +408,10 @@ namespace PaperRenderer
             vkBeginCommandBuffer(graphicsCmdBuffer, &commandInfo);
 
             //pre-render barriers
-            if(renderPassInfoPtr->preRenderBarriers) vkCmdPipelineBarrier2(graphicsCmdBuffer, renderPassInfoPtr->preRenderBarriers);
+            if(renderPassInfoPtr->preRenderBarriers)
+            {
+                vkCmdPipelineBarrier2(graphicsCmdBuffer, renderPassInfoPtr->preRenderBarriers);
+            }
 
             //rendering
             VkRenderingInfoKHR renderInfo = {};
@@ -452,7 +464,10 @@ namespace PaperRenderer
             }
 
             //post-render barriers
-            if(renderPassInfoPtr->postRenderBarriers) vkCmdPipelineBarrier2(graphicsCmdBuffer, renderPassInfoPtr->postRenderBarriers);
+            if(renderPassInfoPtr->postRenderBarriers)
+            {
+                vkCmdPipelineBarrier2(graphicsCmdBuffer, renderPassInfoPtr->postRenderBarriers);
+            }
 
             vkEndCommandBuffer(graphicsCmdBuffer);
 

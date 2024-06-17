@@ -112,7 +112,7 @@ namespace PaperRenderer
         swapchainInfo.imageColorSpace = this->imageColorSpace;
         swapchainInfo.imageExtent = this->swapchainExtent;
         swapchainInfo.imageArrayLayers = 1;
-        swapchainInfo.imageUsage = VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
         uint32_t queueFamilies[] = {devicePtr->getQueues().at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex,
                                     devicePtr->getQueues().at(PaperMemory::QueueType::PRESENT).queueFamilyIndex};

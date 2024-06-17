@@ -94,6 +94,7 @@ namespace PaperRenderer
         RasterPreprocessPipeline* getRasterPreprocessPipeline() { return &rasterPreprocessPipeline; }
         DescriptorAllocator* getDescriptorAllocator() { return &descriptors; }
         const VkExtent2D& getResolution() const { return swapchain.getExtent(); }
+        const std::vector<VkImage>& getSwapchainImages() const { return swapchain.getImages(); }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
         std::string getShadersDir() const { return shadersDir; }
     };

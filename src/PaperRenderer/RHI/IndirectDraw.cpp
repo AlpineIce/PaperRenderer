@@ -21,6 +21,14 @@ namespace PaperRenderer
         {
             removeInstanceMeshes(instance);
         }
+
+        commonMeshGroups.remove(this);
+
+        if(!commonMeshGroups.size())
+        {
+            drawDataBuffer.reset();
+            drawDataAllocation.reset();
+        }
     }
 
     void CommonMeshGroup::rebuildAllocationAndBuffers(RenderEngine* renderer)
@@ -130,18 +138,21 @@ namespace PaperRenderer
     {
         addAndRemoveLock.lock();
         
-        for(LODMesh const* meshData : this->instanceMeshes.at(instance))
+        if(instanceMeshes.count(instance))
         {
-            meshesData.at(meshData).instanceCount--;
-
-            //remove if 0 instances
-            if(meshesData.at(meshData).instanceCount < 1)
+            for(LODMesh const* meshData : instanceMeshes.at(instance))
             {
-                meshesData.erase(meshData);
-            }
-        }
-        instanceMeshes.erase(instance);
+                meshesData.at(meshData).instanceCount--;
 
+                //remove if 0 instances
+                if(meshesData.at(meshData).instanceCount < 1)
+                {
+                    meshesData.erase(meshData);
+                }
+            }
+            instanceMeshes.erase(instance);
+        }
+        
         addAndRemoveLock.unlock();
     }
 

@@ -30,10 +30,10 @@ namespace PaperRenderer
 
         void recreate();
 
-        std::vector<VkImageView> const* getImageViews() { return &imageViews; }
-        std::vector<VkImage> const* getImages() { return &swapchainImages; }
-        const VkFormat& getFormat() { return swapchainImageFormat; }
-        const VkSwapchainKHR& getSwapchain() { return swapchain; }
+        const std::vector<VkImageView>& getImageViews() const { return imageViews; }
+        const std::vector<VkImage>& getImages() const { return swapchainImages; }
+        const VkFormat& getFormat() const { return swapchainImageFormat; }
+        const VkSwapchainKHR& getSwapchain() const { return swapchain; }
         const VkExtent2D& getExtent() const { return swapchainExtent; } //AKA resolution
     };
 }
