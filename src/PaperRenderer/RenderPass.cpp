@@ -60,13 +60,6 @@ namespace PaperRenderer
         inputRenderPassInstancesDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         descriptorSets[0].descriptorBindings[2] = inputRenderPassInstancesDescriptor;
 
-        VkDescriptorSetLayoutBinding debugBufferDescriptor = {};
-        debugBufferDescriptor.binding = 3;
-        debugBufferDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        debugBufferDescriptor.descriptorCount = 1;
-        debugBufferDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        descriptorSets[0].descriptorBindings[3] = debugBufferDescriptor;
-
         buildPipeline();
     }
     
@@ -129,17 +122,6 @@ namespace PaperRenderer
         bufferWrite2.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         bufferWrite2.infos = { bufferWrite2Info };
 
-        //set0 - binding 3: debug buffer
-        VkDescriptorBufferInfo bufferWrite3Info = {};
-        bufferWrite3Info.buffer = renderPass.debugBuffer->getBuffer();
-        bufferWrite3Info.offset = 0;
-        bufferWrite3Info.range = 40000;
-
-        BuffersDescriptorWrites bufferWrite3 = {};
-        bufferWrite3.binding = 3;
-        bufferWrite3.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        bufferWrite3.infos = { bufferWrite3Info };
-
         VkCommandBufferBeginInfo commandInfo;
         commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         commandInfo.pNext = NULL;
@@ -152,7 +134,7 @@ namespace PaperRenderer
         bind(cullingCmdBuffer);
 
         DescriptorWrites descriptorWritesInfo = {};
-        descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2, bufferWrite3 };
+        descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2 };
         descriptorWrites[0] = descriptorWritesInfo;
         writeDescriptorSet(cullingCmdBuffer, *rendererPtr->getCurrentFramePtr(), 0);
 
@@ -184,15 +166,21 @@ namespace PaperRenderer
     {
         renderPasses.push_back(this);
 
+        drawCountsClearSemaphores.resize(PaperMemory::Commands::getFrameCount());
         instancesBufferCopySemaphores.resize(PaperMemory::Commands::getFrameCount());
         materialDataBufferCopySemaphores.resize(PaperMemory::Commands::getFrameCount());
         preprocessSignalSemaphores.resize(PaperMemory::Commands::getFrameCount());
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {
+            drawCountsClearSemaphores.at(i) = PaperMemory::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
             instancesBufferCopySemaphores.at(i) = PaperMemory::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
             materialDataBufferCopySemaphores.at(i) = PaperMemory::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
             preprocessSignalSemaphores.at(i) = PaperMemory::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
         }
+
+        instancesBufferCopyFence = PaperMemory::Commands::getSignaledFence(rendererPtr->getDevice()->getDevice());
+        materialDataBufferCopyFence = PaperMemory::Commands::getSignaledFence(rendererPtr->getDevice()->getDevice());
+        drawCountsClearFence = PaperMemory::Commands::getSignaledFence(rendererPtr->getDevice()->getDevice());
 
         rebuildAllocationsAndBuffers(rendererPtr);
     }
@@ -201,16 +189,20 @@ namespace PaperRenderer
     {
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {
+            vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), drawCountsClearSemaphores.at(i), nullptr);
             vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), instancesBufferCopySemaphores.at(i), nullptr);
             vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), materialDataBufferCopySemaphores.at(i), nullptr);
             vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), preprocessSignalSemaphores.at(i), nullptr);
         }
 
+        vkDestroyFence(rendererPtr->getDevice()->getDevice(), instancesBufferCopyFence, nullptr);
+        vkDestroyFence(rendererPtr->getDevice()->getDevice(), materialDataBufferCopyFence, nullptr);
+        vkDestroyFence(rendererPtr->getDevice()->getDevice(), drawCountsClearFence, nullptr);
+
         renderPasses.remove(this);
 
         if(!renderPasses.size())
         {
-            this->debugBuffer.reset();
             this->hostInstancesBuffer.reset();
             this->deviceInstancesBuffer.reset();
             hostInstancesAllocation.reset();
@@ -263,7 +255,6 @@ namespace PaperRenderer
 
             newDeviceSize += PaperMemory::DeviceAllocation::padToMultiple(renderPass->deviceInstancesBuffer->getMemoryRequirements().size, renderPass->deviceInstancesBuffer->getMemoryRequirements().alignment);
             newDeviceSize += PaperMemory::DeviceAllocation::padToMultiple(renderPass->deviceInstancesDataBuffer->getMemoryRequirements().size, renderPass->deviceInstancesDataBuffer->getMemoryRequirements().alignment);
-            newDeviceSize += PaperMemory::DeviceAllocation::padToMultiple(renderPass->debugBuffer->getMemoryRequirements().size, renderPass->debugBuffer->getMemoryRequirements().alignment);
         }
 
         //rebuild allocations
@@ -287,11 +278,10 @@ namespace PaperRenderer
             renderPass->hostInstancesDataBuffer->assignAllocation(hostInstancesAllocation.get());
             renderPass->deviceInstancesBuffer->assignAllocation(deviceInstancesAllocation.get());
             renderPass->deviceInstancesDataBuffer->assignAllocation(deviceInstancesAllocation.get());
-            renderPass->debugBuffer->assignAllocation(deviceInstancesAllocation.get());
 
             //re-copy
             memcpy(renderPass->hostInstancesBuffer->getHostDataPtr(), oldData.at(renderPass).oldInstanceDatas.data(), oldData.at(renderPass).oldInstanceDatas.size());
-            renderPass->hostInstancesDataBuffer->newWrite(oldData.at(renderPass).oldInstanceMaterialDatas.data(), oldData.at(renderPass).oldInstanceMaterialDatas.size(), NULL);
+            renderPass->hostInstancesDataBuffer->newWrite(oldData.at(renderPass).oldInstanceMaterialDatas.data(), oldData.at(renderPass).oldInstanceMaterialDatas.size(), 0, NULL);
         }
     }
 
@@ -324,20 +314,13 @@ namespace PaperRenderer
         deviceInstancesMaterialDataBufferInfo.size = newInstancesMaterialDataBufferSize;
         deviceInstancesMaterialDataBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
         deviceInstancesDataBuffer = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), deviceInstancesMaterialDataBufferInfo);
-
-        //DEBUG BUFFER
-        PaperMemory::BufferInfo debugBufferInfo = {};
-        debugBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-        debugBufferInfo.size = 40000;
-        debugBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
-        debugBuffer = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), debugBufferInfo);
     }
 
     void RenderPass::handleMaterialDataCompaction(std::vector<PaperMemory::CompactionResult> results)
     {
         for(ModelInstance* instance : renderPassInstances)
         {
-            //BIG OL TODO
+            throw std::runtime_error("TODO");
         }
     }
 
@@ -345,18 +328,72 @@ namespace PaperRenderer
     {
         for(ModelInstance* instance : invalidInstances)
         {
-            //get new material data and copy it into the same location as the old data was (no size change so this works fine)
+            //set new material data and copy it into the same location as the old data was (no size change so this works fine)
+            instance->setRenderPassInstanceData(this);
             std::vector<char> materialData = instance->getRenderPassInstanceData(this);
             const ModelInstance::RenderPassInstance& renderPassInstanceData = *((ModelInstance::RenderPassInstance*)hostInstancesBuffer->getHostDataPtr() + instance->renderPassSelfReferences.at(this).selfIndex);
             memcpy((char*)(hostInstancesDataBuffer->getBuffer()->getHostDataPtr()) + renderPassInstanceData.LODsMaterialDataOffset, materialData.data(), materialData.size());
         }
     }
 
+    void RenderPass::clearDrawCounts()
+    {
+        VkCommandBufferBeginInfo commandInfo;
+        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        commandInfo.pNext = NULL;
+        commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        commandInfo.pInheritanceInfo = NULL;
+
+        PaperMemory::SynchronizationInfo syncInfo = {};
+        syncInfo.queueType = PaperMemory::QueueType::TRANSFER;
+        syncInfo.signalPairs = { { drawCountsClearSemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_TRANSFER_BIT } };
+        syncInfo.waitPairs = {};
+        syncInfo.fence = drawCountsClearFence;
+
+        VkCommandBuffer cmdBuffer = PaperMemory::Commands::getCommandBuffer(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), syncInfo.queueType);
+
+        vkBeginCommandBuffer(cmdBuffer, &commandInfo);
+
+        for(const auto& [material, materialInstanceNode] : renderTree) //material
+        {
+            for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
+            {
+                if(meshGroups)
+                {
+                    meshGroups->clearDrawCounts(cmdBuffer);
+                }
+            }
+        }
+        
+        vkEndCommandBuffer(cmdBuffer);
+
+        //wait for fences
+        vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &drawCountsClearFence, VK_TRUE, UINT64_MAX);
+        vkResetFences(rendererPtr->getDevice()->getDevice(), 1, &drawCountsClearFence);
+
+        //submit
+        PaperMemory::Commands::submitToQueue(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), syncInfo, { cmdBuffer });
+
+        PaperMemory::CommandBuffer commandBuffer = { cmdBuffer, syncInfo.queueType };
+        rendererPtr->recycleCommandBuffer(commandBuffer);
+    }
+
     void RenderPass::render(const RenderPassSynchronizationInfo& syncInfo)
     {
         if(renderPassInstances.size())
         {
+            //verify mesh group buffers
+            handleCommonMeshGroupResize(CommonMeshGroup::verifyBuffersSize(rendererPtr));
+
+            //clear draw counts
+            clearDrawCounts();
+
             //----------PRE-PROCESS----------//
+
+            //wait for fences
+            std::vector<VkFence> bufferCopyWaitFences = { instancesBufferCopyFence, materialDataBufferCopyFence };
+            vkWaitForFences(rendererPtr->getDevice()->getDevice(), bufferCopyWaitFences.size(), bufferCopyWaitFences.data(), VK_TRUE, UINT64_MAX);
+            vkResetFences(rendererPtr->getDevice()->getDevice(), bufferCopyWaitFences.size(), bufferCopyWaitFences.data());
 
             //copy data
             VkBufferCopy instancesRegion = {};
@@ -368,7 +405,7 @@ namespace PaperRenderer
             instancesBufferCopySync.queueType = PaperMemory::QueueType::TRANSFER;
             instancesBufferCopySync.waitPairs = {};
             instancesBufferCopySync.signalPairs = { { instancesBufferCopySemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
-            instancesBufferCopySync.fence = VK_NULL_HANDLE;
+            instancesBufferCopySync.fence = instancesBufferCopyFence;
             rendererPtr->recycleCommandBuffer(deviceInstancesBuffer->copyFromBufferRanges(*hostInstancesBuffer.get(), { instancesRegion }, instancesBufferCopySync));
 
             VkBufferCopy materialDataRegion = {};
@@ -380,13 +417,14 @@ namespace PaperRenderer
             materialDataCopySync.queueType = PaperMemory::QueueType::TRANSFER;
             materialDataCopySync.waitPairs = {};
             materialDataCopySync.signalPairs = { { materialDataBufferCopySemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
-            materialDataCopySync.fence = VK_NULL_HANDLE;
+            materialDataCopySync.fence = materialDataBufferCopyFence;
             rendererPtr->recycleCommandBuffer(deviceInstancesDataBuffer->copyFromBufferRanges(*hostInstancesDataBuffer->getBuffer(), { materialDataRegion }, materialDataCopySync));
 
             //compute shader
             std::vector<PaperMemory::SemaphorePair> waitPairs = syncInfo.preprocessWaitPairs;
             waitPairs.push_back({ instancesBufferCopySemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
             waitPairs.push_back({ materialDataBufferCopySemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
+            waitPairs.push_back({ drawCountsClearSemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
 
             PaperMemory::SynchronizationInfo preprocessSyncInfo = {};
             preprocessSyncInfo.queueType = PaperMemory::QueueType::COMPUTE;
@@ -449,20 +487,6 @@ namespace PaperRenderer
             //end rendering
             vkCmdEndRendering(graphicsCmdBuffer);
 
-            //clear draw counts
-            for(const auto& [material, materialInstanceNode] : renderTree) //material
-            {
-                material->bind(graphicsCmdBuffer, *rendererPtr->getCurrentFramePtr());
-                for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
-                {
-                    if(meshGroups)
-                    {
-                        materialInstance->bind(graphicsCmdBuffer, *rendererPtr->getCurrentFramePtr());
-                        meshGroups->clearDrawCounts(graphicsCmdBuffer);
-                    }
-                }
-            }
-
             //post-render barriers
             if(renderPassInfoPtr->postRenderBarriers)
             {
@@ -476,7 +500,7 @@ namespace PaperRenderer
             graphicsSyncInfo.queueType = PaperMemory::QueueType::GRAPHICS;
             graphicsSyncInfo.waitPairs = syncInfo.renderWaitPairs;
             graphicsSyncInfo.waitPairs.push_back({ preprocessSignalSemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT });
-            graphicsSyncInfo.signalPairs = syncInfo.renderSignalPairs; //{ { renderSemaphores.at(currentImage), VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT } };
+            graphicsSyncInfo.signalPairs = syncInfo.renderSignalPairs;
             graphicsSyncInfo.fence = syncInfo.renderSignalFence;
 
             PaperMemory::Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), graphicsSyncInfo, { graphicsCmdBuffer });
@@ -488,44 +512,6 @@ namespace PaperRenderer
 
     void RenderPass::addInstance(ModelInstance *instance, std::vector<std::unordered_map<uint32_t, MaterialInstance *>> materials)
     {
-        //add reference
-        instance->renderPassSelfReferences[this].selfIndex = renderPassInstances.size();
-        instance->setRenderPassInstanceData(this);
-        renderPassInstances.push_back(instance);
-
-        //check size
-        if(hostInstancesBuffer->getSize() < (renderPassInstances.size() + 3) * sizeof(ModelInstance::RenderPassInstance))
-        {
-            rebuildAllocationsAndBuffers(rendererPtr);
-        }
-
-        //copy data into buffer
-        std::vector<char> materialData = instance->getRenderPassInstanceData(this);
-
-        VkDeviceSize materialDataLocation = 0;
-        if(hostInstancesDataBuffer->newWrite(materialData.data(), materialData.size(), &materialDataLocation) == PaperMemory::FragmentableBuffer::OUT_OF_MEMORY)
-        {
-            rebuildAllocationsAndBuffers(rendererPtr);
-            hostInstancesDataBuffer->newWrite(materialData.data(), materialData.size(), &materialDataLocation);
-        }
-
-        ModelInstance::RenderPassInstance shaderData = {};
-        shaderData.modelInstanceIndex = instance->rendererSelfIndex;
-        shaderData.LODsMaterialDataOffset = materialDataLocation;
-        shaderData.isVisible = true;
-
-        if(renderPassInstances.size() == 95)
-        {
-            int a = 0;
-        }
-
-        memcpy((ModelInstance::RenderPassInstance*)hostInstancesBuffer->getHostDataPtr() + instance->renderPassSelfReferences.at(this).selfIndex, &shaderData, sizeof(ModelInstance::ShaderModelInstance));
-        
-        if(((ModelInstance::RenderPassInstance*)hostInstancesBuffer->getHostDataPtr())->modelInstanceIndex != 0)
-        {
-            int a = 0;
-        }
-        
         //material data
         materials.resize(instance->getParentModelPtr()->getLODs().size());
         for(uint32_t lodIndex = 0; lodIndex < instance->getParentModelPtr()->getLODs().size(); lodIndex++)
@@ -555,14 +541,43 @@ namespace PaperRenderer
                 {
                     renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance] = 
                         std::make_unique<CommonMeshGroup>(rendererPtr, this, materialInstance->getBaseMaterialPtr()->getRasterPipeline());
-                    
-                    renderTree.at((Material*)materialInstance->getBaseMaterialPtr()).instances.at(materialInstance)->setBufferRebuildCallback([this](std::vector<ModelInstance*> instances) { handleCommonMeshGroupResize(instances); });
                 }
 
-                //add reference
+                //add references
                 renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance]->addInstanceMeshes(instance, similarMeshes);
+
+                instance->renderPassSelfReferences[this].meshGroupReferences[&instance->getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex)] = 
+                    renderTree.at((Material*)materialInstance->getBaseMaterialPtr()).instances.at(materialInstance).get();
             }
         }
+
+        //add reference
+        instance->renderPassSelfReferences.at(this).selfIndex = renderPassInstances.size();
+        renderPassInstances.push_back(instance);
+
+        //check size
+        if(hostInstancesBuffer->getSize() < (renderPassInstances.size() + 3) * sizeof(ModelInstance::RenderPassInstance))
+        {
+            rebuildAllocationsAndBuffers(rendererPtr);
+        }
+
+        //copy data into buffer
+        instance->setRenderPassInstanceData(this);
+        std::vector<char> materialData = instance->getRenderPassInstanceData(this);
+
+        VkDeviceSize materialDataLocation = 0;
+        if(hostInstancesDataBuffer->newWrite(materialData.data(), materialData.size(), 8, &materialDataLocation) == PaperMemory::FragmentableBuffer::OUT_OF_MEMORY)
+        {
+            rebuildAllocationsAndBuffers(rendererPtr);
+            hostInstancesDataBuffer->newWrite(materialData.data(), materialData.size(), 8, &materialDataLocation);
+        }
+
+        ModelInstance::RenderPassInstance shaderData = {};
+        shaderData.modelInstanceIndex = instance->rendererSelfIndex;
+        shaderData.LODsMaterialDataOffset = materialDataLocation;
+        shaderData.isVisible = true;
+
+        memcpy((ModelInstance::RenderPassInstance*)hostInstancesBuffer->getHostDataPtr() + instance->renderPassSelfReferences.at(this).selfIndex, &shaderData, sizeof(ModelInstance::ShaderModelInstance));
 
         //reset data
         instance->setRenderPassInstanceData(this);

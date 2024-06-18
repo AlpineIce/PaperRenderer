@@ -5,7 +5,6 @@
 #include "glm/gtx/quaternion.hpp"
 
 #include <unordered_map>
-#include <functional>
 
 namespace PaperRenderer
 {
@@ -43,10 +42,9 @@ namespace PaperRenderer
 
         uint32_t drawCountsRange = 0;
         float instanceCountOverhead = 1.3;
-        static void rebuildAllocationAndBuffers(class RenderEngine* renderer);
+        static std::vector<class ModelInstance*> rebuildAllocationAndBuffers(class RenderEngine* renderer);
+        static bool rebuild;
         void rebuildBuffer();
-
-        std::function<void(std::vector<class ModelInstance*>)> rebuildCallbackFunction = NULL;
 
         std::mutex addAndRemoveLock;
         std::unordered_map<struct LODMesh const*, struct MeshInstancesData> meshesData;
@@ -60,7 +58,7 @@ namespace PaperRenderer
         CommonMeshGroup(class RenderEngine* renderer, class RenderPass const* renderPass, RasterPipeline const* pipeline);
         ~CommonMeshGroup();
 
-        void setBufferRebuildCallback(std::function<void(std::vector<class ModelInstance*>)> callback) { this->rebuildCallbackFunction = callback; }
+        static std::vector<class ModelInstance*> verifyBuffersSize(RenderEngine* renderer);
 
         void addInstanceMeshes(class ModelInstance* instance, const std::vector<struct LODMesh const*>& instanceMeshesData);
         void removeInstanceMeshes(class ModelInstance* instance);
@@ -68,7 +66,7 @@ namespace PaperRenderer
         void draw(const VkCommandBuffer& cmdBuffer, uint32_t currentFrame);
         void clearDrawCounts(const VkCommandBuffer& cmdBuffer);
 
-        VkDeviceAddress getBufferAddress() const { return drawDataBuffer->getBufferDeviceAddress(); }
+        VkDeviceAddress getBufferAddress() const { return (drawDataBuffer) ? drawDataBuffer->getBufferDeviceAddress() : NULL; }
         const std::unordered_map<struct LODMesh const*, MeshInstancesData>& getMeshesData() const { return meshesData; }
     };
 }

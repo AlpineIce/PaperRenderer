@@ -257,6 +257,8 @@ namespace PaperRenderer
 
 		for(uint32_t lodIndex = 0; lodIndex < modelPtr->getLODs().size(); lodIndex++)
 		{
+			dynamicOffset = PaperMemory::DeviceAllocation::padToMultiple(dynamicOffset, 8);
+
 			LODMaterialData lodMaterialData = {};
 			lodMaterialData.meshGroupsOffset = dynamicOffset;
 
@@ -269,6 +271,7 @@ namespace PaperRenderer
 			for(uint32_t matIndex = 0; matIndex < modelPtr->getLODs().at(lodIndex).meshMaterialData.size(); matIndex++)
 			{
 				MaterialMeshGroup materialMeshGroup = {};
+				materialMeshGroup.bufferAddress = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getBufferAddress();
 				materialMeshGroup.indirectDrawDatasOffset = dynamicOffset;
 
 				memcpy(newData.data() + lodMaterialData.meshGroupsOffset + sizeof(MaterialMeshGroup) * matIndex, &materialMeshGroup, sizeof(MaterialMeshGroup));
@@ -281,16 +284,13 @@ namespace PaperRenderer
 				{
 					LODMesh const* lodMeshPtr = &modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex);
 					IndirectDrawData indirectDrawData = {};
-					
-					//Call this sketchy idgaf (it is). The goal here is just to get the size requirement more so than the data if there really isnt any "count"
-					if(renderPassSelfReferences.at(renderPass).meshGroupReferences.count(lodMeshPtr))
-					{
-						indirectDrawData.bufferAddress = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(lodMeshPtr)->getBufferAddress();
-						indirectDrawData.drawCountsOffset = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(lodMeshPtr)->getMeshesData().at(lodMeshPtr).drawCountsOffset;
-						indirectDrawData.drawCommandsOffset = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(lodMeshPtr)->getMeshesData().at(lodMeshPtr).drawCommandsOffset;
-						indirectDrawData.outputObjectsOffset = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(lodMeshPtr)->getMeshesData().at(lodMeshPtr).outputObjectsOffset;
-					}
-					
+					indirectDrawData.drawCountsOffset = 
+						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getMeshesData().at(lodMeshPtr).drawCountsOffset;
+					indirectDrawData.drawCommandsOffset = 
+						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getMeshesData().at(lodMeshPtr).drawCommandsOffset;
+					indirectDrawData.outputObjectsOffset = 
+						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getMeshesData().at(lodMeshPtr).outputObjectsOffset;
+				
 					memcpy(newData.data() + materialMeshGroup.indirectDrawDatasOffset + sizeof(IndirectDrawData) * meshIndex, &indirectDrawData, sizeof(IndirectDrawData));
 				}
 			}

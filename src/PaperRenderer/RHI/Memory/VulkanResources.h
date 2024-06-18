@@ -62,7 +62,7 @@ namespace PaperRenderer
         class Buffer : public VulkanResource
         {
         private:
-            VkBuffer buffer;
+            VkBuffer buffer = VK_NULL_HANDLE;
             VkDeviceBufferMemoryRequirements bufferMemRequirements;
             bool needsFlush = true;
             void* hostDataPtr = NULL;
@@ -135,7 +135,7 @@ namespace PaperRenderer
             void assignAllocation(DeviceAllocation* newAllocation);
 
             //Return location is a pointer to a variable where the write location relative to buffer will be returned. Returns UINT64_MAX into that variable if write failed
-            WriteResult newWrite(void* data, VkDeviceSize size, VkDeviceSize* returnLocation); 
+            WriteResult newWrite(void* data, VkDeviceSize size, VkDeviceSize minAlignment, VkDeviceSize* returnLocation); 
             void removeFromRange(VkDeviceSize offset, VkDeviceSize size);
 
             std::vector<CompactionResult> compact(); //inkoves on demand compaction; useful for when recreating an allocation to get the actual current size requirement

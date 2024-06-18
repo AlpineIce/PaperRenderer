@@ -126,7 +126,9 @@ layout(std430, buffer_reference) readonly buffer LODsMaterialData
 
 struct MaterialMeshGroup
 {
+    uint64_t bufferAddress;
     uint indirectDrawDatasOffset;
+    uint padding;
 };
 
 layout(std430, buffer_reference) readonly buffer LODsMaterialMeshGroups
@@ -137,7 +139,6 @@ layout(std430, buffer_reference) readonly buffer LODsMaterialMeshGroups
 //mesh group data
 struct IndirectDrawData
 {
-    uint64_t bufferAddress;
     uint drawCountsOffset;
     uint drawCommandsOffset;
     uint outputObjectsOffset;
@@ -183,18 +184,6 @@ layout(std430, buffer_reference) writeonly buffer OutputObjects
 {
     OutputObject objects[];
 };
-
-//----------DEBUG INFORMATION (THIS SHOULD NOT EXIST IF ANYONE BUT ME SEES IT)
-
-struct DebugInfo
-{
-    uint matDataOffset;
-};
-
-layout(std430, set = 0, binding = 3) writeonly buffer DebugBuffer
-{
-    DebugInfo debugInfo[];
-} debugBuffer;
 
 //----------FUNCTIONS----------//
 
@@ -358,27 +347,25 @@ void main()
         //get LOD
         uint lodLevel = min(getLODLevel(modelInstance, model), model.lodCount - 1);
 
-        ModelLOD modelLOD = ModelLODs(inputData.modelDataPtr + modelInstance.modelDataOffset + model.lodsOffset).LODs[lodLevel];
-        LODMaterialData materialData = LODsMaterialData(inputData.materialDataPtr + inputInstance.LODsMaterialDataOffset).materialDatas[lodLevel];
-
-        debugBuffer.debugInfo[gID].matDataOffset = inputInstance.LODsMaterialDataOffset;
+        ModelLOD modelLOD = ModelLODs(inputData.modelDataPtr + uint64_t(modelInstance.modelDataOffset + model.lodsOffset)).LODs[lodLevel];
+        LODMaterialData materialData = LODsMaterialData(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset)).materialDatas[lodLevel];
 
         //loop through LOD materials
         for(uint matIndex = 0; matIndex < modelLOD.materialCount; matIndex++)
         {
-            ModelLODMeshGroup modelMeshGroup = ModelLODMeshGroups(inputData.modelDataPtr + modelInstance.modelDataOffset + modelLOD.meshGroupOffset).groups[matIndex];
-            MaterialMeshGroup materialMeshGroup = LODsMaterialMeshGroups(inputData.materialDataPtr + inputInstance.LODsMaterialDataOffset + materialData.meshGroupsOffset).datas[matIndex];
+            ModelLODMeshGroup modelMeshGroup = ModelLODMeshGroups(inputData.modelDataPtr + uint64_t(modelInstance.modelDataOffset + modelLOD.meshGroupOffset)).groups[matIndex];
+            MaterialMeshGroup materialMeshGroup = LODsMaterialMeshGroups(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset + materialData.meshGroupsOffset)).datas[matIndex];
 
             //loop through material meshes
             for(uint meshIndex = 0; meshIndex < modelMeshGroup.meshCount; meshIndex++)
             {
-                ModelMeshData meshData = ModelLODMeshGroupMeshes(inputData.modelDataPtr + modelInstance.modelDataOffset + modelMeshGroup.meshesOffset).meshesData[meshIndex];
-                IndirectDrawData indirectDrawData = IndirectDrawDatas(inputData.materialDataPtr + inputInstance.LODsMaterialDataOffset + materialMeshGroup.indirectDrawDatasOffset).datas[meshIndex];
+                ModelMeshData meshData = ModelLODMeshGroupMeshes(inputData.modelDataPtr + uint64_t(modelInstance.modelDataOffset + modelMeshGroup.meshesOffset)).meshesData[meshIndex];
+                IndirectDrawData indirectDrawData = IndirectDrawDatas(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset + materialMeshGroup.indirectDrawDatasOffset)).datas[meshIndex];
 
                 //draw counts and output objects
-                DrawCounts drawCounts = DrawCounts(indirectDrawData.bufferAddress + indirectDrawData.drawCountsOffset);
-                DrawCommands outputCommands = DrawCommands(indirectDrawData.bufferAddress + indirectDrawData.drawCommandsOffset);
-                OutputObjects outputObjects = OutputObjects(indirectDrawData.bufferAddress + indirectDrawData.outputObjectsOffset);
+                DrawCounts drawCounts = DrawCounts(materialMeshGroup.bufferAddress + uint64_t(indirectDrawData.drawCountsOffset));
+                DrawCommands outputCommands = DrawCommands(materialMeshGroup.bufferAddress + uint64_t(indirectDrawData.drawCommandsOffset));
+                OutputObjects outputObjects = OutputObjects(materialMeshGroup.bufferAddress + uint64_t(indirectDrawData.outputObjectsOffset));
 
                 uint writeIndex = atomicAdd(drawCounts.count, 1);
 

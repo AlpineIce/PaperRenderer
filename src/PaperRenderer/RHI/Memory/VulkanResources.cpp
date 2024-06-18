@@ -160,12 +160,19 @@ namespace PaperRenderer
 
         VkDeviceAddress Buffer::getBufferDeviceAddress() const
         {
-            VkBufferDeviceAddressInfo deviceAddressInfo = {};
-            deviceAddressInfo.sType  = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-            deviceAddressInfo.pNext = NULL;
-            deviceAddressInfo.buffer = buffer;
+            if(buffer != VK_NULL_HANDLE)
+            {
+                VkBufferDeviceAddressInfo deviceAddressInfo = {};
+                deviceAddressInfo.sType  = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+                deviceAddressInfo.pNext = NULL;
+                deviceAddressInfo.buffer = buffer;
 
-            return vkGetBufferDeviceAddress(device, &deviceAddressInfo);
+                return vkGetBufferDeviceAddress(device, &deviceAddressInfo);
+            }
+            else
+            {
+                return 0;
+            }
         }
 
         //----------FRAGMENTABLE BUFFER DEFINITIONS----------//
@@ -197,12 +204,12 @@ namespace PaperRenderer
             }
         }
 
-        FragmentableBuffer::WriteResult FragmentableBuffer::newWrite(void* data, VkDeviceSize size, VkDeviceSize* returnLocation)
+        FragmentableBuffer::WriteResult FragmentableBuffer::newWrite(void* data, VkDeviceSize size, VkDeviceSize minAlignment, VkDeviceSize* returnLocation)
         {
             WriteResult result = SUCCESS;
-            desiredLocation += size;
+            desiredLocation += DeviceAllocation::padToMultiple(size, minAlignment);
 
-            if(stackLocation + size > buffer->getSize())
+            if(stackLocation + DeviceAllocation::padToMultiple(size, minAlignment) > buffer->getSize())
             {
                 //if compaction gives back no results then there's no more available memory
                 if(!compact().size() || stackLocation + size > buffer->getSize())
@@ -217,11 +224,10 @@ namespace PaperRenderer
                 result = COMPACTED;
             }
             
-            memcpy((char*)buffer->getHostDataPtr() + stackLocation, data, size);
-            if(returnLocation) *returnLocation = stackLocation;
+            memcpy((char*)buffer->getHostDataPtr() + DeviceAllocation::padToMultiple(stackLocation, minAlignment), data, size);
+            if(returnLocation) *returnLocation = DeviceAllocation::padToMultiple(stackLocation, minAlignment);
 
-            stackLocation += size;
-            desiredLocation = stackLocation;
+            stackLocation = desiredLocation;
 
             return result;
         }

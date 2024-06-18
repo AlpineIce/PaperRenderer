@@ -121,6 +121,7 @@ namespace PaperRenderer
         VkDeviceSize DeviceAllocation::padToMultiple(VkDeviceSize startingSize, VkDeviceSize multiple)
         {
             //from https://stackoverflow.com/questions/3407012/rounding-up-to-the-nearest-multiple-of-a-number assumes startingSize is always positive and a power of 2
+            multiple = std::max(multiple, (VkDeviceSize)1);
             return (startingSize + multiple - 1) & -multiple;
         }
 

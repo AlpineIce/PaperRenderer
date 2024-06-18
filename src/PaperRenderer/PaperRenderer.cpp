@@ -98,7 +98,7 @@ namespace PaperRenderer
         hostInstancesDataBuffer->assignAllocation(hostDataAllocation.get());
         memcpy(hostInstancesDataBuffer->getHostDataPtr(), oldModelInstancesData.data(), oldModelInstancesData.size());
         hostModelDataBuffer->assignAllocation(hostDataAllocation.get());
-        hostModelDataBuffer->newWrite(oldModelsData.data(), oldModelsData.size(), NULL); //location isn't needed
+        hostModelDataBuffer->newWrite(oldModelsData.data(), oldModelsData.size(), 0, NULL); //location isn't needed
 
         deviceInstancesDataBuffer->assignAllocation(deviceDataAllocation.get());
         deviceModelDataBuffer->assignAllocation(deviceDataAllocation.get());
@@ -151,7 +151,7 @@ namespace PaperRenderer
         //copy initial data into host visible instances data
         std::vector<char> shaderData = model->getShaderData();
 
-        hostModelDataBuffer->newWrite(shaderData.data(), shaderData.size(), &model->shaderDataLocation);
+        hostModelDataBuffer->newWrite(shaderData.data(), shaderData.size(), 0, &model->shaderDataLocation);
 
         char data[128];
         memcpy(data, hostModelDataBuffer->getBuffer()->getHostDataPtr(), 128);

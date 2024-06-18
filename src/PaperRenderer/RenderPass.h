@@ -80,7 +80,6 @@ namespace PaperRenderer
         static std::list<RenderPass*> renderPasses;
 
         //buffers
-        std::unique_ptr<PaperMemory::Buffer> debugBuffer;
         std::unique_ptr<PaperMemory::Buffer> hostInstancesBuffer;
         std::unique_ptr<PaperMemory::Buffer> deviceInstancesBuffer;
 
@@ -91,11 +90,18 @@ namespace PaperRenderer
         void rebuildBuffers(VkDeviceSize newMaterialDataBufferSize);
         void handleMaterialDataCompaction(std::vector<PaperMemory::CompactionResult> results);
         void handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances);
+        void clearDrawCounts();
 
-        //misc
+        //synchronization
+        VkFence instancesBufferCopyFence;
+        VkFence materialDataBufferCopyFence;
+        VkFence drawCountsClearFence;
+        std::vector<VkSemaphore> drawCountsClearSemaphores;
         std::vector<VkSemaphore> preprocessSignalSemaphores;
         std::vector<VkSemaphore> instancesBufferCopySemaphores;
         std::vector<VkSemaphore> materialDataBufferCopySemaphores;
+
+        //default materials
         Material* defaultMaterial = NULL;
         MaterialInstance* defaultMaterialInstance = NULL;
 

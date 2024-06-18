@@ -164,12 +164,13 @@ namespace PaperRenderer
 
         struct MaterialMeshGroup
         {
+            VkDeviceAddress bufferAddress;
             uint32_t indirectDrawDatasOffset;
+            uint32_t padding;
         };
 
         struct IndirectDrawData
         {
-            VkDeviceAddress bufferAddress = 0;
             uint32_t drawCountsOffset = UINT32_MAX;
             uint32_t drawCommandsOffset = UINT32_MAX;
             uint32_t outputObjectsOffset = UINT32_MAX;
@@ -184,7 +185,7 @@ namespace PaperRenderer
         struct RenderPassData
         {
             std::vector<char> renderPassInstanceData;
-            std::unordered_map<LODMesh const*, CommonMeshGroup*> meshGroupReferences;
+            std::unordered_map<std::vector<LODMesh> const*, CommonMeshGroup*> meshGroupReferences;
             uint32_t selfIndex;
         };
         std::unordered_map<class RenderPass const*, RenderPassData> renderPassSelfReferences;

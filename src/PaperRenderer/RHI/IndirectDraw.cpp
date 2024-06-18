@@ -5,6 +5,7 @@ namespace PaperRenderer
 {
     std::unique_ptr<PaperMemory::DeviceAllocation> CommonMeshGroup::drawDataAllocation;
     std::list<CommonMeshGroup*> CommonMeshGroup::commonMeshGroups;
+    bool CommonMeshGroup::rebuild = false;
 
     CommonMeshGroup::CommonMeshGroup(class RenderEngine* renderer, class RenderPass const* renderPass, RasterPipeline const* pipeline)
         :rendererPtr(renderer),
@@ -12,7 +13,6 @@ namespace PaperRenderer
         pipelinePtr(pipeline)
     {
         commonMeshGroups.push_back(this);
-        rebuildAllocationAndBuffers(rendererPtr);
     }
 
     CommonMeshGroup::~CommonMeshGroup()
@@ -31,11 +31,22 @@ namespace PaperRenderer
         }
     }
 
-    void CommonMeshGroup::rebuildAllocationAndBuffers(RenderEngine* renderer)
+    std::vector<class ModelInstance*> CommonMeshGroup::verifyBuffersSize(RenderEngine* renderer)
     {
-        VkDeviceSize newAllocationSize = 0;
+        std::vector<class ModelInstance *> returnInstances;
+        if(rebuild)
+        {
+            returnInstances = rebuildAllocationAndBuffers(renderer);
+        }
+        
+        rebuild = false;
+        return returnInstances;
+    }
 
+    std::vector<class ModelInstance*> CommonMeshGroup::rebuildAllocationAndBuffers(RenderEngine* renderer)
+    {
         //rebuild buffers and get new size
+        VkDeviceSize newAllocationSize = 0;
         for(const auto& commonMeshGroup : commonMeshGroups)
         {
             commonMeshGroup->rebuildBuffer();
@@ -49,26 +60,23 @@ namespace PaperRenderer
         allocationInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         drawDataAllocation = std::make_unique<PaperMemory::DeviceAllocation>(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), allocationInfo);
 
-        //assign buffer memory
+        //assign buffer memory and get instances to update
+        std::vector<ModelInstance*> modifiedInstances;
         for(const auto& commonMeshGroup : commonMeshGroups)
         {
-            commonMeshGroup->drawDataBuffer->assignAllocation(drawDataAllocation.get());  
-        }
-
-        //redo instance data
-        for(const auto& commonMeshGroup : commonMeshGroups)
-        {
-            //new data
-            std::vector<ModelInstance*> modifiedInstances;
+            commonMeshGroup->drawDataBuffer->assignAllocation(drawDataAllocation.get());
             for(auto& [instance, meshes] : commonMeshGroup->instanceMeshes)
             {
-                instance->setRenderPassInstanceData(commonMeshGroup->renderPassPtr);
                 modifiedInstances.push_back(instance);
             }
-
-            //callback function (if not null)
-            if(commonMeshGroup->rebuildCallbackFunction) commonMeshGroup->rebuildCallbackFunction(modifiedInstances);
         }
+
+        //remove duplicates
+        std::sort(modifiedInstances.begin(), modifiedInstances.end());
+        auto uniqueIndices = std::unique(modifiedInstances.begin(), modifiedInstances.end());
+        modifiedInstances.erase(uniqueIndices, modifiedInstances.end());
+
+        return modifiedInstances;
     }
 
     void CommonMeshGroup::rebuildBuffer()
@@ -112,9 +120,6 @@ namespace PaperRenderer
     {
         addAndRemoveLock.lock();
         
-        bool rebuild = false;
-        
-        this->instanceMeshes[instance].insert(this->instanceMeshes[instance].end(), instanceMeshesData.begin(), instanceMeshesData.end());
         for(LODMesh const* meshData : instanceMeshesData)
         {
             if(!meshesData.count(meshData))
@@ -123,14 +128,13 @@ namespace PaperRenderer
                 rebuild = true;
             }
 
-            instance->renderPassSelfReferences.at(renderPassPtr).meshGroupReferences[meshData] = this;
             meshesData.at(meshData).instanceCount++;
 
             if(meshesData.at(meshData).instanceCount > meshesData.at(meshData).lastRebuildInstanceCount) rebuild = true;
         }
-        
-        if(rebuild) rebuildAllocationAndBuffers(rendererPtr);
 
+        this->instanceMeshes[instance].insert(this->instanceMeshes[instance].end(), instanceMeshesData.begin(), instanceMeshesData.end());
+        
         addAndRemoveLock.unlock();
     }
 
@@ -201,27 +205,6 @@ namespace PaperRenderer
     }
     void CommonMeshGroup::clearDrawCounts(const VkCommandBuffer &cmdBuffer)
     {
-        //memory barrier to clear draw counts
-        VkBufferMemoryBarrier2 drawCountBarrier = {};
-        drawCountBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
-        drawCountBarrier.pNext = NULL;
-        drawCountBarrier.offset = 0;
-        drawCountBarrier.size = drawCountsRange;
-        drawCountBarrier.buffer = drawDataBuffer->getBuffer();
-        drawCountBarrier.srcAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
-        drawCountBarrier.srcStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
-        drawCountBarrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-        drawCountBarrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-
-        VkDependencyInfo drawCountDependency = {};
-        drawCountDependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-        drawCountDependency.pNext = NULL;
-        drawCountDependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-        drawCountDependency.bufferMemoryBarrierCount = 1;
-        drawCountDependency.pBufferMemoryBarriers = &drawCountBarrier;
-
-        vkCmdPipelineBarrier2(cmdBuffer, &drawCountDependency);
-
         //clear draw counts region
         uint32_t drawCountDefaultValue = 0;
         vkCmdFillBuffer(cmdBuffer, drawDataBuffer->getBuffer(), 0, drawCountsRange, drawCountDefaultValue);
