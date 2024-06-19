@@ -120,10 +120,9 @@ namespace PaperRenderer
 
     //----------RASTER PIPELINE DEFINITIONS---------//
 
-    RasterPipeline::RasterPipeline(const PipelineCreationInfo& creationInfo, const PipelineProperties& pipelineProperties, Swapchain* swapchain)
+    RasterPipeline::RasterPipeline(const PipelineCreationInfo& creationInfo, const RasterPipelineProperties& pipelineProperties, Swapchain* swapchain)
         :Pipeline(creationInfo),
-        vertexAttributes(pipelineProperties.vertexAttributes),
-        vertexDescription(pipelineProperties.vertexDescription)
+        pipelineProperties(pipelineProperties)
     {
         //pipeline info from here on
         VkPipelineRenderingCreateInfo renderingInfo = {};
@@ -135,26 +134,14 @@ namespace PaperRenderer
         renderingInfo.depthAttachmentFormat = pipelineProperties.depthAttachmentFormat;
         renderingInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
 
-        std::vector<VkDynamicState> dynamicStates = {
-            VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
-            VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT
-        };
-        
-        VkPipelineDynamicStateCreateInfo dynamicStateInfo = {};
-        dynamicStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-        dynamicStateInfo.pNext = NULL;
-        dynamicStateInfo.flags = 0;
-        dynamicStateInfo.dynamicStateCount = dynamicStates.size();
-        dynamicStateInfo.pDynamicStates = dynamicStates.data();
-
         VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
         vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
         vertexInputInfo.pNext = NULL;
         vertexInputInfo.flags = 0;
         vertexInputInfo.vertexBindingDescriptionCount = 1;
-        vertexInputInfo.pVertexBindingDescriptions = &vertexDescription;
-        vertexInputInfo.vertexAttributeDescriptionCount = vertexAttributes.size();
-        vertexInputInfo.pVertexAttributeDescriptions = vertexAttributes.data();
+        vertexInputInfo.pVertexBindingDescriptions = &pipelineProperties.vertexDescription;
+        vertexInputInfo.vertexAttributeDescriptionCount = pipelineProperties.vertexAttributes.size();
+        vertexInputInfo.pVertexAttributeDescriptions = pipelineProperties.vertexAttributes.data();
 
         VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo = {};
         inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -195,7 +182,7 @@ namespace PaperRenderer
         MSAA.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
         MSAA.pNext = NULL;
         MSAA.flags = 0;
-        MSAA.sampleShadingEnable = VK_FALSE;
+        MSAA.sampleShadingEnable = VK_TRUE;
         MSAA.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
         MSAA.minSampleShading = 1.0f;
         MSAA.pSampleMask = NULL;
@@ -239,6 +226,19 @@ namespace PaperRenderer
         colorInfo.blendConstants[1] = 0.0f;
         colorInfo.blendConstants[2] = 0.0f;
         colorInfo.blendConstants[3] = 0.0f;
+
+        std::vector<VkDynamicState> dynamicStates = {
+            VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
+            VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
+            VK_DYNAMIC_STATE_RASTERIZATION_SAMPLES_EXT
+        };
+        
+        VkPipelineDynamicStateCreateInfo dynamicStateInfo = {};
+        dynamicStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynamicStateInfo.pNext = NULL;
+        dynamicStateInfo.flags = 0;
+        dynamicStateInfo.dynamicStateCount = dynamicStates.size();
+        dynamicStateInfo.pDynamicStates = dynamicStates.data();
         
         std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
         for(const auto& [shaderStage, shader] : shaders)
@@ -289,9 +289,9 @@ namespace PaperRenderer
 
     //----------RT PIPELINE DEFINITTIONS----------//
 
-    RTPipeline::RTPipeline(const PipelineCreationInfo& creationInfo, const PipelineProperties& pipelineProperties, const RTPipelineInfo& rtInfo)
+    RTPipeline::RTPipeline(const PipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties)
         :Pipeline(creationInfo),
-        rtInfo(rtInfo)
+        pipelineProperties(pipelineProperties)
     {
         std::vector<VkDynamicState> dynamicStates = {
             VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
@@ -361,7 +361,7 @@ namespace PaperRenderer
         pipelineCreateInfo.pStages = shaderStages.data();
         pipelineCreateInfo.groupCount = rtShaderGroups.size();
         pipelineCreateInfo.pGroups = rtShaderGroups.data();
-        pipelineCreateInfo.maxPipelineRayRecursionDepth = rtInfo.MAX_RT_RECURSION_DEPTH;
+        pipelineCreateInfo.maxPipelineRayRecursionDepth = pipelineProperties.MAX_RT_RECURSION_DEPTH;
         pipelineCreateInfo.pLibraryInfo = NULL;
         pipelineCreateInfo.pLibraryInterface = NULL;
         pipelineCreateInfo.pDynamicState = &dynamicStateInfo;
@@ -510,13 +510,6 @@ namespace PaperRenderer
         return pipelineInfo;
     }
 
-    RTPipelineInfo PipelineBuilder::initRTinfo() const
-    {
-        RTPipelineInfo rtInfo;
-        rtInfo.MAX_RT_RECURSION_DEPTH = devicePtr->getRTproperties().maxRayRecursionDepth;
-        return rtInfo;
-    }
-
     std::unique_ptr<ComputePipeline> PipelineBuilder::buildComputePipeline(const ComputePipelineBuildInfo& info) const
     {
         //sketchy hack to avoid making more functions
@@ -530,13 +523,13 @@ namespace PaperRenderer
         return std::make_unique<ComputePipeline>(initPipelineInfo(buildInfo));
     }
 
-    std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const PipelineBuildInfo& info) const
+    std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const PipelineBuildInfo& info, const RasterPipelineProperties& pipelineProperties) const
     {
-        return std::make_unique<RasterPipeline>(initPipelineInfo(info), info.pipelineProperties, swapchainPtr);
+        return std::make_unique<RasterPipeline>(initPipelineInfo(info), pipelineProperties, swapchainPtr);
     }
 
-    std::unique_ptr<RTPipeline> PipelineBuilder::buildRTPipeline(const PipelineBuildInfo& info) const
+    std::unique_ptr<RTPipeline> PipelineBuilder::buildRTPipeline(const PipelineBuildInfo& info, const RTPipelineProperties& pipelineProperties) const
     {
-        return std::make_unique<RTPipeline>(initPipelineInfo(info), info.pipelineProperties, initRTinfo());
+        return std::make_unique<RTPipeline>(initPipelineInfo(info), pipelineProperties);
     }
 }

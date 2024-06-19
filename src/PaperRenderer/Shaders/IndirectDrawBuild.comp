@@ -349,6 +349,12 @@ void main()
 
     RenderPassInstance inputInstance = inputObjects.datas[gID];
     ModelInstance modelInstance = inputInstances.modelInstances[inputInstance.modelInstanceIndex]; //should be at index 0 with the offset derrived from inputInstance
+
+    //null safety (kind of)
+    if(inputData.modelDataPtr == 0 || inputData.materialDataPtr == 0)
+    {
+        return;
+    }
     Model model = InputModel(inputData.modelDataPtr + modelInstance.modelDataOffset).model; //should be at index 0 with the offset derrived from modelInstance
 
     mat4 modelMatrix = getModelMatrix(modelInstance);
@@ -366,6 +372,12 @@ void main()
         {
             ModelLODMeshGroup modelMeshGroup = ModelLODMeshGroups(inputData.modelDataPtr + uint64_t(modelInstance.modelDataOffset + modelLOD.meshGroupOffset)).groups[matIndex];
             MaterialMeshGroup materialMeshGroup = LODsMaterialMeshGroups(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset + materialData.meshGroupsOffset)).datas[matIndex];
+
+            //null safety (kind of)
+            if(materialMeshGroup.bufferAddress == 0)
+            {
+                return;
+            }
 
             //loop through material meshes
             for(uint meshIndex = 0; meshIndex < modelMeshGroup.meshCount; meshIndex++)

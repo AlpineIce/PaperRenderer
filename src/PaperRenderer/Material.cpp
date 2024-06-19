@@ -4,16 +4,14 @@ namespace PaperRenderer
 {
     //----------MATERIAL DEFINITIONS----------//
 
-    Material::Material(std::string materialName, const PipelineProperties& pipelineProperties)
-        :matName(materialName),
-        pipelineProperties(pipelineProperties)
+    Material::Material(std::string materialName)
+        :matName(materialName)
     {
         rasterInfo.shaderInfo = &shaderPairs;
         rasterInfo.descriptors = &rasterDescriptorSets;
-        rasterInfo.pipelineProperties = pipelineProperties;
+
         rtInfo.shaderInfo = &rtShaderPairs;
         rtInfo.descriptors = &rtDescriptorSets;
-        rtInfo.pipelineProperties = pipelineProperties;
 
         rasterDescriptorSets[DescriptorScopes::RASTER_MATERIAL];
         rasterDescriptorSets[DescriptorScopes::RASTER_MATERIAL_INSTANCE];
@@ -24,10 +22,10 @@ namespace PaperRenderer
     {
     }
 
-    void Material::buildPipelines(PipelineBuildInfo const* rasterInfo, PipelineBuildInfo const* rtInfo)
+    void Material::buildPipelines(PipelineBuildInfo const* rasterInfo, const RasterPipelineProperties& rasterProperties, PipelineBuildInfo const* rtInfo, const RTPipelineProperties& rtProperties)
     {
-        if(rasterInfo) this->rasterPipeline = PipelineBuilder::getRendererInfo().pipelineBuilderPtr->buildRasterPipeline(*rasterInfo);
-        if(rtInfo) this->rtPipeline = PipelineBuilder::getRendererInfo().pipelineBuilderPtr->buildRTPipeline(*rtInfo);
+        if(rasterInfo) this->rasterPipeline = PipelineBuilder::getRendererInfo().pipelineBuilderPtr->buildRasterPipeline(*rasterInfo, rasterProperties);
+        if(rtInfo) this->rtPipeline = PipelineBuilder::getRendererInfo().pipelineBuilderPtr->buildRTPipeline(*rtInfo, rtProperties);
     }
 
     void Material::bind(VkCommandBuffer cmdBuffer, uint32_t currentImage)

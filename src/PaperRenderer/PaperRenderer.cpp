@@ -152,9 +152,6 @@ namespace PaperRenderer
         std::vector<char> shaderData = model->getShaderData();
 
         hostModelDataBuffer->newWrite(shaderData.data(), shaderData.size(), 0, &model->shaderDataLocation);
-
-        char data[128];
-        memcpy(data, hostModelDataBuffer->getBuffer()->getHostDataPtr(), 128);
     }
 
     void RenderEngine::removeModelData(Model* model)

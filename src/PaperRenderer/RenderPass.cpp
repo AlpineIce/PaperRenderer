@@ -318,10 +318,18 @@ namespace PaperRenderer
 
     void RenderPass::handleMaterialDataCompaction(std::vector<PaperMemory::CompactionResult> results)
     {
-        for(ModelInstance* instance : renderPassInstances)
+        for(const PaperMemory::CompactionResult compactionResult : results)
         {
-            throw std::runtime_error("TODO");
+            for(ModelInstance* instance : renderPassInstances)
+            {
+                ModelInstance::RenderPassInstance& renderPassInstanceData = *((ModelInstance::RenderPassInstance*)hostInstancesBuffer->getHostDataPtr() + instance->renderPassSelfReferences.at(this).selfIndex);
+                if(renderPassInstanceData.LODsMaterialDataOffset > compactionResult.location)
+                {
+                    renderPassInstanceData.LODsMaterialDataOffset -= compactionResult.shiftSize;
+                }
+            }
         }
+        
     }
 
     void RenderPass::handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances)
@@ -469,6 +477,9 @@ namespace PaperRenderer
             //scissors (plural) and viewports
             vkCmdSetViewportWithCount(graphicsCmdBuffer, renderPassInfoPtr->viewports.size(), renderPassInfoPtr->viewports.data());
             vkCmdSetScissorWithCount(graphicsCmdBuffer, renderPassInfoPtr->scissors.size(), renderPassInfoPtr->scissors.data());
+
+            //MSAA samples
+            vkCmdSetRasterizationSamplesEXT(graphicsCmdBuffer, rendererPtr->getRendererState()->msaaSamples);
 
             //record draw commands
             for(const auto& [material, materialInstanceNode] : renderTree) //material

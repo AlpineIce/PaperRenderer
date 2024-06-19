@@ -258,7 +258,7 @@ namespace PaperRenderer
 
                     //create compaction result
                     compactionLocations.push_back({
-                        .location = chunk.location + chunk.size,
+                        .location = chunk.location,
                         .shiftSize = chunk.size
                     });
                 }

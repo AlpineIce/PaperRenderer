@@ -28,14 +28,23 @@ namespace PaperRenderer
 
     //----------PIPELINE DECLARATIONS----------//
 
-    
-
-    struct PipelineProperties
+    struct RasterPipelineProperties
     {
         std::vector<VkVertexInputAttributeDescription> vertexAttributes; //a good start is vec3 position, vec3 normal, vec2 UVs. Attributes are assumed to be in order
-        VkVertexInputBindingDescription vertexDescription;
+        VkVertexInputBindingDescription vertexDescription = {};
         std::vector<VkFormat> colorAttachmentFormats;
         VkFormat depthAttachmentFormat = VK_FORMAT_UNDEFINED;
+        VkPipelineRenderingCreateInfo renderingInfo = {};
+        VkPipelineTessellationStateCreateInfo tessellationInfo = {};
+        VkPipelineRasterizationStateCreateInfo rasterInfo = {};
+        VkPipelineMultisampleStateCreateInfo MSAAInfo = {};
+        VkPipelineDepthStencilStateCreateInfo depthStencilInfo = {};
+        VkPipelineColorBlendStateCreateInfo colorInfo = {};
+    };
+
+    struct RTPipelineProperties
+    {
+        uint32_t MAX_RT_RECURSION_DEPTH = 0;
     };
 
     struct PipelineCreationInfo
@@ -46,11 +55,6 @@ namespace PaperRenderer
         std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
         std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
         VkPipelineLayout pipelineLayout;
-    };
-
-    struct RTPipelineInfo
-    {
-        uint32_t MAX_RT_RECURSION_DEPTH = 0;
     };
 
     //Pipeline base class
@@ -87,25 +91,27 @@ namespace PaperRenderer
     class RasterPipeline : public Pipeline
     {
     private:
-        //vertex layout
-        std::vector<VkVertexInputAttributeDescription> vertexAttributes;
-        VkVertexInputBindingDescription vertexDescription = {};
+        RasterPipelineProperties pipelineProperties;
 
     public:
-        RasterPipeline(const PipelineCreationInfo& creationInfo, const PipelineProperties& pipelineProperties, Swapchain* swapchain);
+        RasterPipeline(const PipelineCreationInfo& creationInfo, const RasterPipelineProperties& pipelineProperties, Swapchain* swapchain);
         ~RasterPipeline() override;
+        
+        const RasterPipelineProperties& getPipelineProperties() const { return pipelineProperties; }
 
     };
 
     class RTPipeline : public Pipeline
     {
     private:
-        RTPipelineInfo rtInfo;
+        RTPipelineProperties pipelineProperties;
         VkDeferredOperationKHR deferredOperation;
 
     public:
-        RTPipeline(const PipelineCreationInfo& creationInfo, const PipelineProperties& pipelineProperties, const RTPipelineInfo& rtInfo);
+        RTPipeline(const PipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties);
         ~RTPipeline() override;
+        
+        const RTPipelineProperties& getPipelineProperties() const { return pipelineProperties; }
 
         bool isBuilt();
     };
@@ -131,7 +137,6 @@ namespace PaperRenderer
 
     struct PipelineBuildInfo
     {
-        PipelineProperties pipelineProperties = {};
         std::vector<ShaderPair>* shaderInfo;
         std::unordered_map<uint32_t, DescriptorSet>* descriptors;
     };
@@ -159,15 +164,14 @@ namespace PaperRenderer
         std::unordered_map<uint32_t, VkDescriptorSetLayout> createDescriptorLayouts(const std::unordered_map<uint32_t, DescriptorSet>& descriptorSets) const;
         VkPipelineLayout createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts) const;
         PipelineCreationInfo initPipelineInfo(PipelineBuildInfo info) const;
-        RTPipelineInfo initRTinfo() const;
 
     public:
         PipelineBuilder(Device* device, DescriptorAllocator* descriptors, Swapchain* swapchain);
         ~PipelineBuilder();
 
         std::unique_ptr<ComputePipeline> buildComputePipeline(const ComputePipelineBuildInfo& info) const;
-        std::unique_ptr<RasterPipeline> buildRasterPipeline(const PipelineBuildInfo& info) const;
-        std::unique_ptr<RTPipeline> buildRTPipeline(const PipelineBuildInfo& info) const;
+        std::unique_ptr<RasterPipeline> buildRasterPipeline(const PipelineBuildInfo& info, const RasterPipelineProperties& pipelineProperties) const;
+        std::unique_ptr<RTPipeline> buildRTPipeline(const PipelineBuildInfo& info, const RTPipelineProperties& pipelineProperties) const;
 
         static PipelineRendererInfo getRendererInfo() { return rendererInfo; }
     };

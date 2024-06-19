@@ -277,10 +277,10 @@ namespace PaperRenderer
             extensionNames.insert(extensionNames.end(), {
                 VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
                 VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-                VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME
+                VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+                VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME
             });
         }
-        
 
         VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationFeatures = {};
         accelerationFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
@@ -299,9 +299,14 @@ namespace PaperRenderer
 
         if(rtSupport) drawParamFeatures.pNext = &RTfeatures;
 
+        VkPhysicalDeviceExtendedDynamicState3FeaturesEXT dynamicState3Features = {};
+        dynamicState3Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT;
+        dynamicState3Features.pNext = &drawParamFeatures;
+        dynamicState3Features.extendedDynamicState3RasterizationSamples = VK_TRUE;
+
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderFeatures = {};
         dynamicRenderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
-        dynamicRenderFeatures.pNext = &drawParamFeatures;
+        dynamicRenderFeatures.pNext = &dynamicState3Features;
         dynamicRenderFeatures.dynamicRendering = VK_TRUE;
 
         VkPhysicalDeviceVulkan12Features vulkan12Features = {};

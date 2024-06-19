@@ -20,6 +20,12 @@ namespace PaperRenderer
         unsigned int resY;
     };
 
+    struct RendererState
+    {
+        bool rtEnabled = false;
+        VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+    };
+
     class RenderEngine
     {
     private:
@@ -32,7 +38,7 @@ namespace PaperRenderer
 
         std::string appName;
         std::string shadersDir;
-        bool rtEnabled = false;
+        RendererState rendererState = {};
 
         //frame rendering stuff
         std::vector<std::vector<PaperMemory::CommandBuffer>> usedCmdBuffers;
@@ -82,9 +88,6 @@ namespace PaperRenderer
         //returns 0 if no swapchain rebuild occured; returns 1 otherwise
         int endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
 
-        bool getRTstatus() const { return rtEnabled; }
-        void setRTstatus(bool newStatus) { this->rtEnabled = newStatus; }
-
         void recycleCommandBuffer(PaperMemory::CommandBuffer& commandBuffer);
         void recycleCommandBuffer(PaperMemory::CommandBuffer&& commandBuffer);
 
@@ -93,6 +96,7 @@ namespace PaperRenderer
         Device* getDevice() { return &device; }
         RasterPreprocessPipeline* getRasterPreprocessPipeline() { return &rasterPreprocessPipeline; }
         DescriptorAllocator* getDescriptorAllocator() { return &descriptors; }
+        RendererState* getRendererState() { return &rendererState; }
         const VkExtent2D& getResolution() const { return swapchain.getExtent(); }
         const std::vector<VkImage>& getSwapchainImages() const { return swapchain.getImages(); }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
