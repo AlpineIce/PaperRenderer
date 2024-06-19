@@ -190,7 +190,7 @@ layout(std430, buffer_reference) writeonly buffer OutputObjects
 mat4 getModelMatrix(ModelInstance modelInstance)
 {
     //from the GLM library
-    mat4 result;
+    mat3 qMat;
 
     //rotation
     vec4 q = modelInstance.qRotation;
@@ -204,24 +204,35 @@ mat4 getModelMatrix(ModelInstance modelInstance)
     float qwy = q.w * q.y;
     float qwz = q.w * q.z;
 
-    result[0][0] = 1.0 - 2.0 * (qyy + qzz);
-    result[0][1] = 2.0 * (qxy + qwz);
-    result[0][2] = 2.0 * (qxz - qwy);
+    qMat[0] = vec3(1.0 - 2.0 * (qyy + qzz), 2.0 * (qxy + qwz), 2.0 * (qxz - qwy));
+    //qMat[0][0] = 1.0 - 2.0 * (qyy + qzz);
+    //qMat[0][1] = 2.0 * (qxy + qwz);
+    //qMat[0][2] = 2.0 * (qxz - qwy);
 
-    result[1][0] = 2.0 * (qxy - qwz);
-    result[1][1] = 1.0 - 2.0 * (qxx + qzz);
-    result[1][2] = 2.0 * (qyz + qwx);
-
-    result[2][0] = 2.0 * (qxz + qwy);
-    result[2][1] = 2.0 * (qyz - qwx);
-    result[2][2] = 1.0 - 2.0 * (qxx + qyy);
-
-    result[3][3] = 1.0;
+    qMat[1] = vec3(2.0 * (qxy - qwz), 1.0 - 2.0 * (qxx + qzz), 2.0 * (qyz + qwx));
+    //qMat[1][0] = 2.0 * (qxy - qwz);         
+    //qMat[1][1] = 1.0 - 2.0 * (qxx + qzz);
+    //qMat[1][2] = 2.0 * (qyz + qwx);
+    
+    qMat[2] = vec3(2.0 * (qxz + qwy), 2.0 * (qyz - qwx), 1.0 - 2.0 * (qxx + qyy));
+    //qMat[2][0] = 2.0 * (qxz + qwy);
+    //qMat[2][1] = 2.0 * (qyz - qwx);
+    //qMat[2][2] = 1.0 - 2.0 * (qxx + qyy);
 
     //scale
-    result[0][0] *= modelInstance.scale.x;
-    result[1][1] *= modelInstance.scale.y;
-    result[2][2] *= modelInstance.scale.z;
+    mat3 scaleMat;
+    scaleMat[0] = vec3(modelInstance.scale.x, 0.0, 0.0);
+    scaleMat[1] = vec3(0.0, modelInstance.scale.y, 0.0);
+    scaleMat[2] = vec3(0.0, 0.0, modelInstance.scale.z);
+
+    //composition of rotation and scale
+    mat3 scaleRotMat = scaleMat * qMat;
+
+    mat4 result;
+    result[0] = vec4(scaleRotMat[0], 0.0);
+    result[1] = vec4(scaleRotMat[1], 0.0);
+    result[2] = vec4(scaleRotMat[2], 0.0);
+    result[3][3] = 1.0;
 
     //position
     result[3][0] = modelInstance.position.x;
@@ -342,7 +353,7 @@ void main()
 
     mat4 modelMatrix = getModelMatrix(modelInstance);
 
-    if(isInBounds(modelInstance, model, modelMatrix) && inputInstance.isVisible) //culling
+    if(/*isInBounds(modelInstance, model, modelMatrix) && */inputInstance.isVisible) //culling
     {   
         //get LOD
         uint lodLevel = min(getLODLevel(modelInstance, model), model.lodCount - 1);
