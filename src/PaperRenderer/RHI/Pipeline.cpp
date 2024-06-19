@@ -132,7 +132,7 @@ namespace PaperRenderer
         renderingInfo.colorAttachmentCount = pipelineProperties.colorAttachmentFormats.size();
         renderingInfo.pColorAttachmentFormats = pipelineProperties.colorAttachmentFormats.data();
         renderingInfo.depthAttachmentFormat = pipelineProperties.depthAttachmentFormat;
-        renderingInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
+        renderingInfo.stencilAttachmentFormat = pipelineProperties.stencilAttachmentFormat;
 
         VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
         vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -150,12 +150,6 @@ namespace PaperRenderer
         inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
 
-        VkPipelineTessellationStateCreateInfo tessellationInfo = {};
-        tessellationInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO;
-        tessellationInfo.pNext = NULL;
-        tessellationInfo.flags = 0;
-        tessellationInfo.patchControlPoints = 1;
-
         VkPipelineViewportStateCreateInfo viewportInfo = {};
         viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
         viewportInfo.pNext = NULL;
@@ -163,65 +157,25 @@ namespace PaperRenderer
         viewportInfo.viewportCount = 0;
         viewportInfo.scissorCount = 0;
 
-        VkPipelineRasterizationStateCreateInfo rasterInfo = {};
-        rasterInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        rasterInfo.pNext = NULL;
-        rasterInfo.flags = 0;
-        rasterInfo.depthClampEnable = VK_FALSE;
-        rasterInfo.rasterizerDiscardEnable = VK_FALSE;
-        rasterInfo.polygonMode = VK_POLYGON_MODE_FILL;
-        rasterInfo.lineWidth = 1.0f;
-        rasterInfo.cullMode = VK_CULL_MODE_BACK_BIT;
-        rasterInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
-        rasterInfo.depthBiasEnable = VK_FALSE;
-        rasterInfo.depthBiasConstantFactor = 0.0f;
-        rasterInfo.depthBiasClamp = 0.0f;
-        rasterInfo.depthBiasSlopeFactor = 0.0f;
+        VkPipelineMultisampleStateCreateInfo MSAAInfo = {};
+        MSAAInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        MSAAInfo.pNext = NULL;
+        MSAAInfo.flags = 0;
+        MSAAInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        MSAAInfo.sampleShadingEnable = VK_TRUE;
+        MSAAInfo.minSampleShading = 1.0f;
+        MSAAInfo.pSampleMask = NULL;
+        MSAAInfo.alphaToCoverageEnable = VK_FALSE;
+        MSAAInfo.alphaToOneEnable = VK_FALSE;
 
-        VkPipelineMultisampleStateCreateInfo MSAA = {};
-        MSAA.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-        MSAA.pNext = NULL;
-        MSAA.flags = 0;
-        MSAA.sampleShadingEnable = VK_TRUE;
-        MSAA.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-        MSAA.minSampleShading = 1.0f;
-        MSAA.pSampleMask = NULL;
-        MSAA.alphaToCoverageEnable = VK_FALSE;
-        MSAA.alphaToOneEnable = VK_FALSE;
-
-        VkPipelineDepthStencilStateCreateInfo  depthStencilInfo = {};
-        depthStencilInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-        depthStencilInfo.pNext = NULL;
-        depthStencilInfo.flags = 0;
-        depthStencilInfo.depthTestEnable = VK_TRUE;
-        depthStencilInfo.depthWriteEnable = VK_TRUE;
-        depthStencilInfo.depthCompareOp = VK_COMPARE_OP_LESS;
-        depthStencilInfo.depthBoundsTestEnable = VK_FALSE;
-        depthStencilInfo.stencilTestEnable = VK_FALSE;
-        depthStencilInfo.front = {};
-        depthStencilInfo.back = {};
-
-        std::vector<VkPipelineColorBlendAttachmentState> colorAttachments;
-
-        VkPipelineColorBlendAttachmentState colorAttachment = {};
-        colorAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-        colorAttachment.blendEnable = VK_FALSE;
-        colorAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-        colorAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
-        colorAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-        colorAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-        colorAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-        colorAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-        colorAttachments.push_back(colorAttachment);
-        
         VkPipelineColorBlendStateCreateInfo colorInfo = {};
         colorInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
         colorInfo.pNext = NULL;
         colorInfo.flags = 0;
         colorInfo.logicOpEnable = VK_FALSE;
         colorInfo.logicOp = VK_LOGIC_OP_COPY;
-        colorInfo.attachmentCount = colorAttachments.size();
-        colorInfo.pAttachments = colorAttachments.data();
+        colorInfo.attachmentCount = pipelineProperties.colorAttachments.size();
+        colorInfo.pAttachments = pipelineProperties.colorAttachments.data();
         colorInfo.blendConstants[0] = 0.0f;
         colorInfo.blendConstants[1] = 0.0f;
         colorInfo.blendConstants[2] = 0.0f;
@@ -263,11 +217,11 @@ namespace PaperRenderer
         pipelineCreateInfo.pStages = shaderStages.data();
         pipelineCreateInfo.pVertexInputState = &vertexInputInfo;
         pipelineCreateInfo.pInputAssemblyState = &inputAssemblyInfo;
-        pipelineCreateInfo.pTessellationState = &tessellationInfo;
+        pipelineCreateInfo.pTessellationState = &pipelineProperties.tessellationInfo;
         pipelineCreateInfo.pViewportState = &viewportInfo;
-        pipelineCreateInfo.pRasterizationState = &rasterInfo;
-        pipelineCreateInfo.pMultisampleState = &MSAA;
-        pipelineCreateInfo.pDepthStencilState = &depthStencilInfo;
+        pipelineCreateInfo.pRasterizationState = &pipelineProperties.rasterInfo;
+        pipelineCreateInfo.pMultisampleState = &MSAAInfo;
+        pipelineCreateInfo.pDepthStencilState = &pipelineProperties.depthStencilInfo;
         pipelineCreateInfo.pColorBlendState = &colorInfo;
         pipelineCreateInfo.pDynamicState = &dynamicStateInfo;
         pipelineCreateInfo.layout = pipelineLayout;

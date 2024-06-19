@@ -359,7 +359,7 @@ void main()
 
     mat4 modelMatrix = getModelMatrix(modelInstance);
 
-    if(/*isInBounds(modelInstance, model, modelMatrix) && */inputInstance.isVisible) //culling
+    if(isInBounds(modelInstance, model, modelMatrix) && inputInstance.isVisible) //culling
     {   
         //get LOD
         uint lodLevel = min(getLODLevel(modelInstance, model), model.lodCount - 1);
