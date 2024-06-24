@@ -21,6 +21,9 @@ namespace PaperRenderer
         }
         usedCmdBuffers.resize(PaperMemory::Commands::getFrameCount());
 
+        instancesBufferCopyFence = PaperRenderer::PaperMemory::Commands::getUnsignaledFence(device.getDevice());
+        modelsBufferCopyFence = PaperRenderer::PaperMemory::Commands::getUnsignaledFence(device.getDevice());
+
         rebuildBuffersAndAllocations();
 
         //finish up
@@ -38,6 +41,9 @@ namespace PaperRenderer
             PaperMemory::Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers.at(i));
             usedCmdBuffers.at(i).clear();
         }
+
+        vkDestroyFence(device.getDevice(), instancesBufferCopyFence, nullptr);
+        vkDestroyFence(device.getDevice(), modelsBufferCopyFence, nullptr);
     }
 
     void RenderEngine::rebuildBuffersAndAllocations()
@@ -231,10 +237,16 @@ namespace PaperRenderer
         object->rendererSelfIndex = UINT64_MAX;
     }
 
-    int RenderEngine::beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore& imageAquireSignalSemaphore, const PaperMemory::SynchronizationInfo& isntancesCopySync, const PaperMemory::SynchronizationInfo& modelsCopySync)
+    int RenderEngine::beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore& imageAquireSignalSemaphore)
     {
         //wait for fences
         vkWaitForFences(device.getDevice(), waitFences.size(), waitFences.data(), VK_TRUE, UINT64_MAX);
+
+        std::vector<VkFence> vectorPreprocessFences;
+        vectorPreprocessFences.insert(vectorPreprocessFences.begin(), preprocessFences.begin(), preprocessFences.end());
+
+        vkWaitForFences(device.getDevice(), vectorPreprocessFences.size(), vectorPreprocessFences.data(), VK_TRUE, UINT64_MAX);
+        vkResetFences(device.getDevice(), vectorPreprocessFences.size(), vectorPreprocessFences.data());
 
         //get available image
         VkResult imageAquireResult = vkAcquireNextImageKHR(device.getDevice(),
@@ -267,18 +279,35 @@ namespace PaperRenderer
         descriptors.refreshPools(currentImage);
 
         //copy instances
+        PaperRenderer::PaperMemory::SynchronizationInfo instancesCopySyncInfo = {};
+        instancesCopySyncInfo.queueType = PaperRenderer::PaperMemory::QueueType::TRANSFER;
+        instancesCopySyncInfo.waitPairs = {};
+        instancesCopySyncInfo.signalPairs = {};
+        instancesCopySyncInfo.fence = instancesBufferCopyFence;
+
         VkBufferCopy instancesRegion;
         instancesRegion.srcOffset = 0;
         instancesRegion.dstOffset = 0;
         instancesRegion.size = renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance);
-        usedCmdBuffers.at(currentImage).push_back(deviceInstancesDataBuffer->copyFromBufferRanges(*hostInstancesDataBuffer.get(), { instancesRegion }, isntancesCopySync));
+        usedCmdBuffers.at(currentImage).push_back(deviceInstancesDataBuffer->copyFromBufferRanges(*hostInstancesDataBuffer.get(), { instancesRegion }, instancesCopySyncInfo));
 
         //copy models
+        PaperRenderer::PaperMemory::SynchronizationInfo modelsCopySyncInfo = {};
+        modelsCopySyncInfo.queueType = PaperRenderer::PaperMemory::QueueType::TRANSFER;
+        modelsCopySyncInfo.waitPairs = {};
+        modelsCopySyncInfo.signalPairs = {};
+        modelsCopySyncInfo.fence = modelsBufferCopyFence;
+
         VkBufferCopy modelsRegion;
         modelsRegion.srcOffset = 0;
         modelsRegion.dstOffset = 0;
         modelsRegion.size = hostModelDataBuffer->getStackLocation();
-        usedCmdBuffers.at(currentImage).push_back(deviceModelDataBuffer->copyFromBufferRanges(*hostModelDataBuffer->getBuffer(), { modelsRegion }, modelsCopySync));
+        usedCmdBuffers.at(currentImage).push_back(deviceModelDataBuffer->copyFromBufferRanges(*hostModelDataBuffer->getBuffer(), { modelsRegion }, modelsCopySyncInfo));
+
+        //wait for copy sync (this could honestly probably be more efficient by rewriting with timeline semaphores)
+        std::vector<VkFence> copyFences = { instancesBufferCopyFence, modelsBufferCopyFence };
+        vkWaitForFences(device.getDevice(), copyFences.size(), copyFences.data(), VK_TRUE, UINT64_MAX);
+        vkResetFences(device.getDevice(), copyFences.size(), copyFences.data());
 
         return returnResult;
     }

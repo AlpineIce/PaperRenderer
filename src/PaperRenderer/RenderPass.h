@@ -93,9 +93,7 @@ namespace PaperRenderer
         void clearDrawCounts();
 
         //synchronization
-        VkFence instancesBufferCopyFence;
-        VkFence materialDataBufferCopyFence;
-        VkFence drawCountsClearFence;
+        VkFence preprocessFence;
         std::vector<VkSemaphore> drawCountsClearSemaphores;
         std::vector<VkSemaphore> preprocessSignalSemaphores;
         std::vector<VkSemaphore> instancesBufferCopySemaphores;

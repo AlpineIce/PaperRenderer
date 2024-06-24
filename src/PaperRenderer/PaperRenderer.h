@@ -45,6 +45,11 @@ namespace PaperRenderer
         std::vector<ModelInstance*> renderingModelInstances;
         std::vector<Model*> renderingModels;
 
+        //synchronization
+        std::list<VkFence> preprocessFences;
+        VkFence instancesBufferCopyFence;
+        VkFence modelsBufferCopyFence;
+
         //----------BUFFERS AND MEMORY----------//
 
         //allocations
@@ -84,7 +89,7 @@ namespace PaperRenderer
         ~RenderEngine();
 
         //returns 0 if no swapchain rebuild occured; returns 1 otherwise
-        int beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore& imageAquireSignalSemaphore, const PaperMemory::SynchronizationInfo& isntancesCopySync, const PaperMemory::SynchronizationInfo& modelsCopySynce);
+        int beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore& imageAquireSignalSemaphore);
         //returns 0 if no swapchain rebuild occured; returns 1 otherwise
         int endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
 

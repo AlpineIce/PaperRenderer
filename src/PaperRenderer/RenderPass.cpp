@@ -178,9 +178,8 @@ namespace PaperRenderer
             preprocessSignalSemaphores.at(i) = PaperMemory::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
         }
 
-        instancesBufferCopyFence = PaperMemory::Commands::getSignaledFence(rendererPtr->getDevice()->getDevice());
-        materialDataBufferCopyFence = PaperMemory::Commands::getSignaledFence(rendererPtr->getDevice()->getDevice());
-        drawCountsClearFence = PaperMemory::Commands::getSignaledFence(rendererPtr->getDevice()->getDevice());
+        preprocessFence = PaperRenderer::PaperMemory::Commands::getSignaledFence(rendererPtr->getDevice()->getDevice());
+        rendererPtr->preprocessFences.push_back(preprocessFence);
 
         rebuildAllocationsAndBuffers(rendererPtr);
     }
@@ -195,9 +194,8 @@ namespace PaperRenderer
             vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), preprocessSignalSemaphores.at(i), nullptr);
         }
 
-        vkDestroyFence(rendererPtr->getDevice()->getDevice(), instancesBufferCopyFence, nullptr);
-        vkDestroyFence(rendererPtr->getDevice()->getDevice(), materialDataBufferCopyFence, nullptr);
-        vkDestroyFence(rendererPtr->getDevice()->getDevice(), drawCountsClearFence, nullptr);
+        rendererPtr->preprocessFences.remove(preprocessFence);
+        vkDestroyFence(rendererPtr->getDevice()->getDevice(), preprocessFence, nullptr);
 
         renderPasses.remove(this);
 
@@ -354,9 +352,9 @@ namespace PaperRenderer
 
         PaperMemory::SynchronizationInfo syncInfo = {};
         syncInfo.queueType = PaperMemory::QueueType::TRANSFER;
-        syncInfo.signalPairs = { { drawCountsClearSemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_TRANSFER_BIT } };
         syncInfo.waitPairs = {};
-        syncInfo.fence = drawCountsClearFence;
+        syncInfo.signalPairs = { { drawCountsClearSemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_TRANSFER_BIT } };
+        syncInfo.fence = VK_NULL_HANDLE;
 
         VkCommandBuffer cmdBuffer = PaperMemory::Commands::getCommandBuffer(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), syncInfo.queueType);
 
@@ -374,10 +372,6 @@ namespace PaperRenderer
         }
         
         vkEndCommandBuffer(cmdBuffer);
-
-        //wait for fences
-        vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &drawCountsClearFence, VK_TRUE, UINT64_MAX);
-        vkResetFences(rendererPtr->getDevice()->getDevice(), 1, &drawCountsClearFence);
 
         //submit
         PaperMemory::Commands::submitToQueue(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), syncInfo, { cmdBuffer });
@@ -398,11 +392,6 @@ namespace PaperRenderer
 
             //----------PRE-PROCESS----------//
 
-            //wait for fences
-            std::vector<VkFence> bufferCopyWaitFences = { instancesBufferCopyFence, materialDataBufferCopyFence };
-            vkWaitForFences(rendererPtr->getDevice()->getDevice(), bufferCopyWaitFences.size(), bufferCopyWaitFences.data(), VK_TRUE, UINT64_MAX);
-            vkResetFences(rendererPtr->getDevice()->getDevice(), bufferCopyWaitFences.size(), bufferCopyWaitFences.data());
-
             //copy data
             VkBufferCopy instancesRegion = {};
             instancesRegion.dstOffset = 0;
@@ -413,7 +402,7 @@ namespace PaperRenderer
             instancesBufferCopySync.queueType = PaperMemory::QueueType::TRANSFER;
             instancesBufferCopySync.waitPairs = {};
             instancesBufferCopySync.signalPairs = { { instancesBufferCopySemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
-            instancesBufferCopySync.fence = instancesBufferCopyFence;
+            instancesBufferCopySync.fence = VK_NULL_HANDLE;
             rendererPtr->recycleCommandBuffer(deviceInstancesBuffer->copyFromBufferRanges(*hostInstancesBuffer.get(), { instancesRegion }, instancesBufferCopySync));
 
             VkBufferCopy materialDataRegion = {};
@@ -425,7 +414,7 @@ namespace PaperRenderer
             materialDataCopySync.queueType = PaperMemory::QueueType::TRANSFER;
             materialDataCopySync.waitPairs = {};
             materialDataCopySync.signalPairs = { { materialDataBufferCopySemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
-            materialDataCopySync.fence = materialDataBufferCopyFence;
+            materialDataCopySync.fence = VK_NULL_HANDLE;
             rendererPtr->recycleCommandBuffer(deviceInstancesDataBuffer->copyFromBufferRanges(*hostInstancesDataBuffer->getBuffer(), { materialDataRegion }, materialDataCopySync));
 
             //compute shader
@@ -438,6 +427,7 @@ namespace PaperRenderer
             preprocessSyncInfo.queueType = PaperMemory::QueueType::COMPUTE;
             preprocessSyncInfo.waitPairs = waitPairs;
             preprocessSyncInfo.signalPairs = { { preprocessSignalSemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT } };
+            preprocessSyncInfo.fence = preprocessFence;
 
             rendererPtr->getRasterPreprocessPipeline()->submit(preprocessSyncInfo, *this);
 

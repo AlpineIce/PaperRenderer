@@ -71,6 +71,7 @@ namespace PaperRenderer
         PaperMemory::CommandBuffer updateBLAS(const std::vector<ModelInstance*>& modelInstances, const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
         PaperMemory::CommandBuffer updateTLAS(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
 
+        const VkAccelerationStructureKHR& getTLAS() const { return topStructure; }
         const std::unordered_map<Model const*, BottomStructure>& getBottomStructures() const { return bottomStructures; }
         VkDeviceAddress getTLASInstancesBufferAddress(uint32_t currentFrame) const;
     };
