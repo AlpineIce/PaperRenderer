@@ -1,6 +1,7 @@
 #pragma once
 #include "Device.h"
 #include "Memory/VulkanResources.h"
+#include "AccelerationStructure.h"
 
 #include <unordered_map>
 
@@ -29,11 +30,18 @@ namespace PaperRenderer
         uint32_t binding;
     };
 
+    struct AccelerationStructureDescriptorWrites
+    {
+        std::vector<AccelerationStructure const*> accelerationStructures;
+        uint32_t binding;
+    };
+
     struct DescriptorWrites
     {
         std::vector<BuffersDescriptorWrites> bufferWrites = std::vector<BuffersDescriptorWrites>();
         std::vector<ImagesDescriptorWrites> imageWrites = std::vector<ImagesDescriptorWrites>();
         std::vector<BufferViewsDescriptorWrites> bufferViewWrites = std::vector<BufferViewsDescriptorWrites>();
+        std::vector<AccelerationStructureDescriptorWrites> accelerationStructureWrites = std::vector<AccelerationStructureDescriptorWrites>();
     };
 
     enum DescriptorScopes

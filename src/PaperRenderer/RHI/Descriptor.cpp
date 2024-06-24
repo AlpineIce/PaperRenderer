@@ -84,7 +84,7 @@ namespace PaperRenderer
 
     void DescriptorAllocator::writeUniforms(VkDevice device, VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo)
     {
-        //3 different writes for 3 different types
+        //4 different writes for 4 different types
         std::vector<VkWriteDescriptorSet> descriptorWrites;
 
         for(const BuffersDescriptorWrites& write : descriptorWritesInfo.bufferWrites)
@@ -139,6 +139,41 @@ namespace PaperRenderer
                 writeInfo.pBufferInfo = NULL;
                 writeInfo.pImageInfo = NULL;
                 writeInfo.pTexelBufferView = write.infos.data();
+
+                descriptorWrites.push_back(writeInfo);
+            }
+        }
+
+        for(const AccelerationStructureDescriptorWrites& write : descriptorWritesInfo.accelerationStructureWrites)
+        {
+            if(write.accelerationStructures.size())
+            {
+                //get TLAS references
+                std::vector<VkAccelerationStructureKHR> tlasReferences;
+                tlasReferences.reserve(write.accelerationStructures.size());
+                for(AccelerationStructure const* accelerationStructure : write.accelerationStructures)
+                {
+                    tlasReferences.push_back(accelerationStructure->getTLAS());
+                }
+
+                //descriptor write
+                VkWriteDescriptorSetAccelerationStructureKHR tlasWriteInfo = {};
+                tlasWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+                tlasWriteInfo.pNext = NULL;
+                tlasWriteInfo.accelerationStructureCount = tlasReferences.size();
+                tlasWriteInfo.pAccelerationStructures = tlasReferences.data();
+
+                VkWriteDescriptorSet writeInfo = {};
+                writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writeInfo.pNext = &tlasWriteInfo; //VkWriteDescriptorSetAccelerationStructureKHR (above) is fed into pNext
+                writeInfo.dstSet = set;
+                writeInfo.dstBinding = write.binding;
+                writeInfo.dstArrayElement = 0;
+                writeInfo.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+                writeInfo.descriptorCount = descriptorWritesInfo.accelerationStructureWrites.size();
+                writeInfo.pBufferInfo = NULL;
+                writeInfo.pImageInfo = NULL;
+                writeInfo.pTexelBufferView = NULL;
 
                 descriptorWrites.push_back(writeInfo);
             }
