@@ -504,6 +504,7 @@ namespace PaperRenderer
             graphicsSyncInfo.signalPairs = syncInfo.renderSignalPairs;
             graphicsSyncInfo.fence = syncInfo.renderSignalFence;
 
+            //TODO there is a sync error where the preprocess pipeline overwrites the draw data before it is all used. This should be properly synchronized
             PaperMemory::Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), graphicsSyncInfo, { graphicsCmdBuffer });
 
             PaperMemory::CommandBuffer commandBuffer = { graphicsCmdBuffer, PaperMemory::QueueType::GRAPHICS };

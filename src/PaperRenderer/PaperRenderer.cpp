@@ -251,7 +251,7 @@ namespace PaperRenderer
         //get available image
         VkResult imageAquireResult = vkAcquireNextImageKHR(device.getDevice(),
             swapchain.getSwapchain(),
-            UINT64_MAX,
+            UINT32_MAX,
             imageAquireSignalSemaphore,
             VK_NULL_HANDLE, &currentImage);
 
@@ -259,11 +259,13 @@ namespace PaperRenderer
         if(imageAquireResult == VK_ERROR_OUT_OF_DATE_KHR || imageAquireResult == VK_SUBOPTIMAL_KHR)
         {
             swapchain.recreate();
+            vkDestroySemaphore(device.getDevice(), imageAquireSignalSemaphore, nullptr);
+            imageAquireSignalSemaphore = PaperMemory::Commands::getSemaphore(device.getDevice());
 
             //try again
             imageAquireResult = vkAcquireNextImageKHR(device.getDevice(),
                 swapchain.getSwapchain(),
-                UINT64_MAX,
+                UINT32_MAX,
                 imageAquireSignalSemaphore,
                 VK_NULL_HANDLE, &currentImage);
 
@@ -332,11 +334,11 @@ namespace PaperRenderer
         device.getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->threadLock.unlock();
 
         int returnNumber = 0;
-        if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) 
+        /*if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) 
         {
             swapchain.recreate();
             returnNumber = 1;
-        }
+        }*/
 
         //increment frame counter
         if(currentImage == 0)

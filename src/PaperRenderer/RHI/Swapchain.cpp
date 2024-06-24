@@ -174,14 +174,14 @@ namespace PaperRenderer
 
     void Swapchain::recreate()
     {
+        vkDeviceWaitIdle(devicePtr->getDevice());
+        
         int width = 0, height = 0;
         glfwGetFramebufferSize(windowPtr->getWindow(), &width, &height);
         while (width == 0 || height == 0) {
             glfwWaitEvents();
             glfwGetFramebufferSize(windowPtr->getWindow(), &width, &height);
         }
-        
-        vkDeviceWaitIdle(devicePtr->getDevice());
         
         //destruction
         for(VkImageView image : imageViews)
