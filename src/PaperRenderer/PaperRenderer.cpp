@@ -355,7 +355,7 @@ namespace PaperRenderer
         return returnNumber;
     }
 
-    void RenderEngine::recycleCommandBuffer(PaperMemory::CommandBuffer &commandBuffer)
+    void RenderEngine::recycleCommandBuffer(PaperMemory::CommandBuffer& commandBuffer)
     {
         if(commandBuffer.buffer)
         {
@@ -364,7 +364,7 @@ namespace PaperRenderer
         }
     }
 
-    void RenderEngine::recycleCommandBuffer(PaperMemory::CommandBuffer &&commandBuffer)
+    void RenderEngine::recycleCommandBuffer(PaperMemory::CommandBuffer&& commandBuffer)
     {
         if(commandBuffer.buffer)
         {

@@ -27,6 +27,7 @@ namespace PaperRenderer
             VkDeviceAddress materialDataPtr;
             VkDeviceAddress modelDataPtr;
             uint32_t objectCount;
+            uint32_t frameIndex;
         };
 
         class RenderEngine* rendererPtr;

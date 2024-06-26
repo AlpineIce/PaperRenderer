@@ -1,31 +1,23 @@
 #version 460
-
-#extension GL_EXT_scalar_block_layout : require
-#extension GL_EXT_buffer_reference : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require //for pointer arithmetic
+#extension GL_GOOGLE_include_directive : require
+#include "Common.glsl"
 
 layout (local_size_x = 128) in;
 
-layout(std430, buffer_reference, buffer_reference_align = 8) writeonly buffer ASInstances;
+//----------UNIFORM INPUT DATA----------//
 
 layout(std430, set = 0, binding = 0) uniform InputData
 {
-    ASInstances asInstancesBufferReference;
+    vec4 camPos;
+    mat4 projection;
+    mat4 view;
+    uint64_t modelDataPtr;
     uint objectCount;
 } inputData;
 
-struct InputObject
-{
-    vec4 position;      
-    mat4 rotation;      
-    vec4 scale;         
-    BLASReference blasReference;
-};
+//----------INPUT INSTANCES----------// TODO
 
-layout(std430, set = 0, binding = 1) readonly buffer InputObjects
-{
-    InputObject objects[];
-} inputObjects;
+//----------TLAS INSTANCE DATA----------//
 
 struct AccelerationStructureInstance
 {
@@ -44,19 +36,20 @@ const uint VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR = 0x0100000
 
 AccelerationStructureInstance buildASInstance(InputObject object, uint customIndex)
 {
-    mat4 transformMatrix = mat4(
-        vec4(object.scale.x, 0.0, 0.0, 0.0),
-        vec4(0.0, object.scale.y, 0.0, 0.0),
-        vec4(0.0, 0.0, object.scale.z, 0.0),
-        vec4(0.0, 0.0, 0.0, 1.0));
-    transformMatrix = inputData.view * transformMatrix * object.rotation; //apply rotation before translation  TODO ROTATION IS BROKEN BECAUSE IM A RETARD WHO DOESNT KNOW LINEAR ALGEBRA
+    uint gID = gl_GlobalInvocationID.x;
+    if(gID >= inputData.objectCount)
+    {
+        return;
+    }
+
+    ModelInstance modelInstance = inputInstances.modelInstances[inputInstance.modelInstanceIndex]; //should be at index 0 with the offset derrived from inputInstance
+    Model model = InputModel(inputData.modelDataPtr + modelInstance.modelDataOffset).model; //should be at index 0 with the offset derrived from modelInstance
+    mat4 modelMatrix = getModelMatrix(modelInstance);
 
     mat3x4 instTransform;
-    instTransform[0] = vec4(transformMatrix[0].xyz, object.position.x);
-    instTransform[1] = vec4(transformMatrix[1].xyz, object.position.y);
-    instTransform[2] = vec4(transformMatrix[2].xyz, object.position.z);
-
-    //I HAVE NO IDEA HOW WELL THIS CODE WILL ACTUALLY HOLD UP CONSIDERING I BARELY KNOW HOW TO USE BITWISE OPERATORS
+    instTransform[0] = modelMatrix[0];
+    instTransform[1] = modelMatrix[1];
+    instTransform[2] = modelMatrix[2];
 
     //custom index and mask
     uint instanceCustomIndex = customIndex;    // value to merge in non-masked bits

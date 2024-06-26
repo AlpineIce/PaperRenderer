@@ -165,8 +165,8 @@ namespace PaperRenderer
         struct MaterialMeshGroup
         {
             VkDeviceAddress bufferAddress;
+            uint32_t bufferFrameOffsetsOffset;
             uint32_t indirectDrawDatasOffset;
-            uint32_t padding;
         };
 
         struct IndirectDrawData

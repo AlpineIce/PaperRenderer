@@ -1,0 +1,38 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#include "Common.glsl"
+
+layout (local_size_x = 128) in;
+
+//----------UNIFORM INPUT DATA----------//
+
+layout(std430, set = 0, binding = 0) uniform InputData
+{
+    vec4 camPos;
+    mat4 projection;
+    mat4 view;
+    uint objectCount;
+} inputData;
+
+//----------MODEL INPUT DATA----------//
+
+struct InputModelReference
+{
+    uint modelDataOffset;
+}
+
+layout(std430, set = 0, binding = 0) readonly buffer InputModelReferences
+{
+    InputModelReference modelReferences[];
+}
+
+//----------ENTRY POINT----------//
+
+void main()
+{
+    uint gID = gl_GlobalInvocationID.x;
+    if(gID >= inputData.objectCount)
+    {
+        return;
+    }
+}

@@ -1,14 +1,12 @@
 #version 460
-
-#extension GL_EXT_scalar_block_layout : require
-#extension GL_EXT_buffer_reference : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require //for pointer arithmetic
+#extension GL_GOOGLE_include_directive : require
+#include "Common.glsl"
 
 layout (local_size_x = 128) in;
 
 //----------UNIFORM INPUT DATA----------//
 
-layout(std430, set = 0, binding = 0) uniform InputData //TODO CREATE CULLING FRUSTUM FROM PROJECTION
+layout(std430, set = 0, binding = 0) uniform InputData
 {
     vec4 camPos;
     mat4 projection;
@@ -16,87 +14,8 @@ layout(std430, set = 0, binding = 0) uniform InputData //TODO CREATE CULLING FRU
     uint64_t materialDataPtr;
     uint64_t modelDataPtr;
     uint objectCount;
+    uint frameIndex;
 } inputData;
-
-//----------MODEL INPUT DATA----------//
-
-//model
-struct AABB
-{
-    float posX;
-    float negX;
-    float posY;
-    float negY;
-    float posZ;
-    float negZ;
-};
-
-struct Model
-{
-    AABB bounds;
-    uint lodCount;
-    uint lodsOffset;
-};
-
-layout(std430, buffer_reference) readonly buffer InputModel
-{
-    Model model;
-};
-
-//lods
-struct ModelLOD
-{
-    uint materialCount;
-    uint meshGroupOffset;
-};
-
-layout(std430, buffer_reference) readonly buffer ModelLODs
-{
-    ModelLOD LODs[];
-};
-
-//mesh group
-struct ModelLODMeshGroup
-{
-    uint meshCount;
-    uint meshesOffset;
-};
-
-layout(std430, buffer_reference) readonly buffer ModelLODMeshGroups
-{
-    ModelLODMeshGroup groups[];
-};
-
-//mesh
-struct ModelMeshData
-{
-    uint vboOffset;
-    uint vertexCount;
-    uint iboOffset;
-    uint indexCount;
-};
-
-layout(std430, buffer_reference) readonly buffer ModelLODMeshGroupMeshes
-{
-    ModelMeshData meshesData[];
-};
-
-//----------MODEL INSTANCE INPUT DATA----------//
-
-//model instance
-struct ModelInstance
-{
-    vec4 position; //w as padding
-    vec4 scale;
-    vec4 qRotation; //quaternion
-    uint modelDataOffset;
-    //defining a 12 byte padding here just breaks it
-};
-
-layout(std430, set = 0, binding = 1) readonly buffer InputInstances
-{
-    ModelInstance modelInstances[];
-} inputInstances;
 
 //----------PER RENDER PASS INSTANCE DATA (also the main input data)----------//
 
@@ -127,13 +46,18 @@ layout(std430, buffer_reference) readonly buffer LODsMaterialData
 struct MaterialMeshGroup
 {
     uint64_t bufferAddress;
+    uint bufferFrameOffsetsOffset;
     uint indirectDrawDatasOffset;
-    uint padding;
 };
 
 layout(std430, buffer_reference) readonly buffer LODsMaterialMeshGroups
 {
     MaterialMeshGroup datas[]; //count grabbed from model and is assumed to be in order
+};
+
+layout(std430, buffer_reference) readonly buffer LODMaterialMeshGroupBufferOffsets
+{
+    uint bufferOffsets[];
 };
 
 //mesh group data
@@ -187,137 +111,6 @@ layout(std430, buffer_reference) writeonly buffer OutputObjects
 
 //----------FUNCTIONS----------//
 
-mat4 getModelMatrix(ModelInstance modelInstance)
-{
-    //from the GLM library
-    mat3 qMat;
-
-    //rotation
-    vec4 q = modelInstance.qRotation;
-    float qxx = q.x * q.x;
-    float qyy = q.y * q.y;
-    float qzz = q.z * q.z;
-    float qxz = q.x * q.z;
-    float qxy = q.x * q.y;
-    float qyz = q.y * q.z;
-    float qwx = q.w * q.x;
-    float qwy = q.w * q.y;
-    float qwz = q.w * q.z;
-
-    qMat[0] = vec3(1.0 - 2.0 * (qyy + qzz), 2.0 * (qxy + qwz), 2.0 * (qxz - qwy));
-    //qMat[0][0] = 1.0 - 2.0 * (qyy + qzz);
-    //qMat[0][1] = 2.0 * (qxy + qwz);
-    //qMat[0][2] = 2.0 * (qxz - qwy);
-
-    qMat[1] = vec3(2.0 * (qxy - qwz), 1.0 - 2.0 * (qxx + qzz), 2.0 * (qyz + qwx));
-    //qMat[1][0] = 2.0 * (qxy - qwz);         
-    //qMat[1][1] = 1.0 - 2.0 * (qxx + qzz);
-    //qMat[1][2] = 2.0 * (qyz + qwx);
-    
-    qMat[2] = vec3(2.0 * (qxz + qwy), 2.0 * (qyz - qwx), 1.0 - 2.0 * (qxx + qyy));
-    //qMat[2][0] = 2.0 * (qxz + qwy);
-    //qMat[2][1] = 2.0 * (qyz - qwx);
-    //qMat[2][2] = 1.0 - 2.0 * (qxx + qyy);
-
-    //scale
-    mat3 scaleMat;
-    scaleMat[0] = vec3(modelInstance.scale.x, 0.0, 0.0);
-    scaleMat[1] = vec3(0.0, modelInstance.scale.y, 0.0);
-    scaleMat[2] = vec3(0.0, 0.0, modelInstance.scale.z);
-
-    //composition of rotation and scale
-    mat3 scaleRotMat = scaleMat * qMat;
-
-    mat4 result;
-    result[0] = vec4(scaleRotMat[0], 0.0);
-    result[1] = vec4(scaleRotMat[1], 0.0);
-    result[2] = vec4(scaleRotMat[2], 0.0);
-    result[3][3] = 1.0;
-
-    //position
-    result[3][0] = modelInstance.position.x;
-    result[3][1] = modelInstance.position.y;
-    result[3][2] = modelInstance.position.z;
-
-    //other
-    result[0][3] = 0.0;
-    result[1][3] = 0.0;
-    result[2][3] = 0.0;
-    
-    return result;
-}
-
-bool isInBounds(ModelInstance modelInstance, Model model, mat4 modelMatrix)
-{
-    AABB bounds = model.bounds;
-                
-    //construct 8 vertices
-    vec3 vertices[8];
-    vertices[0] = vec3(bounds.posX, bounds.posY, bounds.posZ);      // + + +
-    vertices[1] = vec3(bounds.posX, bounds.posY, bounds.negZ);      // + + -
-    vertices[2] = vec3(bounds.negX, bounds.posY, bounds.posZ);      // - + +
-    vertices[3] = vec3(bounds.posX, bounds.negY, bounds.posZ);      // + - +
-    vertices[4] = vec3(bounds.posX, bounds.negY, bounds.negZ);      // + - -
-    vertices[5] = vec3(bounds.negX, bounds.posY, bounds.negZ);      // - + -
-    vertices[6] = vec3(bounds.negX, bounds.negY, bounds.posZ);      // - - +
-    vertices[7] = vec3(bounds.negX, bounds.negY, bounds.negZ);      // - - -
-
-    //transform vertices and construct AABB
-    AABB aabb;
-    aabb.negX = 1000000.0f;
-    aabb.negY = 1000000.0f;
-    aabb.negZ = 1000000.0f;
-    aabb.posX = -1000000.0f;
-    aabb.posY = -1000000.0f;
-    aabb.posZ = -1000000.0f;
-
-    for(int i = 0; i < 8; i++)
-    {
-        vertices[i] = (inputData.view * modelMatrix * vec4(vertices[i], 1.0)).xyz;
-        aabb.posX = max(vertices[i].x, aabb.posX);
-        aabb.negX = min(vertices[i].x, aabb.negX);
-        aabb.posY = max(vertices[i].y, aabb.posY);
-        aabb.negY = min(vertices[i].y, aabb.negY);
-        aabb.posZ = max(vertices[i].z, aabb.posZ);
-        aabb.negZ = min(vertices[i].z, aabb.negZ);
-    }
-
-    //create culling frustum
-    mat4 projectionT = transpose(inputData.projection);
-    vec4 frustumX = (projectionT[3] + projectionT[0]) / length((projectionT[3] + projectionT[0]).xyz);
-    vec4 frustumY = (projectionT[3] + projectionT[1]) / length((projectionT[3] + projectionT[1]).xyz);
-
-    //visibility test
-    bool visible = true;
-    visible = visible && aabb.negZ < 0.0; //z test (cut everything behind)
-    visible = visible && !((aabb.posX < ((frustumX.z / frustumX.x) * -aabb.negZ)) || //check left
-                           (aabb.negX > ((frustumX.z / frustumX.x) * aabb.negZ))); //check right
-    visible = visible && !((aabb.posY < (frustumY.y * aabb.negZ)) || //check top
-                           (aabb.negY > (frustumY.y * -aabb.negZ))); //check bottom
-    
-	return visible;
-}
-
-uint getLODLevel(ModelInstance modelInstance, Model model)
-{
-    //get largest OBB extent to be used as size
-    AABB bounds = model.bounds;
-    float xLength = bounds.posX - bounds.negX;
-    float yLength = bounds.posY - bounds.negY;
-    float zLength = bounds.posZ - bounds.negZ;
-
-    float worldSize = 0.0;
-    worldSize = max(worldSize, xLength);
-    worldSize = max(worldSize, yLength);
-    worldSize = max(worldSize, zLength);
-
-    float cameraDistance = length(modelInstance.position.xyz - inputData.camPos.xyz);
-    
-    uint lodLevel = uint(floor(inversesqrt(worldSize * 10.0) * sqrt(cameraDistance)));
-
-    return lodLevel;
-}
-
 DrawCommand buildDrawCommand(ModelMeshData meshData, uint writeIndex)
 {
     DrawCommand drawCommand;
@@ -339,6 +132,8 @@ OutputObject buildOutputObject(mat4 modelMatrix)
     return outputObject;
 }
 
+//----------ENTRY POINT----------//
+
 void main()
 {
     uint gID = gl_GlobalInvocationID.x;
@@ -354,10 +149,10 @@ void main()
 
     mat4 modelMatrix = getModelMatrix(modelInstance);
 
-    if(isInBounds(modelInstance, model, modelMatrix) && inputInstance.isVisible) //culling
+    if(isInBounds(modelInstance, model, modelMatrix, inputData.projection, inputData.view) && inputInstance.isVisible) //culling
     {   
         //get LOD
-        uint lodLevel = min(getLODLevel(modelInstance, model), model.lodCount - 1);
+        uint lodLevel = min(getLODLevel(modelInstance, model, inputData.camPos), model.lodCount - 1);
 
         ModelLOD modelLOD = ModelLODs(inputData.modelDataPtr + uint64_t(modelInstance.modelDataOffset + model.lodsOffset)).LODs[lodLevel];
         LODMaterialData materialData = LODsMaterialData(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset)).materialDatas[lodLevel];
@@ -368,6 +163,8 @@ void main()
             ModelLODMeshGroup modelMeshGroup = ModelLODMeshGroups(inputData.modelDataPtr + uint64_t(modelInstance.modelDataOffset + modelLOD.meshGroupOffset)).groups[matIndex];
             MaterialMeshGroup materialMeshGroup = LODsMaterialMeshGroups(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset + materialData.meshGroupsOffset)).datas[matIndex];
 
+            uint outputBufferOffset = LODMaterialMeshGroupBufferOffsets(inputData.materialDataPtr + uint64_t(materialMeshGroup.bufferFrameOffsetsOffset) + uint64_t(inputInstance.LODsMaterialDataOffset)).bufferOffsets[inputData.frameIndex];
+
             //loop through material meshes
             for(uint meshIndex = 0; meshIndex < modelMeshGroup.meshCount; meshIndex++)
             {
@@ -375,9 +172,9 @@ void main()
                 IndirectDrawData indirectDrawData = IndirectDrawDatas(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset + materialMeshGroup.indirectDrawDatasOffset)).datas[meshIndex];
 
                 //draw counts and output objects
-                DrawCounts drawCounts = DrawCounts(materialMeshGroup.bufferAddress + uint64_t(indirectDrawData.drawCountsOffset));
-                DrawCommands outputCommands = DrawCommands(materialMeshGroup.bufferAddress + uint64_t(indirectDrawData.drawCommandsOffset));
-                OutputObjects outputObjects = OutputObjects(materialMeshGroup.bufferAddress + uint64_t(indirectDrawData.outputObjectsOffset));
+                DrawCounts drawCounts = DrawCounts(materialMeshGroup.bufferAddress + uint64_t(indirectDrawData.drawCountsOffset) + uint64_t(outputBufferOffset));
+                DrawCommands outputCommands = DrawCommands(materialMeshGroup.bufferAddress + uint64_t(indirectDrawData.drawCommandsOffset) + uint64_t(outputBufferOffset));
+                OutputObjects outputObjects = OutputObjects(materialMeshGroup.bufferAddress + uint64_t(indirectDrawData.outputObjectsOffset) + uint64_t(outputBufferOffset));
 
                 uint writeIndex = atomicAdd(drawCounts.count, 1);
 
