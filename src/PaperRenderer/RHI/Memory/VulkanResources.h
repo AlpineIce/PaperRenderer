@@ -157,6 +157,7 @@ namespace PaperRenderer
             VkImageUsageFlags usage;
             VkImageAspectFlagBits imageAspect;
             QueueFamiliesIndices queueFamiliesIndices = {};
+            VkImageLayout desiredLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         };
 
         class Image : public VulkanResource
@@ -168,38 +169,21 @@ namespace PaperRenderer
             uint32_t mipmapLevels;
             std::vector<CommandBuffer> creationBuffers;
 
-            struct ImageMemoryBarrierInfo
-            {
-                const VkCommandBuffer& command;
-                const VkImage& image;
-                VkAccessFlags srcAccess;
-                VkAccessFlags dstAccess;
-                VkImageLayout srcLayout;
-                VkImageLayout dstLayout;
-                VkPipelineStageFlags srcMask;
-                VkPipelineStageFlags dstMask;
-                uint32_t baseMipLevel;
-                uint32_t levels;
-            };
-
-            CommandBuffer changeImageLayout(VkImage image, const SynchronizationInfo& synchronizationInfo, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout); //mostly from vulkan tutorial
-            CommandBuffer copyBufferToImage(VkBuffer src, VkImage dst, VkExtent3D imageExtent, const SynchronizationInfo& synchronizationInfo);
-            CommandBuffer generateMipmaps(VkExtent3D imageExtent, const SynchronizationInfo& synchronizationInfo);
-            void injectMemBarrier(ImageMemoryBarrierInfo barrierInfo);
+            CommandBuffer copyBufferToImage(VkBuffer src, VkImage dst, const SynchronizationInfo& synchronizationInfo);
+            CommandBuffer generateMipmaps(const SynchronizationInfo& synchronizationInfo);
 
         public:
             Image(VkDevice device, const ImageInfo& imageInfo);
             ~Image() override;
 
             int assignAllocation(DeviceAllocation* allocation);
-            void setImageData(const Buffer& imageStagingBuffer, VkQueue transferQueue, VkQueue graphicsQueue);
+            void setImageData(const Buffer& imageStagingBuffer);
 
             static VkImageView getNewImageView(const Image& image, VkDevice device, VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format);
             static VkSampler getNewSampler(const Image& image, VkDevice device, VkPhysicalDevice gpu);
 
             const VkImage& getImage() const { return image; }
-            const VkExtent3D getExtent() const { return imageInfo.extent; }
-
+            const VkExtent3D getExtent() const { return imageInfo.extent; }\
             const VkDeviceImageMemoryRequirements& getImageMemoryRequirements() const { return imageMemRequirements; }
         };
     }

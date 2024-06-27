@@ -34,7 +34,7 @@ namespace PaperRenderer
         VkVertexInputBindingDescription vertexDescription = {};
         std::vector<VkPipelineColorBlendAttachmentState> colorAttachments = {
             {
-                .blendEnable = VK_TRUE,
+                .blendEnable = VK_FALSE,
                 .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
                 .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
                 .colorBlendOp = VK_BLEND_OP_ADD,
@@ -78,7 +78,9 @@ namespace PaperRenderer
             .depthBoundsTestEnable = VK_FALSE,
             .stencilTestEnable = VK_FALSE,
             .front = {},
-            .back = {}
+            .back = {},
+            .minDepthBounds = 0.0f,
+            .maxDepthBounds = 1.0f
         };
     };
 
