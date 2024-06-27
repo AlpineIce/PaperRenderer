@@ -97,14 +97,14 @@ namespace PaperRenderer
         std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
         vkGetPhysicalDeviceSurfaceFormatsKHR(devicePtr->getGPU(), *(devicePtr->getSurfacePtr()), &formatCount, surfaceFormats.data());
 
-        bool hdrFound = false;
+        usingHDR = false;
         this->swapchainImageFormat = VK_FORMAT_UNDEFINED;
         for(VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
         {
             if(surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT) //HDR color space
             {
                 //set format and color space
-                hdrFound = true;
+                usingHDR = true;
                 this->swapchainImageFormat = surfaceFormat.format;
                 this->imageColorSpace = surfaceFormat.colorSpace;
 
@@ -112,11 +112,11 @@ namespace PaperRenderer
             }
         }
 
-        if(!hdrFound)
+        if(!usingHDR)
         {
             for(VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
             {
-                if(surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR && !hdrFound) //SRGB color space
+                if(surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR && !usingHDR) //SRGB color space
                 {
                     if(surfaceFormat.format == VK_FORMAT_B8G8R8A8_SRGB)
                     {

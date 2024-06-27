@@ -34,6 +34,7 @@ namespace PaperRenderer
         std::vector<VkImageView> imageViews;
         GLFWwindow* window = NULL;
         WindowState currentWindowState;
+        bool usingHDR = false;
 
         Device* devicePtr;
         
@@ -53,5 +54,6 @@ namespace PaperRenderer
         const VkFormat& getFormat() const { return swapchainImageFormat; }
         const VkSwapchainKHR& getSwapchain() const { return swapchain; }
         const VkExtent2D& getExtent() const { return swapchainExtent; } //AKA resolution
+        const bool& getIsUsingHDR() const { return usingHDR; }
     };
 }
