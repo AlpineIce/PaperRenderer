@@ -83,7 +83,7 @@ namespace PaperRenderer
         RenderEngine(RendererCreationStruct creationInfo);
         ~RenderEngine();
 
-        //returns 0 if no swapchain rebuild occured; returns 1 otherwise
+        //returns 0 if no swapchain rebuild occured; returns 1 if swapchain was rebuilt; returns 2 if the entire frame should be skipped due to recreation failure on frame index that isn't 0
         int beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore& imageAquireSignalSemaphore);
         //returns 0 if no swapchain rebuild occured; returns 1 otherwise
         int endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
