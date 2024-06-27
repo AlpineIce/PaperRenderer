@@ -36,7 +36,9 @@ namespace PaperRenderer
         
         //layers
         std::vector<const char*> layerNames;
-        std::vector<const char*> extensionNames;
+        std::vector<const char*> extensionNames = {
+            VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME
+        };
         extensionNames.insert(extensionNames.end(), glfwExtensions.begin(), glfwExtensions.end());
 
         VkApplicationInfo appInfo;
@@ -270,15 +272,15 @@ namespace PaperRenderer
         //----------LOGICAL DEVICE CREATION----------//
 
         std::vector<const char*> extensionNames = {
-            VK_KHR_SWAPCHAIN_EXTENSION_NAME
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+            VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME
         };
         if(rtSupport)
         {
             extensionNames.insert(extensionNames.end(), {
                 VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
                 VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-                VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
-                VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME
+                VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME
             });
         }
 

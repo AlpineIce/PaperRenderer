@@ -1,11 +1,27 @@
 #pragma once
 #include "Device.h"
-#include "Window.h"
 
 #include <vector>
 
 namespace PaperRenderer
 {
+    enum WindowMode
+    {
+        WINDOWED = 0,
+        BORDERLESS = 1,
+        FULLSCREEN = 2
+    };
+
+    struct WindowState
+    {
+        std::string windowName = "Set window name in swapchain creation";
+        unsigned int resX = 1280;
+        unsigned int resY = 720;
+        WindowMode windowMode = WINDOWED;
+        GLFWmonitor* monitor = NULL;
+        bool enableVsync = false;
+    };
+
     class Swapchain
     {
     private:
@@ -13,23 +29,25 @@ namespace PaperRenderer
         VkFormat swapchainImageFormat;
         VkColorSpaceKHR imageColorSpace;
         VkPresentModeKHR presentationMode;
-        VkSwapchainKHR swapchain;
+        VkSwapchainKHR swapchain = VK_NULL_HANDLE;
         std::vector<VkImage> swapchainImages;
         std::vector<VkImageView> imageViews;
+        GLFWwindow* window = NULL;
+        WindowState currentWindowState;
 
         Device* devicePtr;
-        Window* windowPtr;
-        bool vsync;
-
+        
         void buildSwapchain();
         void createImageViews();
 
     public:
-        Swapchain(Device* device, Window* window, bool enableVsync);
+        Swapchain(Device* device, WindowState startingWindowState);
         ~Swapchain();
 
         void recreate();
 
+        GLFWwindow* getGLFWwindow() const { return window; }
+        const WindowState& getWindowState() const { return currentWindowState; }
         const std::vector<VkImageView>& getImageViews() const { return imageViews; }
         const std::vector<VkImage>& getImages() const { return swapchainImages; }
         const VkFormat& getFormat() const { return swapchainImageFormat; }

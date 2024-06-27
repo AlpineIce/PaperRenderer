@@ -3,7 +3,6 @@
 
 #include "RHI/Device.h"
 #include "RHI/Memory/VulkanResources.h"
-#include "RHI/Window.h"
 #include "RenderPass.h"
 
 #include <string>
@@ -14,10 +13,8 @@ namespace PaperRenderer
 {
     struct RendererCreationStruct
     {
-        std::string appName;
         std::string shadersDir;
-        unsigned int resX;
-        unsigned int resY;
+        WindowState windowState = {};
     };
 
     struct RendererState
@@ -30,13 +27,11 @@ namespace PaperRenderer
     {
     private:
         Device device;
-        Window window;
         Swapchain swapchain;
         DescriptorAllocator descriptors;
         PipelineBuilder pipelineBuilder;
         RasterPreprocessPipeline rasterPreprocessPipeline;
 
-        std::string appName;
         std::string shadersDir;
         RendererState rendererState = {};
 
@@ -97,14 +92,11 @@ namespace PaperRenderer
         void recycleCommandBuffer(PaperMemory::CommandBuffer&& commandBuffer);
 
         uint32_t const* getCurrentFramePtr() const { return &currentImage; }
-        GLFWwindow* getGLFWwindow() const { return window.getWindow(); }
         Device* getDevice() { return &device; }
         RasterPreprocessPipeline* getRasterPreprocessPipeline() { return &rasterPreprocessPipeline; }
         DescriptorAllocator* getDescriptorAllocator() { return &descriptors; }
         RendererState* getRendererState() { return &rendererState; }
-        const VkExtent2D& getResolution() const { return swapchain.getExtent(); }
-        const std::vector<VkImage>& getSwapchainImages() const { return swapchain.getImages(); }
+        Swapchain* getSwapchain() { return &swapchain; }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
-        std::string getShadersDir() const { return shadersDir; }
     };
 }

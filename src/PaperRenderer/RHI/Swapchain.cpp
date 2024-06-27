@@ -2,31 +2,114 @@
 
 namespace PaperRenderer
 {
-    Swapchain::Swapchain(Device *device, Window* window, bool enableVsync)
+    Swapchain::Swapchain(Device *device, WindowState startingWindowState)
         :devicePtr(device),
-        vsync(enableVsync),
-        windowPtr(window),
-        swapchain(VK_NULL_HANDLE)
+        currentWindowState(startingWindowState)
+    {
+        //----------WINDOW CREATION----------//
+
+        if(glfwVulkanSupported() != GLFW_TRUE) throw std::runtime_error("No vulkan support for GLFW");
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+        if(currentWindowState.monitor == NULL)
+        {
+            currentWindowState.monitor = glfwGetPrimaryMonitor();
+        }
+        const GLFWvidmode* mode = glfwGetVideoMode(currentWindowState.monitor);
+
+        switch(currentWindowState.windowMode)
+        {
+            case WINDOWED:
+                window = glfwCreateWindow(currentWindowState.resX, currentWindowState.resY, currentWindowState.windowName.c_str(), NULL, NULL);
+
+                break;
+            case BORDERLESS:
+                glfwWindowHint(GLFW_RED_BITS, mode->redBits);
+                glfwWindowHint(GLFW_GREEN_BITS, mode->greenBits);
+                glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
+                glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
+                window = glfwCreateWindow(mode->width, mode->height, currentWindowState.windowName.c_str(), currentWindowState.monitor, NULL);
+
+                currentWindowState.resX = mode->width;
+                currentWindowState.resY = mode->height;
+
+                break;
+            case FULLSCREEN:
+                window = glfwCreateWindow(currentWindowState.resX, currentWindowState.resY, currentWindowState.windowName.c_str(), currentWindowState.monitor, NULL);
+
+                break;
+        }
+
+        //surface and device creation
+        VkResult result = glfwCreateWindowSurface(device->getInstance(), window, nullptr, devicePtr->getSurfacePtr());
+        if(result != VK_SUCCESS)
+        {
+            throw std::runtime_error("Window surface creation failed");
+        }
+        devicePtr->createDevice();
+
+        //----------PRESENT MODE----------//
+
+        uint32_t presentModeCount;
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device->getGPU(), *(device->getSurfacePtr()), &presentModeCount, nullptr);
+        std::vector<VkPresentModeKHR> presentModes(presentModeCount);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device->getGPU(), *(device->getSurfacePtr()), &presentModeCount, presentModes.data());
+
+        for(VkPresentModeKHR presentMode : presentModes)
+        {
+            if(presentMode == VK_PRESENT_MODE_IMMEDIATE_KHR && !startingWindowState.enableVsync)
+            {
+                this->presentationMode = presentMode;
+                break;
+            }
+            if(presentMode == VK_PRESENT_MODE_FIFO_KHR && startingWindowState.enableVsync)
+            {
+                this->presentationMode = presentMode;
+                break;
+            }
+        }
+
+        //build swapchian
+        buildSwapchain();
+    }
+
+    Swapchain::~Swapchain()
+    {
+        //images
+        for(VkImageView image : imageViews)
+        {
+            vkDestroyImageView(devicePtr->getDevice(), image, nullptr);
+        }
+
+        vkDestroySwapchainKHR(devicePtr->getDevice(), swapchain, nullptr);
+
+        //glfw window and surface
+        vkDestroySurfaceKHR(devicePtr->getInstance(), *devicePtr->getSurfacePtr(), nullptr);
+        glfwDestroyWindow(window);
+    }
+
+    void Swapchain::buildSwapchain()
     {
         //----------COLOR SPACE SELECTION----------//
 
         uint32_t formatCount;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(device->getGPU(), *(device->getSurfacePtr()), &formatCount, nullptr);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(devicePtr->getGPU(), *(devicePtr->getSurfacePtr()), &formatCount, nullptr);
         std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(device->getGPU(), *(device->getSurfacePtr()), &formatCount, surfaceFormats.data());
+        vkGetPhysicalDeviceSurfaceFormatsKHR(devicePtr->getGPU(), *(devicePtr->getSurfacePtr()), &formatCount, surfaceFormats.data());
 
         bool hdrFound = false;
         this->swapchainImageFormat = VK_FORMAT_UNDEFINED;
         for(VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
         {
-            /*if(surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT) //HDR color space
+            if(surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT) //HDR color space
             {
+                //set format and color space
                 hdrFound = true;
                 this->swapchainImageFormat = surfaceFormat.format;
                 this->imageColorSpace = surfaceFormat.colorSpace;
 
                 break;
-            }*/
+            }
         }
 
         if(!hdrFound)
@@ -61,43 +144,8 @@ namespace PaperRenderer
             throw std::runtime_error("Swapchain image format unavailable");
         }
 
-        //----------PRESENT MODE----------//
+        //----------BUILD----------//
 
-        uint32_t presentModeCount;
-        vkGetPhysicalDeviceSurfacePresentModesKHR(device->getGPU(), *(device->getSurfacePtr()), &presentModeCount, nullptr);
-        std::vector<VkPresentModeKHR> presentModes(presentModeCount);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(device->getGPU(), *(device->getSurfacePtr()), &presentModeCount, presentModes.data());
-
-        for(VkPresentModeKHR presentMode : presentModes)
-        {
-            if(presentMode == VK_PRESENT_MODE_IMMEDIATE_KHR && !vsync)
-            {
-                this->presentationMode = presentMode;
-                break;
-            }
-            if(presentMode == VK_PRESENT_MODE_FIFO_KHR && vsync)
-            {
-                this->presentationMode = presentMode;
-                break;
-            }
-        }
-
-        buildSwapchain();
-    }
-
-    Swapchain::~Swapchain()
-    {
-        //images
-        for(VkImageView image : imageViews)
-        {
-            vkDestroyImageView(devicePtr->getDevice(), image, nullptr);
-        }
-
-        vkDestroySwapchainKHR(devicePtr->getDevice(), swapchain, nullptr);
-    }
-
-    void Swapchain::buildSwapchain()
-    {
         VkSurfaceCapabilitiesKHR capabilities;
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(devicePtr->getGPU(), *(devicePtr->getSurfacePtr()), &capabilities);
         this->swapchainExtent = capabilities.currentExtent;
@@ -136,7 +184,7 @@ namespace PaperRenderer
         
         VkResult result = vkCreateSwapchainKHR(devicePtr->getDevice(), &swapchainInfo, nullptr, &swapchain);
         if(result != VK_SUCCESS) throw std::runtime_error("Swapchain creation/recreation failed");
-
+        
         createImageViews();
     }
 
@@ -177,10 +225,10 @@ namespace PaperRenderer
         vkDeviceWaitIdle(devicePtr->getDevice());
         
         int width = 0, height = 0;
-        glfwGetFramebufferSize(windowPtr->getWindow(), &width, &height);
+        glfwGetFramebufferSize(window, &width, &height);
         while (width == 0 || height == 0) {
             glfwWaitEvents();
-            glfwGetFramebufferSize(windowPtr->getWindow(), &width, &height);
+            glfwGetFramebufferSize(window, &width, &height);
         }
         
         //destruction

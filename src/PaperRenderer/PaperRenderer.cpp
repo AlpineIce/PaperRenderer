@@ -6,11 +6,9 @@
 namespace PaperRenderer
 {
     RenderEngine::RenderEngine(RendererCreationStruct creationInfo)
-        :appName(creationInfo.appName),
-        shadersDir(creationInfo.shadersDir),
-        device(creationInfo.appName),
-        window(WindowInformation(creationInfo.resX, creationInfo.resY, false), creationInfo.appName, &device),
-        swapchain(&device, &window, false),
+        :shadersDir(creationInfo.shadersDir),
+        device(creationInfo.windowState.windowName),
+        swapchain(&device, creationInfo.windowState),
         descriptors(&device),
         pipelineBuilder(&device, &descriptors, &swapchain),
         rasterPreprocessPipeline(this, creationInfo.shadersDir)
