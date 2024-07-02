@@ -19,8 +19,7 @@ namespace PaperRenderer
         }
         usedCmdBuffers.resize(PaperMemory::Commands::getFrameCount());
 
-        instancesBufferCopyFence = PaperRenderer::PaperMemory::Commands::getUnsignaledFence(device.getDevice());
-        modelsBufferCopyFence = PaperRenderer::PaperMemory::Commands::getUnsignaledFence(device.getDevice());
+        copyFence = PaperMemory::Commands::getSignaledFence(device.getDevice());
 
         rebuildBuffersAndAllocations();
 
@@ -40,8 +39,7 @@ namespace PaperRenderer
             usedCmdBuffers.at(i).clear();
         }
 
-        vkDestroyFence(device.getDevice(), instancesBufferCopyFence, nullptr);
-        vkDestroyFence(device.getDevice(), modelsBufferCopyFence, nullptr);
+        vkDestroyFence(device.getDevice(), copyFence, nullptr);
     }
 
     void RenderEngine::rebuildBuffersAndAllocations()
@@ -235,7 +233,7 @@ namespace PaperRenderer
         object->rendererSelfIndex = UINT64_MAX;
     }
 
-    int RenderEngine::beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore& imageAquireSignalSemaphore)
+    int RenderEngine::beginFrame(const std::vector<VkFence>& waitFences, const VkSemaphore& imageAquireSignalSemaphore, const std::vector<PaperMemory::SemaphorePair>& bufferCopySignalSemaphores)
     {
         //wait for fences
         vkWaitForFences(device.getDevice(), waitFences.size(), waitFences.data(), VK_TRUE, UINT64_MAX);
@@ -255,7 +253,7 @@ namespace PaperRenderer
                 swapchain.recreate();
                 returnResult = 1;
 
-                beginFrame(waitFences, imageAquireSignalSemaphore);
+                beginFrame(waitFences, imageAquireSignalSemaphore, bufferCopySignalSemaphores);
             }
             else
             {
@@ -266,50 +264,49 @@ namespace PaperRenderer
         else
         {
             //reset fences
-            vkResetFences(device.getDevice(), waitFences.size(), waitFences.data());
+            std::vector<VkFence> allWaitFences = waitFences;
+            allWaitFences.push_back(copyFence);
+            allWaitFences.insert(allWaitFences.begin(), preprocessFences.begin(), preprocessFences.end());
 
-            //preprocess fences
-            std::vector<VkFence> vectorPreprocessFences;
-            vectorPreprocessFences.insert(vectorPreprocessFences.begin(), preprocessFences.begin(), preprocessFences.end());
-
-            vkWaitForFences(device.getDevice(), vectorPreprocessFences.size(), vectorPreprocessFences.data(), VK_TRUE, UINT64_MAX);
-            vkResetFences(device.getDevice(), vectorPreprocessFences.size(), vectorPreprocessFences.data());
+            vkWaitForFences(device.getDevice(), allWaitFences.size(), allWaitFences.data(), VK_TRUE, UINT64_MAX);
+            vkResetFences(device.getDevice(), allWaitFences.size(), allWaitFences.data());
 
             //free command buffers and reset descriptor pool
             PaperMemory::Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers.at(currentImage));
             usedCmdBuffers.at(currentImage).clear();
             descriptors.refreshPools(currentImage);
 
-            //copy instances
-            PaperRenderer::PaperMemory::SynchronizationInfo instancesCopySyncInfo = {};
-            instancesCopySyncInfo.queueType = PaperRenderer::PaperMemory::QueueType::TRANSFER;
-            instancesCopySyncInfo.waitPairs = {};
-            instancesCopySyncInfo.signalPairs = {};
-            instancesCopySyncInfo.fence = instancesBufferCopyFence;
-
+            //copy instances and model data (done in one submission)
             VkBufferCopy instancesRegion;
             instancesRegion.srcOffset = 0;
             instancesRegion.dstOffset = 0;
             instancesRegion.size = renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance);
-            usedCmdBuffers.at(currentImage).push_back(deviceInstancesDataBuffer->copyFromBufferRanges(*hostInstancesDataBuffer.get(), { instancesRegion }, instancesCopySyncInfo));
-
-            //copy models
-            PaperRenderer::PaperMemory::SynchronizationInfo modelsCopySyncInfo = {};
-            modelsCopySyncInfo.queueType = PaperRenderer::PaperMemory::QueueType::TRANSFER;
-            modelsCopySyncInfo.waitPairs = {};
-            modelsCopySyncInfo.signalPairs = {};
-            modelsCopySyncInfo.fence = modelsBufferCopyFence;
 
             VkBufferCopy modelsRegion;
             modelsRegion.srcOffset = 0;
             modelsRegion.dstOffset = 0;
             modelsRegion.size = hostModelDataBuffer->getStackLocation();
-            usedCmdBuffers.at(currentImage).push_back(deviceModelDataBuffer->copyFromBufferRanges(*hostModelDataBuffer->getBuffer(), { modelsRegion }, modelsCopySyncInfo));
 
-            //wait for copy sync (this could honestly probably be more efficient by rewriting with timeline semaphores)
-            std::vector<VkFence> copyFences = { instancesBufferCopyFence, modelsBufferCopyFence };
-            vkWaitForFences(device.getDevice(), copyFences.size(), copyFences.data(), VK_TRUE, UINT64_MAX);
-            vkResetFences(device.getDevice(), copyFences.size(), copyFences.data());
+            VkCommandBuffer transferBuffer = PaperMemory::Commands::getCommandBuffer(device.getDevice(), PaperMemory::QueueType::TRANSFER);
+
+            VkCommandBufferBeginInfo beginInfo = {};
+            beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            beginInfo.pNext = NULL;
+            beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+            vkBeginCommandBuffer(transferBuffer, &beginInfo);
+            vkCmdCopyBuffer(transferBuffer, hostInstancesDataBuffer->getBuffer(), deviceInstancesDataBuffer->getBuffer(), 1, &instancesRegion);
+            vkCmdCopyBuffer(transferBuffer, hostModelDataBuffer->getBuffer()->getBuffer(), deviceModelDataBuffer->getBuffer(), 1, &modelsRegion);
+            vkEndCommandBuffer(transferBuffer);
+
+            PaperMemory::SynchronizationInfo bufferCopySync = {};
+            bufferCopySync.queueType = PaperMemory::QueueType::TRANSFER;
+            bufferCopySync.waitPairs = {};
+            bufferCopySync.signalPairs = bufferCopySignalSemaphores;
+            bufferCopySync.fence = copyFence;
+
+            PaperMemory::Commands::submitToQueue(device.getDevice(), bufferCopySync, { transferBuffer });
+            recycleCommandBuffer({ transferBuffer, PaperMemory::QueueType::TRANSFER });
         }
 
         return returnResult;

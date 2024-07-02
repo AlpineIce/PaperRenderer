@@ -42,8 +42,7 @@ namespace PaperRenderer
 
         //synchronization
         std::list<VkFence> preprocessFences;
-        VkFence instancesBufferCopyFence;
-        VkFence modelsBufferCopyFence;
+        VkFence copyFence; //fence isn't really required, but buffer device address doesn't work properly with validation layer sync (or at least I believe so, it works perfectly fine without the fence)
 
         //----------BUFFERS AND MEMORY----------//
 
@@ -84,7 +83,7 @@ namespace PaperRenderer
         ~RenderEngine();
 
         //returns 0 if no swapchain rebuild occured; returns 1 if swapchain was rebuilt; returns 2 if the entire frame should be skipped due to recreation failure on frame index that isn't 0
-        int beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore& imageAquireSignalSemaphore);
+        int beginFrame(const std::vector<VkFence>& waitFences, const VkSemaphore& imageAquireSignalSemaphore, const std::vector<PaperMemory::SemaphorePair>& bufferCopySignalSemaphores);
         //returns 0 if no swapchain rebuild occured; returns 1 otherwise
         int endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
 
