@@ -96,14 +96,23 @@ namespace PaperRenderer
         vkGetPhysicalDeviceSurfaceFormatsKHR(devicePtr->getGPU(), *(devicePtr->getSurfacePtr()), &formatCount, nullptr);
         std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
         vkGetPhysicalDeviceSurfaceFormatsKHR(devicePtr->getGPU(), *(devicePtr->getSurfacePtr()), &formatCount, surfaceFormats.data());
-
-        usingHDR = false;
+        
         this->swapchainImageFormat = VK_FORMAT_UNDEFINED;
+
+        //look for an HDR format first
+        usingHDR = false;
         for(VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
         {
-            if(surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT) //HDR color space
+            if(surfaceFormat.colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT) //i dont even know if this is supported by any mainstream desktop OS
             {
-                //set format and color space
+                usingHDR = true;
+                this->swapchainImageFormat = surfaceFormat.format;
+                this->imageColorSpace = surfaceFormat.colorSpace;
+
+                break;
+            }
+            else if(surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT) 
+            {
                 usingHDR = true;
                 this->swapchainImageFormat = surfaceFormat.format;
                 this->imageColorSpace = surfaceFormat.colorSpace;
@@ -112,6 +121,7 @@ namespace PaperRenderer
             }
         }
 
+        //use SRGB if no HDR format is available
         if(!usingHDR)
         {
             for(VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
