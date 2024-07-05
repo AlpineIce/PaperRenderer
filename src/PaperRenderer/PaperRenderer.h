@@ -96,6 +96,7 @@ namespace PaperRenderer
         DescriptorAllocator* getDescriptorAllocator() { return &descriptors; }
         RendererState* getRendererState() { return &rendererState; }
         Swapchain* getSwapchain() { return &swapchain; }
+        const std::vector<Model*>& getModelReferences() const { return renderingModels; }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
     };
 }

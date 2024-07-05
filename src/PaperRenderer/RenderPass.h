@@ -2,7 +2,6 @@
 #include "RHI/Swapchain.h"
 #include "RHI/Pipeline.h"
 #include "RHI/IndirectDraw.h"
-#include "RHI/AccelerationStructure.h"
 #include "Camera.h"
 #include "ComputeShader.h"
 #include "Material.h"

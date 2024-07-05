@@ -77,9 +77,14 @@ namespace PaperRenderer
         bool deviceFound = false;
         for(VkPhysicalDevice physicalDevice : physicalDevices)
         {
+            asProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR;
+            asProperties.pNext = NULL;
+            
+            rtPipelineProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
+            rtPipelineProperties.pNext = &asProperties;
+
             VkPhysicalDeviceProperties2 properties;
             properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-            rtPipelineProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
             properties.pNext = &rtPipelineProperties;
             vkGetPhysicalDeviceProperties2(physicalDevice, &properties);
 

@@ -190,11 +190,20 @@ namespace PaperRenderer
         };
         std::unordered_map<class RenderPass const*, RenderPassData> renderPassSelfReferences;
 
+        struct AccelerationStructureData
+        {
+            std::vector<char> renderPassInstanceData;
+            std::unordered_map<std::vector<LODMesh> const*, CommonMeshGroup*> meshGroupReferences;
+            uint32_t selfIndex;
+        };
+        std::unordered_map<class AccelerationStructure const*, AccelerationStructureData> accelerationStructureSelfReferences;
+
         class RenderEngine* rendererPtr;
         Model const* modelPtr = NULL;
 
         friend class RenderEngine;
         friend class RenderPass;
+        friend class AccelerationStructure;
         friend class RasterPreprocessPipeline;
         friend class CommonMeshGroup;
         
@@ -203,10 +212,10 @@ namespace PaperRenderer
         ~ModelInstance();
 
         void setTransformation(const ModelTransformation& newTransformation);
-        void setVisibility(class RenderPass* renderPass, bool newVisibility); //renderPass can be NULL if setting the visibility for all is desired
+        //void setVisibility(class RenderPass* renderPass, bool newVisibility); //renderPass can be NULL if setting the visibility for all is desired
         
         Model const* getParentModelPtr() const { return modelPtr; }
         ModelTransformation getTransformation() const;
-        bool getVisibility(class RenderPass* renderPass) const;
+        //bool getVisibility(class RenderPass* renderPass) const;
     };
 }

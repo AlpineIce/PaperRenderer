@@ -5,74 +5,80 @@
 
 namespace PaperRenderer
 {
-    class Model; //forward declaration
-    class ModelInstance; //forward declaration
-
-    struct RTInputData
-    {
-        
-    };
-    
-    struct ShaderTLASInstance
-    {
-
-    };
-
     struct BottomStructure
     {
         VkAccelerationStructureKHR structure;
         VkDeviceAddress bufferAddress;
     };
 
+    struct AccelerationStructureSynchronizatioInfo
+    {
+        std::vector<PaperMemory::SemaphorePair> waitSemaphores;
+        std::vector<PaperMemory::SemaphorePair> TLSignalSemaphores;
+    };
+
     class AccelerationStructure
     {
     private:
-        std::vector<std::unique_ptr<PaperMemory::DeviceAllocation>> ASAllocations0; //one shared allocation for the BL and TL instances
-        std::vector<std::unique_ptr<PaperMemory::Buffer>> BLBuffers;
-        std::vector<std::unique_ptr<PaperMemory::Buffer>> BLScratchBuffers;
-        std::vector<std::unique_ptr<PaperMemory::Buffer>> TLInstancesBuffers;
-        std::vector<std::unique_ptr<PaperMemory::DeviceAllocation>> ASAllocations1; //one shared allocation for the TL
-        std::vector<std::unique_ptr<PaperMemory::Buffer>> TLBuffers;
-        std::vector<std::unique_ptr<PaperMemory::Buffer>> TLScratchBuffers;
+
+        std::unique_ptr<PaperMemory::DeviceAllocation> ASAllocation; //one shared allocation for the BLs and TL
+        std::unique_ptr<PaperMemory::Buffer> BLBuffer;
+        std::unique_ptr<PaperMemory::Buffer> BLScratchBuffer;
+        std::unique_ptr<PaperMemory::Buffer> TLInstancesBuffer;
+        std::unique_ptr<PaperMemory::Buffer> TLBuffer;
+        std::unique_ptr<PaperMemory::Buffer> TLScratchBuffer;
 
         VkAccelerationStructureKHR topStructure;
         VkDeviceAddress topStructureAddress;
-        std::unordered_map<Model const*, BottomStructure> bottomStructures;
-        std::vector<VkSemaphore> blasSignalSemaphores;
+        std::unordered_map<class Model const*, BottomStructure> bottomStructures;
+        std::vector<class ModelInstance*> accelerationStructureInstances;
+        VkSemaphore blasSignalSemaphore;
         bool isBuilt = false;
 
         VkDeviceSize instancesBufferSize;
         uint32_t instancesCount;
         struct BottomBuildData
         {
-            std::vector<Model const*> buildModels;
             std::vector<std::vector<VkAccelerationStructureGeometryKHR>> modelsGeometries;
             std::vector<std::vector<VkAccelerationStructureBuildRangeInfoKHR>> buildRangeInfos;
-            std::unordered_map<Model const*, VkAccelerationStructureBuildGeometryInfoKHR> buildGeometries;
+            std::vector<VkAccelerationStructureBuildGeometryInfoKHR> buildGeometries;
             std::vector<VkAccelerationStructureBuildSizesInfoKHR> buildSizes;
             VkDeviceSize totalScratchSize = 0;
             std::vector<VkDeviceSize> scratchOffsets;
             VkDeviceSize totalBuildSize = 0;
             std::vector<VkDeviceSize> asOffsets;
-        } BLBuildData;
+        };
 
-        Device* devicePtr;
+        struct TopBuildData
+        {
+            VkAccelerationStructureGeometryKHR structureGeometry = {};
+            VkAccelerationStructureBuildGeometryInfoKHR buildGeoInfo = {};
+            VkAccelerationStructureBuildSizesInfoKHR buildSizes = {};
+        };
 
-        void verifyBufferSizes(const std::vector<ModelInstance*>& modelInstances, uint32_t currentFrame);
-        void rebuildAllocations0(uint32_t currentFrame);
-        void rebuildAllocations1(uint32_t currentFrame);
-        PaperMemory::CommandBuffer createBottomLevel(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
-        PaperMemory::CommandBuffer createTopLevel(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
+        struct BuildData
+        {
+            BottomBuildData bottomData;
+            TopBuildData topData;
+        };
+
+        class RenderEngine* rendererPtr;
+
+        BuildData getBuildData();
+        void rebuildAllocation();
+        void createBottomLevel(BottomBuildData buildData, const PaperMemory::SynchronizationInfo& synchronizationInfo);
+        void createTopLevel(TopBuildData buildData, const PaperMemory::SynchronizationInfo& synchronizationInfo);
 
     public:
-        AccelerationStructure(Device* device);
+        AccelerationStructure(RenderEngine* renderer);
         ~AccelerationStructure();
 
-        PaperMemory::CommandBuffer updateBLAS(const std::vector<ModelInstance*>& modelInstances, const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
-        PaperMemory::CommandBuffer updateTLAS(const PaperMemory::SynchronizationInfo& synchronizationInfo, uint32_t currentFrame);
+        void updateAccelerationStructures(const AccelerationStructureSynchronizatioInfo& syncInfo);
+
+        void addInstance(class ModelInstance* instance);
+        void removeInstance(class ModelInstance* instance);
 
         const VkAccelerationStructureKHR& getTLAS() const { return topStructure; }
-        const std::unordered_map<Model const*, BottomStructure>& getBottomStructures() const { return bottomStructures; }
-        VkDeviceAddress getTLASInstancesBufferAddress(uint32_t currentFrame) const;
+        const std::unordered_map<class Model const*, BottomStructure>& getBottomStructures() const { return bottomStructures; }
     };
 }

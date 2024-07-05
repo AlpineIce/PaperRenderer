@@ -1,6 +1,7 @@
 #include "Model.h"
 #include "RenderPass.h"
 #include "PaperRenderer.h"
+#include "RHI/AccelerationStructure.h"
 #include "RHI/IndirectDraw.h"
 
 namespace PaperRenderer
@@ -34,6 +35,8 @@ namespace PaperRenderer
 				for(const MeshInfo& mesh : meshes)
 				{
 					LODMesh returnMesh;
+					returnMesh.vertexAttributes = mesh.vertexAttributes;
+					returnMesh.vertexDescription = mesh.vertexDescription;
 					returnMesh.vertexPositionOffset = mesh.vertexPositionOffset;
 					returnMesh.vboOffset = dynamicVertexOffset;
 					returnMesh.vertexCount =  mesh.verticesData.size() / mesh.vertexDescription.stride;
@@ -346,7 +349,7 @@ namespace PaperRenderer
 		return transformation;
     }
 
-    bool ModelInstance::getVisibility(RenderPass *renderPass) const
+    /*bool ModelInstance::getVisibility(RenderPass *renderPass) const
     {
         const bool& visibility = false;
 
@@ -356,5 +359,5 @@ namespace PaperRenderer
 	void ModelInstance::setVisibility(RenderPass *renderPass, bool newVisibility)
     {
 
-    }
+    }*/
 }

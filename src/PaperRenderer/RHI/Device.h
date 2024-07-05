@@ -19,6 +19,7 @@ namespace PaperRenderer
         std::vector<VkExtensionProperties> extensions;
         VkPhysicalDeviceProperties2 gpuProperties;
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtPipelineProperties = {};
+        VkPhysicalDeviceAccelerationStructurePropertiesKHR asProperties = {};
         VkPhysicalDeviceFeatures gpuFeatures;
         std::unordered_map<uint32_t, std::vector<PaperMemory::Queue>> familyQueues;
         std::unordered_map<PaperMemory::QueueType, PaperMemory::QueuesInFamily> queues;
@@ -48,6 +49,7 @@ namespace PaperRenderer
         VkPhysicalDeviceProperties2 getGPUProperties() const { return gpuProperties; }
         VkPhysicalDeviceFeatures getGPUFeatures() const { return gpuFeatures; }
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR getRTproperties() const { return rtPipelineProperties; }
+        VkPhysicalDeviceAccelerationStructurePropertiesKHR getASproperties() const { return asProperties; }
         const std::unordered_map<PaperMemory::QueueType, PaperMemory::QueuesInFamily>& getQueues() const { return queues; }
         PaperMemory::QueueFamiliesIndices getQueueFamiliesIndices() const;
     };
