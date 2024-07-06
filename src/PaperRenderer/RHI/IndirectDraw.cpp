@@ -1,6 +1,8 @@
 #include "IndirectDraw.h"
 #include "../PaperRenderer.h"
 
+#include <algorithm>
+
 namespace PaperRenderer
 {
     std::unique_ptr<PaperMemory::DeviceAllocation> CommonMeshGroup::drawDataAllocation;

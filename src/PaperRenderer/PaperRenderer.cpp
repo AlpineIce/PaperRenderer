@@ -233,17 +233,18 @@ namespace PaperRenderer
         object->rendererSelfIndex = UINT64_MAX;
     }
 
-    int RenderEngine::beginFrame(const std::vector<VkFence>& waitFences, const VkSemaphore& imageAquireSignalSemaphore, const std::vector<PaperMemory::SemaphorePair>& bufferCopySignalSemaphores)
+    int RenderEngine::beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore imageAquireSignalSemaphore, const std::vector<PaperMemory::SemaphorePair>& bufferCopySignalSemaphores)
     {
         //wait for fences
         vkWaitForFences(device.getDevice(), waitFences.size(), waitFences.data(), VK_TRUE, UINT64_MAX);
 
         //get available image
+        uint32_t imageReturnIndex;
         VkResult imageAquireResult = vkAcquireNextImageKHR(device.getDevice(),
             swapchain.getSwapchain(),
             UINT32_MAX,
             imageAquireSignalSemaphore,
-            VK_NULL_HANDLE, &currentImage);
+            VK_NULL_HANDLE, &imageReturnIndex);
 
         int returnResult = 0;
         if(imageAquireResult == VK_ERROR_OUT_OF_DATE_KHR || imageAquireResult == VK_SUBOPTIMAL_KHR) //i have no idea why it deadlocks on anything but frame 0
@@ -339,13 +340,14 @@ namespace PaperRenderer
         }*/
 
         //increment frame counter
-        if(currentImage == 0)
+        const uint32_t maxFrameCount = PaperMemory::Commands::getFrameCount();
+        if(currentImage == maxFrameCount - 1)
         {
-            currentImage = 1;
+            currentImage = 0;
         }
         else
         {
-            currentImage = 0;
+            currentImage++;
         }
 
         glfwPollEvents();

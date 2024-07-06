@@ -280,6 +280,7 @@ namespace PaperRenderer
 
     void AccelerationStructure::updateAccelerationStructures(const AccelerationStructureSynchronizatioInfo& syncInfo)
     {
+        vkDeviceWaitIdle(rendererPtr->getDevice()->getDevice());
         const BuildData buildData = getBuildData();
 
         PaperMemory::SynchronizationInfo blSyncInfo = {};
@@ -292,7 +293,7 @@ namespace PaperRenderer
         PaperMemory::SynchronizationInfo tlSyncInfo = {};
         tlSyncInfo.queueType = PaperMemory::QueueType::COMPUTE;
         tlSyncInfo.waitPairs = { { blasSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR } };
-        tlSyncInfo.signalPairs = {};
+        tlSyncInfo.signalPairs = syncInfo.TLSignalSemaphores;
         tlSyncInfo.fence = VK_NULL_HANDLE;
         createTopLevel(buildData.topData, tlSyncInfo);
     }
@@ -426,12 +427,6 @@ namespace PaperRenderer
         vkEndCommandBuffer(cmdBuffer);
 
         PaperMemory::Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), synchronizationInfo, { cmdBuffer });
-
-        //get top address
-        VkAccelerationStructureDeviceAddressInfoKHR accelerationAddressInfo{};
-        accelerationAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
-        accelerationAddressInfo.accelerationStructure = topStructure;
-        topStructureAddress = vkGetAccelerationStructureDeviceAddressKHR(rendererPtr->getDevice()->getDevice(), &accelerationAddressInfo);
 
         rendererPtr->recycleCommandBuffer({ cmdBuffer, synchronizationInfo.queueType });
     }

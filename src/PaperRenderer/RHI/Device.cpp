@@ -353,7 +353,7 @@ namespace PaperRenderer
         retrieveQueues(queuesCreationInfo);
 
         //command pools init
-        commands = std::make_unique<PaperMemory::Commands>(device, &queues);
+        commands = std::make_unique<PaperMemory::Commands>(device, GPU, surface, &queues);
     }
     PaperMemory::QueueFamiliesIndices Device::getQueueFamiliesIndices() const
     {

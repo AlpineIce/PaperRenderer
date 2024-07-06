@@ -29,7 +29,6 @@ namespace PaperRenderer
         std::unique_ptr<PaperMemory::Buffer> TLScratchBuffer;
 
         VkAccelerationStructureKHR topStructure;
-        VkDeviceAddress topStructureAddress;
         std::unordered_map<class Model const*, BottomStructure> bottomStructures;
         std::vector<class ModelInstance*> accelerationStructureInstances;
         VkSemaphore blasSignalSemaphore;

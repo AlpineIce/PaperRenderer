@@ -62,22 +62,24 @@ namespace PaperRenderer
         {
         private:
             VkDevice device;
+            VkPhysicalDevice gpu;
+            VkSurfaceKHR surface;
 
             static std::unordered_map<QueueType, QueuesInFamily>* queuesPtr;
             static std::unordered_map<QueueType, VkCommandPool> commandPools;
-            static const uint32_t frameCount = 2;
+            static uint32_t frameCount;
 
             void createCommandPools();
 
             static bool isInit;
             
         public:
-            Commands(VkDevice device, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr);
+            Commands(VkDevice device, VkPhysicalDevice gpu, VkSurfaceKHR surface, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr);
             ~Commands();
 
             static void freeCommandBuffers(VkDevice device, std::vector<CommandBuffer>& commandBuffers);
             static void submitToQueue(VkDevice device, const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers);
-            static uint32_t getFrameCount() { return frameCount; }
+            static uint32_t getFrameCount();
 
             static VkSemaphore getSemaphore(VkDevice device);
             static VkFence getSignaledFence(VkDevice device);

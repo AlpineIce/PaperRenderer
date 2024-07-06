@@ -5,6 +5,7 @@
 #include "glm/gtx/quaternion.hpp"
 
 #include <unordered_map>
+#include <list>
 
 namespace PaperRenderer
 {

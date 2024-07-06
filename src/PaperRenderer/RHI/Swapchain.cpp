@@ -1,5 +1,7 @@
 #include "Swapchain.h"
 
+#include <algorithm>
+
 namespace PaperRenderer
 {
     Swapchain::Swapchain(Device *device, WindowState startingWindowState)
@@ -165,7 +167,7 @@ namespace PaperRenderer
         swapchainInfo.pNext = NULL;
         swapchainInfo.flags =  0;
         swapchainInfo.surface = *(devicePtr->getSurfacePtr());
-        swapchainInfo.minImageCount = capabilities.minImageCount;
+        swapchainInfo.minImageCount = std::max(capabilities.minImageCount, (uint32_t)2);
         swapchainInfo.imageFormat = this->swapchainImageFormat;
         swapchainInfo.imageColorSpace = this->imageColorSpace;
         swapchainInfo.imageExtent = this->swapchainExtent;
