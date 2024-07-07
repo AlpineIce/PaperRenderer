@@ -8,14 +8,21 @@ layout (local_size_x = 128) in;
 
 layout(std430, set = 0, binding = 0) uniform InputData
 {
-    vec4 camPos;
-    mat4 projection;
-    mat4 view;
-    uint64_t modelDataPtr;
     uint objectCount;
 } inputData;
 
 //----------INPUT INSTANCES----------// TODO
+
+struct InputASInstance
+{
+    uint64_t blasReference;
+    uint modelInstanceIndex;
+};
+
+layout(std430, set = 0, binding = 2) readonly buffer InputASInstances
+{
+    InputASInstance instances[];
+} inputASInstances;
 
 //----------TLAS INSTANCE DATA----------//
 
@@ -27,29 +34,24 @@ struct AccelerationStructureInstance
     uint64_t accelerationStructureReference;
 };
 
-layout(std430, buffer_reference, buffer_reference_align = 8) writeonly buffer ASInstances
+layout(std430, set = 0, binding = 3) writeonly buffer ASInstances
 {
     AccelerationStructureInstance objects[];
-}; 
+} asInstances; 
 
 const uint VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR = 0x01000000;
 
-AccelerationStructureInstance buildASInstance(InputObject object, uint customIndex)
+AccelerationStructureInstance buildASInstance(InputASInstance inputASInstance, ModelInstance modelInstance, uint customIndex)
 {
-    uint gID = gl_GlobalInvocationID.x;
-    if(gID >= inputData.objectCount)
-    {
-        return;
-    }
-
-    ModelInstance modelInstance = inputInstances.modelInstances[inputInstance.modelInstanceIndex]; //should be at index 0 with the offset derrived from inputInstance
-    Model model = InputModel(inputData.modelDataPtr + modelInstance.modelDataOffset).model; //should be at index 0 with the offset derrived from modelInstance
-    mat4 modelMatrix = getModelMatrix(modelInstance);
+    const mat4 modelMatrix = getModelMatrix(modelInstance);
 
     mat3x4 instTransform;
-    instTransform[0] = modelMatrix[0];
-    instTransform[1] = modelMatrix[1];
-    instTransform[2] = modelMatrix[2];
+    instTransform[0].xyz = modelMatrix[0].xyz;
+    instTransform[1].xyz = modelMatrix[1].xyz;
+    instTransform[2].xyz = modelMatrix[2].xyz;
+    instTransform[0][3] = modelMatrix[3][0];
+    instTransform[1][3] = modelMatrix[3][1];
+    instTransform[2][3] = modelMatrix[3][2];
 
     //custom index and mask
     uint instanceCustomIndex = customIndex;    // value to merge in non-masked bits
@@ -67,7 +69,7 @@ AccelerationStructureInstance buildASInstance(InputObject object, uint customInd
     structureInstance.transform = instTransform;
     structureInstance.instanceCustomIndexAndMask = instanceCustomIndexAndMask;
     structureInstance.instanceShaderBindingTableRecordOffsetAndFlags = instanceShaderBindingTableRecordOffsetAndFlags;
-    structureInstance.accelerationStructureReference = uint64_t(object.blasReference);
+    structureInstance.accelerationStructureReference = uint64_t(inputASInstance.blasReference);
 
     return structureInstance;
 }
@@ -79,9 +81,8 @@ void main()
     {
         return;
     }
-    InputObject inputObject = inputObjects.objects[gID];
+    const InputASInstance inputASInstance = inputASInstances.instances[gID];
+    const ModelInstance modelInstance = inputInstances.modelInstances[inputASInstance.modelInstanceIndex];
 
-    ASInstances outputInstances = inputData.asInstancesBufferReference;
-    outputInstances.objects[gID] = buildASInstance(inputObject, gID);
-
+    asInstances.objects[gID] = buildASInstance(inputASInstance, modelInstance, gID);
 }

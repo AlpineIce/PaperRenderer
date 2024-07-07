@@ -1,4 +1,5 @@
 #include "Descriptor.h"
+#include "AccelerationStructure.h"
 
 namespace PaperRenderer
 {

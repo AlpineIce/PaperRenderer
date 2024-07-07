@@ -11,7 +11,8 @@ namespace PaperRenderer
         swapchain(&device, creationInfo.windowState),
         descriptors(&device),
         pipelineBuilder(&device, &descriptors, &swapchain),
-        rasterPreprocessPipeline(this, creationInfo.shadersDir)
+        rasterPreprocessPipeline(this, creationInfo.shadersDir),
+        tlasInstanceBuildPipeline(this, creationInfo.shadersDir)
     {
         //synchronization and cmd buffers
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
@@ -176,6 +177,8 @@ namespace PaperRenderer
         hostModelDataBuffer->removeFromRange(model->shaderDataLocation, model->getShaderData().size());
         
         model->selfIndex = UINT64_MAX;
+
+        //TODO UPDATE DEPENDENCIES
     }
 
     void RenderEngine::addObject(ModelInstance* object)
@@ -225,10 +228,7 @@ namespace PaperRenderer
             renderingModelInstances.clear();
         }
 
-        if(renderingModelInstances.size() == 1)
-        {
-            int a = 3;
-        }
+        //TODO UPDATE DEPENDENCIES
         
         object->rendererSelfIndex = UINT64_MAX;
     }

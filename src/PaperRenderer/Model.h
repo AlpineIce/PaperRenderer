@@ -148,6 +148,14 @@ namespace PaperRenderer
 
         ShaderModelInstance getShaderInstance() const;
 
+        //per acceleration structure data
+        struct AccelerationStructureInstance
+        {
+            uint64_t blasReference;
+            uint32_t modelInstanceIndex;
+            uint32_t padding;
+        };
+        
         //per render pass data
         struct RenderPassInstance
         {
@@ -192,8 +200,7 @@ namespace PaperRenderer
 
         struct AccelerationStructureData
         {
-            std::vector<char> renderPassInstanceData;
-            std::unordered_map<std::vector<LODMesh> const*, CommonMeshGroup*> meshGroupReferences;
+            uint64_t blasAddress;
             uint32_t selfIndex;
         };
         std::unordered_map<class AccelerationStructure const*, AccelerationStructureData> accelerationStructureSelfReferences;
@@ -203,8 +210,9 @@ namespace PaperRenderer
 
         friend class RenderEngine;
         friend class RenderPass;
-        friend class AccelerationStructure;
         friend class RasterPreprocessPipeline;
+        friend class AccelerationStructure;
+        friend class TLASInstanceBuildPipeline;
         friend class CommonMeshGroup;
         
     public:

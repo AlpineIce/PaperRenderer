@@ -140,7 +140,7 @@ namespace PaperRenderer
         writeDescriptorSet(cullingCmdBuffer, *rendererPtr->getCurrentFramePtr(), 0);
 
         //dispatch
-        workGroupSizes.x = ((rendererPtr->getModelInstanceReferences().size()) / 128) + 1;
+        workGroupSizes.x = ((renderPass.renderPassInstances.size()) / 128) + 1;
         dispatch(cullingCmdBuffer);
         
         vkEndCommandBuffer(cullingCmdBuffer);

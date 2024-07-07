@@ -3,6 +3,7 @@
 
 #include "RHI/Device.h"
 #include "RHI/Memory/VulkanResources.h"
+#include "RHI/AccelerationStructure.h"
 #include "RenderPass.h"
 
 #include <string>
@@ -31,6 +32,7 @@ namespace PaperRenderer
         DescriptorAllocator descriptors;
         PipelineBuilder pipelineBuilder;
         RasterPreprocessPipeline rasterPreprocessPipeline;
+        TLASInstanceBuildPipeline tlasInstanceBuildPipeline;
 
         std::string shadersDir;
         RendererState rendererState = {};
@@ -76,6 +78,8 @@ namespace PaperRenderer
         friend ModelInstance;
         friend RenderPass;
         friend RasterPreprocessPipeline;
+        friend AccelerationStructure;
+        friend TLASInstanceBuildPipeline;
 
         uint32_t currentImage = 0;
     public:

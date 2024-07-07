@@ -1,7 +1,6 @@
 #pragma once
 #include "Device.h"
 #include "Memory/VulkanResources.h"
-#include "AccelerationStructure.h"
 
 #include <unordered_map>
 
@@ -32,7 +31,7 @@ namespace PaperRenderer
 
     struct AccelerationStructureDescriptorWrites
     {
-        std::vector<AccelerationStructure const*> accelerationStructures;
+        std::vector<class AccelerationStructure const*> accelerationStructures;
         uint32_t binding;
     };
 

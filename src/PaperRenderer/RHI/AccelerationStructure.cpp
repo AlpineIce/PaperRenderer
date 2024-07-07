@@ -4,9 +4,173 @@
 
 namespace PaperRenderer
 {
+    //----------TLAS INSTANCE BUILD PIPELINE DEFINITIONS----------//
+
+    TLASInstanceBuildPipeline::TLASInstanceBuildPipeline(RenderEngine *renderer, std::string fileDir)
+        :rendererPtr(renderer)
+    {
+        //preprocess uniform buffers
+        for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
+        {
+            PaperMemory::BufferInfo preprocessBuffersInfo = {};
+            preprocessBuffersInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
+            preprocessBuffersInfo.size = sizeof(UBOInputData);
+            preprocessBuffersInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
+            uniformBuffers.push_back(std::make_unique<PaperMemory::Buffer>(renderer->getDevice()->getDevice(), preprocessBuffersInfo));
+        }
+        //uniform buffers allocation and assignment
+        VkDeviceSize ubosAllocationSize = 0;
+        for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
+        {
+            ubosAllocationSize += PaperMemory::DeviceAllocation::padToMultiple(uniformBuffers.at(i)->getMemoryRequirements().size, 
+                std::max(uniformBuffers.at(i)->getMemoryRequirements().alignment, renderer->getDevice()->getGPUProperties().properties.limits.minMemoryMapAlignment));
+        }
+        PaperMemory::DeviceAllocationInfo uboAllocationInfo = {};
+        uboAllocationInfo.allocationSize = ubosAllocationSize;
+        uboAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT; //use coherent memory for UBOs
+        uniformBuffersAllocation = std::make_unique<PaperMemory::DeviceAllocation>(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), uboAllocationInfo);
+        
+        for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
+        {
+            uniformBuffers.at(i)->assignAllocation(uniformBuffersAllocation.get());
+        }
+        
+        //pipeline info
+        shader = { VK_SHADER_STAGE_COMPUTE_BIT, fileDir + fileName };
+
+        VkDescriptorSetLayoutBinding inputDataDescriptor = {};
+        inputDataDescriptor.binding = 0;
+        inputDataDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        inputDataDescriptor.descriptorCount = 1;
+        inputDataDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        descriptorSets[0].descriptorBindings[0] = inputDataDescriptor;
+
+        VkDescriptorSetLayoutBinding inputInstancesDescriptor = {};
+        inputInstancesDescriptor.binding = 1;
+        inputInstancesDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        inputInstancesDescriptor.descriptorCount = 1;
+        inputInstancesDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        descriptorSets[0].descriptorBindings[1] = inputInstancesDescriptor;
+
+        VkDescriptorSetLayoutBinding inputASInstancesDescriptor = {};
+        inputASInstancesDescriptor.binding = 2;
+        inputASInstancesDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        inputASInstancesDescriptor.descriptorCount = 1;
+        inputASInstancesDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        descriptorSets[0].descriptorBindings[2] = inputASInstancesDescriptor;
+
+        VkDescriptorSetLayoutBinding outputASInstancesDescriptor = {};
+        outputASInstancesDescriptor.binding = 3;
+        outputASInstancesDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        outputASInstancesDescriptor.descriptorCount = 1;
+        outputASInstancesDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        descriptorSets[0].descriptorBindings[3] = outputASInstancesDescriptor;
+
+        buildPipeline();
+    }
+
+    TLASInstanceBuildPipeline::~TLASInstanceBuildPipeline()
+    {
+         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
+        {
+            uniformBuffers.at(i).reset();
+        }
+        uniformBuffersAllocation.reset();
+    }
+
+    void TLASInstanceBuildPipeline::submit(const PaperMemory::SynchronizationInfo &syncInfo, const AccelerationStructure &accelerationStructure)
+    {
+        UBOInputData uboInputData = {};
+        uboInputData.objectCount = accelerationStructure.accelerationStructureInstances.size();
+
+        PaperMemory::BufferWrite write = {};
+        write.data = &uboInputData;
+        write.size = sizeof(UBOInputData);
+        write.offset = 0;
+
+        uniformBuffers.at(*rendererPtr->getCurrentFramePtr())->writeToBuffer({ write });
+
+        //set0 - binding 0: UBO input data
+        VkDescriptorBufferInfo bufferWrite0Info = {};
+        bufferWrite0Info.buffer = uniformBuffers.at(*rendererPtr->getCurrentFramePtr())->getBuffer();
+        bufferWrite0Info.offset = 0;
+        bufferWrite0Info.range = sizeof(UBOInputData);
+
+        BuffersDescriptorWrites bufferWrite0 = {};
+        bufferWrite0.binding = 0;
+        bufferWrite0.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        bufferWrite0.infos = { bufferWrite0Info };
+
+        //set0 - binding 1: model instances
+        VkDescriptorBufferInfo bufferWrite1Info = {};
+        bufferWrite1Info.buffer = rendererPtr->deviceInstancesDataBuffer->getBuffer();
+        bufferWrite1Info.offset = 0;
+        bufferWrite1Info.range = rendererPtr->renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance);
+
+        BuffersDescriptorWrites bufferWrite1 = {};
+        bufferWrite1.binding = 1;
+        bufferWrite1.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bufferWrite1.infos = { bufferWrite1Info };
+
+        //set0 - binding 2: input objects               //BIG OL TODO
+        VkDescriptorBufferInfo bufferWrite2Info = {};
+        bufferWrite2Info.buffer = accelerationStructure.deviceInstancesBuffer->getBuffer();
+        bufferWrite2Info.offset = 0;
+        bufferWrite2Info.range = accelerationStructure.accelerationStructureInstances.size() * sizeof(ModelInstance::AccelerationStructureInstance);
+
+        BuffersDescriptorWrites bufferWrite2 = {};
+        bufferWrite2.binding = 2;
+        bufferWrite2.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bufferWrite2.infos = { bufferWrite2Info };
+
+        //set0 - binding 3: output objects
+        VkDescriptorBufferInfo bufferWrite3Info = {};
+        bufferWrite3Info.buffer = accelerationStructure.TLInstancesBuffer->getBuffer();
+        bufferWrite3Info.offset = 0;
+        bufferWrite3Info.range = accelerationStructure.accelerationStructureInstances.size() * sizeof(VkAccelerationStructureInstanceKHR);
+
+        BuffersDescriptorWrites bufferWrite3 = {};
+        bufferWrite3.binding = 3;
+        bufferWrite3.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bufferWrite3.infos = { bufferWrite3Info };
+
+        VkCommandBufferBeginInfo commandInfo;
+        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        commandInfo.pNext = NULL;
+        commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        commandInfo.pInheritanceInfo = NULL;
+
+        VkCommandBuffer cmdBuffer = PaperMemory::Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), syncInfo.queueType);
+
+        vkBeginCommandBuffer(cmdBuffer, &commandInfo);
+        bind(cmdBuffer);
+
+        DescriptorWrites descriptorWritesInfo = {};
+        descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2, bufferWrite3 };
+        descriptorWrites[0] = descriptorWritesInfo;
+        writeDescriptorSet(cmdBuffer, *rendererPtr->getCurrentFramePtr(), 0);
+
+        //dispatch
+        workGroupSizes.x = ((accelerationStructure.accelerationStructureInstances.size()) / 128) + 1;
+        dispatch(cmdBuffer);
+        
+        vkEndCommandBuffer(cmdBuffer);
+
+        //submit
+        PaperMemory::Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), syncInfo, { cmdBuffer });
+
+        PaperMemory::CommandBuffer commandBuffer = { cmdBuffer, syncInfo.queueType };
+        rendererPtr->recycleCommandBuffer(commandBuffer);
+    }
+
+    //----------ACCELERATION STRUCTURE DEFINITIONS----------//
+
+    std::unique_ptr<PaperMemory::DeviceAllocation> AccelerationStructure::hostInstancesAllocation;
+    std::unique_ptr<PaperMemory::DeviceAllocation> AccelerationStructure::deviceInstancesAllocation;
+    std::list<AccelerationStructure*> AccelerationStructure::accelerationStructures;
+
     AccelerationStructure::AccelerationStructure(RenderEngine* renderer)
-        :rendererPtr(renderer),
-        topStructure(VK_NULL_HANDLE)
+        :rendererPtr(renderer)
     {
         PaperMemory::BufferInfo bufferInfo = {};
         bufferInfo.size = 256; //arbitrary starting size
@@ -16,7 +180,7 @@ namespace PaperRenderer
         BLBuffer =          std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
         bufferInfo.usageFlags =    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
         BLScratchBuffer =   std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
-        bufferInfo.usageFlags =    VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        bufferInfo.usageFlags =    VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
         TLInstancesBuffer = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
         bufferInfo.usageFlags =    VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
         TLBuffer =          std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
@@ -24,14 +188,25 @@ namespace PaperRenderer
         TLScratchBuffer =   std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
 
         //synchronization things
+        instancesCopySemaphore = PaperMemory::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
         blasSignalSemaphore = PaperMemory::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
+        tlasInstanceBuildSignalSemaphore = PaperMemory::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
+
+        accelerationStructures.push_back(this);
 
         rebuildAllocation();
+        rebuildInstancesAllocationsAndBuffers(rendererPtr);
     }
 
     AccelerationStructure::~AccelerationStructure()
     {
+        ASAllocation.reset();
+        hostInstancesAllocation.reset();
+        deviceInstancesAllocation.reset();
+        
+        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), instancesCopySemaphore, nullptr);
         vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), blasSignalSemaphore, nullptr);
+        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), tlasInstanceBuildSignalSemaphore, nullptr);
 
         vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), topStructure, nullptr);
         for(auto& [ptr, structure] : bottomStructures)
@@ -39,6 +214,74 @@ namespace PaperRenderer
             vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), structure.structure, nullptr);
         }
         bottomStructures.clear();
+    }
+
+    void AccelerationStructure::rebuildInstancesAllocationsAndBuffers(RenderEngine* renderer)
+    {
+        //copy old buffer data from all acceleration structures
+        std::unordered_map<AccelerationStructure*, std::vector<char>> oldData;
+        VkDeviceSize newHostSize = 0;
+        VkDeviceSize newDeviceSize = 0;
+        
+        for(auto accelerationStructure : accelerationStructures)
+        {
+            //instance data
+            std::vector<char> oldInstanceData(accelerationStructure->accelerationStructureInstances.size() * sizeof(ModelInstance::AccelerationStructureInstance));
+            if(accelerationStructure->hostInstancesBuffer)
+            {
+                memcpy(oldInstanceData.data(), accelerationStructure->hostInstancesBuffer->getHostDataPtr(), oldInstanceData.size());
+                accelerationStructure->hostInstancesBuffer.reset();
+            }
+            oldData[accelerationStructure] = (oldInstanceData);
+
+            //rebuild buffers
+            accelerationStructure->rebuildInstancesBuffers();
+            newHostSize += PaperMemory::DeviceAllocation::padToMultiple(accelerationStructure->hostInstancesBuffer->getMemoryRequirements().size, accelerationStructure->hostInstancesBuffer->getMemoryRequirements().alignment);
+            newDeviceSize += PaperMemory::DeviceAllocation::padToMultiple(accelerationStructure->deviceInstancesBuffer->getMemoryRequirements().size, accelerationStructure->deviceInstancesBuffer->getMemoryRequirements().alignment);
+        }
+
+        //rebuild allocations
+        PaperMemory::DeviceAllocationInfo hostAllocationInfo = {};
+        hostAllocationInfo.allocationSize = newHostSize;
+        hostAllocationInfo.allocFlags = 0;
+        hostAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+        hostInstancesAllocation = std::make_unique<PaperMemory::DeviceAllocation>(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), hostAllocationInfo);
+
+        PaperMemory::DeviceAllocationInfo deviceAllocationInfo = {};
+        deviceAllocationInfo.allocationSize = newDeviceSize;
+        deviceAllocationInfo.allocFlags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+        deviceAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        deviceInstancesAllocation = std::make_unique<PaperMemory::DeviceAllocation>(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), deviceAllocationInfo);
+
+        //assign buffer memory and re-copy
+        for(auto& accelerationStructure : accelerationStructures)
+        {
+            //assign memory
+            accelerationStructure->hostInstancesBuffer->assignAllocation(hostInstancesAllocation.get());
+            accelerationStructure->deviceInstancesBuffer->assignAllocation(deviceInstancesAllocation.get());
+
+            //re-copy
+            memcpy(accelerationStructure->hostInstancesBuffer->getHostDataPtr(), oldData.at(accelerationStructure).data(), oldData.at(accelerationStructure).size());
+        }
+    }
+
+    void AccelerationStructure::rebuildInstancesBuffers()
+    {
+        VkDeviceSize newInstancesBufferSize = std::max(
+            (VkDeviceSize)(accelerationStructureInstances.size() * sizeof(ModelInstance::AccelerationStructureInstance) * instancesOverhead), (VkDeviceSize)(sizeof(ModelInstance::AccelerationStructureInstance) * 64)
+        );
+
+        PaperMemory::BufferInfo hostInstancesBufferInfo = {};
+        hostInstancesBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
+        hostInstancesBufferInfo.size = newInstancesBufferSize;
+        hostInstancesBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
+        hostInstancesBuffer = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), hostInstancesBufferInfo);
+
+        PaperMemory::BufferInfo deviceInstancesBufferInfo = {};
+        deviceInstancesBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
+        deviceInstancesBufferInfo.size = newInstancesBufferSize;
+        deviceInstancesBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
+        deviceInstancesBuffer = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), deviceInstancesBufferInfo);
     }
 
     AccelerationStructure::BuildData AccelerationStructure::getBuildData()
@@ -131,7 +374,7 @@ namespace PaperRenderer
         //----------TOP LEVEL----------//
 
         //instances
-        instancesCount = rendererPtr->getModelReferences().size();
+        instancesCount = accelerationStructureInstances.size();
         instancesBufferSize = instancesCount * sizeof(VkAccelerationStructureInstanceKHR);
 
         //geometries
@@ -221,7 +464,7 @@ namespace PaperRenderer
             //TL instances
             PaperMemory::BufferInfo bufferInfo2 = {};
             bufferInfo2.size = instancesBufferSize * 1.2; //allocate 20% more than what's currently needed
-            bufferInfo2.usageFlags = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            bufferInfo2.usageFlags = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
             bufferInfo2.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
             TLInstancesBuffer = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo2);
 
@@ -243,6 +486,35 @@ namespace PaperRenderer
 
             TLBuildData.structureGeometry.geometry.instances.data = VkDeviceOrHostAddressConstKHR{.deviceAddress = TLInstancesBuffer->getBufferDeviceAddress()};
         }
+
+        //set BLAS addresses
+        uint32_t modelIndex = 0;
+        for(Model const* model : rendererPtr->getModelReferences()) //important to note here that the iteration order is the exact same as the one for collecting the initial data
+        {
+            bottomStructures[model].bufferAddress = BLBuffer->getBufferDeviceAddress() + BLBuildData.asOffsets.at(modelIndex);
+            modelIndex++;
+        }
+
+        //set instances BLAS address
+        for(ModelInstance* instance : accelerationStructureInstances)
+        {
+            uint64_t blasAddress = bottomStructures.at(instance->getParentModelPtr()).bufferAddress;
+            instance->accelerationStructureSelfReferences.at(this).blasAddress = blasAddress;
+            ((ModelInstance::AccelerationStructureInstance*)hostInstancesBuffer->getHostDataPtr() + instance->accelerationStructureSelfReferences.at(this).selfIndex)->blasReference = blasAddress;
+        }
+
+        //copy instances data
+        VkBufferCopy region = {};
+        region.srcOffset = 0;
+        region.size = sizeof(ModelInstance::AccelerationStructureInstance) * accelerationStructureInstances.size();
+        region.dstOffset = 0;
+
+        PaperRenderer::PaperMemory::SynchronizationInfo bufferCopySyncInfo = {};
+        bufferCopySyncInfo.queueType = PaperMemory::QueueType::TRANSFER;
+        bufferCopySyncInfo.waitPairs = {};
+        bufferCopySyncInfo.signalPairs = { { instancesCopySemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT } };
+        bufferCopySyncInfo.fence = VK_NULL_HANDLE;
+        rendererPtr->recycleCommandBuffer(deviceInstancesBuffer->copyFromBufferRanges(*hostInstancesBuffer.get(), { region }, bufferCopySyncInfo));
 
         return { std::move(BLBuildData), std::move(TLBuildData) };
     }
@@ -280,9 +552,21 @@ namespace PaperRenderer
 
     void AccelerationStructure::updateAccelerationStructures(const AccelerationStructureSynchronizatioInfo& syncInfo)
     {
-        vkDeviceWaitIdle(rendererPtr->getDevice()->getDevice());
+        //get necessary data and buffer sizing
         const BuildData buildData = getBuildData();
 
+        //set TLAS instances
+        std::vector<PaperMemory::SemaphorePair> instancesComputeWaitSemaphores = syncInfo.waitSemaphores;
+        instancesComputeWaitSemaphores.push_back({ instancesCopySemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
+
+        PaperRenderer::PaperMemory::SynchronizationInfo tlasInstancesSyncInfo = {};
+        tlasInstancesSyncInfo.queueType = PaperMemory::QueueType::COMPUTE;
+        tlasInstancesSyncInfo.waitPairs = instancesComputeWaitSemaphores;
+        tlasInstancesSyncInfo.signalPairs = { { tlasInstanceBuildSignalSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT } };
+        tlasInstancesSyncInfo.fence = VK_NULL_HANDLE;
+        rendererPtr->tlasInstanceBuildPipeline.submit(tlasInstancesSyncInfo, *this);
+
+        //acceleration structure builds
         PaperMemory::SynchronizationInfo blSyncInfo = {};
         blSyncInfo.queueType = PaperMemory::QueueType::COMPUTE;
         blSyncInfo.waitPairs = {};
@@ -292,7 +576,10 @@ namespace PaperRenderer
 
         PaperMemory::SynchronizationInfo tlSyncInfo = {};
         tlSyncInfo.queueType = PaperMemory::QueueType::COMPUTE;
-        tlSyncInfo.waitPairs = { { blasSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR } };
+        tlSyncInfo.waitPairs = {
+            { tlasInstanceBuildSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR },
+            { blasSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR }
+        };
         tlSyncInfo.signalPairs = syncInfo.TLSignalSemaphores;
         tlSyncInfo.fence = VK_NULL_HANDLE;
         createTopLevel(buildData.topData, tlSyncInfo);
@@ -319,14 +606,12 @@ namespace PaperRenderer
         {
             vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), structure.structure, nullptr);
         }
-        bottomStructures.clear();
 
         //create BLASes (funny grammar moment)
         uint32_t modelIndex = 0;
         for(Model const* model : rendererPtr->getModelReferences()) //important to note here that the iteration order is the exact same as the one for collecting the initial data
         {
-            bottomStructures[model].structure = VK_NULL_HANDLE;
-            bottomStructures[model].bufferAddress = BLBuffer->getBufferDeviceAddress() + buildData.asOffsets.at(modelIndex);
+            bottomStructures.at(model).structure = VK_NULL_HANDLE;
             buildData.buildGeometries.at(modelIndex).scratchData.deviceAddress = BLScratchBuffer->getBufferDeviceAddress() + buildData.scratchOffsets.at(modelIndex);
 
             VkAccelerationStructureCreateInfoKHR accelStructureInfo = {};
@@ -338,8 +623,8 @@ namespace PaperRenderer
             accelStructureInfo.size = buildData.buildSizes.at(modelIndex).accelerationStructureSize;
             accelStructureInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
             
-            vkCreateAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), &accelStructureInfo, nullptr, &bottomStructures[model].structure);
-            buildData.buildGeometries.at(modelIndex).dstAccelerationStructure = bottomStructures[model].structure;
+            vkCreateAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), &accelStructureInfo, nullptr, &bottomStructures.at(model).structure);
+            buildData.buildGeometries.at(modelIndex).dstAccelerationStructure = bottomStructures.at(model).structure;
 
             modelIndex++;
         }
@@ -422,7 +707,6 @@ namespace PaperRenderer
         beginInfo.pInheritanceInfo = NULL;
         
         vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-        //TODO DISPATCH INSTANCE FILLING COMPUTE SHADER
         vkCmdBuildAccelerationStructuresKHR(cmdBuffer, 1, &buildData.buildGeoInfo, buildRangesPtrArray.data());
         vkEndCommandBuffer(cmdBuffer);
 
@@ -433,9 +717,39 @@ namespace PaperRenderer
 
     void AccelerationStructure::addInstance(ModelInstance *instance)
     {
+        //add reference
+        instance->accelerationStructureSelfReferences[this].selfIndex = accelerationStructureInstances.size();
+        accelerationStructureInstances.push_back(instance);
+
+        //check size
+        if(hostInstancesBuffer->getSize() < (accelerationStructureInstances.size() + 3) * sizeof(ModelInstance::AccelerationStructureInstance))
+        {
+            rebuildInstancesAllocationsAndBuffers(rendererPtr);
+        }
+
+        //set shader data
+        ModelInstance::AccelerationStructureInstance shaderData = {};
+        shaderData.blasReference = 0;
+        shaderData.modelInstanceIndex = instance->rendererSelfIndex;
+
+        memcpy((ModelInstance::AccelerationStructureInstance*)hostInstancesBuffer->getHostDataPtr() + instance->accelerationStructureSelfReferences.at(this).selfIndex, &shaderData, sizeof(ModelInstance::ShaderModelInstance));
     }
     
     void AccelerationStructure::removeInstance(ModelInstance *instance)
     {
+        //remove reference
+        if(accelerationStructureInstances.size() > 1)
+        {
+            uint32_t& selfReference = instance->accelerationStructureSelfReferences.at(this).selfIndex;
+            accelerationStructureInstances.at(selfReference) = accelerationStructureInstances.back();
+            accelerationStructureInstances.at(selfReference)->accelerationStructureSelfReferences.at(this).selfIndex = selfReference;
+            accelerationStructureInstances.pop_back();
+        }
+        else
+        {
+            accelerationStructureInstances.clear();
+        }
+
+        instance->accelerationStructureSelfReferences.erase(this);
     }
 }
