@@ -1,7 +1,6 @@
 #pragma once
-#include "RHI/Device.h"
 #include "RHI/Pipeline.h"
-#include "Camera.h"
+#include "RHI/Descriptor.h"
 
 #include <memory>
 

@@ -1,6 +1,6 @@
 #pragma once
-#include "Material.h"
-#include "RHI/IndirectDraw.h"
+#include "RHI/Device.h"
+#include "glm/gtx/quaternion.hpp"
 
 #include <filesystem>
 #include <unordered_map>
@@ -193,7 +193,7 @@ namespace PaperRenderer
         struct RenderPassData
         {
             std::vector<char> renderPassInstanceData;
-            std::unordered_map<std::vector<LODMesh> const*, CommonMeshGroup*> meshGroupReferences;
+            std::unordered_map<std::vector<LODMesh> const*, class CommonMeshGroup*> meshGroupReferences;
             uint32_t selfIndex;
         };
         std::unordered_map<class RenderPass const*, RenderPassData> renderPassSelfReferences;

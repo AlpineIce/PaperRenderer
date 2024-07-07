@@ -1,6 +1,7 @@
 #include "Model.h"
 #include "RenderPass.h"
 #include "PaperRenderer.h"
+#include "Material.h"
 #include "RHI/AccelerationStructure.h"
 #include "RHI/IndirectDraw.h"
 

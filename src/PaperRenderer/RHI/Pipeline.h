@@ -1,7 +1,5 @@
 #pragma once
-#include "Descriptor.h"
 #include "Memory/VulkanResources.h"
-#include "Swapchain.h"
 
 #include <vector>
 
@@ -15,12 +13,12 @@ namespace PaperRenderer
         VkShaderModule program;
         std::vector<uint32_t> compiledShader;
         
-        Device* devicePtr;
+        class Device* devicePtr;
 
         std::vector<uint32_t> getShaderData(std::string location);
 
     public:
-        Shader(Device* device, std::string location);
+        Shader(class Device* device, std::string location);
         ~Shader();
         
         VkShaderModule getModule() const { return program; }
@@ -91,8 +89,8 @@ namespace PaperRenderer
 
     struct PipelineCreationInfo
     {
-        Device *device;
-        DescriptorAllocator* descriptors;
+        class Device *device;
+        class DescriptorAllocator* descriptors;
         VkPipelineCache cache;
         std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
         std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
@@ -108,8 +106,8 @@ namespace PaperRenderer
         std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
         VkPipelineLayout pipelineLayout;
 
-        Device* devicePtr;
-        DescriptorAllocator* descriptorsPtr;
+        class Device* devicePtr;
+        class DescriptorAllocator* descriptorsPtr;
         
     public:
         Pipeline(const PipelineCreationInfo& creationInfo);
@@ -136,7 +134,7 @@ namespace PaperRenderer
         RasterPipelineProperties pipelineProperties;
 
     public:
-        RasterPipeline(const PipelineCreationInfo& creationInfo, const RasterPipelineProperties& pipelineProperties, Swapchain* swapchain);
+        RasterPipeline(const PipelineCreationInfo& creationInfo, const RasterPipelineProperties& pipelineProperties, class Swapchain* swapchain);
         ~RasterPipeline() override;
         
         const RasterPipelineProperties& getPipelineProperties() const { return pipelineProperties; }
@@ -186,8 +184,8 @@ namespace PaperRenderer
     //"helper" struct to decrease parameters needed for construction later on
     struct PipelineRendererInfo
     {
-        Device* devicePtr;
-        DescriptorAllocator* descriptorsPtr;
+        class Device* devicePtr;
+        class DescriptorAllocator* descriptorsPtr;
         class PipelineBuilder* pipelineBuilderPtr; //epic forward declaration
     };
 
@@ -198,9 +196,9 @@ namespace PaperRenderer
 
         static PipelineRendererInfo rendererInfo;
 
-        Device* devicePtr;
-        DescriptorAllocator* descriptorsPtr;
-        Swapchain* swapchainPtr;
+        class Device* devicePtr;
+        class DescriptorAllocator* descriptorsPtr;
+        class Swapchain* swapchainPtr;
 
         std::shared_ptr<Shader> createShader(const ShaderPair& pair) const;
         std::unordered_map<uint32_t, VkDescriptorSetLayout> createDescriptorLayouts(const std::unordered_map<uint32_t, DescriptorSet>& descriptorSets) const;

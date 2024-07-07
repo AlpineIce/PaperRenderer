@@ -1,5 +1,4 @@
 #pragma once
-#include "Device.h"
 #include "Memory/VulkanResources.h"
 
 #include <unordered_map>
@@ -66,7 +65,7 @@ namespace PaperRenderer
         std::vector<std::vector<VkDescriptorPool>> descriptorPools;
         std::vector<VkDescriptorPool*> currentPools;
 
-        Device* devicePtr;
+        class Device* devicePtr;
 
         VkDescriptorPool allocateDescriptorPool();
 

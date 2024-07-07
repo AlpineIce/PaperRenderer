@@ -1,4 +1,5 @@
 #include "Material.h"
+#include "RHI/Device.h"
 
 namespace PaperRenderer
 {

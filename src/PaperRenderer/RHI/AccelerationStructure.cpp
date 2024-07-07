@@ -1,6 +1,5 @@
 #include "AccelerationStructure.h"
 #include "../PaperRenderer.h"
-#include "../Model.h"
 
 namespace PaperRenderer
 {

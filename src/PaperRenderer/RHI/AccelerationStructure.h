@@ -1,5 +1,4 @@
 #pragma once
-#include "Device.h"
 #include "../ComputeShader.h"
 
 #include <unordered_map>
@@ -114,8 +113,8 @@ namespace PaperRenderer
 
         void updateAccelerationStructures(const AccelerationStructureSynchronizatioInfo& syncInfo);
 
-        void addInstance(class ModelInstance* instance);
-        void removeInstance(class ModelInstance* instance);
+        void addInstance(ModelInstance* instance);
+        void removeInstance(ModelInstance* instance);
 
         const VkAccelerationStructureKHR& getTLAS() const { return topStructure; }
         const std::unordered_map<class Model const*, BottomStructure>& getBottomStructures() const { return bottomStructures; }

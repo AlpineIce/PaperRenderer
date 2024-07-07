@@ -1,4 +1,6 @@
 #include "Pipeline.h"
+#include "Descriptor.h"
+#include "Swapchain.h"
 
 #include <fstream>
 

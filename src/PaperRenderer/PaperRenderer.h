@@ -2,9 +2,10 @@
 #include "GLFW/glfw3.h"
 
 #include "RHI/Device.h"
-#include "RHI/Memory/VulkanResources.h"
-#include "RHI/AccelerationStructure.h"
+#include "RHI/Descriptor.h"
+#include "RayTrace.h"
 #include "RenderPass.h"
+#include "Model.h"
 
 #include <string>
 #include <memory>

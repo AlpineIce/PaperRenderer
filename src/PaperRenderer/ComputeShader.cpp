@@ -1,4 +1,5 @@
 #include "ComputeShader.h"
+#include "RHI/Device.h"
 
 namespace PaperRenderer
 {

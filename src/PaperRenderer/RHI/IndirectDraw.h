@@ -1,7 +1,5 @@
 #pragma once
 #include "Memory/VulkanResources.h"
-#include "Descriptor.h"
-#include "Pipeline.h"
 #include "glm/gtx/quaternion.hpp"
 
 #include <unordered_map>
@@ -54,7 +52,7 @@ namespace PaperRenderer
 
         class RenderEngine* rendererPtr;
         class RenderPass const* renderPassPtr;
-        RasterPipeline const* pipelinePtr;
+        class RasterPipeline const* pipelinePtr;
 
     public:
         CommonMeshGroup(class RenderEngine* renderer, class RenderPass const* renderPass, RasterPipeline const* pipeline);
