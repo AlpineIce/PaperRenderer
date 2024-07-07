@@ -1,18 +1,19 @@
 #include "RayTrace.h"
+#include "PaperRenderer.h"
+#include "Camera.h"
 
 namespace PaperRenderer
 {
-    RTPreprocessPipeline::RTPreprocessPipeline(std::string fileDir)
-        :ComputeShader()
+    RayTraceRender::RayTraceRender(RenderEngine *renderer, Camera *camera, const RayTraceRenderInfo& renderPassInfo)
+        :rendererPtr(renderer)
     {
     }
 
-    RTPreprocessPipeline::~RTPreprocessPipeline()
+    RayTraceRender::~RayTraceRender()
     {
     }
 
-    PaperMemory::CommandBuffer RTPreprocessPipeline::submit()
+    void RayTraceRender::render(const PaperMemory::SynchronizationInfo &syncInfo)
     {
-        return { VK_NULL_HANDLE, PaperMemory::QueueType::COMPUTE };
     }
 }

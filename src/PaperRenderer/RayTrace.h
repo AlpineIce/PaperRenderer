@@ -1,26 +1,23 @@
 #pragma once
 #include "RHI/AccelerationStructure.h"
-#include "ComputeShader.h"
 
 namespace PaperRenderer
 {
-    class RTPreprocessPipeline : public ComputeShader
+    struct RayTraceRenderInfo
+    {
+
+    };
+
+    class RayTraceRender
     {
     private:
-        std::string fileName = "RTObjectBuild.spv";
-        std::vector<std::unique_ptr<PaperMemory::Buffer>> uniformBuffers;
-        std::unique_ptr<PaperMemory::DeviceAllocation> uniformBuffersAllocation;
-
-        struct UBOInputData
-        {
-            VkDeviceAddress tlasInstancesAddress;
-            uint32_t objectCount;
-        };
+        class RenderEngine* rendererPtr;
+        class Camera* cameraPtr;
 
     public:
-        RTPreprocessPipeline(std::string fileDir);
-        ~RTPreprocessPipeline() override;
+        RayTraceRender(RenderEngine* renderer, Camera* camera, const RayTraceRenderInfo& renderPassInfo);
+        ~RayTraceRender();
 
-        PaperMemory::CommandBuffer submit();
+        void render(const PaperMemory::SynchronizationInfo& syncInfo);
     };
 }
