@@ -8,7 +8,8 @@ namespace PaperRenderer
     //----------PREPROCESS PIPELINES DEFINITIONS----------//
 
     RasterPreprocessPipeline::RasterPreprocessPipeline(RenderEngine* renderer, std::string fileDir)
-        :rendererPtr(renderer)
+        :ComputeShader(renderer),
+        rendererPtr(renderer)
     {
         //preprocess uniform buffers
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
@@ -17,19 +18,19 @@ namespace PaperRenderer
             preprocessBuffersInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
             preprocessBuffersInfo.size = sizeof(UBOInputData);
             preprocessBuffersInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-            uniformBuffers.push_back(std::make_unique<PaperMemory::Buffer>(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), preprocessBuffersInfo));
+            uniformBuffers.push_back(std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), preprocessBuffersInfo));
         }
         //uniform buffers allocation and assignment
         VkDeviceSize ubosAllocationSize = 0;
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {
             ubosAllocationSize += PaperMemory::DeviceAllocation::padToMultiple(uniformBuffers.at(i)->getMemoryRequirements().size, 
-                std::max(uniformBuffers.at(i)->getMemoryRequirements().alignment, PipelineBuilder::getRendererInfo().devicePtr->getGPUProperties().properties.limits.minMemoryMapAlignment));
+                std::max(uniformBuffers.at(i)->getMemoryRequirements().alignment, rendererPtr->getDevice()->getGPUProperties().properties.limits.minMemoryMapAlignment));
         }
         PaperMemory::DeviceAllocationInfo uboAllocationInfo = {};
         uboAllocationInfo.allocationSize = ubosAllocationSize;
         uboAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT; //use coherent memory for UBOs
-        uniformBuffersAllocation = std::make_unique<PaperMemory::DeviceAllocation>(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), PipelineBuilder::getRendererInfo().devicePtr->getGPU(), uboAllocationInfo);
+        uniformBuffersAllocation = std::make_unique<PaperMemory::DeviceAllocation>(rendererPtr->getDevice()->getDevice(), rendererPtr->getDevice()->getGPU(), uboAllocationInfo);
         
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {
@@ -129,7 +130,7 @@ namespace PaperRenderer
         commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         commandInfo.pInheritanceInfo = NULL;
 
-        VkCommandBuffer cullingCmdBuffer = PaperMemory::Commands::getCommandBuffer(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), syncInfo.queueType);
+        VkCommandBuffer cullingCmdBuffer = PaperMemory::Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), syncInfo.queueType);
 
         vkBeginCommandBuffer(cullingCmdBuffer, &commandInfo);
         bind(cullingCmdBuffer);
@@ -146,7 +147,7 @@ namespace PaperRenderer
         vkEndCommandBuffer(cullingCmdBuffer);
 
         //submit
-        PaperMemory::Commands::submitToQueue(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), syncInfo, { cullingCmdBuffer });
+        PaperMemory::Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), syncInfo, { cullingCmdBuffer });
 
         PaperMemory::CommandBuffer commandBuffer = { cullingCmdBuffer, syncInfo.queueType };
         rendererPtr->recycleCommandBuffer(commandBuffer);
@@ -357,7 +358,7 @@ namespace PaperRenderer
         syncInfo.signalPairs = { { drawCountsClearSemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_TRANSFER_BIT } };
         syncInfo.fence = VK_NULL_HANDLE;
 
-        VkCommandBuffer cmdBuffer = PaperMemory::Commands::getCommandBuffer(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), syncInfo.queueType);
+        VkCommandBuffer cmdBuffer = PaperMemory::Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), syncInfo.queueType);
 
         vkBeginCommandBuffer(cmdBuffer, &commandInfo);
 
@@ -375,7 +376,7 @@ namespace PaperRenderer
         vkEndCommandBuffer(cmdBuffer);
 
         //submit
-        PaperMemory::Commands::submitToQueue(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), syncInfo, { cmdBuffer });
+        PaperMemory::Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), syncInfo, { cmdBuffer });
 
         PaperMemory::CommandBuffer commandBuffer = { cmdBuffer, syncInfo.queueType };
         rendererPtr->recycleCommandBuffer(commandBuffer);

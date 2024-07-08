@@ -1,9 +1,10 @@
 #include "ComputeShader.h"
-#include "RHI/Device.h"
+#include "PaperRenderer.h"
 
 namespace PaperRenderer
 {
-    ComputeShader::ComputeShader()
+    ComputeShader::ComputeShader(RenderEngine* renderer)
+        :rendererPtr(renderer)
     {
         pipelineBuildInfo.shaderInfo = &shader;
         pipelineBuildInfo.descriptors = &descriptorSets;
@@ -15,7 +16,7 @@ namespace PaperRenderer
 
     void ComputeShader::buildPipeline()
     {
-        pipeline = PipelineBuilder::getRendererInfo().pipelineBuilderPtr->buildComputePipeline(pipelineBuildInfo);
+        pipeline = rendererPtr->getPipelineBuilder()->buildComputePipeline(pipelineBuildInfo);
     }
 
     void ComputeShader::bind(VkCommandBuffer cmdBuffer)
@@ -29,8 +30,8 @@ namespace PaperRenderer
         {
             if(descriptorWrites.at(setNumber).bufferViewWrites.size() || descriptorWrites.at(setNumber).bufferWrites.size() || descriptorWrites.at(setNumber).imageWrites.size())
             {
-                VkDescriptorSet descriptorSet = PipelineBuilder::getRendererInfo().descriptorsPtr->allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(setNumber), currentImage);
-                DescriptorAllocator::writeUniforms(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), descriptorSet, descriptorWrites.at(setNumber));
+                VkDescriptorSet descriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(setNumber), currentImage);
+                DescriptorAllocator::writeUniforms(rendererPtr->getDevice()->getDevice(), descriptorSet, descriptorWrites.at(setNumber));
 
                 DescriptorBind bindingInfo = {};
                 bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
@@ -38,7 +39,7 @@ namespace PaperRenderer
                 bindingInfo.descriptorScope = setNumber;
                 bindingInfo.layout = pipeline->getLayout();
                 
-                DescriptorAllocator::bindSet(PipelineBuilder::getRendererInfo().devicePtr->getDevice(), cmdBuffer, bindingInfo);
+                DescriptorAllocator::bindSet(rendererPtr->getDevice()->getDevice(), cmdBuffer, bindingInfo);
             }
         }
     }

@@ -18,8 +18,10 @@ namespace PaperRenderer
 
         void buildPipeline();
 
+        class RenderEngine* rendererPtr;
+
     public:
-        ComputeShader();
+        ComputeShader(class RenderEngine* renderer);
         virtual ~ComputeShader();
 
         void bind(VkCommandBuffer cmdBuffer);

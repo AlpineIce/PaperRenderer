@@ -2,10 +2,22 @@
 #include "Memory/VulkanResources.h"
 
 #include <vector>
+#include <unordered_map>
 
 namespace PaperRenderer
 {   
     //----------SHADER DECLARATIONS----------//
+
+    struct ShaderPair
+    {
+        VkShaderStageFlagBits stage;
+        std::string directory;
+    };
+
+    struct DescriptorSet
+    {
+        std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> descriptorBindings; //CANNOT SKIP BINDINGS
+    };
 
     class Shader
     {
@@ -25,6 +37,67 @@ namespace PaperRenderer
     };
 
     //----------PIPELINE DECLARATIONS----------//
+
+    //Pipeline base class
+    struct PipelineCreationInfo
+    {
+        class RenderEngine* renderer;
+        VkPipelineCache cache;
+        std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
+        VkPipelineLayout pipelineLayout;
+    };
+
+    class Pipeline
+    {
+    protected:
+        VkPipeline pipeline;
+        std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
+        VkPipelineLayout pipelineLayout;
+
+        class RenderEngine* rendererPtr;
+        
+    public:
+        Pipeline(const PipelineCreationInfo& creationInfo);
+        virtual ~Pipeline();
+        
+        VkPipeline getPipeline() const { return pipeline; }
+        const std::unordered_map<uint32_t, VkDescriptorSetLayout>& getDescriptorSetLayouts() const { return setLayouts; } //TODO USE AN ENUM FOR USABLE SET LAYOUT INDICES
+        VkPipelineLayout getLayout() const { return pipelineLayout; }
+    };
+
+    //compute pipeline
+    struct ComputePipelineCreationInfo : public PipelineCreationInfo
+    {
+        std::shared_ptr<Shader> shader;
+    };
+
+    struct ComputePipelineBuildInfo
+    {
+        ShaderPair* shaderInfo;
+        std::unordered_map<uint32_t, DescriptorSet>* descriptors;
+    };
+
+    class ComputePipeline : public Pipeline
+    {
+    private:
+
+    public:
+        ComputePipeline(const ComputePipelineCreationInfo& creationInfo);
+        ~ComputePipeline() override;
+        
+    };
+
+    //raster pipeline
+    struct RasterPipelineCreationInfo : public PipelineCreationInfo
+    {
+        std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
+    };
+
+    struct RasterPipelineBuildInfo
+    {
+        std::vector<ShaderPair>* shaderInfo;
+        std::unordered_map<uint32_t, DescriptorSet>* descriptors;
+    };
 
     struct RasterPipelineProperties
     {
@@ -82,63 +155,34 @@ namespace PaperRenderer
         };
     };
 
-    struct RTPipelineProperties
-    {
-        uint32_t MAX_RT_RECURSION_DEPTH = 0;
-    };
-
-    struct PipelineCreationInfo
-    {
-        class Device *device;
-        class DescriptorAllocator* descriptors;
-        VkPipelineCache cache;
-        std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
-        std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
-        VkPipelineLayout pipelineLayout;
-    };
-
-    //Pipeline base class
-    class Pipeline
-    {
-    protected:
-        std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
-        VkPipeline pipeline;
-        std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
-        VkPipelineLayout pipelineLayout;
-
-        class Device* devicePtr;
-        class DescriptorAllocator* descriptorsPtr;
-        
-    public:
-        Pipeline(const PipelineCreationInfo& creationInfo);
-        virtual ~Pipeline();
-        
-        VkPipeline getPipeline() const { return pipeline; }
-        const std::unordered_map<uint32_t, VkDescriptorSetLayout>& getDescriptorSetLayouts() const { return setLayouts; } //TODO USE AN ENUM FOR USABLE SET LAYOUT INDICES
-        VkPipelineLayout getLayout() const { return pipelineLayout; }
-    };
-
-    class ComputePipeline : public Pipeline
-    {
-    private:
-
-    public:
-        ComputePipeline(const PipelineCreationInfo& creationInfo);
-        ~ComputePipeline() override;
-        
-    };
-
     class RasterPipeline : public Pipeline
     {
     private:
         RasterPipelineProperties pipelineProperties;
 
     public:
-        RasterPipeline(const PipelineCreationInfo& creationInfo, const RasterPipelineProperties& pipelineProperties, class Swapchain* swapchain);
+        RasterPipeline(const RasterPipelineCreationInfo& creationInfo, const RasterPipelineProperties& pipelineProperties);
         ~RasterPipeline() override;
         
         const RasterPipelineProperties& getPipelineProperties() const { return pipelineProperties; }
 
+    };
+
+    //ray tracing pipeline
+    struct RTPipelineCreationInfo : public PipelineCreationInfo
+    {
+        std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
+    };
+
+    struct RTPipelineBuildInfo
+    {
+        std::vector<class Material*> materials;
+        std::unordered_map<uint32_t, DescriptorSet>* descriptors;
+    };
+
+    struct RTPipelineProperties
+    {
+        uint32_t MAX_RT_RECURSION_DEPTH = 0;
     };
 
     class RTPipeline : public Pipeline
@@ -148,7 +192,7 @@ namespace PaperRenderer
         VkDeferredOperationKHR deferredOperation;
 
     public:
-        RTPipeline(const PipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties);
+        RTPipeline(const RTPipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties);
         ~RTPipeline() override;
         
         const RTPipelineProperties& getPipelineProperties() const { return pipelineProperties; }
@@ -158,61 +202,23 @@ namespace PaperRenderer
 
     //----------PIPELINE BUILDER DECLARATIONS----------//
 
-    struct ShaderPair
-    {
-        VkShaderStageFlagBits stage;
-        std::string directory;
-    };
-
-    struct DescriptorSet
-    {
-        std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> descriptorBindings; //CANNOT SKIP BINDINGS
-    };
-
-    struct ComputePipelineBuildInfo
-    {
-        ShaderPair* shaderInfo;
-        std::unordered_map<uint32_t, DescriptorSet>* descriptors;
-    };
-
-    struct PipelineBuildInfo
-    {
-        std::vector<ShaderPair>* shaderInfo;
-        std::unordered_map<uint32_t, DescriptorSet>* descriptors;
-    };
-
-    //"helper" struct to decrease parameters needed for construction later on
-    struct PipelineRendererInfo
-    {
-        class Device* devicePtr;
-        class DescriptorAllocator* descriptorsPtr;
-        class PipelineBuilder* pipelineBuilderPtr; //epic forward declaration
-    };
-
     class PipelineBuilder
     {
     private:
         VkPipelineCache cache;
 
-        static PipelineRendererInfo rendererInfo;
-
-        class Device* devicePtr;
-        class DescriptorAllocator* descriptorsPtr;
-        class Swapchain* swapchainPtr;
-
         std::shared_ptr<Shader> createShader(const ShaderPair& pair) const;
         std::unordered_map<uint32_t, VkDescriptorSetLayout> createDescriptorLayouts(const std::unordered_map<uint32_t, DescriptorSet>& descriptorSets) const;
         VkPipelineLayout createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts) const;
-        PipelineCreationInfo initPipelineInfo(PipelineBuildInfo info) const;
+
+        class RenderEngine* rendererPtr;
 
     public:
-        PipelineBuilder(Device* device, DescriptorAllocator* descriptors, Swapchain* swapchain);
+        PipelineBuilder(RenderEngine* renderer);
         ~PipelineBuilder();
 
         std::unique_ptr<ComputePipeline> buildComputePipeline(const ComputePipelineBuildInfo& info) const;
-        std::unique_ptr<RasterPipeline> buildRasterPipeline(const PipelineBuildInfo& info, const RasterPipelineProperties& pipelineProperties) const;
-        std::unique_ptr<RTPipeline> buildRTPipeline(const PipelineBuildInfo& info, const RTPipelineProperties& pipelineProperties) const;
-
-        static PipelineRendererInfo getRendererInfo() { return rendererInfo; }
+        std::unique_ptr<RasterPipeline> buildRasterPipeline(const RasterPipelineBuildInfo& info, const RasterPipelineProperties& pipelineProperties) const;
+        std::unique_ptr<RTPipeline> buildRTPipeline(const RTPipelineBuildInfo& info, const RTPipelineProperties& pipelineProperties) const;
     };
 }

@@ -1,17 +1,13 @@
-#include "Pipeline.h"
-#include "Descriptor.h"
-#include "Swapchain.h"
+#include "../PaperRenderer.h"
 
 #include <fstream>
 
 namespace PaperRenderer
 {
-    PipelineRendererInfo PipelineBuilder::rendererInfo;
-
     //----------SHADER DEFINITIONS----------//
 
     Shader::Shader(Device *device, std::string location)
-        : devicePtr(device)
+        :devicePtr(device)
     {
         compiledShader = getShaderData(location);
 
@@ -61,25 +57,38 @@ namespace PaperRenderer
         return std::vector<uint32_t>();
     }
 
+    //----------PIPELINE DEFINITIONS---------//
+
+    Pipeline::Pipeline(const PipelineCreationInfo& creationInfo)
+        :rendererPtr(creationInfo.renderer),
+        pipelineLayout(creationInfo.pipelineLayout),
+        setLayouts(creationInfo.setLayouts)
+    {
+    }
+
+    Pipeline::~Pipeline()
+    {
+        for(auto& [setNum, set] : setLayouts)
+        {
+            vkDestroyDescriptorSetLayout(rendererPtr->getDevice()->getDevice(), set, nullptr);
+        }
+        vkDestroyPipeline(rendererPtr->getDevice()->getDevice(), pipeline, nullptr);
+        vkDestroyPipelineLayout(rendererPtr->getDevice()->getDevice(), pipelineLayout, nullptr);
+    }
+
     //----------COMPUTE PIPELINE DEFINITIONS---------//
 
-    ComputePipeline::ComputePipeline(const PipelineCreationInfo& creationInfo)
+    ComputePipeline::ComputePipeline(const ComputePipelineCreationInfo& creationInfo)
         :Pipeline(creationInfo)
     {
         VkPipelineShaderStageCreateInfo stageInfo;
-        for(const auto& [shaderStage, shader] : shaders)
-        {
-            if(shaderStage == VK_SHADER_STAGE_COMPUTE_BIT)
-            {
-                stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                stageInfo.pNext = NULL,
-                stageInfo.flags = 0,
-                stageInfo.stage = shaderStage,
-                stageInfo.module = shader->getModule(),
-                stageInfo.pName = "main", //use main() function in shaders
-                stageInfo.pSpecializationInfo = NULL;
-            }
-        }
+        stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        stageInfo.pNext = NULL,
+        stageInfo.flags = 0,
+        stageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+        stageInfo.module = creationInfo.shader->getModule(),
+        stageInfo.pName = "main", //use main() function in shaders
+        stageInfo.pSpecializationInfo = NULL;
 
         VkComputePipelineCreateInfo pipelineInfo = {};
         pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -88,7 +97,7 @@ namespace PaperRenderer
         pipelineInfo.stage = stageInfo;
         pipelineInfo.layout = pipelineLayout;
         
-        VkResult result = vkCreateComputePipelines(devicePtr->getDevice(), creationInfo.cache, 1, &pipelineInfo, nullptr, &pipeline);
+        VkResult result = vkCreateComputePipelines(rendererPtr->getDevice()->getDevice(), creationInfo.cache, 1, &pipelineInfo, nullptr, &pipeline);
         if(result != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to create compute pipeline");
@@ -99,30 +108,9 @@ namespace PaperRenderer
     {
     }
 
-    //----------PIPELINE DEFINITIONS---------//
-
-    Pipeline::Pipeline(const PipelineCreationInfo& creationInfo)
-        :devicePtr(creationInfo.device),
-        descriptorsPtr(creationInfo.descriptors),
-        shaders(creationInfo.shaders),
-        setLayouts(creationInfo.setLayouts),
-        pipelineLayout(creationInfo.pipelineLayout)
-    {
-    }
-
-    Pipeline::~Pipeline()
-    {
-        for(auto& [setNum, set] : setLayouts)
-        {
-            vkDestroyDescriptorSetLayout(devicePtr->getDevice(), set, nullptr);
-        }
-        vkDestroyPipeline(devicePtr->getDevice(), pipeline, nullptr);
-        vkDestroyPipelineLayout(devicePtr->getDevice(), pipelineLayout, nullptr);
-    }
-
     //----------RASTER PIPELINE DEFINITIONS---------//
 
-    RasterPipeline::RasterPipeline(const PipelineCreationInfo& creationInfo, const RasterPipelineProperties& pipelineProperties, Swapchain* swapchain)
+    RasterPipeline::RasterPipeline(const RasterPipelineCreationInfo& creationInfo, const RasterPipelineProperties& pipelineProperties)
         :Pipeline(creationInfo),
         pipelineProperties(pipelineProperties)
     {
@@ -197,7 +185,7 @@ namespace PaperRenderer
         dynamicStateInfo.pDynamicStates = dynamicStates.data();
         
         std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-        for(const auto& [shaderStage, shader] : shaders)
+        for(const auto& [shaderStage, shader] : creationInfo.shaders)
         {
             VkPipelineShaderStageCreateInfo stageInfo = {};
             stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -232,7 +220,7 @@ namespace PaperRenderer
         pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
         pipelineCreateInfo.basePipelineIndex = -1;
         
-        VkResult result = vkCreateGraphicsPipelines(devicePtr->getDevice(), creationInfo.cache, 1, &pipelineCreateInfo, nullptr, &pipeline);
+        VkResult result = vkCreateGraphicsPipelines(rendererPtr->getDevice()->getDevice(), creationInfo.cache, 1, &pipelineCreateInfo, nullptr, &pipeline);
         if(result != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to create a graphics pipeline");
@@ -245,7 +233,7 @@ namespace PaperRenderer
 
     //----------RT PIPELINE DEFINITTIONS----------//
 
-    RTPipeline::RTPipeline(const PipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties)
+    RTPipeline::RTPipeline(const RTPipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties)
         :Pipeline(creationInfo),
         pipelineProperties(pipelineProperties)
     {
@@ -325,8 +313,8 @@ namespace PaperRenderer
         pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
         pipelineCreateInfo.basePipelineIndex = -1;
 
-        vkCreateDeferredOperationKHR(devicePtr->getDevice(), nullptr, &deferredOperation);
-        VkResult result = vkCreateRayTracingPipelinesKHR(devicePtr->getDevice(), deferredOperation, creationInfo.cache, 1, &pipelineCreateInfo, nullptr, &pipeline);
+        vkCreateDeferredOperationKHR(rendererPtr->getDevice()->getDevice(), nullptr, &deferredOperation);
+        VkResult result = vkCreateRayTracingPipelinesKHR(rendererPtr->getDevice()->getDevice(), deferredOperation, creationInfo.cache, 1, &pipelineCreateInfo, nullptr, &pipeline);
         if(result != VK_SUCCESS || result != VK_OPERATION_DEFERRED_KHR || result != VK_OPERATION_NOT_DEFERRED_KHR)
         {
             throw std::runtime_error("Failed to create a ray tracing pipeline");
@@ -339,15 +327,15 @@ namespace PaperRenderer
 
     bool RTPipeline::isBuilt()
     {
-        VkResult result = vkDeferredOperationJoinKHR(devicePtr->getDevice(), deferredOperation);
+        VkResult result = vkDeferredOperationJoinKHR(rendererPtr->getDevice()->getDevice(), deferredOperation);
         if(result == VK_SUCCESS || result == VK_THREAD_DONE_KHR)
         {
-            VkResult result2 = vkGetDeferredOperationResultKHR(devicePtr->getDevice(), deferredOperation);
+            VkResult result2 = vkGetDeferredOperationResultKHR(rendererPtr->getDevice()->getDevice(), deferredOperation);
             if(result2 != VK_SUCCESS)
             {
                 throw std::runtime_error("Failed to create a ray tracing pipeline");
             }
-            vkDestroyDeferredOperationKHR(devicePtr->getDevice(), deferredOperation, nullptr);
+            vkDestroyDeferredOperationKHR(rendererPtr->getDevice()->getDevice(), deferredOperation, nullptr);
 
             return true;
         }
@@ -363,10 +351,8 @@ namespace PaperRenderer
 
     //----------PIPELINE BUILDER DEFINITIONS----------//
 
-    PipelineBuilder::PipelineBuilder(Device *device, DescriptorAllocator *descriptors, Swapchain *swapchain)
-        :devicePtr(device),
-        descriptorsPtr(descriptors),
-        swapchainPtr(swapchain)
+    PipelineBuilder::PipelineBuilder(RenderEngine* renderer)
+        :rendererPtr(renderer)
     {
         VkPipelineCacheCreateInfo creationInfo;
         creationInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
@@ -374,23 +360,19 @@ namespace PaperRenderer
         creationInfo.flags = 0;
         creationInfo.initialDataSize = 0;
         creationInfo.pInitialData = NULL;
-        vkCreatePipelineCache(device->getDevice(), &creationInfo, nullptr, &cache);
-        
-        rendererInfo.devicePtr = devicePtr;
-        rendererInfo.descriptorsPtr = descriptorsPtr;
-        rendererInfo.pipelineBuilderPtr = this;
+        vkCreatePipelineCache(rendererPtr->getDevice()->getDevice(), &creationInfo, nullptr, &cache);
     }
 
     PipelineBuilder::~PipelineBuilder()
     {
-        vkDestroyPipelineCache(devicePtr->getDevice(), cache, nullptr);
+        vkDestroyPipelineCache(rendererPtr->getDevice()->getDevice(), cache, nullptr);
     }
 
     std::shared_ptr<Shader> PipelineBuilder::createShader(const ShaderPair& pair) const
     {
         std::string shaderFile = pair.directory;
 
-        return std::make_shared<Shader>(devicePtr, shaderFile);
+        return std::make_shared<Shader>(rendererPtr->getDevice(), shaderFile);
     }
 
     std::unordered_map<uint32_t, VkDescriptorSetLayout> PipelineBuilder::createDescriptorLayouts(const std::unordered_map<uint32_t, DescriptorSet> &descriptorSets) const
@@ -412,7 +394,7 @@ namespace PaperRenderer
             descriptorLayoutInfo.pBindings = vBindings.data();
             
             VkDescriptorSetLayout setLayout;
-            VkResult result = vkCreateDescriptorSetLayout(devicePtr->getDevice(), &descriptorLayoutInfo, nullptr, &setLayout);
+            VkResult result = vkCreateDescriptorSetLayout(rendererPtr->getDevice()->getDevice(), &descriptorLayoutInfo, nullptr, &setLayout);
             if(result != VK_SUCCESS) throw std::runtime_error("Failed to create descriptor set layout");
 
             setLayouts[setNum] = setLayout;
@@ -439,53 +421,56 @@ namespace PaperRenderer
         layoutInfo.pPushConstantRanges = NULL;
 
         VkPipelineLayout returnLayout;
-        VkResult result = vkCreatePipelineLayout(devicePtr->getDevice(), &layoutInfo, nullptr, &returnLayout);
+        VkResult result = vkCreatePipelineLayout(rendererPtr->getDevice()->getDevice(), &layoutInfo, nullptr, &returnLayout);
         if(result != VK_SUCCESS) throw std::runtime_error("Pipeline layout creation failed");
 
         return returnLayout;
     }
 
-    PipelineCreationInfo PipelineBuilder::initPipelineInfo(PipelineBuildInfo info) const
-    {
-        PipelineCreationInfo pipelineInfo = {};
-        pipelineInfo.device = devicePtr;
-        pipelineInfo.descriptors = descriptorsPtr;
-        pipelineInfo.cache = cache;
-
-        std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
-        for(const ShaderPair& pair : *info.shaderInfo)
-        {
-            shaders[pair.stage] = createShader(pair);
-        }
-        pipelineInfo.shaders = shaders;
-        pipelineInfo.setLayouts = createDescriptorLayouts(*info.descriptors);
-
-        VkPipelineLayout pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts);
-        pipelineInfo.pipelineLayout = pipelineLayout;
-    
-        return pipelineInfo;
-    }
-
     std::unique_ptr<ComputePipeline> PipelineBuilder::buildComputePipeline(const ComputePipelineBuildInfo& info) const
     {
-        //sketchy hack to avoid making more functions
-        std::vector<ShaderPair> shaders;
-        shaders.push_back(*info.shaderInfo);
+        ComputePipelineCreationInfo pipelineInfo = {};
+        pipelineInfo.renderer = rendererPtr;
+        pipelineInfo.cache = cache;
+        pipelineInfo.setLayouts = createDescriptorLayouts(*info.descriptors);
+        pipelineInfo.pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts);
+        pipelineInfo.shader = createShader(*info.shaderInfo);
 
-        PipelineBuildInfo buildInfo;
-        buildInfo.shaderInfo = &shaders;
-        buildInfo.descriptors = info.descriptors;
-
-        return std::make_unique<ComputePipeline>(initPipelineInfo(buildInfo));
+        return std::make_unique<ComputePipeline>(pipelineInfo);
     }
 
-    std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const PipelineBuildInfo& info, const RasterPipelineProperties& pipelineProperties) const
+    std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const RasterPipelineBuildInfo& info, const RasterPipelineProperties& pipelineProperties) const
     {
-        return std::make_unique<RasterPipeline>(initPipelineInfo(info), pipelineProperties, swapchainPtr);
+        RasterPipelineCreationInfo pipelineInfo = {};
+        pipelineInfo.renderer = rendererPtr;
+        pipelineInfo.cache = cache;
+        pipelineInfo.setLayouts = createDescriptorLayouts(*info.descriptors);
+        pipelineInfo.pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts);
+        
+        //set shaders
+        for(const ShaderPair& pair : *info.shaderInfo)
+        {
+            pipelineInfo.shaders[pair.stage] = createShader(pair);
+        }
+
+        return std::make_unique<RasterPipeline>(pipelineInfo, pipelineProperties);
     }
 
-    std::unique_ptr<RTPipeline> PipelineBuilder::buildRTPipeline(const PipelineBuildInfo& info, const RTPipelineProperties& pipelineProperties) const
+    std::unique_ptr<RTPipeline> PipelineBuilder::buildRTPipeline(const RTPipelineBuildInfo& info, const RTPipelineProperties& pipelineProperties) const
     {
-        return std::make_unique<RTPipeline>(initPipelineInfo(info), pipelineProperties);
+        RTPipelineCreationInfo pipelineInfo = {};
+        pipelineInfo.renderer = rendererPtr;
+        pipelineInfo.cache = cache;
+        pipelineInfo.setLayouts = createDescriptorLayouts(*info.descriptors);
+        pipelineInfo.pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts);
+        
+        //get all shaders needed
+        for(Material* material : info.materials)
+        {
+            //TODO
+        }
+        pipelineInfo.shaders;//TODO
+
+        return std::make_unique<RTPipeline>(pipelineInfo, pipelineProperties);
     }
 }

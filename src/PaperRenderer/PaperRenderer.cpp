@@ -10,7 +10,7 @@ namespace PaperRenderer
         device(creationInfo.windowState.windowName),
         swapchain(&device, creationInfo.windowState),
         descriptors(&device),
-        pipelineBuilder(&device, &descriptors, &swapchain),
+        pipelineBuilder(this),
         rasterPreprocessPipeline(this, creationInfo.shadersDir),
         tlasInstanceBuildPipeline(this, creationInfo.shadersDir)
     {

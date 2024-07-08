@@ -6,7 +6,8 @@ namespace PaperRenderer
     //----------TLAS INSTANCE BUILD PIPELINE DEFINITIONS----------//
 
     TLASInstanceBuildPipeline::TLASInstanceBuildPipeline(RenderEngine *renderer, std::string fileDir)
-        :rendererPtr(renderer)
+        :ComputeShader(renderer),
+        rendererPtr(renderer)
     {
         //preprocess uniform buffers
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
@@ -15,19 +16,19 @@ namespace PaperRenderer
             preprocessBuffersInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
             preprocessBuffersInfo.size = sizeof(UBOInputData);
             preprocessBuffersInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-            uniformBuffers.push_back(std::make_unique<PaperMemory::Buffer>(renderer->getDevice()->getDevice(), preprocessBuffersInfo));
+            uniformBuffers.push_back(std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), preprocessBuffersInfo));
         }
         //uniform buffers allocation and assignment
         VkDeviceSize ubosAllocationSize = 0;
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {
             ubosAllocationSize += PaperMemory::DeviceAllocation::padToMultiple(uniformBuffers.at(i)->getMemoryRequirements().size, 
-                std::max(uniformBuffers.at(i)->getMemoryRequirements().alignment, renderer->getDevice()->getGPUProperties().properties.limits.minMemoryMapAlignment));
+                std::max(uniformBuffers.at(i)->getMemoryRequirements().alignment, rendererPtr->getDevice()->getGPUProperties().properties.limits.minMemoryMapAlignment));
         }
         PaperMemory::DeviceAllocationInfo uboAllocationInfo = {};
         uboAllocationInfo.allocationSize = ubosAllocationSize;
         uboAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT; //use coherent memory for UBOs
-        uniformBuffersAllocation = std::make_unique<PaperMemory::DeviceAllocation>(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), uboAllocationInfo);
+        uniformBuffersAllocation = std::make_unique<PaperMemory::DeviceAllocation>(rendererPtr->getDevice()->getDevice(), rendererPtr->getDevice()->getGPU(), uboAllocationInfo);
         
         for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
         {

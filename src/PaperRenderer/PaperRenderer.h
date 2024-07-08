@@ -3,7 +3,8 @@
 
 #include "RHI/Device.h"
 #include "RHI/Descriptor.h"
-#include "RayTrace.h"
+#include "RHI/Pipeline.h"
+#include "RHI/AccelerationStructure.h"
 #include "RenderPass.h"
 #include "Model.h"
 
@@ -99,6 +100,7 @@ namespace PaperRenderer
         Device* getDevice() { return &device; }
         RasterPreprocessPipeline* getRasterPreprocessPipeline() { return &rasterPreprocessPipeline; }
         DescriptorAllocator* getDescriptorAllocator() { return &descriptors; }
+        PipelineBuilder* getPipelineBuilder() { return &pipelineBuilder; }
         RendererState* getRendererState() { return &rendererState; }
         Swapchain* getSwapchain() { return &swapchain; }
         const std::vector<Model*>& getModelReferences() const { return renderingModels; }
