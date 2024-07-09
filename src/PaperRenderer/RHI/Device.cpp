@@ -154,7 +154,7 @@ namespace PaperRenderer
         {
             throw std::runtime_error("Couldn't find suitable GPU");
         }
-
+        
         std::cout << "RT Support: " << ((rtSupport) ? "true" : "false") << std::endl;
     }
 

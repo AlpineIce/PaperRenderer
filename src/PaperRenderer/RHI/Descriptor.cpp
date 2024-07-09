@@ -88,6 +88,8 @@ namespace PaperRenderer
     {
         //4 different writes for 4 different types
         std::vector<VkWriteDescriptorSet> descriptorWrites;
+        std::vector<std::vector<VkAccelerationStructureKHR>> tlasReferences;
+        std::vector<VkWriteDescriptorSetAccelerationStructureKHR> tlasWriteInfos;
 
         for(const BuffersDescriptorWrites& write : descriptorWritesInfo.bufferWrites)
         {
@@ -146,28 +148,31 @@ namespace PaperRenderer
             }
         }
 
+        tlasReferences.resize(descriptorWritesInfo.accelerationStructureWrites.size());
+        tlasWriteInfos.reserve(descriptorWritesInfo.accelerationStructureWrites.size());
+        uint32_t asIndex = 0;
         for(const AccelerationStructureDescriptorWrites& write : descriptorWritesInfo.accelerationStructureWrites)
         {
             if(write.accelerationStructures.size())
             {
                 //get TLAS references
-                std::vector<VkAccelerationStructureKHR> tlasReferences;
-                tlasReferences.reserve(write.accelerationStructures.size());
+                tlasReferences.at(asIndex).reserve(write.accelerationStructures.size());
                 for(AccelerationStructure const* accelerationStructure : write.accelerationStructures)
                 {
-                    tlasReferences.push_back(accelerationStructure->getTLAS());
+                    tlasReferences.at(asIndex).push_back(accelerationStructure->getTLAS());
                 }
 
                 //descriptor write
-                VkWriteDescriptorSetAccelerationStructureKHR tlasWriteInfo = {};
-                tlasWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
-                tlasWriteInfo.pNext = NULL;
-                tlasWriteInfo.accelerationStructureCount = tlasReferences.size();
-                tlasWriteInfo.pAccelerationStructures = tlasReferences.data();
+                tlasWriteInfos.push_back({
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
+                    .pNext = NULL,
+                    .accelerationStructureCount = (uint32_t)tlasReferences.at(asIndex).size(),
+                    .pAccelerationStructures = tlasReferences.at(asIndex).data()
+                });
 
                 VkWriteDescriptorSet writeInfo = {};
                 writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                writeInfo.pNext = &tlasWriteInfo; //VkWriteDescriptorSetAccelerationStructureKHR (above) is fed into pNext
+                writeInfo.pNext = &tlasWriteInfos.at(asIndex);
                 writeInfo.dstSet = set;
                 writeInfo.dstBinding = write.binding;
                 writeInfo.dstArrayElement = 0;
@@ -178,6 +183,8 @@ namespace PaperRenderer
                 writeInfo.pTexelBufferView = NULL;
 
                 descriptorWrites.push_back(writeInfo);
+
+                asIndex++;
             }
         }
         

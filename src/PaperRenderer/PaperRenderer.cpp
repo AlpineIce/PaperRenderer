@@ -268,6 +268,10 @@ namespace PaperRenderer
             std::vector<VkFence> allWaitFences = waitFences;
             allWaitFences.push_back(copyFence);
             allWaitFences.insert(allWaitFences.begin(), preprocessFences.begin(), preprocessFences.end());
+            allWaitFences.insert(allWaitFences.begin(), accelerationStructureFences.begin(), accelerationStructureFences.end());
+
+            preprocessFences.clear();
+            accelerationStructureFences.clear();
 
             vkWaitForFences(device.getDevice(), allWaitFences.size(), allWaitFences.data(), VK_TRUE, UINT64_MAX);
             vkResetFences(device.getDevice(), allWaitFences.size(), allWaitFences.data());

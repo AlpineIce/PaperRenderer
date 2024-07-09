@@ -188,6 +188,7 @@ namespace PaperRenderer
         TLScratchBuffer =   std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
 
         //synchronization things
+        accelerationStructureFence = PaperMemory::Commands::getUnsignaledFence(rendererPtr->getDevice()->getDevice());
         instancesCopySemaphore = PaperMemory::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
         blasSignalSemaphore = PaperMemory::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
         tlasInstanceBuildSignalSemaphore = PaperMemory::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
@@ -214,6 +215,9 @@ namespace PaperRenderer
             vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), structure.structure, nullptr);
         }
         bottomStructures.clear();
+
+        accelerationStructures.remove(this);
+        vkDestroyFence(rendererPtr->getDevice()->getDevice(), accelerationStructureFence, nullptr);
     }
 
     void AccelerationStructure::rebuildInstancesAllocationsAndBuffers(RenderEngine* renderer)
@@ -581,8 +585,10 @@ namespace PaperRenderer
             { blasSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR }
         };
         tlSyncInfo.signalPairs = syncInfo.TLSignalSemaphores;
-        tlSyncInfo.fence = VK_NULL_HANDLE;
+        tlSyncInfo.fence = accelerationStructureFence;
         createTopLevel(buildData.topData, tlSyncInfo);
+
+        rendererPtr->accelerationStructureFences.push_back(accelerationStructureFence);
     }
 
     void AccelerationStructure::createBottomLevel(BottomBuildData buildData, const PaperMemory::SynchronizationInfo &synchronizationInfo)

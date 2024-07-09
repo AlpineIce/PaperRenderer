@@ -6,6 +6,7 @@
 #include "RHI/Pipeline.h"
 #include "RHI/AccelerationStructure.h"
 #include "RenderPass.h"
+#include "RayTrace.h"
 #include "Model.h"
 
 #include <string>
@@ -22,7 +23,6 @@ namespace PaperRenderer
 
     struct RendererState
     {
-        bool rtEnabled = false;
         VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
     };
 
@@ -46,6 +46,7 @@ namespace PaperRenderer
 
         //synchronization
         std::list<VkFence> preprocessFences;
+        std::list<VkFence> accelerationStructureFences;
         VkFence copyFence; //fence isn't really required, but buffer device address doesn't work properly with validation layer sync (or at least I believe so, it works perfectly fine without the fence)
 
         //----------BUFFERS AND MEMORY----------//

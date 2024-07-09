@@ -59,14 +59,17 @@ namespace PaperRenderer
         std::unique_ptr<PaperMemory::Buffer> hostInstancesBuffer;
         std::unique_ptr<PaperMemory::Buffer> deviceInstancesBuffer;
 
-        VkAccelerationStructureKHR topStructure = VK_NULL_HANDLE;
+        std::vector<VkAccelerationStructureKHR> topStructures;
         std::unordered_map<class Model const*, BottomStructure> bottomStructures;
         std::vector<class ModelInstance*> accelerationStructureInstances;
         static std::list<AccelerationStructure*> accelerationStructures;
+        bool isBuilt = false;
+
+        //synchronization
+        VkFence accelerationStructureFence;
         VkSemaphore instancesCopySemaphore;
         VkSemaphore tlasInstanceBuildSignalSemaphore;
         VkSemaphore blasSignalSemaphore;
-        bool isBuilt = false;
 
         VkDeviceSize instancesBufferSize;
         uint32_t instancesCount;
@@ -116,7 +119,7 @@ namespace PaperRenderer
         void addInstance(class ModelInstance* instance);
         void removeInstance(class ModelInstance* instance);
 
-        const VkAccelerationStructureKHR& getTLAS() const { return topStructure; }
+        const VkAccelerationStructureKHR& getTLAS(uint32_t currentImage) const { return topStructures.at(currentImage); }
         const std::unordered_map<class Model const*, BottomStructure>& getBottomStructures() const { return bottomStructures; }
     };
 }

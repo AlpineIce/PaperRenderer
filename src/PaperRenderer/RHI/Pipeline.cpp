@@ -233,27 +233,20 @@ namespace PaperRenderer
 
     //----------RT PIPELINE DEFINITIONS----------//
 
+    std::list<RTPipeline*> RTPipeline::rtPipelines;
+    std::unique_ptr<PaperMemory::DeviceAllocation> RTPipeline::sbtAllocation;
+    std::unique_ptr<PaperMemory::Buffer> RTPipeline::sbtBuffer;
+
     RTPipeline::RTPipeline(const RTPipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties)
         :Pipeline(creationInfo),
         pipelineProperties(pipelineProperties)
     {
-        std::vector<VkDynamicState> dynamicStates = {
-            VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
-            VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT
-        };
-        
-        VkPipelineDynamicStateCreateInfo dynamicStateInfo = {};
-        dynamicStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-        dynamicStateInfo.pNext = NULL;
-        dynamicStateInfo.flags = 0;
-        dynamicStateInfo.dynamicStateCount = dynamicStates.size();
-        dynamicStateInfo.pDynamicStates = dynamicStates.data();
-
         //shaders
         std::vector<VkRayTracingShaderGroupCreateInfoKHR> rtShaderGroups;
         std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
 
         //raygen
+        const uint32_t raygenCount = 1;
         VkRayTracingShaderGroupCreateInfoKHR rgenShaderGroup = {};
         rgenShaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
         rgenShaderGroup.pNext = NULL;
@@ -276,6 +269,7 @@ namespace PaperRenderer
         shaderStages.push_back(rgenStageInfo);
 
         //miss
+        const uint32_t missCount = 1;
         VkRayTracingShaderGroupCreateInfoKHR missShaderGroup = {};
         missShaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
         missShaderGroup.pNext = NULL;
@@ -298,6 +292,8 @@ namespace PaperRenderer
         shaderStages.push_back(missStageInfo);
 
         //shader groups
+        uint32_t hitCount = 0;
+        uint32_t callableCount = 0;
         for(const auto& shaderGroup : creationInfo.shaderGroups)
         {
             VkRayTracingShaderGroupCreateInfoKHR shaderGroupInfo = {};
@@ -327,18 +323,22 @@ namespace PaperRenderer
                     case VK_SHADER_STAGE_ANY_HIT_BIT_KHR:
                         shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
                         shaderGroupInfo.anyHitShader = shaderStages.size();
+                        hitCount++;
                         break;
                     case VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR:
                         shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
                         shaderGroupInfo.closestHitShader = shaderStages.size();
+                        hitCount++;
                         break;
                     case VK_SHADER_STAGE_CALLABLE_BIT_KHR:
                         shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
                         shaderGroupInfo.generalShader = shaderStages.size();
+                        callableCount++;
                         break;
                     case VK_SHADER_STAGE_INTERSECTION_BIT_KHR:
                         shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR;
                         shaderGroupInfo.intersectionShader = shaderStages.size();
+                        callableCount++;
                         break;
                 }
                 shaderStages.push_back(missStageInfo);
@@ -357,31 +357,169 @@ namespace PaperRenderer
         pipelineCreateInfo.maxPipelineRayRecursionDepth = pipelineProperties.MAX_RT_RECURSION_DEPTH;
         pipelineCreateInfo.pLibraryInfo = NULL;
         pipelineCreateInfo.pLibraryInterface = NULL;
-        pipelineCreateInfo.pDynamicState = &dynamicStateInfo;
+        pipelineCreateInfo.pDynamicState = NULL;
         pipelineCreateInfo.layout = pipelineLayout;
         pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
         pipelineCreateInfo.basePipelineIndex = -1;
 
         vkCreateDeferredOperationKHR(rendererPtr->getDevice()->getDevice(), nullptr, &deferredOperation);
         VkResult result = vkCreateRayTracingPipelinesKHR(rendererPtr->getDevice()->getDevice(), deferredOperation, creationInfo.cache, 1, &pipelineCreateInfo, nullptr, &pipeline);
-        if(result != VK_SUCCESS || result != VK_OPERATION_DEFERRED_KHR || result != VK_OPERATION_NOT_DEFERRED_KHR)
+        if(result != VK_SUCCESS && result != VK_OPERATION_DEFERRED_KHR && result != VK_OPERATION_NOT_DEFERRED_KHR)
         {
             throw std::runtime_error("Failed to create a ray tracing pipeline");
         }
 
+        //add reference
+        rtPipelines.push_back(this);
+
         //wait for deferred operation 
         while(!isBuilt()) {}
 
+        //setup shader binding table
+        auto getAlignment = [&](VkDeviceSize size, VkDeviceSize alignment){ return (size + (alignment - 1)) & ~(alignment - 1); }; //from NVIDIA
+
+        const uint32_t handleCount = rtShaderGroups.size();
+        const uint32_t handleSize  = rendererPtr->getDevice()->getRTproperties().shaderGroupHandleSize;
+        const uint32_t handleAlignment = rendererPtr->getDevice()->getRTproperties().shaderGroupBaseAlignment;
+        const uint32_t alignedSize = getAlignment(handleSize, handleAlignment);
+        
+        shaderBindingTableData.raygenShaderBindingTable.stride = alignedSize;
+        shaderBindingTableData.raygenShaderBindingTable.size   = getAlignment(raygenCount * alignedSize, handleAlignment);
+        shaderBindingTableData.missShaderBindingTable.stride = alignedSize;
+        shaderBindingTableData.missShaderBindingTable.size   = getAlignment(missCount * alignedSize, handleAlignment);
+        shaderBindingTableData.hitShaderBindingTable.stride  = alignedSize;
+        shaderBindingTableData.hitShaderBindingTable.size    = getAlignment(hitCount * alignedSize, handleAlignment);
+        shaderBindingTableData.callableShaderBindingTable.stride  = alignedSize;
+        shaderBindingTableData.callableShaderBindingTable.size    = getAlignment(callableCount * alignedSize, handleAlignment);
+
         //get shader handles
-        //vkGetRayTracingShaderGroupHandlesKHR(rendererPtr->getDevice()->getDevice(), pipeline, 0, 0, 0, &data)
+        std::vector<char> handleData(handleSize * handleCount);
+        VkResult result2 = vkGetRayTracingShaderGroupHandlesKHR(rendererPtr->getDevice()->getDevice(), pipeline, 0, handleCount, handleData.size(), handleData.data());
+        if(result2 != VK_SUCCESS)
+        {
+            throw std::runtime_error("Failed to get RT shader group handles");
+        }
+
+        VkDeviceSize currentHandleIndex = 0;
+        sbtRawData.resize(alignedSize * handleCount);
+
+        //raygen (always at 0)
+        memcpy(sbtRawData.data(), handleData.data(), handleSize);
+        currentHandleIndex++;
+
+        //miss
+        for(uint32_t i = 0; i < missCount; i++)
+        {
+            memcpy(sbtRawData.data() + (alignedSize * currentHandleIndex), handleData.data() + (handleSize * currentHandleIndex), handleSize);
+            currentHandleIndex++;
+        }
+        
+        //hit
+        for(uint32_t i = 0; i < hitCount; i++)
+        {
+            memcpy(sbtRawData.data() + (alignedSize * currentHandleIndex), handleData.data() + (handleSize * currentHandleIndex), handleSize);
+            currentHandleIndex++;
+        }
+        
+        //callable
+        for(uint32_t i = 0; i < callableCount; i++)
+        {
+            memcpy(sbtRawData.data() + (alignedSize * currentHandleIndex), handleData.data() + (handleSize * currentHandleIndex), handleSize);
+            currentHandleIndex++;
+        }
 
         //set SBT data
-        //shaderBindingTableData = {};
-        
+        rebuildSBTBufferAndAllocation(rendererPtr);
     }
 
     RTPipeline::~RTPipeline()
     {
+        rtPipelines.remove(this);
+        if(rtPipelines.size())
+        {
+             rebuildSBTBufferAndAllocation(rendererPtr);
+        }
+        else
+        {
+            sbtBuffer.reset();
+            sbtAllocation.reset();
+        }
+       
+    }
+
+    void RTPipeline::rebuildSBTBufferAndAllocation(RenderEngine* renderer)
+    {
+        //get size and data
+        VkDeviceSize newSize = 0;
+        std::vector<char> allRawData;
+        for(RTPipeline* pipeline : rtPipelines)
+        {
+            newSize += pipeline->sbtRawData.size();
+            allRawData.insert(allRawData.end(), pipeline->sbtRawData.begin(), pipeline->sbtRawData.end());
+        }
+
+        //create buffers
+        PaperMemory::BufferInfo deviceBufferInfo = {};
+        deviceBufferInfo.queueFamiliesIndices = renderer->getDevice()->getQueueFamiliesIndices();
+        deviceBufferInfo.size = newSize;
+        deviceBufferInfo.usageFlags = VK_BUFFER_USAGE_2_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR;
+        sbtBuffer = std::make_unique<PaperMemory::Buffer>(renderer->getDevice()->getDevice(), deviceBufferInfo);
+        
+        PaperMemory::BufferInfo stagingBufferInfo = {};
+        stagingBufferInfo.queueFamiliesIndices = renderer->getDevice()->getQueueFamiliesIndices();
+        stagingBufferInfo.size = newSize;
+        stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
+        PaperMemory::Buffer stagingBuffer(renderer->getDevice()->getDevice(), stagingBufferInfo);
+
+        //create allocations
+        PaperMemory::DeviceAllocationInfo deviceAllocationInfo = {};
+        deviceAllocationInfo.allocationSize = sbtBuffer->getMemoryRequirements().size;
+        deviceAllocationInfo.allocFlags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+        deviceAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        sbtAllocation = std::make_unique<PaperMemory::DeviceAllocation>(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), deviceAllocationInfo);
+        sbtBuffer->assignAllocation(sbtAllocation.get());
+
+        PaperMemory::DeviceAllocationInfo stagingAllocationInfo = {};
+        stagingAllocationInfo.allocationSize = stagingBuffer.getMemoryRequirements().size;
+        stagingAllocationInfo.allocFlags = 0;
+        stagingAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+        PaperMemory::DeviceAllocation stagingAllocation(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), stagingAllocationInfo);
+        stagingBuffer.assignAllocation(&stagingAllocation);
+
+        //copy data
+        PaperMemory::BufferWrite writeInfo = {};
+        writeInfo.data = allRawData.data();
+        writeInfo.size = allRawData.size();
+        writeInfo.offset = 0;
+        stagingBuffer.writeToBuffer({ writeInfo });
+
+        VkBufferCopy copyRegion = {};
+        copyRegion.dstOffset = 0;
+        copyRegion.srcOffset = 0;
+        copyRegion.size = allRawData.size();
+
+        PaperMemory::SynchronizationInfo syncInfo = {};
+        syncInfo.queueType = PaperMemory::QueueType::TRANSFER;
+        syncInfo.fence = PaperMemory::Commands::getUnsignaledFence(renderer->getDevice()->getDevice());
+
+        renderer->recycleCommandBuffer(sbtBuffer->copyFromBufferRanges(stagingBuffer, { copyRegion }, syncInfo));
+
+        //set SBT addresses
+        VkDeviceAddress dynamicOffset = sbtBuffer->getBufferDeviceAddress();
+        for(RTPipeline* pipeline : rtPipelines)
+        {
+            pipeline->shaderBindingTableData.raygenShaderBindingTable.deviceAddress = dynamicOffset;
+            dynamicOffset += pipeline->shaderBindingTableData.raygenShaderBindingTable.size;
+            pipeline->shaderBindingTableData.missShaderBindingTable.deviceAddress = dynamicOffset;
+            dynamicOffset += pipeline->shaderBindingTableData.missShaderBindingTable.size;
+            pipeline->shaderBindingTableData.hitShaderBindingTable.deviceAddress = dynamicOffset;
+            dynamicOffset += pipeline->shaderBindingTableData.hitShaderBindingTable.size;
+            pipeline->shaderBindingTableData.callableShaderBindingTable.deviceAddress = dynamicOffset;
+            dynamicOffset += pipeline->shaderBindingTableData.callableShaderBindingTable.size;
+        }
+
+        vkWaitForFences(renderer->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
+        vkDestroyFence(renderer->getDevice()->getDevice(), syncInfo.fence, nullptr);
     }
 
     bool RTPipeline::isBuilt()

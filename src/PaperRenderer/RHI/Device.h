@@ -48,6 +48,7 @@ namespace PaperRenderer
         VkPhysicalDevice getGPU() const { return GPU; }
         VkPhysicalDeviceProperties2 getGPUProperties() const { return gpuProperties; }
         VkPhysicalDeviceFeatures getGPUFeatures() const { return gpuFeatures; }
+        const bool& getRTSupport() const { return rtSupport; }
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR getRTproperties() const { return rtPipelineProperties; }
         VkPhysicalDeviceAccelerationStructurePropertiesKHR getASproperties() const { return asProperties; }
         const std::unordered_map<PaperMemory::QueueType, PaperMemory::QueuesInFamily>& getQueues() const { return queues; }

@@ -6,18 +6,18 @@
 
 namespace PaperRenderer
 {
-    RayTraceRender::RayTraceRender(RenderEngine* renderer, AccelerationStructure* accelerationStructure)
+    RayTraceRender::RayTraceRender(RenderEngine* renderer, AccelerationStructure* accelerationStructure, const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets)
         :rendererPtr(renderer),
         accelerationStructurePtr(accelerationStructure)
     {
-        rtDescriptorSets[0];
+        buildPipeline(descriptorSets);
     }
 
     RayTraceRender::~RayTraceRender()
     {
     }
 
-    void RayTraceRender::buildPipeline()
+    void RayTraceRender::buildPipeline(const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets)
     {
         ShaderPair rgenShader = {
             .stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
@@ -29,14 +29,17 @@ namespace PaperRenderer
         };
 
         //get materials TODO
-        //std::vector<std::vector<ShaderPair>> shaderGroups;
-        //shaderGroups
+        std::vector<std::vector<ShaderPair>> shaderGroups;
+        shaderGroups.push_back({ { 
+            .stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+            .directory = "resources/shaders/RTChit.spv"
+        } });
 
         RTPipelineBuildInfo pipelineBuildInfo = {
             .rgenShader = rgenShader,
             .missShader = missShader,
             .shaderGroups = shaderGroups,
-            .descriptors = rtDescriptorSets
+            .descriptors = descriptorSets
         };
         pipeline = rendererPtr->getPipelineBuilder()->buildRTPipeline(pipelineBuildInfo, pipelineProperties);
     }
@@ -56,17 +59,12 @@ namespace PaperRenderer
         //bind RT pipeline
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline->getPipeline());
 
-        //write acceleration structure
-        AccelerationStructureDescriptorWrites accelStructureWrites = {};
-        accelStructureWrites.accelerationStructures = { accelerationStructurePtr };
-        accelStructureWrites.binding = 0;
-        rtDescriptorWrites.accelerationStructureWrites = { accelStructureWrites };
-
         //descriptor writes
-        if(rtDescriptorWrites.bufferViewWrites.size() || rtDescriptorWrites.bufferWrites.size() || rtDescriptorWrites.imageWrites.size())
+        if(rtRenderInfo.rtDescriptorWrites.bufferViewWrites.size() || rtRenderInfo.rtDescriptorWrites.bufferWrites.size() || 
+            rtRenderInfo.rtDescriptorWrites.imageWrites.size() || rtRenderInfo.rtDescriptorWrites.accelerationStructureWrites.size())
         {
             VkDescriptorSet rtDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(0), *rendererPtr->getCurrentFramePtr());
-            DescriptorAllocator::writeUniforms(rendererPtr->getDevice()->getDevice(), rtDescriptorSet, rtDescriptorWrites);
+            DescriptorAllocator::writeUniforms(rendererPtr->getDevice()->getDevice(), rtDescriptorSet, rtRenderInfo.rtDescriptorWrites);
 
             DescriptorBind bindingInfo = {};
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;

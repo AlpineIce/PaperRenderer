@@ -6,29 +6,26 @@ namespace PaperRenderer
 {
     struct RayTraceRenderInfo
     {
-        PaperMemory::Image& image;
+        const PaperMemory::Image& image;
         const class Camera& camera;
         VkDependencyInfo const* preRenderBarriers = NULL;
         VkDependencyInfo const* postRenderBarriers = NULL;
+        DescriptorWrites rtDescriptorWrites = {};
     };
 
     class RayTraceRender
     {
     private:
         std::unique_ptr<RTPipeline> pipeline;
-
-    protected:
-        DescriptorWrites rtDescriptorWrites = {};
-        std::unordered_map<uint32_t, PaperRenderer::DescriptorSet> rtDescriptorSets;
         RTPipelineProperties pipelineProperties = {};
 
-        void buildPipeline();
+        void buildPipeline(const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets);
 
         class RenderEngine* rendererPtr;
         class AccelerationStructure* accelerationStructurePtr;
 
     public:
-        RayTraceRender(RenderEngine* renderer, AccelerationStructure* accelerationStructure);
+        RayTraceRender(RenderEngine* renderer, AccelerationStructure* accelerationStructure, const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets);
         ~RayTraceRender();
 
         void render(const RayTraceRenderInfo& rtRenderInfo, const PaperMemory::SynchronizationInfo& syncInfo);

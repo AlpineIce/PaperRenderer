@@ -180,8 +180,7 @@ namespace PaperRenderer
             preprocessSignalSemaphores.at(i) = PaperMemory::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
         }
 
-        preprocessFence = PaperRenderer::PaperMemory::Commands::getSignaledFence(rendererPtr->getDevice()->getDevice());
-        rendererPtr->preprocessFences.push_back(preprocessFence);
+        preprocessFence = PaperRenderer::PaperMemory::Commands::getUnsignaledFence(rendererPtr->getDevice()->getDevice());
 
         rebuildAllocationsAndBuffers(rendererPtr);
     }
@@ -196,7 +195,6 @@ namespace PaperRenderer
             vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), preprocessSignalSemaphores.at(i), nullptr);
         }
 
-        rendererPtr->preprocessFences.remove(preprocessFence);
         vkDestroyFence(rendererPtr->getDevice()->getDevice(), preprocessFence, nullptr);
 
         renderPasses.remove(this);
@@ -432,6 +430,7 @@ namespace PaperRenderer
             preprocessSyncInfo.fence = preprocessFence;
 
             rendererPtr->getRasterPreprocessPipeline()->submit(preprocessSyncInfo, *this);
+            rendererPtr->preprocessFences.push_back(preprocessFence);
 
             //----------RENDER PASS----------//
 
