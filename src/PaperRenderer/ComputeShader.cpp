@@ -4,10 +4,12 @@
 namespace PaperRenderer
 {
     ComputeShader::ComputeShader(RenderEngine* renderer)
-        :rendererPtr(renderer)
+        :rendererPtr(renderer),
+        pipelineBuildInfo({
+            .shaderInfo = shader,
+            .descriptors = descriptorSets
+        })
     {
-        pipelineBuildInfo.shaderInfo = &shader;
-        pipelineBuildInfo.descriptors = &descriptorSets;
     }
 
     ComputeShader::~ComputeShader()

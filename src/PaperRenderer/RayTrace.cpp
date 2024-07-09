@@ -1,17 +1,16 @@
 #include "RayTrace.h"
-#include "RHI/Pipeline.h"
 #include "RHI/AccelerationStructure.h"
 #include "PaperRenderer.h"
 #include "Camera.h"
+#include "Material.h"
 
 namespace PaperRenderer
 {
-    RayTraceRender::RayTraceRender(RenderEngine* renderer, AccelerationStructure* accelerationStructure, Camera* camera, const struct RTPipelineProperties& pipelineProperties, const RayTraceRenderInfo& rtRenderInfo)
+    RayTraceRender::RayTraceRender(RenderEngine* renderer, AccelerationStructure* accelerationStructure)
         :rendererPtr(renderer),
-        accelerationStructurePtr(accelerationStructure),
-        cameraPtr(camera)
+        accelerationStructurePtr(accelerationStructure)
     {
-        buildPipeline();
+        rtDescriptorSets[0];
     }
 
     RayTraceRender::~RayTraceRender()
@@ -20,12 +19,41 @@ namespace PaperRenderer
 
     void RayTraceRender::buildPipeline()
     {
+        ShaderPair rgenShader = {
+            .stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
+            .directory = "resources/shaders/RTRayGen.spv"
+        };
+        ShaderPair missShader = {
+            .stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
+            .directory = "resources/shaders/RTMiss.spv"
+        };
+
+        //get materials TODO
+        //std::vector<std::vector<ShaderPair>> shaderGroups;
+        //shaderGroups
+
+        RTPipelineBuildInfo pipelineBuildInfo = {
+            .rgenShader = rgenShader,
+            .missShader = missShader,
+            .shaderGroups = shaderGroups,
+            .descriptors = rtDescriptorSets
+        };
+        pipeline = rendererPtr->getPipelineBuilder()->buildRTPipeline(pipelineBuildInfo, pipelineProperties);
     }
 
-    void RayTraceRender::render(const PaperMemory::SynchronizationInfo &syncInfo)
+    void RayTraceRender::render(const RayTraceRenderInfo& rtRenderInfo, const PaperMemory::SynchronizationInfo& syncInfo)
     {
-        VkCommandBuffer cmdBuffer = PaperMemory::Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), PaperMemory::QueueType::COMPUTE);
+        //command buffer
+        VkCommandBufferBeginInfo commandInfo;
+        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        commandInfo.pNext = NULL;
+        commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        commandInfo.pInheritanceInfo = NULL;
 
+        VkCommandBuffer cmdBuffer = PaperMemory::Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), PaperMemory::QueueType::COMPUTE);
+        vkBeginCommandBuffer(cmdBuffer, &commandInfo);
+
+        //bind RT pipeline
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline->getPipeline());
 
         //write acceleration structure
@@ -34,7 +62,7 @@ namespace PaperRenderer
         accelStructureWrites.binding = 0;
         rtDescriptorWrites.accelerationStructureWrites = { accelStructureWrites };
 
-        //shader writes
+        //descriptor writes
         if(rtDescriptorWrites.bufferViewWrites.size() || rtDescriptorWrites.bufferWrites.size() || rtDescriptorWrites.imageWrites.size())
         {
             VkDescriptorSet rtDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(0), *rendererPtr->getCurrentFramePtr());
@@ -48,5 +76,38 @@ namespace PaperRenderer
             
             DescriptorAllocator::bindSet(rendererPtr->getDevice()->getDevice(), cmdBuffer, bindingInfo);
         }
+
+        //pre-pipeline barrier
+        if(rtRenderInfo.preRenderBarriers)
+        {
+            vkCmdPipelineBarrier2(cmdBuffer, rtRenderInfo.preRenderBarriers);
+        }
+
+        //trace rays
+        vkCmdTraceRaysKHR(
+            cmdBuffer,
+            &pipeline->getShaderBindingTableData().raygenShaderBindingTable,
+            &pipeline->getShaderBindingTableData().missShaderBindingTable,
+            &pipeline->getShaderBindingTableData().hitShaderBindingTable,
+            &pipeline->getShaderBindingTableData().callableShaderBindingTable,
+            rtRenderInfo.image.getExtent().width,
+            rtRenderInfo.image.getExtent().height,
+            1
+        );
+
+        //post-pipeline barrier
+        if(rtRenderInfo.postRenderBarriers)
+        {
+            vkCmdPipelineBarrier2(cmdBuffer, rtRenderInfo.postRenderBarriers);
+        }
+        
+        //end
+        vkEndCommandBuffer(cmdBuffer);
+        
+        //submit
+        PaperMemory::Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), syncInfo, { cmdBuffer });
+
+        PaperMemory::CommandBuffer commandBuffer = { cmdBuffer, syncInfo.queueType };
+        rendererPtr->recycleCommandBuffer(commandBuffer);
     }
 }

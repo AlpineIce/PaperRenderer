@@ -1,5 +1,5 @@
 #pragma once
-#include "RHI/Device.h"
+#include "RHI/Pipeline.h"
 #include "RHI/Descriptor.h"
 
 namespace PaperRenderer
@@ -7,6 +7,7 @@ namespace PaperRenderer
     struct RayTraceRenderInfo
     {
         PaperMemory::Image& image;
+        const class Camera& camera;
         VkDependencyInfo const* preRenderBarriers = NULL;
         VkDependencyInfo const* postRenderBarriers = NULL;
     };
@@ -14,19 +15,22 @@ namespace PaperRenderer
     class RayTraceRender
     {
     private:
-        std::unique_ptr<class RTPipeline> pipeline;
+        std::unique_ptr<RTPipeline> pipeline;
+
+    protected:
         DescriptorWrites rtDescriptorWrites = {};
+        std::unordered_map<uint32_t, PaperRenderer::DescriptorSet> rtDescriptorSets;
+        RTPipelineProperties pipelineProperties = {};
 
         void buildPipeline();
 
         class RenderEngine* rendererPtr;
         class AccelerationStructure* accelerationStructurePtr;
-        class Camera* cameraPtr;
 
     public:
-        RayTraceRender(RenderEngine* renderer, AccelerationStructure* accelerationStructure, Camera* camera, const struct RTPipelineProperties& pipelineProperties, const RayTraceRenderInfo& rtRenderInfo);
+        RayTraceRender(RenderEngine* renderer, AccelerationStructure* accelerationStructure);
         ~RayTraceRender();
 
-        void render(const PaperMemory::SynchronizationInfo& syncInfo);
+        void render(const RayTraceRenderInfo& rtRenderInfo, const PaperMemory::SynchronizationInfo& syncInfo);
     };
 }

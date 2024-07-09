@@ -119,8 +119,5 @@ namespace PaperRenderer
 
         void addInstance(ModelInstance* instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials);
         void removeInstance(ModelInstance* instance);
-
-        void setDefaultMaterial(Material* material) { this->defaultMaterial = material; }
-        void setDefaultMaterialInstance(MaterialInstance* materialInstance) { this->defaultMaterialInstance = materialInstance; }
     };
 }

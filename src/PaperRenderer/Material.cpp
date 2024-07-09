@@ -7,11 +7,12 @@ namespace PaperRenderer
 
     Material::Material(class RenderEngine* renderer, std::string materialName)
         :rendererPtr(renderer),
-        matName(materialName)
+        matName(materialName),
+        rasterInfo({
+            .shaderInfo = shaderPairs,
+            .descriptors = rasterDescriptorSets
+        })
     {
-        rasterInfo.shaderInfo = &shaderPairs;
-        rasterInfo.descriptors = &rasterDescriptorSets;
-
         rasterDescriptorSets[DescriptorScopes::RASTER_MATERIAL];
         rasterDescriptorSets[DescriptorScopes::RASTER_MATERIAL_INSTANCE];
         rasterDescriptorSets[DescriptorScopes::RASTER_OBJECT];

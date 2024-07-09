@@ -73,8 +73,8 @@ namespace PaperRenderer
 
     struct ComputePipelineBuildInfo
     {
-        ShaderPair* shaderInfo;
-        std::unordered_map<uint32_t, DescriptorSet>* descriptors;
+        const ShaderPair& shaderInfo;
+        const std::unordered_map<uint32_t, DescriptorSet>& descriptors;
     };
 
     class ComputePipeline : public Pipeline
@@ -95,8 +95,8 @@ namespace PaperRenderer
 
     struct RasterPipelineBuildInfo
     {
-        std::vector<ShaderPair>* shaderInfo;
-        std::unordered_map<uint32_t, DescriptorSet>* descriptors;
+        const std::vector<ShaderPair>& shaderInfo;
+        const std::unordered_map<uint32_t, DescriptorSet>& descriptors;
     };
 
     struct RasterPipelineProperties
@@ -171,31 +171,45 @@ namespace PaperRenderer
     //ray tracing pipeline
     struct RTPipelineCreationInfo : public PipelineCreationInfo
     {
-        std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
+        std::shared_ptr<Shader> rgenShader;
+        std::shared_ptr<Shader> missShader;
+        std::vector<std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>>> shaderGroups;
     };
 
     struct RTPipelineBuildInfo
     {
-        std::vector<class Material*> materials;
-        std::unordered_map<uint32_t, DescriptorSet>* descriptors;
+        const ShaderPair& rgenShader;
+        const ShaderPair& missShader;
+        const std::vector<std::vector<ShaderPair>>& shaderGroups; //one shader group (std::vector<ShaderPair>) contains all shader pairs for one material
+        const std::unordered_map<uint32_t, DescriptorSet>& descriptors;
     };
 
     struct RTPipelineProperties
     {
-        uint32_t MAX_RT_RECURSION_DEPTH = 0;
+        uint32_t MAX_RT_RECURSION_DEPTH = 1;
+    };
+
+    struct RTShaderBindingTableData
+    {
+        VkStridedDeviceAddressRegionKHR raygenShaderBindingTable = {};
+        VkStridedDeviceAddressRegionKHR missShaderBindingTable = {};
+        VkStridedDeviceAddressRegionKHR hitShaderBindingTable = {};
+        VkStridedDeviceAddressRegionKHR callableShaderBindingTable = {};
     };
 
     class RTPipeline : public Pipeline
     {
     private:
         RTPipelineProperties pipelineProperties;
-        VkDeferredOperationKHR deferredOperation;
+        VkDeferredOperationKHR deferredOperation = VK_NULL_HANDLE;
+        RTShaderBindingTableData shaderBindingTableData = {};
 
     public:
         RTPipeline(const RTPipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties);
         ~RTPipeline() override;
         
         const RTPipelineProperties& getPipelineProperties() const { return pipelineProperties; }
+        const RTShaderBindingTableData& getShaderBindingTableData() const { return shaderBindingTableData; }
 
         bool isBuilt();
     };

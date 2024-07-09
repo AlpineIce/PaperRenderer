@@ -231,7 +231,7 @@ namespace PaperRenderer
     {
     }
 
-    //----------RT PIPELINE DEFINITTIONS----------//
+    //----------RT PIPELINE DEFINITIONS----------//
 
     RTPipeline::RTPipeline(const RTPipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties)
         :Pipeline(creationInfo),
@@ -249,52 +249,101 @@ namespace PaperRenderer
         dynamicStateInfo.dynamicStateCount = dynamicStates.size();
         dynamicStateInfo.pDynamicStates = dynamicStates.data();
 
+        //shaders
         std::vector<VkRayTracingShaderGroupCreateInfoKHR> rtShaderGroups;
         std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-        uint32_t shaderIndex = 0;
-        for(auto& [shaderStage, shader] : creationInfo.shaders)
+
+        //raygen
+        VkRayTracingShaderGroupCreateInfoKHR rgenShaderGroup = {};
+        rgenShaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+        rgenShaderGroup.pNext = NULL;
+        rgenShaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+        rgenShaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
+        rgenShaderGroup.closestHitShader  = VK_SHADER_UNUSED_KHR;
+        rgenShaderGroup.generalShader = shaderStages.size();
+        rgenShaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+        rgenShaderGroup.pShaderGroupCaptureReplayHandle = NULL;
+        rtShaderGroups.push_back(rgenShaderGroup);
+
+        VkPipelineShaderStageCreateInfo rgenStageInfo = {};
+        rgenStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        rgenStageInfo.pNext = NULL;
+        rgenStageInfo.flags = 0;
+        rgenStageInfo.stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+        rgenStageInfo.module = creationInfo.rgenShader->getModule();
+        rgenStageInfo.pName = "main"; //use main() function in shaders
+        rgenStageInfo.pSpecializationInfo = NULL;
+        shaderStages.push_back(rgenStageInfo);
+
+        //miss
+        VkRayTracingShaderGroupCreateInfoKHR missShaderGroup = {};
+        missShaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+        missShaderGroup.pNext = NULL;
+        missShaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+        missShaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
+        missShaderGroup.closestHitShader  = VK_SHADER_UNUSED_KHR;
+        missShaderGroup.generalShader = shaderStages.size();
+        missShaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+        missShaderGroup.pShaderGroupCaptureReplayHandle = NULL;
+        rtShaderGroups.push_back(missShaderGroup);
+
+        VkPipelineShaderStageCreateInfo missStageInfo = {};
+        missStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        missStageInfo.pNext = NULL;
+        missStageInfo.flags = 0;
+        missStageInfo.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
+        missStageInfo.module = creationInfo.missShader->getModule();
+        missStageInfo.pName = "main"; //use main() function in shaders
+        missStageInfo.pSpecializationInfo = NULL;
+        shaderStages.push_back(missStageInfo);
+
+        //shader groups
+        for(const auto& shaderGroup : creationInfo.shaderGroups)
         {
-            VkPipelineShaderStageCreateInfo stageInfo = {};
-            stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            stageInfo.pNext = NULL;
-            stageInfo.flags = 0;
-            stageInfo.stage = shaderStage;
-            stageInfo.module = shader->getModule();
-            stageInfo.pName = "main"; //use main() function in shaders
-            stageInfo.pSpecializationInfo = NULL;
-            
-            shaderStages.push_back(stageInfo);
+            VkRayTracingShaderGroupCreateInfoKHR shaderGroupInfo = {};
+            shaderGroupInfo.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+            shaderGroupInfo.pNext = NULL;
+            shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+            shaderGroupInfo.anyHitShader = VK_SHADER_UNUSED_KHR;
+            shaderGroupInfo.closestHitShader  = VK_SHADER_UNUSED_KHR;
+            shaderGroupInfo.generalShader = VK_SHADER_UNUSED_KHR;
+            shaderGroupInfo.intersectionShader = VK_SHADER_UNUSED_KHR;
+            shaderGroupInfo.pShaderGroupCaptureReplayHandle = NULL;
 
-            VkRayTracingShaderGroupCreateInfoKHR shaderGroup = {};
-            shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-            shaderGroup.pNext = NULL;
-            shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
-            shaderGroup.closestHitShader  = VK_SHADER_UNUSED_KHR;
-            shaderGroup.generalShader = VK_SHADER_UNUSED_KHR;
-            shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
-            shaderGroup.pShaderGroupCaptureReplayHandle = NULL;
-
-            switch(shaderStage)
+            //individual shaders
+            for(auto& [shaderStage, shader] : shaderGroup)
             {
-                case VK_SHADER_STAGE_ANY_HIT_BIT_KHR:
-                    shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-                    shaderGroup.anyHitShader = shaderIndex;
-                    break;
-                case VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR:
-                    shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
-                    shaderGroup.closestHitShader = shaderIndex;
-                    break;
-                case VK_SHADER_STAGE_RAYGEN_BIT_KHR || VK_SHADER_STAGE_MISS_BIT_KHR:
-                    shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-                    shaderGroup.generalShader = shaderIndex;
-                    break;
-                case VK_SHADER_STAGE_INTERSECTION_BIT_KHR:
-                    shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-                    shaderGroup.intersectionShader = shaderIndex;
-                    break;
+                VkPipelineShaderStageCreateInfo shaderStageInfo = {};
+                shaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+                shaderStageInfo.pNext = NULL;
+                shaderStageInfo.flags = 0;
+                shaderStageInfo.stage = shaderStage;
+                shaderStageInfo.module = creationInfo.missShader->getModule();
+                shaderStageInfo.pName = "main"; //use main() function in shaders
+                shaderStageInfo.pSpecializationInfo = NULL;
+
+                switch(shaderStage)
+                {
+                    case VK_SHADER_STAGE_ANY_HIT_BIT_KHR:
+                        shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
+                        shaderGroupInfo.anyHitShader = shaderStages.size();
+                        break;
+                    case VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR:
+                        shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
+                        shaderGroupInfo.closestHitShader = shaderStages.size();
+                        break;
+                    case VK_SHADER_STAGE_CALLABLE_BIT_KHR:
+                        shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+                        shaderGroupInfo.generalShader = shaderStages.size();
+                        break;
+                    case VK_SHADER_STAGE_INTERSECTION_BIT_KHR:
+                        shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR;
+                        shaderGroupInfo.intersectionShader = shaderStages.size();
+                        break;
+                }
+                shaderStages.push_back(missStageInfo);
             }
-            rtShaderGroups.push_back(shaderGroup);
-            shaderIndex++;
+            rtShaderGroups.push_back(shaderGroupInfo);
         }
 
         VkRayTracingPipelineCreateInfoKHR pipelineCreateInfo = {};
@@ -319,6 +368,16 @@ namespace PaperRenderer
         {
             throw std::runtime_error("Failed to create a ray tracing pipeline");
         }
+
+        //wait for deferred operation 
+        while(!isBuilt()) {}
+
+        //get shader handles
+        //vkGetRayTracingShaderGroupHandlesKHR(rendererPtr->getDevice()->getDevice(), pipeline, 0, 0, 0, &data)
+
+        //set SBT data
+        //shaderBindingTableData = {};
+        
     }
 
     RTPipeline::~RTPipeline()
@@ -432,9 +491,9 @@ namespace PaperRenderer
         ComputePipelineCreationInfo pipelineInfo = {};
         pipelineInfo.renderer = rendererPtr;
         pipelineInfo.cache = cache;
-        pipelineInfo.setLayouts = createDescriptorLayouts(*info.descriptors);
+        pipelineInfo.setLayouts = createDescriptorLayouts(info.descriptors);
         pipelineInfo.pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts);
-        pipelineInfo.shader = createShader(*info.shaderInfo);
+        pipelineInfo.shader = createShader(info.shaderInfo);
 
         return std::make_unique<ComputePipeline>(pipelineInfo);
     }
@@ -444,11 +503,11 @@ namespace PaperRenderer
         RasterPipelineCreationInfo pipelineInfo = {};
         pipelineInfo.renderer = rendererPtr;
         pipelineInfo.cache = cache;
-        pipelineInfo.setLayouts = createDescriptorLayouts(*info.descriptors);
+        pipelineInfo.setLayouts = createDescriptorLayouts(info.descriptors);
         pipelineInfo.pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts);
         
         //set shaders
-        for(const ShaderPair& pair : *info.shaderInfo)
+        for(const ShaderPair& pair : info.shaderInfo)
         {
             pipelineInfo.shaders[pair.stage] = createShader(pair);
         }
@@ -461,15 +520,23 @@ namespace PaperRenderer
         RTPipelineCreationInfo pipelineInfo = {};
         pipelineInfo.renderer = rendererPtr;
         pipelineInfo.cache = cache;
-        pipelineInfo.setLayouts = createDescriptorLayouts(*info.descriptors);
+        pipelineInfo.setLayouts = createDescriptorLayouts(info.descriptors);
         pipelineInfo.pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts);
         
         //get all shaders needed
-        for(Material* material : info.materials)
+        pipelineInfo.shaderGroups.resize(info.shaderGroups.size());
+        uint32_t groupIndex = 0;
+        for(const std::vector<ShaderPair>& shaderPairs : info.shaderGroups)
         {
-            //TODO
+            for(const ShaderPair& shaderPair : shaderPairs)
+            {
+                pipelineInfo.shaderGroups.at(groupIndex)[shaderPair.stage] = createShader(shaderPair);
+            }
+            groupIndex++;
         }
-        pipelineInfo.shaders;//TODO
+        pipelineInfo.rgenShader = createShader(info.rgenShader);
+        pipelineInfo.missShader = createShader(info.missShader);
+        pipelineInfo.shaderGroups = {};//bruh TODO
 
         return std::make_unique<RTPipeline>(pipelineInfo, pipelineProperties);
     }

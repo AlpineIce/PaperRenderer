@@ -113,8 +113,8 @@ namespace PaperRenderer
 
         void updateAccelerationStructures(const AccelerationStructureSynchronizatioInfo& syncInfo);
 
-        void addInstance(ModelInstance* instance);
-        void removeInstance(ModelInstance* instance);
+        void addInstance(class ModelInstance* instance);
+        void removeInstance(class ModelInstance* instance);
 
         const VkAccelerationStructureKHR& getTLAS() const { return topStructure; }
         const std::unordered_map<class Model const*, BottomStructure>& getBottomStructures() const { return bottomStructures; }
