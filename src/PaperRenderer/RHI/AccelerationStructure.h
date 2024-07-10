@@ -33,8 +33,9 @@ namespace PaperRenderer
 
     struct BottomStructure
     {
-        VkAccelerationStructureKHR structure;
-        VkDeviceAddress bufferAddress;
+        uint32_t referenceCount = 0;
+        VkAccelerationStructureKHR structure = VK_NULL_HANDLE;
+        VkDeviceAddress bufferAddress = 0;
     };
 
     struct AccelerationStructureSynchronizatioInfo
@@ -46,12 +47,13 @@ namespace PaperRenderer
     class AccelerationStructure
     {
     private:
-        std::unique_ptr<PaperMemory::DeviceAllocation> ASAllocation; //one shared allocation for the BLs and TL
+        std::unique_ptr<PaperMemory::DeviceAllocation> scratchAllocation;
+        std::unique_ptr<PaperMemory::DeviceAllocation> BLASAllocation;
+        std::unique_ptr<PaperMemory::DeviceAllocation> TLASAllocation; //one shared allocation for the BLs and TL
         std::unique_ptr<PaperMemory::Buffer> BLBuffer;
-        std::unique_ptr<PaperMemory::Buffer> BLScratchBuffer;
         std::unique_ptr<PaperMemory::Buffer> TLInstancesBuffer;
         std::unique_ptr<PaperMemory::Buffer> TLBuffer;
-        std::unique_ptr<PaperMemory::Buffer> TLScratchBuffer;
+        std::unique_ptr<PaperMemory::Buffer> scratchBuffer;
 
         //instances buffers and allocations
         static std::unique_ptr<PaperMemory::DeviceAllocation> hostInstancesAllocation;
@@ -59,11 +61,12 @@ namespace PaperRenderer
         std::unique_ptr<PaperMemory::Buffer> hostInstancesBuffer;
         std::unique_ptr<PaperMemory::Buffer> deviceInstancesBuffer;
 
-        std::vector<VkAccelerationStructureKHR> topStructures;
+        VkAccelerationStructureKHR topStructure = VK_NULL_HANDLE;
         std::unordered_map<class Model const*, BottomStructure> bottomStructures;
+        std::list<class Model const*> blasBuildModels;
         std::vector<class ModelInstance*> accelerationStructureInstances;
         static std::list<AccelerationStructure*> accelerationStructures;
-        bool isBuilt = false;
+        std::mutex instanceAddRemoveMutex;
 
         //synchronization
         VkFence accelerationStructureFence;
@@ -101,10 +104,12 @@ namespace PaperRenderer
         class RenderEngine* rendererPtr;
 
         const float instancesOverhead = 1.5;
-        static void rebuildInstancesAllocationsAndBuffers(RenderEngine* renderer);
-        void rebuildInstancesBuffers();
         BuildData getBuildData();
-        void rebuildAllocation();
+        void rebuildBLASAllocation();
+        void rebuildTLASAllocation();
+        void rebuildScratchAllocation();
+        void rebuildInstancesBuffers();
+        static void rebuildInstancesAllocationsAndBuffers(RenderEngine* renderer);
         void createBottomLevel(BottomBuildData buildData, const PaperMemory::SynchronizationInfo& synchronizationInfo);
         void createTopLevel(TopBuildData buildData, const PaperMemory::SynchronizationInfo& synchronizationInfo);
 
@@ -119,7 +124,7 @@ namespace PaperRenderer
         void addInstance(class ModelInstance* instance);
         void removeInstance(class ModelInstance* instance);
 
-        const VkAccelerationStructureKHR& getTLAS(uint32_t currentImage) const { return topStructures.at(currentImage); }
+        const VkAccelerationStructureKHR& getTLAS() const { return topStructure; }
         const std::unordered_map<class Model const*, BottomStructure>& getBottomStructures() const { return bottomStructures; }
     };
 }
