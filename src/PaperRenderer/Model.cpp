@@ -25,22 +25,24 @@ namespace PaperRenderer
 		aabb.posZ = -1000000.0f;
 		aabb.negZ = 1000000.0f;
 
+		//vertex data
+		vertexAttributes = creationInfo.vertexAttributes;
+		vertexDescription = creationInfo.vertexDescription;
+		vertexPositionOffset = creationInfo.vertexPositionOffset;
+
 		//fill in variables with the input LOD data
 		VkDeviceSize dynamicVertexOffset = 0;
-		for(const std::unordered_map<uint32_t, std::vector<MeshInfo>>& lod : creationInfo.LODs)
+		for(const ModelLODInfo& lod : creationInfo.LODs)
 		{
 			LOD returnLOD;
-			for(const auto& [matIndex, meshes] : lod)
+			for(const auto& [matIndex, meshes] : lod.lodData)
 			{
-				returnLOD.meshMaterialData.resize(lod.size());
+				returnLOD.meshMaterialData.resize(lod.lodData.size());
 				for(const MeshInfo& mesh : meshes)
 				{
 					LODMesh returnMesh;
-					returnMesh.vertexAttributes = mesh.vertexAttributes;
-					returnMesh.vertexDescription = mesh.vertexDescription;
-					returnMesh.vertexPositionOffset = mesh.vertexPositionOffset;
 					returnMesh.vboOffset = dynamicVertexOffset;
-					returnMesh.vertexCount =  mesh.verticesData.size() / mesh.vertexDescription.stride;
+					returnMesh.vertexCount =  mesh.verticesData.size() / vertexDescription.stride;
 					returnMesh.iboOffset = creationIndices.size();
 					returnMesh.indexCount =  mesh.indices.size();
 
@@ -52,10 +54,10 @@ namespace PaperRenderer
 					returnLOD.meshMaterialData.at(matIndex).push_back(returnMesh);
 
 					//AABB processing
-					uint32_t vertexCount = creationVerticesData.size() / mesh.vertexDescription.stride;
+					uint32_t vertexCount = creationVerticesData.size() / vertexDescription.stride;
 					for(uint32_t i = 0; i < vertexCount; i++)
 					{
-						const glm::vec3& vertexPosition = *(glm::vec3*)(creationVerticesData.data() + (i * mesh.vertexDescription.stride) + mesh.vertexPositionOffset);
+						const glm::vec3& vertexPosition = *(glm::vec3*)(creationVerticesData.data() + (i * vertexDescription.stride) + vertexPositionOffset);
 
 						aabb.posX = std::max(vertexPosition.x, aabb.posX);
 						aabb.negX = std::min(vertexPosition.x, aabb.negX);

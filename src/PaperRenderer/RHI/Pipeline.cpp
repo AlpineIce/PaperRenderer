@@ -314,7 +314,7 @@ namespace PaperRenderer
                 shaderStageInfo.pNext = NULL;
                 shaderStageInfo.flags = 0;
                 shaderStageInfo.stage = shaderStage;
-                shaderStageInfo.module = creationInfo.missShader->getModule();
+                shaderStageInfo.module = shader->getModule();
                 shaderStageInfo.pName = "main"; //use main() function in shaders
                 shaderStageInfo.pSpecializationInfo = NULL;
 
@@ -341,7 +341,7 @@ namespace PaperRenderer
                         callableCount++;
                         break;
                 }
-                shaderStages.push_back(missStageInfo);
+                shaderStages.push_back(shaderStageInfo);
             }
             rtShaderGroups.push_back(shaderGroupInfo);
         }
@@ -674,7 +674,6 @@ namespace PaperRenderer
         }
         pipelineInfo.rgenShader = createShader(info.rgenShader);
         pipelineInfo.missShader = createShader(info.missShader);
-        pipelineInfo.shaderGroups = {};//bruh TODO
 
         return std::make_unique<RTPipeline>(pipelineInfo, pipelineProperties);
     }

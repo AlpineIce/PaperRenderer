@@ -12,30 +12,31 @@ namespace PaperRenderer
 
     struct MeshInfo
     {
-        std::vector<VkVertexInputAttributeDescription> vertexAttributes;
-        VkVertexInputBindingDescription vertexDescription;
-
         ///where the vertexDescription stride represents the total size of a vertex, the position offset represents the offset in bytes of a vec3 (4 byte floats, 12 bytes total)
         ///of where the position data is. position is required since its used in creating an AABB for culling purposes
-        uint32_t vertexPositionOffset;
         std::vector<char> verticesData;
         std::vector<uint32_t> indices;
         uint32_t materialIndex;
     };
 
+    struct ModelLODInfo
+    {
+        std::unordered_map<uint32_t, std::vector<MeshInfo>> lodData;
+    };
+
     struct ModelCreateInfo
     {
-        std::vector<std::unordered_map<uint32_t, std::vector<MeshInfo>>> LODs; //material index/slot, material associated meshes
+        std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+        VkVertexInputBindingDescription vertexDescription;
+        uint32_t vertexPositionOffset;
+        
+        std::vector<ModelLODInfo> LODs;
     };
 
     //----------MODEL INFORMATION----------//
 
     struct LODMesh
     {
-        std::vector<VkVertexInputAttributeDescription> vertexAttributes;
-        VkVertexInputBindingDescription vertexDescription;
-        uint32_t vertexPositionOffset;
-        
         uint32_t vboOffset;
         uint32_t vertexCount;
         uint32_t iboOffset;
@@ -69,6 +70,10 @@ namespace PaperRenderer
     class Model //acts more like a collection of models (LODs)
     {
     private:
+        std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+        VkVertexInputBindingDescription vertexDescription;
+        uint32_t vertexPositionOffset;
+
         std::vector<LOD> LODs;
         std::unique_ptr<PaperMemory::Buffer> vbo;
         std::unique_ptr<PaperMemory::Buffer> ibo;
@@ -126,6 +131,9 @@ namespace PaperRenderer
 
         VkDeviceAddress getVBOAddress() const { return vbo->getBufferDeviceAddress(); }
         VkDeviceAddress getIBOAddress() const { return ibo->getBufferDeviceAddress(); }
+        const std::vector<VkVertexInputAttributeDescription>& getVertexAttributes() const { return vertexAttributes; }
+        const VkVertexInputBindingDescription& getVertexDescription() const { return vertexDescription; }
+        const uint32_t& getVertexPositionOffset() const { return vertexPositionOffset; }
         const AABB& getAABB() const { return aabb; }
         const std::vector<LOD>& getLODs() const { return LODs; }
         const std::vector<char>& getShaderData() const { return shaderData; }

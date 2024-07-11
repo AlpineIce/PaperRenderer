@@ -56,10 +56,18 @@ namespace PaperRenderer
         std::unique_ptr<PaperMemory::Buffer> scratchBuffer;
 
         //instances buffers and allocations
+        struct InstanceDescription
+        {
+            uint64_t vertexAddress;
+            uint64_t indexAddress;
+        };
+
         static std::unique_ptr<PaperMemory::DeviceAllocation> hostInstancesAllocation;
         static std::unique_ptr<PaperMemory::DeviceAllocation> deviceInstancesAllocation;
         std::unique_ptr<PaperMemory::Buffer> hostInstancesBuffer;
+        std::unique_ptr<PaperMemory::Buffer> hostInstanceDescriptionsBuffer;
         std::unique_ptr<PaperMemory::Buffer> deviceInstancesBuffer;
+        std::unique_ptr<PaperMemory::Buffer> deviceInstanceDescriptionsBuffer;
 
         VkAccelerationStructureKHR topStructure = VK_NULL_HANDLE;
         std::unordered_map<class Model const*, BottomStructure> bottomStructures;
@@ -125,6 +133,7 @@ namespace PaperRenderer
         void removeInstance(class ModelInstance* instance);
 
         const VkAccelerationStructureKHR& getTLAS() const { return topStructure; }
+        PaperMemory::Buffer const* getInstanceDescriptionsBuffer() const { return deviceInstanceDescriptionsBuffer.get(); }
         const std::unordered_map<class Model const*, BottomStructure>& getBottomStructures() const { return bottomStructures; }
     };
 }

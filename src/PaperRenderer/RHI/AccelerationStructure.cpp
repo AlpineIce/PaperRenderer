@@ -227,25 +227,39 @@ namespace PaperRenderer
     void AccelerationStructure::rebuildInstancesAllocationsAndBuffers(RenderEngine* renderer)
     {
         //copy old buffer data from all acceleration structures
-        std::unordered_map<AccelerationStructure*, std::vector<char>> oldData;
+        struct OldData
+        {
+            std::vector<char> instanceData;
+            std::vector<char> instanceDescriptionData;
+        };
+
+        std::unordered_map<AccelerationStructure*, OldData> oldData;
         VkDeviceSize newHostSize = 0;
         VkDeviceSize newDeviceSize = 0;
         
         for(auto accelerationStructure : accelerationStructures)
         {
-            //instance data
-            std::vector<char> oldInstanceData(accelerationStructure->accelerationStructureInstances.size() * sizeof(ModelInstance::AccelerationStructureInstance));
-            if(accelerationStructure->hostInstancesBuffer)
+            OldData oldInstanceData = {
+                .instanceData = std::vector<char>(accelerationStructure->accelerationStructureInstances.size() * sizeof(ModelInstance::AccelerationStructureInstance)),
+                .instanceDescriptionData = std::vector<char>(accelerationStructure->accelerationStructureInstances.size() * sizeof(InstanceDescription))
+            };
+
+            if(accelerationStructure->hostInstancesBuffer && accelerationStructure->hostInstanceDescriptionsBuffer)
             {
-                memcpy(oldInstanceData.data(), accelerationStructure->hostInstancesBuffer->getHostDataPtr(), oldInstanceData.size());
+                memcpy(oldInstanceData.instanceData.data(), accelerationStructure->hostInstancesBuffer->getHostDataPtr(), oldInstanceData.instanceData.size());
                 accelerationStructure->hostInstancesBuffer.reset();
+
+                memcpy(oldInstanceData.instanceDescriptionData.data(), accelerationStructure->hostInstanceDescriptionsBuffer->getHostDataPtr(), oldInstanceData.instanceDescriptionData.size());
+                accelerationStructure->hostInstanceDescriptionsBuffer.reset();
             }
             oldData[accelerationStructure] = (oldInstanceData);
 
             //rebuild buffers
             accelerationStructure->rebuildInstancesBuffers();
             newHostSize += PaperMemory::DeviceAllocation::padToMultiple(accelerationStructure->hostInstancesBuffer->getMemoryRequirements().size, accelerationStructure->hostInstancesBuffer->getMemoryRequirements().alignment);
+            newHostSize += PaperMemory::DeviceAllocation::padToMultiple(accelerationStructure->hostInstanceDescriptionsBuffer->getMemoryRequirements().size, accelerationStructure->hostInstanceDescriptionsBuffer->getMemoryRequirements().alignment);
             newDeviceSize += PaperMemory::DeviceAllocation::padToMultiple(accelerationStructure->deviceInstancesBuffer->getMemoryRequirements().size, accelerationStructure->deviceInstancesBuffer->getMemoryRequirements().alignment);
+            newDeviceSize += PaperMemory::DeviceAllocation::padToMultiple(accelerationStructure->deviceInstanceDescriptionsBuffer->getMemoryRequirements().size, accelerationStructure->deviceInstanceDescriptionsBuffer->getMemoryRequirements().alignment);
         }
 
         //rebuild allocations
@@ -267,17 +281,21 @@ namespace PaperRenderer
             //assign memory
             accelerationStructure->hostInstancesBuffer->assignAllocation(hostInstancesAllocation.get());
             accelerationStructure->deviceInstancesBuffer->assignAllocation(deviceInstancesAllocation.get());
+            accelerationStructure->hostInstanceDescriptionsBuffer->assignAllocation(hostInstancesAllocation.get());
+            accelerationStructure->deviceInstanceDescriptionsBuffer->assignAllocation(deviceInstancesAllocation.get());
 
             //re-copy
-            memcpy(accelerationStructure->hostInstancesBuffer->getHostDataPtr(), oldData.at(accelerationStructure).data(), oldData.at(accelerationStructure).size());
+            memcpy(accelerationStructure->hostInstancesBuffer->getHostDataPtr(), oldData.at(accelerationStructure).instanceData.data(), oldData.at(accelerationStructure).instanceData.size());
+            memcpy(accelerationStructure->hostInstanceDescriptionsBuffer->getHostDataPtr(), oldData.at(accelerationStructure).instanceDescriptionData.data(), oldData.at(accelerationStructure).instanceDescriptionData.size());
         }
     }
 
     void AccelerationStructure::rebuildInstancesBuffers()
     {
-        VkDeviceSize newInstancesBufferSize = std::max(
-            (VkDeviceSize)(accelerationStructureInstances.size() * sizeof(ModelInstance::AccelerationStructureInstance) * instancesOverhead), (VkDeviceSize)(sizeof(ModelInstance::AccelerationStructureInstance) * 64)
-        );
+        //instances
+        VkDeviceSize newInstancesBufferSize = 0;
+        newInstancesBufferSize += std::max((VkDeviceSize)(accelerationStructureInstances.size() * sizeof(ModelInstance::AccelerationStructureInstance) * instancesOverhead),
+            (VkDeviceSize)(sizeof(ModelInstance::AccelerationStructureInstance) * 64));
 
         PaperMemory::BufferInfo hostInstancesBufferInfo = {};
         hostInstancesBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
@@ -290,6 +308,23 @@ namespace PaperRenderer
         deviceInstancesBufferInfo.size = newInstancesBufferSize;
         deviceInstancesBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
         deviceInstancesBuffer = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), deviceInstancesBufferInfo);
+
+        //instances description
+        VkDeviceSize newInstanceDescriptionsBufferSize = 0;
+        newInstanceDescriptionsBufferSize += std::max((VkDeviceSize)(accelerationStructureInstances.size() * sizeof(InstanceDescription) * instancesOverhead),
+            (VkDeviceSize)(sizeof(InstanceDescription) * 64));
+
+        PaperMemory::BufferInfo hostInstanceDescriptionsBufferInfo = {};
+        hostInstanceDescriptionsBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
+        hostInstanceDescriptionsBufferInfo.size = newInstanceDescriptionsBufferSize;
+        hostInstanceDescriptionsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
+        hostInstanceDescriptionsBuffer = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), hostInstanceDescriptionsBufferInfo);
+
+        PaperMemory::BufferInfo deviceInstanceDescriptionsBufferInfo = {};
+        deviceInstanceDescriptionsBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
+        deviceInstanceDescriptionsBufferInfo.size = newInstanceDescriptionsBufferSize;
+        deviceInstanceDescriptionsBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
+        deviceInstanceDescriptionsBuffer = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), deviceInstanceDescriptionsBufferInfo);
     }
 
     AccelerationStructure::BuildData AccelerationStructure::getBuildData()
@@ -297,7 +332,9 @@ namespace PaperRenderer
         BottomBuildData BLBuildData = {};
         TopBuildData TLBuildData = {};
 
-        //setup bottom level geometries
+        //setup bottom level geometries (this one is broken dont un-comment)
+        BLBuildData.modelsGeometries.reserve(blasBuildModels.size());
+        BLBuildData.buildRangeInfos.reserve(blasBuildModels.size());
         for(auto& model : blasBuildModels)
         {
             std::vector<VkAccelerationStructureGeometryKHR> modelGeometries;
@@ -316,7 +353,7 @@ namespace PaperRenderer
                     trianglesGeometry.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
                     trianglesGeometry.vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = model->getVBOAddress()};
                     trianglesGeometry.maxVertex = mesh.vertexCount;
-                    trianglesGeometry.vertexStride = mesh.vertexDescription.stride;
+                    trianglesGeometry.vertexStride = model->getVertexDescription().stride;
                     trianglesGeometry.indexType = VK_INDEX_TYPE_UINT32;
                     trianglesGeometry.indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = model->getIBOAddress()};
                     //trianglesGeometry.transformData = transformMatrixBufferAddress;
@@ -368,7 +405,8 @@ namespace PaperRenderer
             BLBuildData.buildGeometries.push_back(buildGeoInfo);
             BLBuildData.buildSizes.push_back(buildSize);
         }
-
+        
+        
         //add up total sizes and offsets needed
         for(uint32_t i = 0; i < BLBuildData.buildGeometries.size(); i++)
         {
@@ -502,17 +540,37 @@ namespace PaperRenderer
         }
 
         //copy instances data
-        VkBufferCopy region = {};
-        region.srcOffset = 0;
-        region.size = sizeof(ModelInstance::AccelerationStructureInstance) * accelerationStructureInstances.size();
-        region.dstOffset = 0;
+        VkBufferCopy hostInstancesRegion = {};
+        hostInstancesRegion.srcOffset = 0;
+        hostInstancesRegion.size = sizeof(ModelInstance::AccelerationStructureInstance) * accelerationStructureInstances.size();
+        hostInstancesRegion.dstOffset = 0;
+
+        VkBufferCopy hostInstanceDescriptionsRegion = {};
+        hostInstanceDescriptionsRegion.srcOffset = 0;
+        hostInstanceDescriptionsRegion.size = sizeof(InstanceDescription) * accelerationStructureInstances.size();
+        hostInstanceDescriptionsRegion.dstOffset = 0;
+
+        VkCommandBuffer transferBuffer = PaperMemory::Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), PaperMemory::QueueType::TRANSFER);
+
+        VkCommandBufferBeginInfo beginInfo = {};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.pNext = NULL;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(transferBuffer, &beginInfo);
+        vkCmdCopyBuffer(transferBuffer, hostInstancesBuffer->getBuffer(), deviceInstancesBuffer->getBuffer(), 1, &hostInstancesRegion);
+        vkCmdCopyBuffer(transferBuffer, hostInstanceDescriptionsBuffer->getBuffer(), deviceInstanceDescriptionsBuffer->getBuffer(), 1, &hostInstanceDescriptionsRegion);
+        vkEndCommandBuffer(transferBuffer);
 
         PaperRenderer::PaperMemory::SynchronizationInfo bufferCopySyncInfo = {};
         bufferCopySyncInfo.queueType = PaperMemory::QueueType::TRANSFER;
         bufferCopySyncInfo.waitPairs = {};
         bufferCopySyncInfo.signalPairs = { { instancesCopySemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT } };
         bufferCopySyncInfo.fence = VK_NULL_HANDLE;
-        rendererPtr->recycleCommandBuffer(deviceInstancesBuffer->copyFromBufferRanges(*hostInstancesBuffer.get(), { region }, bufferCopySyncInfo));
+
+        PaperMemory::Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), bufferCopySyncInfo, { transferBuffer });
+
+        rendererPtr->recycleCommandBuffer({ transferBuffer, PaperMemory::QueueType::TRANSFER });
 
         return { std::move(BLBuildData), std::move(TLBuildData) };
     }
@@ -745,6 +803,12 @@ namespace PaperRenderer
         shaderData.modelInstanceIndex = instance->rendererSelfIndex;
 
         memcpy((ModelInstance::AccelerationStructureInstance*)hostInstancesBuffer->getHostDataPtr() + instance->accelerationStructureSelfReferences.at(this).selfIndex, &shaderData, sizeof(ModelInstance::ShaderModelInstance));
+
+        InstanceDescription descriptionShaderData = {};
+        descriptionShaderData.vertexAddress = instance->getParentModelPtr()->getVBOAddress(); //LOD 0 (only LOD for now) is always at location 0 in the buffer
+        descriptionShaderData.indexAddress = instance->getParentModelPtr()->getIBOAddress(); //LOD 0 (only LOD for now) is always at location 0 in the buffer
+
+        memcpy((InstanceDescription*)hostInstanceDescriptionsBuffer->getHostDataPtr() + instance->accelerationStructureSelfReferences.at(this).selfIndex, &descriptionShaderData, sizeof(InstanceDescription));
 
         //add model reference and queue BLAS build if needed
         if(!bottomStructures.count(instance->getParentModelPtr()))
