@@ -1,6 +1,6 @@
 #pragma once
 #include "RHI/Device.h"
-#include "glm/gtx/quaternion.hpp"
+#include "glm/gtc/quaternion.hpp"
 
 #include <filesystem>
 #include <unordered_map>

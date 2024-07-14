@@ -1,5 +1,4 @@
 #include "VulkanMemory.h"
-#define VOLK_IMPLEMENTATION
 #define VK_NO_PROTOTYPES
 #include "volk.h"
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE 
