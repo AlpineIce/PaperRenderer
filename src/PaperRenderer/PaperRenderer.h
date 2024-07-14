@@ -106,5 +106,6 @@ namespace PaperRenderer
         Swapchain* getSwapchain() { return &swapchain; }
         const std::vector<Model*>& getModelReferences() const { return renderingModels; }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
+        PaperMemory::Buffer* getModelDataBuffer() const { return deviceModelDataBuffer.get(); }
     };
 }

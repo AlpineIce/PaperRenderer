@@ -22,7 +22,7 @@ struct Model
     uint lodsOffset;
 };
 
-layout(std430, buffer_reference) readonly buffer InputModel
+layout(scalar, buffer_reference) readonly buffer InputModel
 {
     Model model;
 };
@@ -34,7 +34,7 @@ struct ModelLOD
     uint meshGroupOffset;
 };
 
-layout(std430, buffer_reference) readonly buffer ModelLODs
+layout(scalar, buffer_reference) readonly buffer ModelLODs
 {
     ModelLOD LODs[];
 };
@@ -44,9 +44,10 @@ struct ModelLODMeshGroup
 {
     uint meshCount;
     uint meshesOffset;
+    uint iboOffset; //only used for ray tracing, not here
 };
 
-layout(std430, buffer_reference) readonly buffer ModelLODMeshGroups
+layout(scalar, buffer_reference) readonly buffer ModelLODMeshGroups
 {
     ModelLODMeshGroup groups[];
 };
@@ -60,7 +61,7 @@ struct ModelMeshData
     uint indexCount;
 };
 
-layout(std430, buffer_reference) readonly buffer ModelLODMeshGroupMeshes
+layout(scalar, buffer_reference) readonly buffer ModelLODMeshGroupMeshes
 {
     ModelMeshData meshesData[];
 };

@@ -123,6 +123,7 @@ namespace PaperRenderer
 				ShaderModelLODMeshGroup materialMeshGroup = {};
 				materialMeshGroup.meshCount = LODs.at(lodIndex).meshMaterialData.at(matIndex).size();
 				materialMeshGroup.meshesOffset = dynamicOffset;
+				materialMeshGroup.iboOffset = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(0).iboOffset;
 
 				memcpy(newData.data() + modelLOD.meshGroupsOffset + sizeof(ShaderModelLODMeshGroup) * matIndex, &materialMeshGroup, sizeof(ShaderModelLODMeshGroup));
 

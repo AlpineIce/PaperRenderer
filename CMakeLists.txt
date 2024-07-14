@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION "3.25.1")
+cmake_minimum_required(VERSION "3.25")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -11,25 +11,52 @@ file(GLOB_RECURSE main_h ${source_dir}/*.h)
 
 add_library(${PROJECT_NAME} STATIC ${main_s} ${main_h})
 
-message("PaperRenderer")
+#external project
+include(ExternalProject)
+set(DEPENDENCY_DIR "${CMAKE_BINARY_DIR}/PaperRendererDependencies")
 
-#VULKAN LIBRARY
-find_package(Vulkan REQUIRED)
-target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Vulkan)
+#VULKAN
+include(FindVulkan)
+target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan)
+target_link_libraries(${PROJECT_NAME} PRIVATE volk)
+message("-- Vulkan Version: ${Vulkan_VERSION}")
 
 #GLFW LIBRARY
-add_subdirectory("lib/glfw")
-target_link_libraries(${PROJECT_NAME} PUBLIC glfw)
-target_include_directories(glfw PUBLIC "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/lib/GLFW/include>$<INSTALL_INTERFACE:lib/GLFW/include>")
+set(GLFW_GIT_DIR "https://github.com/glfw/glfw.git")
+set(GLFW_SOURCE_DIR "${DEPENDENCY_DIR}/GLFW/")
+set(GLFW_INCUDE_DIR "${DEPENDENCY_DIR}/GLFW/include")
+set(GLFW_BUILD_EXAMPLES OFF)
+set(GLFW_BUILD_TESTS OFF)
+set(GLFW_BUILD_DOCS OFF)
+set(GLFW_INSTALL OFF)
+message("-- Adding glfw at ${GLFW_GIT_DIR}")
+ExternalProject_Add(
+    glfw
+    GIT_REPOSITORY ${GLFW_GIT_DIR}
+    SOURCE_DIR ${GLFW_SOURCE_DIR}
+    CMAKE_ARGS
+		  -DCMAKE_INSTALL_PREFIX:PATH=install
+)
 
 #GLM
-add_subdirectory("lib/glm")
-target_link_libraries(${PROJECT_NAME} PUBLIC glm)
-target_include_directories(glm INTERFACE "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/lib/glm>$<INSTALL_INTERFACE:lib/glm>")
+set(GLM_GIT_DIR "https://github.com/g-truc/glm.git")
+set(GLM_SOURCE_DIR "${DEPENDENCY_DIR}/GLM/glm")
+set(GLM_INCUDE_DIR ${DEPENDENCY_DIR}/GLM/glm)
+message("-- Adding glm at ${GLM_GIT_DIR}")
+ExternalProject_Add(
+    glm
+    GIT_REPOSITORY ${GLM_GIT_DIR}
+    SOURCE_DIR ${GLM_SOURCE_DIR}
+    CMAKE_ARGS
+		  -DCMAKE_INSTALL_PREFIX:PATH=install
+)
 
-#VOLK
-add_subdirectory("lib/volk")
-target_link_libraries(${PROJECT_NAME} PUBLIC volk)
-target_include_directories(volk PUBLIC "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/lib/volk>$<INSTALL_INTERFACE:lib/volk>")
+add_dependencies(${PROJECT_NAME} glfw glm)
 
-#VMA
+file(MAKE_DIRECTORY ${VULKAN_INCUDE_DIR})
+file(MAKE_DIRECTORY ${GLFW_INCUDE_DIR})
+file(MAKE_DIRECTORY ${GLM_INCUDE_DIR})
+
+set(INCLUDE_DIRS "${Vulkan_INCLUDE_DIRS};${GLFW_INCUDE_DIR};${GLM_INCUDE_DIR}")
+include_directories(${INCLUDE_DIRS})
+

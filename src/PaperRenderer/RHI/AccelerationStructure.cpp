@@ -341,41 +341,49 @@ namespace PaperRenderer
             std::vector<uint32_t> modelPrimitiveCounts;
             std::vector<VkAccelerationStructureBuildRangeInfoKHR> modelBuildRangeInfos;
 
-            //get per mesh group geometry data
+            //get per material group geometry data
             for(const std::vector<LODMesh> meshes : model->getLODs().at(0).meshMaterialData) //use LOD 0 for BLAS
             {
+                VkDeviceSize vertexCount = 0;
+                VkDeviceSize indexCount = 0;
+                VkDeviceAddress vertexOffset = meshes.at(0).vboOffset;
+                VkDeviceAddress indexOffset = meshes.at(0).iboOffset;
+
                 for(const LODMesh& mesh : meshes) //per mesh in mesh group data
                 {
-                    //buffer information
-                    VkAccelerationStructureGeometryTrianglesDataKHR trianglesGeometry = {};
-                    trianglesGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
-                    trianglesGeometry.pNext = NULL;
-                    trianglesGeometry.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-                    trianglesGeometry.vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = model->getVBOAddress()};
-                    trianglesGeometry.maxVertex = mesh.vertexCount;
-                    trianglesGeometry.vertexStride = model->getVertexDescription().stride;
-                    trianglesGeometry.indexType = VK_INDEX_TYPE_UINT32;
-                    trianglesGeometry.indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = model->getIBOAddress()};
-                    //trianglesGeometry.transformData = transformMatrixBufferAddress;
-
-                    //geometries
-                    VkAccelerationStructureGeometryKHR structureGeometry = {};
-                    structureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
-                    structureGeometry.pNext = NULL;
-                    structureGeometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
-                    structureGeometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
-                    structureGeometry.geometry.triangles = trianglesGeometry;
-                    
-                    VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo;
-                    buildRangeInfo.primitiveCount = mesh.indexCount / 3;
-                    buildRangeInfo.primitiveOffset = mesh.iboOffset * sizeof(uint32_t);
-                    buildRangeInfo.firstVertex = mesh.vboOffset;
-                    buildRangeInfo.transformOffset = 0;
-
-                    modelGeometries.push_back(structureGeometry);
-                    modelPrimitiveCounts.push_back(mesh.indexCount / 3);
-                    modelBuildRangeInfos.push_back(buildRangeInfo);
+                    vertexCount += mesh.vertexCount;
+                    indexCount += mesh.indexCount;
                 }
+
+                //buffer information
+                VkAccelerationStructureGeometryTrianglesDataKHR trianglesGeometry = {};
+                trianglesGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+                trianglesGeometry.pNext = NULL;
+                trianglesGeometry.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+                trianglesGeometry.vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = model->getVBOAddress()};
+                trianglesGeometry.maxVertex = vertexCount;
+                trianglesGeometry.vertexStride = model->getVertexDescription().stride;
+                trianglesGeometry.indexType = VK_INDEX_TYPE_UINT32;
+                trianglesGeometry.indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = model->getIBOAddress()};
+                //trianglesGeometry.transformData = transformMatrixBufferAddress;
+
+                //geometries
+                VkAccelerationStructureGeometryKHR structureGeometry = {};
+                structureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+                structureGeometry.pNext = NULL;
+                structureGeometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+                structureGeometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+                structureGeometry.geometry.triangles = trianglesGeometry;
+                
+                VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo;
+                buildRangeInfo.primitiveCount = indexCount / 3;
+                buildRangeInfo.primitiveOffset = indexOffset * sizeof(uint32_t);
+                buildRangeInfo.firstVertex = vertexOffset;
+                buildRangeInfo.transformOffset = 0;
+
+                modelGeometries.push_back(structureGeometry);
+                modelPrimitiveCounts.push_back(indexCount / 3);
+                modelBuildRangeInfos.push_back(buildRangeInfo);
             }
             BLBuildData.modelsGeometries.push_back(std::move(modelGeometries));
             BLBuildData.buildRangeInfos.push_back(std::move(modelBuildRangeInfos));
@@ -807,6 +815,7 @@ namespace PaperRenderer
         InstanceDescription descriptionShaderData = {};
         descriptionShaderData.vertexAddress = instance->getParentModelPtr()->getVBOAddress(); //LOD 0 (only LOD for now) is always at location 0 in the buffer
         descriptionShaderData.indexAddress = instance->getParentModelPtr()->getIBOAddress(); //LOD 0 (only LOD for now) is always at location 0 in the buffer
+        descriptionShaderData.modelDataOffset = instance->getParentModelPtr()->getShaderDataLocation(); //TODO MODEL DATA COMPACTION ERROR
 
         memcpy((InstanceDescription*)hostInstanceDescriptionsBuffer->getHostDataPtr() + instance->accelerationStructureSelfReferences.at(this).selfIndex, &descriptionShaderData, sizeof(InstanceDescription));
 

@@ -97,6 +97,7 @@ namespace PaperRenderer
         {
             uint32_t meshCount;
             uint32_t meshesOffset;
+            uint32_t iboOffset; //for ray tracing
         };
 
         struct ShaderModelMeshData
@@ -137,6 +138,7 @@ namespace PaperRenderer
         const AABB& getAABB() const { return aabb; }
         const std::vector<LOD>& getLODs() const { return LODs; }
         const std::vector<char>& getShaderData() const { return shaderData; }
+        const VkDeviceSize& getShaderDataLocation() const { return shaderDataLocation; }
     };
 
     //----------MODEL INSTANCE DECLARATIONS----------//

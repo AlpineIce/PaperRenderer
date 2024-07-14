@@ -1,7 +1,5 @@
 #include "Camera.h"
 
-#include "glm/gtc/matrix_transform.hpp"
-
 namespace PaperRenderer
 {
     Camera::Camera(const CameraCreateInfo& creationInfo)
