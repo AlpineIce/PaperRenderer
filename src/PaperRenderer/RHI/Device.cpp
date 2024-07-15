@@ -204,8 +204,21 @@ namespace PaperRenderer
         }
         if(!queues.count(PaperMemory::QueueType::PRESENT))
         {
-            queues[PaperMemory::QueueType::PRESENT].queueFamilyIndex = queues.at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex; //shared present/graphics queue family 
-            //(present guaranteed on graphics)
+            //loop back through until a present queue is found
+            for(int i = 0; i < queueFamiliesProperties.size(); i++)
+            {
+                VkBool32 presentSupport;
+                vkGetPhysicalDeviceSurfaceSupportKHR(GPU, i, surface, &presentSupport);
+                if(presentSupport && !queues.count(PaperMemory::QueueType::PRESENT))
+                {
+                    queues[PaperMemory::QueueType::PRESENT].queueFamilyIndex = i;
+                    break;
+                }
+            }
+            if(!queues.count(PaperMemory::QueueType::PRESENT))
+            {
+                throw std::runtime_error("No surface support");
+            }
         }
     }
 

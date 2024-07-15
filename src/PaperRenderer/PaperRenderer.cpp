@@ -230,7 +230,7 @@ namespace PaperRenderer
 
         //TODO UPDATE DEPENDENCIES
         
-        object->rendererSelfIndex = UINT64_MAX;
+        object->rendererSelfIndex = UINT32_MAX;
     }
 
     int RenderEngine::beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore imageAquireSignalSemaphore, const std::vector<PaperMemory::SemaphorePair>& bufferCopySignalSemaphores)

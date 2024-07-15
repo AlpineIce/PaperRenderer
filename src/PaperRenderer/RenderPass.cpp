@@ -559,7 +559,7 @@ namespace PaperRenderer
         renderPassInstances.push_back(instance);
 
         //check size
-        if(hostInstancesBuffer->getSize() < (renderPassInstances.size() + 3) * sizeof(ModelInstance::RenderPassInstance))
+        if(hostInstancesBuffer->getSize() < renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance))
         {
             rebuildAllocationsAndBuffers(rendererPtr);
         }
@@ -580,7 +580,7 @@ namespace PaperRenderer
         shaderData.LODsMaterialDataOffset = materialDataLocation;
         shaderData.isVisible = true;
 
-        memcpy((ModelInstance::RenderPassInstance*)hostInstancesBuffer->getHostDataPtr() + instance->renderPassSelfReferences.at(this).selfIndex, &shaderData, sizeof(ModelInstance::ShaderModelInstance));
+        memcpy((ModelInstance::RenderPassInstance*)hostInstancesBuffer->getHostDataPtr() + instance->renderPassSelfReferences.at(this).selfIndex, &shaderData, sizeof(ModelInstance::RenderPassInstance));
 
         //reset data
         instance->setRenderPassInstanceData(this);

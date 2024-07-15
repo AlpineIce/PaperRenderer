@@ -67,7 +67,7 @@ namespace PaperRenderer
         void clearDrawCounts(const VkCommandBuffer& cmdBuffer);
 
         const std::vector<VkDeviceSize>& getBufferFrameOffsets() const { return bufferFrameOffsets; }
-        VkDeviceAddress getBufferAddress() const { return (drawDataBuffer) ? drawDataBuffer->getBufferDeviceAddress() : NULL; }
+        VkDeviceAddress getBufferAddress() const { return (drawDataBuffer) ? drawDataBuffer->getBufferDeviceAddress() : 0; }
         const std::unordered_map<struct LODMesh const*, MeshInstancesData>& getMeshesData() const { return meshesData; }
     };
 }

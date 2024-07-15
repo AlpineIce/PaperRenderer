@@ -810,7 +810,7 @@ namespace PaperRenderer
         shaderData.blasReference = 0;
         shaderData.modelInstanceIndex = instance->rendererSelfIndex;
 
-        memcpy((ModelInstance::AccelerationStructureInstance*)hostInstancesBuffer->getHostDataPtr() + instance->accelerationStructureSelfReferences.at(this).selfIndex, &shaderData, sizeof(ModelInstance::ShaderModelInstance));
+        memcpy((ModelInstance::AccelerationStructureInstance*)hostInstancesBuffer->getHostDataPtr() + instance->accelerationStructureSelfReferences.at(this).selfIndex, &shaderData, sizeof(ModelInstance::AccelerationStructureInstance));
 
         InstanceDescription descriptionShaderData = {};
         descriptionShaderData.vertexAddress = instance->getParentModelPtr()->getVBOAddress(); //LOD 0 (only LOD for now) is always at location 0 in the buffer

@@ -14,8 +14,8 @@ namespace PaperRenderer
     class Device
     {
     private:
-        VkInstance instance;
-        VkPhysicalDevice GPU;
+        VkInstance instance = VK_NULL_HANDLE;
+        VkPhysicalDevice GPU = VK_NULL_HANDLE;
         std::vector<VkExtensionProperties> extensions;
         VkPhysicalDeviceProperties2 gpuProperties;
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtPipelineProperties = {};
@@ -24,8 +24,8 @@ namespace PaperRenderer
         std::unordered_map<uint32_t, std::vector<PaperMemory::Queue>> familyQueues;
         std::unordered_map<PaperMemory::QueueType, PaperMemory::QueuesInFamily> queues;
         std::unique_ptr<PaperMemory::Commands> commands;
-        VkDevice device;
-        VkSurfaceKHR surface;
+        VkDevice device = VK_NULL_HANDLE;
+        VkSurfaceKHR surface = VK_NULL_HANDLE;
         bool rtSupport = false;
 
         void createContext(std::string appName);

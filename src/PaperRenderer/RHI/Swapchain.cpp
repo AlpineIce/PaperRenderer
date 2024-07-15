@@ -160,7 +160,8 @@ namespace PaperRenderer
 
         VkSurfaceCapabilitiesKHR capabilities;
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(devicePtr->getGPU(), *(devicePtr->getSurfacePtr()), &capabilities);
-        this->swapchainExtent = capabilities.currentExtent;
+        this->swapchainExtent.width = std::min(currentWindowState.resX, capabilities.maxImageExtent.width);
+        this->swapchainExtent.height = std::min(currentWindowState.resY, capabilities.maxImageExtent.height);
 
         VkSwapchainCreateInfoKHR swapchainInfo = {};
         swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
