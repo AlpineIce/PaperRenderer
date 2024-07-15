@@ -1,6 +1,7 @@
 #include "Swapchain.h"
 
 #include <algorithm>
+#include <functional>
 
 namespace PaperRenderer
 {
@@ -73,6 +74,11 @@ namespace PaperRenderer
 
         //build swapchian
         buildSwapchain();
+
+        //set glfw callback 
+
+        glfwSetWindowUserPointer(window, this);
+        glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
     }
 
     Swapchain::~Swapchain()
@@ -88,6 +94,14 @@ namespace PaperRenderer
         //glfw window and surface
         vkDestroySurfaceKHR(devicePtr->getInstance(), *devicePtr->getSurfacePtr(), nullptr);
         glfwDestroyWindow(window);
+    }
+
+    void Swapchain::framebufferResizeCallback(GLFWwindow *window, int width, int height)
+    {
+        Swapchain* thisPtr = (Swapchain*)glfwGetWindowUserPointer(window);
+        thisPtr->currentWindowState.resX = width;
+        thisPtr->currentWindowState.resY = height;
+        thisPtr->recreate();
     }
 
     void Swapchain::buildSwapchain()
@@ -255,5 +269,7 @@ namespace PaperRenderer
         VkSwapchainKHR oldSwapchain = swapchain;
         buildSwapchain();
         vkDestroySwapchainKHR(devicePtr->getDevice(), oldSwapchain, nullptr);
+
+        if(swapchainRebuildCallback) swapchainRebuildCallback(swapchainExtent);
     }
 }

@@ -252,14 +252,13 @@ namespace PaperRenderer
             if(currentImage == 0)
             {
                 swapchain.recreate();
-                returnResult = 1;
 
                 beginFrame(waitFences, imageAquireSignalSemaphore, bufferCopySignalSemaphores);
             }
             else
             {
                 currentImage = 0;
-                return 2;
+                return 1;
             }
         }
         else
@@ -317,7 +316,7 @@ namespace PaperRenderer
         return returnResult;
     }
 
-    int RenderEngine::endFrame(const std::vector<VkSemaphore>& waitSemaphores)
+    void RenderEngine::endFrame(const std::vector<VkSemaphore>& waitSemaphores)
     {
         //presentation
         //VkResult returnResult;
@@ -336,27 +335,25 @@ namespace PaperRenderer
         VkResult presentResult = vkQueuePresentKHR(device.getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->queue, &presentSubmitInfo);
         device.getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->threadLock.unlock();
 
-        int returnNumber = 0;
-        /*if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) 
+        if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) 
         {
-            swapchain.recreate();
-            returnNumber = 1;
-        }*/
-
-        //increment frame counter
-        const uint32_t maxFrameCount = PaperMemory::Commands::getFrameCount();
-        if(currentImage == maxFrameCount - 1)
-        {
-            currentImage = 0;
+            //do nothing 
         }
         else
         {
-            currentImage++;
+            //increment frame counter
+            const uint32_t maxFrameCount = PaperMemory::Commands::getFrameCount();
+            if(currentImage == maxFrameCount - 1)
+            {
+                currentImage = 0;
+            }
+            else
+            {
+                currentImage++;
+            }
         }
 
         glfwPollEvents();
-
-        return returnNumber;
     }
 
     void RenderEngine::recycleCommandBuffer(PaperMemory::CommandBuffer& commandBuffer)

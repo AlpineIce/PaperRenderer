@@ -2,6 +2,7 @@
 #include "Device.h"
 
 #include <vector>
+#include <functional>
 
 namespace PaperRenderer
 {
@@ -36,6 +37,9 @@ namespace PaperRenderer
         WindowState currentWindowState;
         bool usingHDR = false;
 
+        static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
+        std::function<void(VkExtent2D newExtent)> swapchainRebuildCallback = NULL;
+
         Device* devicePtr;
         
         void buildSwapchain();
@@ -46,6 +50,7 @@ namespace PaperRenderer
         ~Swapchain();
 
         void recreate();
+        void setSwapchainRebuildCallback(std::function<void(VkExtent2D newExtent)> callbackFunction) { this->swapchainRebuildCallback = callbackFunction; }
 
         GLFWwindow* getGLFWwindow() const { return window; }
         const WindowState& getWindowState() const { return currentWindowState; }
