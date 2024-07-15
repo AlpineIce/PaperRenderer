@@ -33,6 +33,8 @@ namespace PaperRenderer
         VkSwapchainKHR swapchain = VK_NULL_HANDLE;
         std::vector<VkImage> swapchainImages;
         std::vector<VkImageView> imageViews;
+        std::vector<VkSemaphore> imageSemaphores;
+        uint32_t frameIndex;
         GLFWwindow* window = NULL;
         WindowState currentWindowState;
         bool usingHDR = false;
@@ -40,15 +42,18 @@ namespace PaperRenderer
         static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
         std::function<void(VkExtent2D newExtent)> swapchainRebuildCallback = NULL;
 
-        Device* devicePtr;
+        class RenderEngine* rendererPtr;
         
         void buildSwapchain();
         void createImageViews();
 
     public:
-        Swapchain(Device* device, WindowState startingWindowState);
+        Swapchain(class RenderEngine* renderer, WindowState startingWindowState);
         ~Swapchain();
 
+        //returns the image acquire semaphore
+        const VkSemaphore& acquireNextImage(uint32_t currentImage);
+        void presentImage(const std::vector<VkSemaphore>& waitSemaphores);
         void recreate();
         void setSwapchainRebuildCallback(std::function<void(VkExtent2D newExtent)> callbackFunction) { this->swapchainRebuildCallback = callbackFunction; }
 
@@ -59,6 +64,7 @@ namespace PaperRenderer
         const VkFormat& getFormat() const { return swapchainImageFormat; }
         const VkSwapchainKHR& getSwapchain() const { return swapchain; }
         const VkExtent2D& getExtent() const { return swapchainExtent; } //AKA resolution
+        const uint32_t& getSwapchainImageIndex() const { return frameIndex; }
         const bool& getIsUsingHDR() const { return usingHDR; }
     };
 }

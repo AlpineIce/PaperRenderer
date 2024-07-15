@@ -90,11 +90,11 @@ namespace PaperRenderer
         write.size = sizeof(UBOInputData);
         write.offset = 0;
 
-        uniformBuffers.at(*rendererPtr->getCurrentFramePtr())->writeToBuffer({ write });
+        uniformBuffers.at(rendererPtr->getCurrentFrameIndex())->writeToBuffer({ write });
 
         //set0 - binding 0: UBO input data
         VkDescriptorBufferInfo bufferWrite0Info = {};
-        bufferWrite0Info.buffer = uniformBuffers.at(*rendererPtr->getCurrentFramePtr())->getBuffer();
+        bufferWrite0Info.buffer = uniformBuffers.at(rendererPtr->getCurrentFrameIndex())->getBuffer();
         bufferWrite0Info.offset = 0;
         bufferWrite0Info.range = sizeof(UBOInputData);
 
@@ -150,7 +150,7 @@ namespace PaperRenderer
         DescriptorWrites descriptorWritesInfo = {};
         descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2, bufferWrite3 };
         descriptorWrites[0] = descriptorWritesInfo;
-        writeDescriptorSet(cmdBuffer, *rendererPtr->getCurrentFramePtr(), 0);
+        writeDescriptorSet(cmdBuffer, rendererPtr->getCurrentFrameIndex(), 0);
 
         //dispatch
         workGroupSizes.x = ((accelerationStructure.accelerationStructureInstances.size()) / 128) + 1;

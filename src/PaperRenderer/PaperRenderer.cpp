@@ -8,7 +8,7 @@ namespace PaperRenderer
     RenderEngine::RenderEngine(RendererCreationStruct creationInfo)
         :shadersDir(creationInfo.shadersDir),
         device(creationInfo.windowState.windowName),
-        swapchain(&device, creationInfo.windowState),
+        swapchain(this, creationInfo.windowState),
         descriptors(&device),
         pipelineBuilder(this),
         rasterPreprocessPipeline(this, creationInfo.shadersDir),
@@ -233,125 +233,72 @@ namespace PaperRenderer
         object->rendererSelfIndex = UINT32_MAX;
     }
 
-    int RenderEngine::beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore imageAquireSignalSemaphore, const std::vector<PaperMemory::SemaphorePair>& bufferCopySignalSemaphores)
+    const VkSemaphore& RenderEngine::beginFrame(const std::vector<VkFence> &waitFences, const std::vector<PaperMemory::SemaphorePair> &bufferCopySignalSemaphores)
     {
         //wait for fences
-        vkWaitForFences(device.getDevice(), waitFences.size(), waitFences.data(), VK_TRUE, UINT64_MAX);
+        std::vector<VkFence> allWaitFences = waitFences;
+        allWaitFences.push_back(copyFence);
+        allWaitFences.insert(allWaitFences.begin(), preprocessFences.begin(), preprocessFences.end());
+        allWaitFences.insert(allWaitFences.begin(), accelerationStructureFences.begin(), accelerationStructureFences.end());
 
-        //get available image
-        uint32_t imageReturnIndex;
-        VkResult imageAquireResult = vkAcquireNextImageKHR(device.getDevice(),
-            swapchain.getSwapchain(),
-            UINT32_MAX,
-            imageAquireSignalSemaphore,
-            VK_NULL_HANDLE, &imageReturnIndex);
+        preprocessFences.clear();
+        accelerationStructureFences.clear();
 
-        int returnResult = 0;
-        if(imageAquireResult == VK_ERROR_OUT_OF_DATE_KHR || imageAquireResult == VK_SUBOPTIMAL_KHR) //i have no idea why it deadlocks on anything but frame 0
-        {
-            if(currentImage == 0)
-            {
-                swapchain.recreate();
+        vkWaitForFences(device.getDevice(), allWaitFences.size(), allWaitFences.data(), VK_TRUE, UINT64_MAX);
 
-                beginFrame(waitFences, imageAquireSignalSemaphore, bufferCopySignalSemaphores);
-            }
-            else
-            {
-                currentImage = 0;
-                return 1;
-            }
-        }
-        else
-        {
-            //reset fences
-            std::vector<VkFence> allWaitFences = waitFences;
-            allWaitFences.push_back(copyFence);
-            allWaitFences.insert(allWaitFences.begin(), preprocessFences.begin(), preprocessFences.end());
-            allWaitFences.insert(allWaitFences.begin(), accelerationStructureFences.begin(), accelerationStructureFences.end());
+        //acquire next image
+        const VkSemaphore& imageAcquireSemaphore = swapchain.acquireNextImage(currentImage);
 
-            preprocessFences.clear();
-            accelerationStructureFences.clear();
+        //reset fences
+        vkResetFences(device.getDevice(), allWaitFences.size(), allWaitFences.data());
 
-            vkWaitForFences(device.getDevice(), allWaitFences.size(), allWaitFences.data(), VK_TRUE, UINT64_MAX);
-            vkResetFences(device.getDevice(), allWaitFences.size(), allWaitFences.data());
+        //free command buffers and reset descriptor pool
+        PaperMemory::Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers.at(currentImage));
+        usedCmdBuffers.at(currentImage).clear();
+        descriptors.refreshPools(currentImage);
 
-            //free command buffers and reset descriptor pool
-            PaperMemory::Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers.at(currentImage));
-            usedCmdBuffers.at(currentImage).clear();
-            descriptors.refreshPools(currentImage);
+        //copy instances and model data (done in one submission)
+        VkBufferCopy instancesRegion;
+        instancesRegion.srcOffset = 0;
+        instancesRegion.dstOffset = 0;
+        instancesRegion.size = renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance);
 
-            //copy instances and model data (done in one submission)
-            VkBufferCopy instancesRegion;
-            instancesRegion.srcOffset = 0;
-            instancesRegion.dstOffset = 0;
-            instancesRegion.size = renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance);
+        VkBufferCopy modelsRegion;
+        modelsRegion.srcOffset = 0;
+        modelsRegion.dstOffset = 0;
+        modelsRegion.size = hostModelDataBuffer->getStackLocation();
 
-            VkBufferCopy modelsRegion;
-            modelsRegion.srcOffset = 0;
-            modelsRegion.dstOffset = 0;
-            modelsRegion.size = hostModelDataBuffer->getStackLocation();
+        VkCommandBuffer transferBuffer = PaperMemory::Commands::getCommandBuffer(device.getDevice(), PaperMemory::QueueType::TRANSFER);
 
-            VkCommandBuffer transferBuffer = PaperMemory::Commands::getCommandBuffer(device.getDevice(), PaperMemory::QueueType::TRANSFER);
+        VkCommandBufferBeginInfo beginInfo = {};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.pNext = NULL;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-            VkCommandBufferBeginInfo beginInfo = {};
-            beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-            beginInfo.pNext = NULL;
-            beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(transferBuffer, &beginInfo);
+        vkCmdCopyBuffer(transferBuffer, hostInstancesDataBuffer->getBuffer(), deviceInstancesDataBuffer->getBuffer(), 1, &instancesRegion);
+        vkCmdCopyBuffer(transferBuffer, hostModelDataBuffer->getBuffer()->getBuffer(), deviceModelDataBuffer->getBuffer(), 1, &modelsRegion);
+        vkEndCommandBuffer(transferBuffer);
 
-            vkBeginCommandBuffer(transferBuffer, &beginInfo);
-            vkCmdCopyBuffer(transferBuffer, hostInstancesDataBuffer->getBuffer(), deviceInstancesDataBuffer->getBuffer(), 1, &instancesRegion);
-            vkCmdCopyBuffer(transferBuffer, hostModelDataBuffer->getBuffer()->getBuffer(), deviceModelDataBuffer->getBuffer(), 1, &modelsRegion);
-            vkEndCommandBuffer(transferBuffer);
+        PaperMemory::SynchronizationInfo bufferCopySync = {};
+        bufferCopySync.queueType = PaperMemory::QueueType::TRANSFER;
+        bufferCopySync.waitPairs = {};
+        bufferCopySync.signalPairs = bufferCopySignalSemaphores;
+        bufferCopySync.fence = copyFence;
 
-            PaperMemory::SynchronizationInfo bufferCopySync = {};
-            bufferCopySync.queueType = PaperMemory::QueueType::TRANSFER;
-            bufferCopySync.waitPairs = {};
-            bufferCopySync.signalPairs = bufferCopySignalSemaphores;
-            bufferCopySync.fence = copyFence;
+        PaperMemory::Commands::submitToQueue(device.getDevice(), bufferCopySync, { transferBuffer });
+        recycleCommandBuffer({ transferBuffer, PaperMemory::QueueType::TRANSFER });
 
-            PaperMemory::Commands::submitToQueue(device.getDevice(), bufferCopySync, { transferBuffer });
-            recycleCommandBuffer({ transferBuffer, PaperMemory::QueueType::TRANSFER });
-        }
-
-        return returnResult;
+        return imageAcquireSemaphore;
     }
 
     void RenderEngine::endFrame(const std::vector<VkSemaphore>& waitSemaphores)
     {
         //presentation
-        //VkResult returnResult;
-        VkPresentInfoKHR presentSubmitInfo = {};
-        presentSubmitInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-        presentSubmitInfo.pNext = NULL;
-        presentSubmitInfo.waitSemaphoreCount = waitSemaphores.size();
-        presentSubmitInfo.pWaitSemaphores = waitSemaphores.data();
-        presentSubmitInfo.swapchainCount = 1;
-        presentSubmitInfo.pSwapchains = &swapchain.getSwapchain();
-        presentSubmitInfo.pImageIndices = &currentImage;
-        presentSubmitInfo.pResults = NULL;//&returnResult;
+        swapchain.presentImage(waitSemaphores);
 
-        //too lazy to properly fix this, it probably barely affects performance anyways
-        device.getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->threadLock.lock();
-        VkResult presentResult = vkQueuePresentKHR(device.getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->queue, &presentSubmitInfo);
-        device.getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->threadLock.unlock();
-
-        if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) 
-        {
-            //do nothing 
-        }
-        else
-        {
-            //increment frame counter
-            const uint32_t maxFrameCount = PaperMemory::Commands::getFrameCount();
-            if(currentImage == maxFrameCount - 1)
-            {
-                currentImage = 0;
-            }
-            else
-            {
-                currentImage++;
-            }
-        }
+        //increment frame counter
+        currentImage = (currentImage + 1) % PaperMemory::Commands::getFrameCount();
 
         glfwPollEvents();
     }

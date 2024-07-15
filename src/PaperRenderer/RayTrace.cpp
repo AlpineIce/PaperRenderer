@@ -63,7 +63,7 @@ namespace PaperRenderer
         if(rtRenderInfo.rtDescriptorWrites.bufferViewWrites.size() || rtRenderInfo.rtDescriptorWrites.bufferWrites.size() || 
             rtRenderInfo.rtDescriptorWrites.imageWrites.size() || rtRenderInfo.rtDescriptorWrites.accelerationStructureWrites.size())
         {
-            VkDescriptorSet rtDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(0), *rendererPtr->getCurrentFramePtr());
+            VkDescriptorSet rtDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(0), rendererPtr->getCurrentFrameIndex());
             DescriptorAllocator::writeUniforms(rendererPtr->getDevice()->getDevice(), rtDescriptorSet, rtRenderInfo.rtDescriptorWrites);
 
             DescriptorBind bindingInfo = {};

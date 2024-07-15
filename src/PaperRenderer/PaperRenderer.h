@@ -89,14 +89,14 @@ namespace PaperRenderer
         RenderEngine(RendererCreationStruct creationInfo);
         ~RenderEngine();
 
-        //returns 0 if no swapchain rebuild occured; returns 1 if the entire frame should be skipped due to recreation failure on frame index that isn't 0
-        int beginFrame(const std::vector<VkFence>& waitFences, VkSemaphore imageAquireSignalSemaphore, const std::vector<PaperMemory::SemaphorePair>& bufferCopySignalSemaphores);
+        //returns the image acquire semaphore from the swapchain
+        const VkSemaphore& beginFrame(const std::vector<VkFence>& waitFences, const std::vector<PaperMemory::SemaphorePair>& bufferCopySignalSemaphores);
         void endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
 
         void recycleCommandBuffer(PaperMemory::CommandBuffer& commandBuffer);
         void recycleCommandBuffer(PaperMemory::CommandBuffer&& commandBuffer);
 
-        uint32_t const* getCurrentFramePtr() const { return &currentImage; }
+        uint32_t getCurrentFrameIndex() const { return currentImage; }
         Device* getDevice() { return &device; }
         RasterPreprocessPipeline* getRasterPreprocessPipeline() { return &rasterPreprocessPipeline; }
         DescriptorAllocator* getDescriptorAllocator() { return &descriptors; }

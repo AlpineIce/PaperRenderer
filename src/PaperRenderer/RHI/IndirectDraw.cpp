@@ -182,7 +182,7 @@ namespace PaperRenderer
             //write uniforms
             VkDescriptorBufferInfo descriptorInfo = {};
             descriptorInfo.buffer = drawDataBuffer->getBuffer();
-            descriptorInfo.offset = meshData.outputObjectsOffset + bufferFrameOffsets.at(*rendererPtr->getCurrentFramePtr());
+            descriptorInfo.offset = meshData.outputObjectsOffset + bufferFrameOffsets.at(rendererPtr->getCurrentFrameIndex());
             descriptorInfo.range = sizeof(ShaderOutputObject) * meshData.instanceCount;
             BuffersDescriptorWrites write = {};
             write.binding = 0;
@@ -206,9 +206,9 @@ namespace PaperRenderer
             vkCmdDrawIndexedIndirectCount(
                 cmdBuffer,
                 drawDataBuffer->getBuffer(),
-                meshData.drawCommandsOffset + bufferFrameOffsets.at(*rendererPtr->getCurrentFramePtr()),
+                meshData.drawCommandsOffset + bufferFrameOffsets.at(rendererPtr->getCurrentFrameIndex()),
                 drawDataBuffer->getBuffer(),
-                meshData.drawCountsOffset + bufferFrameOffsets.at(*rendererPtr->getCurrentFramePtr()),
+                meshData.drawCountsOffset + bufferFrameOffsets.at(rendererPtr->getCurrentFrameIndex()),
                 meshData.instanceCount,
                 sizeof(VkDrawIndexedIndirectCommand));
         }
@@ -217,6 +217,6 @@ namespace PaperRenderer
     {
         //clear draw counts region
         uint32_t drawCountDefaultValue = 0;
-        vkCmdFillBuffer(cmdBuffer, drawDataBuffer->getBuffer(), bufferFrameOffsets.at(*rendererPtr->getCurrentFramePtr()), drawCountsRange, drawCountDefaultValue);
+        vkCmdFillBuffer(cmdBuffer, drawDataBuffer->getBuffer(), bufferFrameOffsets.at(rendererPtr->getCurrentFrameIndex()), drawCountsRange, drawCountDefaultValue);
     }
 }

@@ -82,18 +82,18 @@ namespace PaperRenderer
         uboInputData.materialDataPtr = renderPass.deviceInstancesDataBuffer->getBufferDeviceAddress();
         uboInputData.modelDataPtr = rendererPtr->deviceModelDataBuffer->getBufferDeviceAddress();
         uboInputData.objectCount = renderPass.renderPassInstances.size();
-        uboInputData.frameIndex = *rendererPtr->getCurrentFramePtr();
+        uboInputData.frameIndex = rendererPtr->getCurrentFrameIndex();
 
         PaperMemory::BufferWrite write = {};
         write.data = &uboInputData;
         write.size = sizeof(UBOInputData);
         write.offset = 0;
 
-        uniformBuffers.at(*rendererPtr->getCurrentFramePtr())->writeToBuffer({ write });
+        uniformBuffers.at(rendererPtr->getCurrentFrameIndex())->writeToBuffer({ write });
 
         //set0 - binding 0: UBO input data
         VkDescriptorBufferInfo bufferWrite0Info = {};
-        bufferWrite0Info.buffer = uniformBuffers.at(*rendererPtr->getCurrentFramePtr())->getBuffer();
+        bufferWrite0Info.buffer = uniformBuffers.at(rendererPtr->getCurrentFrameIndex())->getBuffer();
         bufferWrite0Info.offset = 0;
         bufferWrite0Info.range = sizeof(UBOInputData);
 
@@ -138,7 +138,7 @@ namespace PaperRenderer
         DescriptorWrites descriptorWritesInfo = {};
         descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2 };
         descriptorWrites[0] = descriptorWritesInfo;
-        writeDescriptorSet(cullingCmdBuffer, *rendererPtr->getCurrentFramePtr(), 0);
+        writeDescriptorSet(cullingCmdBuffer, rendererPtr->getCurrentFrameIndex(), 0);
 
         //dispatch
         workGroupSizes.x = ((renderPass.renderPassInstances.size()) / 128) + 1;
@@ -353,7 +353,7 @@ namespace PaperRenderer
         PaperMemory::SynchronizationInfo syncInfo = {};
         syncInfo.queueType = PaperMemory::QueueType::TRANSFER;
         syncInfo.waitPairs = {};
-        syncInfo.signalPairs = { { drawCountsClearSemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_TRANSFER_BIT } };
+        syncInfo.signalPairs = { { drawCountsClearSemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_TRANSFER_BIT } };
         syncInfo.fence = VK_NULL_HANDLE;
 
         VkCommandBuffer cmdBuffer = PaperMemory::Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), syncInfo.queueType);
@@ -401,7 +401,7 @@ namespace PaperRenderer
             PaperMemory::SynchronizationInfo instancesBufferCopySync = {};
             instancesBufferCopySync.queueType = PaperMemory::QueueType::TRANSFER;
             instancesBufferCopySync.waitPairs = {};
-            instancesBufferCopySync.signalPairs = { { instancesBufferCopySemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
+            instancesBufferCopySync.signalPairs = { { instancesBufferCopySemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
             instancesBufferCopySync.fence = VK_NULL_HANDLE;
             rendererPtr->recycleCommandBuffer(deviceInstancesBuffer->copyFromBufferRanges(*hostInstancesBuffer.get(), { instancesRegion }, instancesBufferCopySync));
 
@@ -413,20 +413,20 @@ namespace PaperRenderer
             PaperMemory::SynchronizationInfo materialDataCopySync = {};
             materialDataCopySync.queueType = PaperMemory::QueueType::TRANSFER;
             materialDataCopySync.waitPairs = {};
-            materialDataCopySync.signalPairs = { { materialDataBufferCopySemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
+            materialDataCopySync.signalPairs = { { materialDataBufferCopySemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
             materialDataCopySync.fence = VK_NULL_HANDLE;
             rendererPtr->recycleCommandBuffer(deviceInstancesDataBuffer->copyFromBufferRanges(*hostInstancesDataBuffer->getBuffer(), { materialDataRegion }, materialDataCopySync));
 
             //compute shader
             std::vector<PaperMemory::SemaphorePair> waitPairs = syncInfo.preprocessWaitPairs;
-            waitPairs.push_back({ instancesBufferCopySemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
-            waitPairs.push_back({ materialDataBufferCopySemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
-            waitPairs.push_back({ drawCountsClearSemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
+            waitPairs.push_back({ instancesBufferCopySemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
+            waitPairs.push_back({ materialDataBufferCopySemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
+            waitPairs.push_back({ drawCountsClearSemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
 
             PaperMemory::SynchronizationInfo preprocessSyncInfo = {};
             preprocessSyncInfo.queueType = PaperMemory::QueueType::COMPUTE;
             preprocessSyncInfo.waitPairs = waitPairs;
-            preprocessSyncInfo.signalPairs = { { preprocessSignalSemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT } };
+            preprocessSyncInfo.signalPairs = { { preprocessSignalSemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT } };
             preprocessSyncInfo.fence = preprocessFence;
 
             rendererPtr->getRasterPreprocessPipeline()->submit(preprocessSyncInfo, *this);
@@ -475,13 +475,13 @@ namespace PaperRenderer
             //record draw commands
             for(const auto& [material, materialInstanceNode] : renderTree) //material
             {
-                material->bind(graphicsCmdBuffer, *rendererPtr->getCurrentFramePtr());
+                material->bind(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex());
                 for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
                 {
                     if(meshGroups)
                     {
-                        materialInstance->bind(graphicsCmdBuffer, *rendererPtr->getCurrentFramePtr());
-                        meshGroups->draw(graphicsCmdBuffer, *rendererPtr->getCurrentFramePtr());
+                        materialInstance->bind(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex());
+                        meshGroups->draw(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex());
                     }
                 }
             }
@@ -501,7 +501,7 @@ namespace PaperRenderer
             PaperMemory::SynchronizationInfo graphicsSyncInfo = {};
             graphicsSyncInfo.queueType = PaperMemory::QueueType::GRAPHICS;
             graphicsSyncInfo.waitPairs = syncInfo.renderWaitPairs;
-            graphicsSyncInfo.waitPairs.push_back({ preprocessSignalSemaphores.at(*rendererPtr->getCurrentFramePtr()), VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT });
+            graphicsSyncInfo.waitPairs.push_back({ preprocessSignalSemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT });
             graphicsSyncInfo.signalPairs = syncInfo.renderSignalPairs;
             graphicsSyncInfo.fence = syncInfo.renderSignalFence;
 
