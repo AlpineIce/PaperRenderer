@@ -44,7 +44,8 @@ struct ModelLODMeshGroup
 {
     uint meshCount;
     uint meshesOffset;
-    uint iboOffset; //only used for ray tracing, not here
+    uint iboOffset; //only used for ray tracing
+    uint vboOffset; //only used for ray tracing
 };
 
 layout(scalar, buffer_reference) readonly buffer ModelLODMeshGroups

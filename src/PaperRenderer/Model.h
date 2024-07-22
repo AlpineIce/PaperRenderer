@@ -98,6 +98,7 @@ namespace PaperRenderer
             uint32_t meshCount;
             uint32_t meshesOffset;
             uint32_t iboOffset; //for ray tracing
+            uint32_t vboOffset; //for ray tracing
         };
 
         struct ShaderModelMeshData
