@@ -51,7 +51,7 @@ namespace PaperRenderer
         }
         else
         {
-            throw std::runtime_error("Couldnt open pipeline shader file " + location);
+            throw std::runtime_error("Couldn't open pipeline shader file " + location);
         }
 
         return std::vector<uint32_t>();
