@@ -268,32 +268,10 @@ namespace PaperRenderer
         rgenStageInfo.pSpecializationInfo = NULL;
         shaderStages.push_back(rgenStageInfo);
 
-        //miss
-        const uint32_t missCount = 1;
-        VkRayTracingShaderGroupCreateInfoKHR missShaderGroup = {};
-        missShaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-        missShaderGroup.pNext = NULL;
-        missShaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-        missShaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
-        missShaderGroup.closestHitShader  = VK_SHADER_UNUSED_KHR;
-        missShaderGroup.generalShader = shaderStages.size();
-        missShaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
-        missShaderGroup.pShaderGroupCaptureReplayHandle = NULL;
-        rtShaderGroups.push_back(missShaderGroup);
-
-        VkPipelineShaderStageCreateInfo missStageInfo = {};
-        missStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        missStageInfo.pNext = NULL;
-        missStageInfo.flags = 0;
-        missStageInfo.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
-        missStageInfo.module = creationInfo.missShader->getModule();
-        missStageInfo.pName = "main"; //use main() function in shaders
-        missStageInfo.pSpecializationInfo = NULL;
-        shaderStages.push_back(missStageInfo);
-
         //shader groups
         uint32_t hitCount = 0;
         uint32_t callableCount = 0;
+        uint32_t missCount = 0;
         for(const auto& shaderGroup : creationInfo.shaderGroups)
         {
             VkRayTracingShaderGroupCreateInfoKHR shaderGroupInfo = {};
@@ -340,6 +318,10 @@ namespace PaperRenderer
                         shaderGroupInfo.intersectionShader = shaderStages.size();
                         callableCount++;
                         break;
+                    case VK_SHADER_STAGE_MISS_BIT_KHR:
+                        shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+                        shaderGroupInfo.generalShader = shaderStages.size();
+                        missCount++;
                 }
                 shaderStages.push_back(shaderStageInfo);
             }
@@ -673,7 +655,6 @@ namespace PaperRenderer
             groupIndex++;
         }
         pipelineInfo.rgenShader = createShader(info.rgenShader);
-        pipelineInfo.missShader = createShader(info.missShader);
 
         return std::make_unique<RTPipeline>(pipelineInfo, pipelineProperties);
     }

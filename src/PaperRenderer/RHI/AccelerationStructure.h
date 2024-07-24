@@ -61,6 +61,8 @@ namespace PaperRenderer
             uint64_t vertexAddress;
             uint64_t indexAddress;
             uint32_t modelDataOffset;
+            uint32_t vertexStride;
+            uint32_t indexStride;
         };
 
         static std::unique_ptr<PaperMemory::DeviceAllocation> hostInstancesAllocation;

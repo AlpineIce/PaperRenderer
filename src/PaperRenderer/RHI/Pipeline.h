@@ -173,21 +173,19 @@ namespace PaperRenderer
     struct RTPipelineCreationInfo : public PipelineCreationInfo
     {
         std::shared_ptr<Shader> rgenShader;
-        std::shared_ptr<Shader> missShader;
         std::vector<std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>>> shaderGroups;
     };
 
     struct RTPipelineBuildInfo
     {
         const ShaderPair& rgenShader;
-        const ShaderPair& missShader;
-        const std::vector<std::vector<ShaderPair>>& shaderGroups; //one shader group (std::vector<ShaderPair>) contains all shader pairs for one material
+        const std::vector<std::vector<ShaderPair>>& shaderGroups;
         const std::unordered_map<uint32_t, DescriptorSet>& descriptors;
     };
 
     struct RTPipelineProperties
     {
-        uint32_t MAX_RT_RECURSION_DEPTH = 1;
+        uint32_t MAX_RT_RECURSION_DEPTH = 2;
     };
 
     struct RTShaderBindingTableData

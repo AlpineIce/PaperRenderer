@@ -19,17 +19,27 @@ namespace PaperRenderer
 
     void RayTraceRender::buildPipeline(const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets)
     {
+        std::vector<std::vector<ShaderPair>> shaderGroups;
+
+        //rgen shader
         ShaderPair rgenShader = {
             .stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
             .directory = "resources/shaders/RTRayGen.spv"
         };
-        ShaderPair missShader = {
-            .stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
+        
+        //environment map miss
+        shaderGroups.push_back({ {
+            .stage = VK_SHADER_STAGE_MISS_BIT_KHR,
             .directory = "resources/shaders/RTMiss.spv"
-        };
+        } });
+
+        //shadow miss
+        shaderGroups.push_back({ {
+            .stage = VK_SHADER_STAGE_MISS_BIT_KHR,
+            .directory = "resources/shaders/RTShadow.spv"
+        } });
 
         //get materials TODO
-        std::vector<std::vector<ShaderPair>> shaderGroups;
         shaderGroups.push_back({ { 
             .stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
             .directory = "resources/shaders/RTChit.spv"
@@ -37,7 +47,6 @@ namespace PaperRenderer
 
         RTPipelineBuildInfo pipelineBuildInfo = {
             .rgenShader = rgenShader,
-            .missShader = missShader,
             .shaderGroups = shaderGroups,
             .descriptors = descriptorSets
         };
