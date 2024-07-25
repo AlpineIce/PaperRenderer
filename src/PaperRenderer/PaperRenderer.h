@@ -85,6 +85,7 @@ namespace PaperRenderer
         friend TLASInstanceBuildPipeline;
 
         uint32_t currentImage = 0;
+        uint64_t frameNumber = 0;
     public:
         RenderEngine(RendererCreationStruct creationInfo);
         ~RenderEngine();
@@ -97,6 +98,7 @@ namespace PaperRenderer
         void recycleCommandBuffer(PaperMemory::CommandBuffer&& commandBuffer);
 
         uint32_t getCurrentFrameIndex() const { return currentImage; }
+        uint64_t getFramesRenderedCount() const { return frameNumber; }
         Device* getDevice() { return &device; }
         RasterPreprocessPipeline* getRasterPreprocessPipeline() { return &rasterPreprocessPipeline; }
         DescriptorAllocator* getDescriptorAllocator() { return &descriptors; }

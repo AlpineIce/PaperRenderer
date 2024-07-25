@@ -248,6 +248,7 @@ namespace PaperRenderer
 
         //acquire next image
         const VkSemaphore& imageAcquireSemaphore = swapchain.acquireNextImage(currentImage);
+        frameNumber++;
 
         //reset fences
         vkResetFences(device.getDevice(), allWaitFences.size(), allWaitFences.data());
