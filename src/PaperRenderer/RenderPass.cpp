@@ -314,7 +314,7 @@ namespace PaperRenderer
         deviceInstancesDataBuffer = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), deviceInstancesMaterialDataBufferInfo);
     }
 
-    void RenderPass::handleMaterialDataCompaction(std::vector<PaperMemory::CompactionResult> results)
+    void RenderPass::handleMaterialDataCompaction(std::vector<PaperMemory::CompactionResult> results) //UNTESTED
     {
         for(const PaperMemory::CompactionResult compactionResult : results)
         {
@@ -327,7 +327,6 @@ namespace PaperRenderer
                 }
             }
         }
-        
     }
 
     void RenderPass::handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances)

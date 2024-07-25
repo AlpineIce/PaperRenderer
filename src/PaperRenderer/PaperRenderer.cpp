@@ -123,9 +123,27 @@ namespace PaperRenderer
         deviceModelDataBuffer = std::make_unique<PaperMemory::Buffer>(device.getDevice(), deviceModelsBufferInfo);
     }
 
-    void RenderEngine::handleModelDataCompaction(std::vector<PaperMemory::CompactionResult> results)
+    void RenderEngine::handleModelDataCompaction(std::vector<PaperMemory::CompactionResult> results) //UNTESTED FUNCTION
     {
-        std::cout << "Model data compaction event" << std::endl;
+        //fix model data first
+        for(const PaperMemory::CompactionResult compactionResult : results)
+        {
+            
+            for(Model* model : renderingModels)
+            {
+                if(model->shaderDataLocation > compactionResult.location)
+                {
+                    model->shaderDataLocation -= compactionResult.shiftSize;
+                }
+            }
+        }
+
+        //then fix instances data
+        for(ModelInstance* instance : renderingModelInstances)
+        {
+            ModelInstance::ShaderModelInstance& shaderModelInstance = *((ModelInstance::ShaderModelInstance*)hostInstancesDataBuffer->getHostDataPtr() + instance->rendererSelfIndex);
+            shaderModelInstance.modelDataOffset = instance->getParentModelPtr()->getShaderDataLocation();
+        }
     }
 
     void RenderEngine::rebuildInstancesbuffers()
