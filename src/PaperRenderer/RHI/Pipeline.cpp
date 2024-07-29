@@ -174,7 +174,8 @@ namespace PaperRenderer
         std::vector<VkDynamicState> dynamicStates = {
             VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
             VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
-            VK_DYNAMIC_STATE_RASTERIZATION_SAMPLES_EXT
+            VK_DYNAMIC_STATE_RASTERIZATION_SAMPLES_EXT,
+            VK_DYNAMIC_STATE_DEPTH_COMPARE_OP 
         };
         
         VkPipelineDynamicStateCreateInfo dynamicStateInfo = {};

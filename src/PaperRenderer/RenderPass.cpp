@@ -426,6 +426,19 @@ namespace PaperRenderer
             materialDataCopySync.fence = VK_NULL_HANDLE;
             rendererPtr->recycleCommandBuffer(deviceInstancesDataBuffer->copyFromBufferRanges(*hostInstancesDataBuffer->getBuffer(), { materialDataRegion }, materialDataCopySync));
 
+            //----------DEPTH PRE-PASS----------//
+
+            if(renderPassInfo.depthPrepass)
+            {
+                //vkCmdSetDepthCompareOp(graphicsCmdBuffer, VK_COMPARE_OP_LESS);
+
+                //vkCmdSetDepthCompareOp(graphicsCmdBuffer, VK_COMPARE_OP_EQUAL);
+            }
+            else
+            {
+                //vkCmdSetDepthCompareOp(graphicsCmdBuffer, VK_COMPARE_OP_LESS);
+            }
+
             //compute shader
             std::vector<PaperMemory::SemaphorePair> waitPairs = syncInfo.preprocessWaitPairs;
             waitPairs.push_back({ instancesBufferCopySemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
@@ -474,6 +487,9 @@ namespace PaperRenderer
 
             vkCmdBeginRendering(graphicsCmdBuffer, &renderInfo);
 
+            //TODO DEPTH PREPASS REMOVE THIS LINE
+            vkCmdSetDepthCompareOp(graphicsCmdBuffer, VK_COMPARE_OP_LESS);
+            
             //scissors (plural) and viewports
             vkCmdSetViewportWithCount(graphicsCmdBuffer, renderPassInfo.viewports.size(), renderPassInfo.viewports.data());
             vkCmdSetScissorWithCount(graphicsCmdBuffer, renderPassInfo.scissors.size(), renderPassInfo.scissors.data());

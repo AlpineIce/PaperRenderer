@@ -50,6 +50,7 @@ namespace PaperRenderer
         VkRect2D renderArea = {};
         VkDependencyInfo const* preRenderBarriers = NULL;
         VkDependencyInfo const* postRenderBarriers = NULL;
+        bool depthPrepass = true;
     };
 
     struct RenderPassSynchronizationInfo
