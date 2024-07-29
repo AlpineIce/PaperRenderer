@@ -419,7 +419,7 @@ namespace PaperRenderer
         rtPipelines.remove(this);
         if(rtPipelines.size())
         {
-             rebuildSBTBufferAndAllocation(rendererPtr);
+            rebuildSBTBufferAndAllocation(rendererPtr);
         }
         else
         {

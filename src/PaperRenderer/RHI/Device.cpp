@@ -156,8 +156,6 @@ namespace PaperRenderer
         {
             throw std::runtime_error("Couldn't find suitable GPU");
         }
-        
-        std::cout << "RT Support: " << ((rtSupport) ? "true" : "false") << std::endl;
     }
 
     void Device::findQueueFamilies(uint32_t& queueFamilyCount, std::vector<VkQueueFamilyProperties>& queueFamiliesProperties)

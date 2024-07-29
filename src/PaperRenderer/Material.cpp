@@ -20,6 +20,7 @@ namespace PaperRenderer
 
     Material::~Material()
     {
+        rasterPipeline.reset();
     }
 
     void Material::buildRasterPipeline(RasterPipelineBuildInfo const* rasterInfo, const RasterPipelineProperties& rasterProperties)

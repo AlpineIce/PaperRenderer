@@ -14,6 +14,7 @@ namespace PaperRenderer
 
     ComputeShader::~ComputeShader()
     {
+        pipeline.reset();
     }
 
     void ComputeShader::buildPipeline()

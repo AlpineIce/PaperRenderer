@@ -41,6 +41,13 @@ namespace PaperRenderer
         }
 
         vkDestroyFence(device.getDevice(), copyFence, nullptr);
+
+        hostDataAllocation.reset();
+        deviceDataAllocation.reset();
+        hostInstancesDataBuffer.reset();
+        hostModelDataBuffer.reset();
+        deviceInstancesDataBuffer.reset();
+        deviceModelDataBuffer.reset();
     }
 
     void RenderEngine::rebuildBuffersAndAllocations()

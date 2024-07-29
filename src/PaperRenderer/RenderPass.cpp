@@ -159,12 +159,11 @@ namespace PaperRenderer
     std::unique_ptr<PaperMemory::DeviceAllocation> RenderPass::deviceInstancesAllocation;
     std::list<RenderPass*> RenderPass::renderPasses;
 
-    RenderPass::RenderPass(RenderEngine *renderer, Camera *camera, Material *defaultMaterial, MaterialInstance *defaultMaterialInstance, RenderPassInfo const *renderPassInfo)
+    RenderPass::RenderPass(RenderEngine *renderer, Camera *camera, Material *defaultMaterial, MaterialInstance *defaultMaterialInstance)
         :rendererPtr(renderer),
         cameraPtr(camera),
         defaultMaterialPtr(defaultMaterial),
-        defaultMaterialInstancePtr(defaultMaterialInstance),
-        renderPassInfoPtr(renderPassInfo)
+        defaultMaterialInstancePtr(defaultMaterialInstance)
     {
         renderPasses.push_back(this);
 
@@ -197,12 +196,23 @@ namespace PaperRenderer
 
         vkDestroyFence(rendererPtr->getDevice()->getDevice(), preprocessFence, nullptr);
 
+        hostInstancesBuffer.reset();
+        deviceInstancesBuffer.reset();
+        hostInstancesDataBuffer.reset();
+        deviceInstancesDataBuffer.reset();
+
+        for(auto& [material, materialNode] : renderTree)
+        {
+            for(auto& [materialInstance, instanceNode] : materialNode.instances)
+            {
+                instanceNode.reset();
+            }
+        }
+
         renderPasses.remove(this);
 
         if(!renderPasses.size())
         {
-            this->hostInstancesBuffer.reset();
-            this->deviceInstancesBuffer.reset();
             hostInstancesAllocation.reset();
             deviceInstancesAllocation.reset();
         }
@@ -379,7 +389,7 @@ namespace PaperRenderer
         rendererPtr->recycleCommandBuffer(commandBuffer);
     }
 
-    void RenderPass::render(const RenderPassSynchronizationInfo& syncInfo)
+    void RenderPass::render(const RenderPassSynchronizationInfo& syncInfo, const RenderPassInfo& renderPassInfo)
     {
         if(renderPassInstances.size())
         {
@@ -444,9 +454,9 @@ namespace PaperRenderer
             vkBeginCommandBuffer(graphicsCmdBuffer, &commandInfo);
 
             //pre-render barriers
-            if(renderPassInfoPtr->preRenderBarriers)
+            if(renderPassInfo.preRenderBarriers)
             {
-                vkCmdPipelineBarrier2(graphicsCmdBuffer, renderPassInfoPtr->preRenderBarriers);
+                vkCmdPipelineBarrier2(graphicsCmdBuffer, renderPassInfo.preRenderBarriers);
             }
 
             //rendering
@@ -454,19 +464,19 @@ namespace PaperRenderer
             renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR;
             renderInfo.pNext = NULL;
             renderInfo.flags = 0;
-            renderInfo.renderArea = renderPassInfoPtr->renderArea;
+            renderInfo.renderArea = renderPassInfo.renderArea;
             renderInfo.layerCount = 1;
             renderInfo.viewMask = 0;
-            renderInfo.colorAttachmentCount = renderPassInfoPtr->colorAttachments.size();
-            renderInfo.pColorAttachments = renderPassInfoPtr->colorAttachments.data();
-            renderInfo.pDepthAttachment = renderPassInfoPtr->depthAttachment;
-            renderInfo.pStencilAttachment = renderPassInfoPtr->stencilAttachment;
+            renderInfo.colorAttachmentCount = renderPassInfo.colorAttachments.size();
+            renderInfo.pColorAttachments = renderPassInfo.colorAttachments.data();
+            renderInfo.pDepthAttachment = renderPassInfo.depthAttachment;
+            renderInfo.pStencilAttachment = renderPassInfo.stencilAttachment;
 
             vkCmdBeginRendering(graphicsCmdBuffer, &renderInfo);
 
             //scissors (plural) and viewports
-            vkCmdSetViewportWithCount(graphicsCmdBuffer, renderPassInfoPtr->viewports.size(), renderPassInfoPtr->viewports.data());
-            vkCmdSetScissorWithCount(graphicsCmdBuffer, renderPassInfoPtr->scissors.size(), renderPassInfoPtr->scissors.data());
+            vkCmdSetViewportWithCount(graphicsCmdBuffer, renderPassInfo.viewports.size(), renderPassInfo.viewports.data());
+            vkCmdSetScissorWithCount(graphicsCmdBuffer, renderPassInfo.scissors.size(), renderPassInfo.scissors.data());
 
             //MSAA samples
             vkCmdSetRasterizationSamplesEXT(graphicsCmdBuffer, rendererPtr->getRendererState()->msaaSamples);
@@ -489,9 +499,9 @@ namespace PaperRenderer
             vkCmdEndRendering(graphicsCmdBuffer);
 
             //post-render barriers
-            if(renderPassInfoPtr->postRenderBarriers)
+            if(renderPassInfo.postRenderBarriers)
             {
-                vkCmdPipelineBarrier2(graphicsCmdBuffer, renderPassInfoPtr->postRenderBarriers);
+                vkCmdPipelineBarrier2(graphicsCmdBuffer, renderPassInfo.postRenderBarriers);
             }
 
             vkEndCommandBuffer(graphicsCmdBuffer);

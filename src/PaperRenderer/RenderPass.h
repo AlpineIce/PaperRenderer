@@ -107,15 +107,14 @@ namespace PaperRenderer
         Camera* cameraPtr;
         Material* defaultMaterialPtr;
         MaterialInstance* defaultMaterialInstancePtr;
-        RenderPassInfo const* renderPassInfoPtr;
 
         friend RasterPreprocessPipeline;
         
     public:
-        RenderPass(RenderEngine* renderer, Camera* camera, Material* defaultMaterial, MaterialInstance* defaultMaterialInstance, RenderPassInfo const* renderPassInfo);
+        RenderPass(RenderEngine* renderer, Camera* camera, Material* defaultMaterial, MaterialInstance* defaultMaterialInstance);
         ~RenderPass();
 
-        void render(const RenderPassSynchronizationInfo& syncInfo);
+        void render(const RenderPassSynchronizationInfo& syncInfo, const RenderPassInfo& renderPassInfo);
 
         void addInstance(ModelInstance* instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials);
         void removeInstance(ModelInstance* instance);

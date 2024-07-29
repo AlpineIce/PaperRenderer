@@ -84,6 +84,9 @@ namespace PaperRenderer
 	Model::~Model()
 	{
 		rendererPtr->removeModelData(this);
+		
+		vbo.reset();
+		ibo.reset();
 	}
 
 	void Model::setShaderData()

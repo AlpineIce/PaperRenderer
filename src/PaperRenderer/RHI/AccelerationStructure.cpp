@@ -206,8 +206,10 @@ namespace PaperRenderer
         scratchAllocation.reset();
         BLASAllocation.reset();
         TLASAllocation.reset();
-        hostInstancesAllocation.reset();
-        deviceInstancesAllocation.reset();
+        hostInstancesBuffer.reset();
+        hostInstanceDescriptionsBuffer.reset();
+        deviceInstancesBuffer.reset();
+        deviceInstanceDescriptionsBuffer.reset();
         
         vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), instancesCopySemaphore, nullptr);
         vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), blasSignalSemaphore, nullptr);
@@ -222,6 +224,12 @@ namespace PaperRenderer
 
         accelerationStructures.remove(this);
         vkDestroyFence(rendererPtr->getDevice()->getDevice(), accelerationStructureFence, nullptr);
+
+        if(!accelerationStructures.size())
+        {
+            hostInstancesAllocation.reset();
+            deviceInstancesAllocation.reset();
+        }
     }
 
     void AccelerationStructure::rebuildInstancesAllocationsAndBuffers(RenderEngine* renderer)

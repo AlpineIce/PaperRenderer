@@ -15,6 +15,7 @@ namespace PaperRenderer
 
     RayTraceRender::~RayTraceRender()
     {
+        pipeline.reset();
     }
 
     void RayTraceRender::buildPipeline(const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets)
