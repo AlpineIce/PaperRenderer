@@ -91,28 +91,23 @@ namespace PaperRenderer
         void rebuildBuffers(VkDeviceSize newMaterialDataBufferSize);
         void handleMaterialDataCompaction(std::vector<PaperMemory::CompactionResult> results);
         void handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances);
-        void clearDrawCounts();
+        void clearDrawCounts(VkCommandBuffer cmdBuffer);
 
         //synchronization
         VkFence preprocessFence;
-        std::vector<VkSemaphore> drawCountsClearSemaphores;
         std::vector<VkSemaphore> preprocessSignalSemaphores;
         std::vector<VkSemaphore> instancesBufferCopySemaphores;
         std::vector<VkSemaphore> materialDataBufferCopySemaphores;
 
-        //default materials
-        Material* defaultMaterial = NULL;
-        MaterialInstance* defaultMaterialInstance = NULL;
-
         RenderEngine* rendererPtr;
         Camera* cameraPtr;
-        Material* defaultMaterialPtr;
         MaterialInstance* defaultMaterialInstancePtr;
+        MaterialInstance* prepassMaterialInstancePtr;
 
         friend RasterPreprocessPipeline;
         
     public:
-        RenderPass(RenderEngine* renderer, Camera* camera, Material* defaultMaterial, MaterialInstance* defaultMaterialInstance);
+        RenderPass(RenderEngine* renderer, Camera* camera, MaterialInstance* defaultMaterialInstance, MaterialInstance* prepassMaterialInstance);
         ~RenderPass();
 
         void render(const RenderPassSynchronizationInfo& syncInfo, const RenderPassInfo& renderPassInfo);
