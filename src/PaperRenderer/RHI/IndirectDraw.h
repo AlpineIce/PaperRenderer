@@ -52,10 +52,9 @@ namespace PaperRenderer
 
         class RenderEngine* rendererPtr;
         class RenderPass const* renderPassPtr;
-        class RasterPipeline const* pipelinePtr;
 
     public:
-        CommonMeshGroup(class RenderEngine* renderer, class RenderPass const* renderPass, RasterPipeline const* pipeline);
+        CommonMeshGroup(class RenderEngine* renderer, class RenderPass const* renderPass);
         ~CommonMeshGroup();
 
         static std::vector<class ModelInstance*> verifyBuffersSize(RenderEngine* renderer);
@@ -63,7 +62,7 @@ namespace PaperRenderer
         void addInstanceMeshes(class ModelInstance* instance, const std::vector<struct LODMesh const*>& instanceMeshesData);
         void removeInstanceMeshes(class ModelInstance* instance);
 
-        void draw(const VkCommandBuffer& cmdBuffer, uint32_t currentFrame);
+        void draw(const VkCommandBuffer& cmdBuffer, uint32_t currentFrame, const class RasterPipeline& pipeline);
         void clearDrawCounts(const VkCommandBuffer& cmdBuffer);
 
         const std::vector<VkDeviceSize>& getBufferFrameOffsets() const { return bufferFrameOffsets; }

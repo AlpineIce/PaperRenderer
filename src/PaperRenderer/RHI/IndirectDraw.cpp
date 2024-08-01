@@ -9,10 +9,9 @@ namespace PaperRenderer
     std::list<CommonMeshGroup*> CommonMeshGroup::commonMeshGroups;
     bool CommonMeshGroup::rebuild = false;
 
-    CommonMeshGroup::CommonMeshGroup(class RenderEngine* renderer, class RenderPass const* renderPass, RasterPipeline const* pipeline)
+    CommonMeshGroup::CommonMeshGroup(class RenderEngine* renderer, class RenderPass const* renderPass)
         :rendererPtr(renderer),
-        renderPassPtr(renderPass),
-        pipelinePtr(pipeline)
+        renderPassPtr(renderPass)
     {
         commonMeshGroups.push_back(this);
         bufferFrameOffsets.resize(PaperMemory::Commands::getFrameCount());
@@ -170,14 +169,14 @@ namespace PaperRenderer
         addAndRemoveLock.unlock();
     }
 
-    void CommonMeshGroup::draw(const VkCommandBuffer &cmdBuffer, uint32_t currentFrame)
+    void CommonMeshGroup::draw(const VkCommandBuffer &cmdBuffer, uint32_t currentFrame, const RasterPipeline& pipeline)
     {
         for(const auto& [mesh, meshData] : meshesData)
         {
             if(!meshData.parentModelPtr) continue; //null safety
 
             //get new descriptor set
-            VkDescriptorSet objDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(pipelinePtr->getDescriptorSetLayouts().at(DescriptorScopes::RASTER_OBJECT), currentFrame);
+            VkDescriptorSet objDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(pipeline.getDescriptorSetLayouts().at(DescriptorScopes::RASTER_OBJECT), currentFrame);
             
             //write uniforms
             VkDescriptorBufferInfo descriptorInfo = {};
@@ -197,7 +196,7 @@ namespace PaperRenderer
             DescriptorBind bindingInfo = {};
             bindingInfo.descriptorScope = DescriptorScopes::RASTER_OBJECT;
             bindingInfo.set = objDescriptorSet;
-            bindingInfo.layout = pipelinePtr->getLayout();
+            bindingInfo.layout = pipeline.getLayout();
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
             DescriptorAllocator::bindSet(rendererPtr->getDevice()->getDevice(), cmdBuffer, bindingInfo);
 

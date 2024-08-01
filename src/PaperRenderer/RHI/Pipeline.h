@@ -104,18 +104,7 @@ namespace PaperRenderer
     {
         std::vector<VkVertexInputAttributeDescription> vertexAttributes; //a good start is vec3 position, vec3 normal, vec2 UVs. Attributes are assumed to be in order
         VkVertexInputBindingDescription vertexDescription = {};
-        std::vector<VkPipelineColorBlendAttachmentState> colorAttachments = {
-            {
-                .blendEnable = VK_FALSE,
-                .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
-                .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
-                .colorBlendOp = VK_BLEND_OP_ADD,
-                .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-                .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-                .alphaBlendOp = VK_BLEND_OP_ADD,
-                .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
-            }
-        };
+        std::vector<VkPipelineColorBlendAttachmentState> colorAttachments = {};
         std::vector<VkFormat> colorAttachmentFormats;
         VkFormat depthAttachmentFormat = VK_FORMAT_UNDEFINED;
         VkFormat stencilAttachmentFormat = VK_FORMAT_UNDEFINED;

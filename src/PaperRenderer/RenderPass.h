@@ -50,7 +50,7 @@ namespace PaperRenderer
         VkRect2D renderArea = {};
         VkDependencyInfo const* preRenderBarriers = NULL;
         VkDependencyInfo const* postRenderBarriers = NULL;
-        bool depthPrepass = true;
+        bool renderPrepass = true; //typical use would be a depth prepass
     };
 
     struct RenderPassSynchronizationInfo
@@ -102,12 +102,12 @@ namespace PaperRenderer
         RenderEngine* rendererPtr;
         Camera* cameraPtr;
         MaterialInstance* defaultMaterialInstancePtr;
-        MaterialInstance* prepassMaterialInstancePtr;
+        MaterialInstance* defaultPrepassMaterialInstancePtr;
 
         friend RasterPreprocessPipeline;
         
     public:
-        RenderPass(RenderEngine* renderer, Camera* camera, MaterialInstance* defaultMaterialInstance, MaterialInstance* prepassMaterialInstance);
+        RenderPass(RenderEngine* renderer, Camera* camera, MaterialInstance* defaultMaterialInstance, MaterialInstance* defaultPrepassMaterialInstance);
         ~RenderPass();
 
         void render(const RenderPassSynchronizationInfo& syncInfo, const RenderPassInfo& renderPassInfo);

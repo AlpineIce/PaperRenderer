@@ -159,11 +159,11 @@ namespace PaperRenderer
     std::unique_ptr<PaperMemory::DeviceAllocation> RenderPass::deviceInstancesAllocation;
     std::list<RenderPass*> RenderPass::renderPasses;
 
-    RenderPass::RenderPass(RenderEngine* renderer, Camera* camera, MaterialInstance* defaultMaterialInstance, MaterialInstance* prepassMaterialInstance)
+    RenderPass::RenderPass(RenderEngine* renderer, Camera* camera, MaterialInstance* defaultMaterialInstance, MaterialInstance* defaultPrepassMaterialInstance)
         :rendererPtr(renderer),
         cameraPtr(camera),
         defaultMaterialInstancePtr(defaultMaterialInstance),
-        prepassMaterialInstancePtr(prepassMaterialInstance)
+        defaultPrepassMaterialInstancePtr(defaultPrepassMaterialInstance)
     {
         renderPasses.push_back(this);
 
@@ -485,15 +485,16 @@ namespace PaperRenderer
             //MSAA samples
             vkCmdSetRasterizationSamplesEXT(graphicsCmdBuffer, rendererPtr->getRendererState()->msaaSamples);
 
-            //----------DEPTH PRE-PASS----------//
+            //----------PRE-PASS----------//
 
-            if(renderPassInfo.depthPrepass && prepassMaterialInstancePtr)
+            if(renderPassInfo.renderPrepass && defaultPrepassMaterialInstancePtr)
             {
                 vkCmdSetDepthCompareOp(graphicsCmdBuffer, VK_COMPARE_OP_LESS);
 
-                Material* prepassMaterial = (Material*)(prepassMaterialInstancePtr->getBaseMaterialPtr());
-                prepassMaterial->bind(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex());
-                prepassMaterialInstancePtr->bind(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex());
+                //bind material
+                Material* defaultPrepassMaterial = (Material*)defaultPrepassMaterialInstancePtr->getBaseMaterialPtr();
+                defaultPrepassMaterial->bind(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex());
+                defaultPrepassMaterialInstancePtr->bind(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex());
                 
                 //record draw commands
                 for(const auto& [material, materialInstanceNode] : renderTree) //material
@@ -502,7 +503,7 @@ namespace PaperRenderer
                     {
                         if(meshGroups)
                         {
-                            meshGroups->draw(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex());
+                            meshGroups->draw(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex(), *defaultPrepassMaterial->getRasterPipeline());
                         }
                     }
                 }
@@ -525,7 +526,7 @@ namespace PaperRenderer
                     if(meshGroups)
                     {
                         materialInstance->bind(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex());
-                        meshGroups->draw(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex());
+                        meshGroups->draw(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex(), *material->getRasterPipeline());
                     }
                 }
             }
@@ -567,6 +568,8 @@ namespace PaperRenderer
         {
             for(uint32_t matIndex = 0; matIndex < instance->getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.size(); matIndex++) //iterate materials in LOD
             {
+                //----------MAIN MATERIALS----------//
+
                 //get material instance
                 MaterialInstance* materialInstance;
                 if(materials.at(lodIndex).count(matIndex) && materials.at(lodIndex).at(matIndex)) //check if slot is initialized and not NULL
@@ -589,7 +592,7 @@ namespace PaperRenderer
                 if(!renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances.count(materialInstance))
                 {
                     renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance] = 
-                        std::make_unique<CommonMeshGroup>(rendererPtr, this, materialInstance->getBaseMaterialPtr()->getRasterPipeline());
+                        std::make_unique<CommonMeshGroup>(rendererPtr, this);
                 }
 
                 //add references
