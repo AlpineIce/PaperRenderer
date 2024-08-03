@@ -1,10 +1,10 @@
 #pragma once
 #include "GLFW/glfw3.h"
 
-#include "RHI/Device.h"
-#include "RHI/Descriptor.h"
-#include "RHI/Pipeline.h"
-#include "RHI/AccelerationStructure.h"
+#include "Device.h"
+#include "Descriptor.h"
+#include "Pipeline.h"
+#include "AccelerationStructure.h"
 #include "RenderPass.h"
 #include "RayTrace.h"
 #include "Model.h"
@@ -40,7 +40,7 @@ namespace PaperRenderer
         RendererState rendererState = {};
 
         //frame rendering stuff
-        std::vector<std::vector<PaperMemory::CommandBuffer>> usedCmdBuffers;
+        std::vector<std::vector<CommandBuffer>> usedCmdBuffers;
         std::vector<ModelInstance*> renderingModelInstances;
         std::vector<Model*> renderingModels;
 
@@ -52,23 +52,23 @@ namespace PaperRenderer
         //----------BUFFERS AND MEMORY----------//
 
         //allocations
-        std::unique_ptr<PaperMemory::DeviceAllocation> hostDataAllocation;
-        std::unique_ptr<PaperMemory::DeviceAllocation> deviceDataAllocation;
+        std::unique_ptr<DeviceAllocation> hostDataAllocation;
+        std::unique_ptr<DeviceAllocation> deviceDataAllocation;
 
         //host visible buffers
         const float instancesDataOverhead = 1.4f;
-        std::unique_ptr<PaperMemory::Buffer> hostInstancesDataBuffer;
+        std::unique_ptr<Buffer> hostInstancesDataBuffer;
         const float modelsDataOverhead = 1.2f;
-        std::unique_ptr<PaperMemory::FragmentableBuffer> hostModelDataBuffer;
+        std::unique_ptr<FragmentableBuffer> hostModelDataBuffer;
         
         //device local buffers (mirror of host visible buffers)
-        std::unique_ptr<PaperMemory::Buffer> deviceInstancesDataBuffer;
-        std::unique_ptr<PaperMemory::Buffer> deviceModelDataBuffer;
+        std::unique_ptr<Buffer> deviceInstancesDataBuffer;
+        std::unique_ptr<Buffer> deviceModelDataBuffer;
         
         void rebuildBuffersAndAllocations();
         void rebuildInstancesbuffers();
         void rebuildModelDataBuffers(VkDeviceSize rebuildSize);
-        void handleModelDataCompaction(std::vector<PaperMemory::CompactionResult> results);
+        void handleModelDataCompaction(std::vector<CompactionResult> results);
 
         //----------END OF BUFFERS AND MEMORY----------//
 
@@ -91,11 +91,11 @@ namespace PaperRenderer
         ~RenderEngine();
 
         //returns the image acquire semaphore from the swapchain
-        const VkSemaphore& beginFrame(const std::vector<VkFence>& waitFences, const std::vector<PaperMemory::SemaphorePair>& bufferCopySignalSemaphores);
+        const VkSemaphore& beginFrame(const std::vector<VkFence>& waitFences, const std::vector<SemaphorePair>& bufferCopySignalSemaphores);
         void endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
 
-        void recycleCommandBuffer(PaperMemory::CommandBuffer& commandBuffer);
-        void recycleCommandBuffer(PaperMemory::CommandBuffer&& commandBuffer);
+        void recycleCommandBuffer(CommandBuffer& commandBuffer);
+        void recycleCommandBuffer(CommandBuffer&& commandBuffer);
 
         uint32_t getCurrentFrameIndex() const { return currentImage; }
         uint64_t getFramesRenderedCount() const { return frameNumber; }
@@ -107,6 +107,6 @@ namespace PaperRenderer
         Swapchain* getSwapchain() { return &swapchain; }
         const std::vector<Model*>& getModelReferences() const { return renderingModels; }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
-        PaperMemory::Buffer* getModelDataBuffer() const { return deviceModelDataBuffer.get(); }
+        Buffer* getModelDataBuffer() const { return deviceModelDataBuffer.get(); }
     };
 }

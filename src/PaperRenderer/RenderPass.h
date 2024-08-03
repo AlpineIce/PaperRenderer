@@ -1,7 +1,7 @@
 #pragma once
-#include "RHI/Swapchain.h"
-#include "RHI/Pipeline.h"
-#include "RHI/IndirectDraw.h"
+#include "Swapchain.h"
+#include "Pipeline.h"
+#include "IndirectDraw.h"
 #include "Camera.h"
 #include "ComputeShader.h"
 #include "Material.h"
@@ -15,8 +15,8 @@ namespace PaperRenderer
     {
     private:
         std::string fileName = "IndirectDrawBuild.spv";
-        std::vector<std::unique_ptr<PaperMemory::Buffer>> uniformBuffers;
-        std::unique_ptr<PaperMemory::DeviceAllocation> uniformBuffersAllocation;
+        std::vector<std::unique_ptr<Buffer>> uniformBuffers;
+        std::unique_ptr<DeviceAllocation> uniformBuffersAllocation;
 
         struct UBOInputData
         {
@@ -35,7 +35,7 @@ namespace PaperRenderer
         RasterPreprocessPipeline(RenderEngine* renderer, std::string fileDir);
         ~RasterPreprocessPipeline() override;
 
-        void submit(const PaperMemory::SynchronizationInfo& syncInfo, const RenderPass& renderPass);
+        void submit(const SynchronizationInfo& syncInfo, const RenderPass& renderPass);
     };
     
     //----------RENDER PASS----------//
@@ -55,9 +55,9 @@ namespace PaperRenderer
 
     struct RenderPassSynchronizationInfo
     {
-        std::vector<PaperMemory::SemaphorePair> preprocessWaitPairs;
-        std::vector<PaperMemory::SemaphorePair> renderWaitPairs;
-        std::vector<PaperMemory::SemaphorePair> renderSignalPairs;
+        std::vector<SemaphorePair> preprocessWaitPairs;
+        std::vector<SemaphorePair> renderWaitPairs;
+        std::vector<SemaphorePair> renderSignalPairs;
         VkFence renderSignalFence;
     };
 
@@ -76,20 +76,20 @@ namespace PaperRenderer
         std::vector<ModelInstance*> renderPassInstances;
         
         //allocations
-        static std::unique_ptr<PaperMemory::DeviceAllocation> hostInstancesAllocation;
-        static std::unique_ptr<PaperMemory::DeviceAllocation> deviceInstancesAllocation;
+        static std::unique_ptr<DeviceAllocation> hostInstancesAllocation;
+        static std::unique_ptr<DeviceAllocation> deviceInstancesAllocation;
         static std::list<RenderPass*> renderPasses;
 
         //buffers
-        std::unique_ptr<PaperMemory::Buffer> hostInstancesBuffer;
-        std::unique_ptr<PaperMemory::Buffer> deviceInstancesBuffer;
+        std::unique_ptr<Buffer> hostInstancesBuffer;
+        std::unique_ptr<Buffer> deviceInstancesBuffer;
 
-        std::unique_ptr<PaperMemory::FragmentableBuffer> hostInstancesDataBuffer;
-        std::unique_ptr<PaperMemory::Buffer> deviceInstancesDataBuffer;
+        std::unique_ptr<FragmentableBuffer> hostInstancesDataBuffer;
+        std::unique_ptr<Buffer> deviceInstancesDataBuffer;
 
         static void rebuildAllocationsAndBuffers(RenderEngine* renderer);
         void rebuildBuffers(VkDeviceSize newMaterialDataBufferSize);
-        void handleMaterialDataCompaction(std::vector<PaperMemory::CompactionResult> results);
+        void handleMaterialDataCompaction(std::vector<CompactionResult> results);
         void handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances);
         void clearDrawCounts(VkCommandBuffer cmdBuffer);
 

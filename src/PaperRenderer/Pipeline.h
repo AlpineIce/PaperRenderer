@@ -1,5 +1,5 @@
 #pragma once
-#include "Memory/VulkanResources.h"
+#include "VulkanResources.h"
 
 #include <vector>
 #include <unordered_map>
@@ -195,8 +195,8 @@ namespace PaperRenderer
         static std::list<RTPipeline*> rtPipelines;
 
         //SBT allocation and buffer
-        static std::unique_ptr<PaperMemory::DeviceAllocation> sbtAllocation;
-        static std::unique_ptr<PaperMemory::Buffer> sbtBuffer;
+        static std::unique_ptr<DeviceAllocation> sbtAllocation;
+        static std::unique_ptr<Buffer> sbtBuffer;
 
         static void rebuildSBTBufferAndAllocation(RenderEngine* renderer);
 

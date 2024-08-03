@@ -15,12 +15,12 @@ namespace PaperRenderer
         tlasInstanceBuildPipeline(this, creationInfo.shadersDir)
     {
         //synchronization and cmd buffers
-        for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
+        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
         {
         }
-        usedCmdBuffers.resize(PaperMemory::Commands::getFrameCount());
+        usedCmdBuffers.resize(Commands::getFrameCount());
 
-        copyFence = PaperMemory::Commands::getSignaledFence(device.getDevice());
+        copyFence = Commands::getSignaledFence(device.getDevice());
 
         rebuildBuffersAndAllocations();
 
@@ -33,10 +33,10 @@ namespace PaperRenderer
     {
         vkDeviceWaitIdle(device.getDevice());
         
-        for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
+        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
         {
             //free cmd buffers
-            PaperMemory::Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers.at(i));
+            Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers.at(i));
             usedCmdBuffers.at(i).clear();
         }
 
@@ -83,26 +83,26 @@ namespace PaperRenderer
         //get allocation size requirements
         VkDeviceSize hostAllocationSize = 0;
         hostAllocationSize += std::max(hostInstancesDataBuffer->getMemoryRequirements().size, (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
-        hostAllocationSize = PaperMemory::DeviceAllocation::padToMultiple(hostAllocationSize, hostInstancesDataBuffer->getMemoryRequirements().alignment); //pad buffer to allocation requirement
+        hostAllocationSize = DeviceAllocation::padToMultiple(hostAllocationSize, hostInstancesDataBuffer->getMemoryRequirements().alignment); //pad buffer to allocation requirement
         hostAllocationSize += hostModelDataBuffer->getBuffer()->getMemoryRequirements().size;
 
         VkDeviceSize deviceAllocationSize = 0;
         deviceAllocationSize += std::max(deviceInstancesDataBuffer->getMemoryRequirements().size, (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
-        deviceAllocationSize = PaperMemory::DeviceAllocation::padToMultiple(deviceAllocationSize, deviceInstancesDataBuffer->getMemoryRequirements().alignment); //pad buffer to allocation requirement
+        deviceAllocationSize = DeviceAllocation::padToMultiple(deviceAllocationSize, deviceInstancesDataBuffer->getMemoryRequirements().alignment); //pad buffer to allocation requirement
         deviceAllocationSize += deviceModelDataBuffer->getMemoryRequirements().size;
 
         //create new allocations
-        PaperMemory::DeviceAllocationInfo hostAllocationInfo = {};
+        DeviceAllocationInfo hostAllocationInfo = {};
         hostAllocationInfo.allocationSize = hostAllocationSize;
         hostAllocationInfo.allocFlags = 0;
         hostAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-        hostDataAllocation = std::make_unique<PaperMemory::DeviceAllocation>(device.getDevice(), device.getGPU(), hostAllocationInfo);
+        hostDataAllocation = std::make_unique<DeviceAllocation>(device.getDevice(), device.getGPU(), hostAllocationInfo);
 
-        PaperMemory::DeviceAllocationInfo deviceAllocationInfo = {};
+        DeviceAllocationInfo deviceAllocationInfo = {};
         deviceAllocationInfo.allocationSize = deviceAllocationSize;
         deviceAllocationInfo.allocFlags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
         deviceAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        deviceDataAllocation = std::make_unique<PaperMemory::DeviceAllocation>(device.getDevice(), device.getGPU(), deviceAllocationInfo);
+        deviceDataAllocation = std::make_unique<DeviceAllocation>(device.getDevice(), device.getGPU(), deviceAllocationInfo);
 
         //assign allocations and copy old data back in
         hostInstancesDataBuffer->assignAllocation(hostDataAllocation.get());
@@ -116,24 +116,24 @@ namespace PaperRenderer
 
     void RenderEngine::rebuildModelDataBuffers(VkDeviceSize rebuildSize)
     {
-        PaperMemory::BufferInfo hostModelsBufferInfo = {};
+        BufferInfo hostModelsBufferInfo = {};
         hostModelsBufferInfo.size = rebuildSize * modelsDataOverhead;
         hostModelsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
         hostModelsBufferInfo.queueFamiliesIndices = device.getQueueFamiliesIndices();
-        hostModelDataBuffer = std::make_unique<PaperMemory::FragmentableBuffer>(device.getDevice(), hostModelsBufferInfo);
-        hostModelDataBuffer->setCompactionCallback([this](std::vector<PaperMemory::CompactionResult> results){ handleModelDataCompaction(results); });
+        hostModelDataBuffer = std::make_unique<FragmentableBuffer>(device.getDevice(), hostModelsBufferInfo);
+        hostModelDataBuffer->setCompactionCallback([this](std::vector<CompactionResult> results){ handleModelDataCompaction(results); });
 
-        PaperMemory::BufferInfo deviceModelsBufferInfo = {};
+        BufferInfo deviceModelsBufferInfo = {};
         deviceModelsBufferInfo.size = hostModelsBufferInfo.size;
         deviceModelsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
         deviceModelsBufferInfo.queueFamiliesIndices = device.getQueueFamiliesIndices();
-        deviceModelDataBuffer = std::make_unique<PaperMemory::Buffer>(device.getDevice(), deviceModelsBufferInfo);
+        deviceModelDataBuffer = std::make_unique<Buffer>(device.getDevice(), deviceModelsBufferInfo);
     }
 
-    void RenderEngine::handleModelDataCompaction(std::vector<PaperMemory::CompactionResult> results) //UNTESTED FUNCTION
+    void RenderEngine::handleModelDataCompaction(std::vector<CompactionResult> results) //UNTESTED FUNCTION
     {
         //fix model data first
-        for(const PaperMemory::CompactionResult compactionResult : results)
+        for(const CompactionResult compactionResult : results)
         {
             
             for(Model* model : renderingModels)
@@ -156,18 +156,18 @@ namespace PaperRenderer
     void RenderEngine::rebuildInstancesbuffers()
     {
         //host visible
-        PaperMemory::BufferInfo hostBufferInfo = {};
+        BufferInfo hostBufferInfo = {};
         hostBufferInfo.size = std::max((VkDeviceSize)(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance) * instancesDataOverhead), (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
         hostBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
         hostBufferInfo.queueFamiliesIndices = device.getQueueFamiliesIndices();
-        hostInstancesDataBuffer = std::make_unique<PaperMemory::Buffer>(device.getDevice(), hostBufferInfo);
+        hostInstancesDataBuffer = std::make_unique<Buffer>(device.getDevice(), hostBufferInfo);
 
         //device local
-        PaperMemory::BufferInfo deviceBufferInfo = {};
+        BufferInfo deviceBufferInfo = {};
         deviceBufferInfo.size = hostBufferInfo.size; //same size as host visible buffer
         deviceBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
         deviceBufferInfo.queueFamiliesIndices = device.getQueueFamiliesIndices();
-        deviceInstancesDataBuffer = std::make_unique<PaperMemory::Buffer>(device.getDevice(), deviceBufferInfo);
+        deviceInstancesDataBuffer = std::make_unique<Buffer>(device.getDevice(), deviceBufferInfo);
     }
 
     void RenderEngine::addModelData(Model* model)
@@ -258,7 +258,7 @@ namespace PaperRenderer
         object->rendererSelfIndex = UINT32_MAX;
     }
 
-    const VkSemaphore& RenderEngine::beginFrame(const std::vector<VkFence> &waitFences, const std::vector<PaperMemory::SemaphorePair> &bufferCopySignalSemaphores)
+    const VkSemaphore& RenderEngine::beginFrame(const std::vector<VkFence> &waitFences, const std::vector<SemaphorePair> &bufferCopySignalSemaphores)
     {
         //wait for fences
         std::vector<VkFence> allWaitFences = waitFences;
@@ -279,7 +279,7 @@ namespace PaperRenderer
         vkResetFences(device.getDevice(), allWaitFences.size(), allWaitFences.data());
 
         //free command buffers and reset descriptor pool
-        PaperMemory::Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers.at(currentImage));
+        Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers.at(currentImage));
         usedCmdBuffers.at(currentImage).clear();
         descriptors.refreshPools(currentImage);
 
@@ -294,7 +294,7 @@ namespace PaperRenderer
         modelsRegion.dstOffset = 0;
         modelsRegion.size = hostModelDataBuffer->getStackLocation();
 
-        VkCommandBuffer transferBuffer = PaperMemory::Commands::getCommandBuffer(device.getDevice(), PaperMemory::QueueType::TRANSFER);
+        VkCommandBuffer transferBuffer = Commands::getCommandBuffer(device.getDevice(), QueueType::TRANSFER);
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -306,14 +306,14 @@ namespace PaperRenderer
         vkCmdCopyBuffer(transferBuffer, hostModelDataBuffer->getBuffer()->getBuffer(), deviceModelDataBuffer->getBuffer(), 1, &modelsRegion);
         vkEndCommandBuffer(transferBuffer);
 
-        PaperMemory::SynchronizationInfo bufferCopySync = {};
-        bufferCopySync.queueType = PaperMemory::QueueType::TRANSFER;
+        SynchronizationInfo bufferCopySync = {};
+        bufferCopySync.queueType = QueueType::TRANSFER;
         bufferCopySync.waitPairs = {};
         bufferCopySync.signalPairs = bufferCopySignalSemaphores;
         bufferCopySync.fence = copyFence;
 
-        PaperMemory::Commands::submitToQueue(device.getDevice(), bufferCopySync, { transferBuffer });
-        recycleCommandBuffer({ transferBuffer, PaperMemory::QueueType::TRANSFER });
+        Commands::submitToQueue(device.getDevice(), bufferCopySync, { transferBuffer });
+        recycleCommandBuffer({ transferBuffer, QueueType::TRANSFER });
 
         return imageAcquireSemaphore;
     }
@@ -324,12 +324,12 @@ namespace PaperRenderer
         swapchain.presentImage(waitSemaphores);
 
         //increment frame counter
-        currentImage = (currentImage + 1) % PaperMemory::Commands::getFrameCount();
+        currentImage = (currentImage + 1) % Commands::getFrameCount();
 
         glfwPollEvents();
     }
 
-    void RenderEngine::recycleCommandBuffer(PaperMemory::CommandBuffer& commandBuffer)
+    void RenderEngine::recycleCommandBuffer(CommandBuffer& commandBuffer)
     {
         if(commandBuffer.buffer)
         {
@@ -338,7 +338,7 @@ namespace PaperRenderer
         }
     }
 
-    void RenderEngine::recycleCommandBuffer(PaperMemory::CommandBuffer&& commandBuffer)
+    void RenderEngine::recycleCommandBuffer(CommandBuffer&& commandBuffer)
     {
         if(commandBuffer.buffer)
         {

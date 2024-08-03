@@ -1,6 +1,6 @@
 #pragma once
-#include "RHI/Pipeline.h"
-#include "RHI/Descriptor.h"
+#include "Pipeline.h"
+#include "Descriptor.h"
 
 namespace PaperRenderer
 {

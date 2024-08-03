@@ -1,5 +1,5 @@
 #pragma once
-#include "Memory/VulkanResources.h"
+#include "VulkanResources.h"
 #include "glm/gtc/quaternion.hpp"
 
 #include <unordered_map>
@@ -35,9 +35,9 @@ namespace PaperRenderer
         };
 
         //buffers and allocation
-        static std::unique_ptr<PaperMemory::DeviceAllocation> drawDataAllocation;
+        static std::unique_ptr<DeviceAllocation> drawDataAllocation;
         static std::list<CommonMeshGroup*> commonMeshGroups;
-        std::unique_ptr<PaperMemory::Buffer> drawDataBuffer; //no need for a host visible copy since this is only written by compute shaders and read by the graphics pipeline. Draw counts does get reset to 0 though
+        std::unique_ptr<Buffer> drawDataBuffer; //no need for a host visible copy since this is only written by compute shaders and read by the graphics pipeline. Draw counts does get reset to 0 though
 
         uint32_t drawCountsRange = 0;
         std::vector<VkDeviceSize> bufferFrameOffsets;

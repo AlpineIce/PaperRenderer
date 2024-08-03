@@ -1,5 +1,5 @@
 #pragma once
-#include "Memory/VulkanResources.h"
+#include "VulkanResources.h"
 #include "GLFW/glfw3.h"
 
 #include <vector>
@@ -21,9 +21,9 @@ namespace PaperRenderer
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtPipelineProperties = {};
         VkPhysicalDeviceAccelerationStructurePropertiesKHR asProperties = {};
         VkPhysicalDeviceFeatures gpuFeatures;
-        std::unordered_map<uint32_t, std::vector<PaperMemory::Queue>> familyQueues;
-        std::unordered_map<PaperMemory::QueueType, PaperMemory::QueuesInFamily> queues;
-        std::unique_ptr<PaperMemory::Commands> commands;
+        std::unordered_map<uint32_t, std::vector<Queue>> familyQueues;
+        std::unordered_map<QueueType, QueuesInFamily> queues;
+        std::unique_ptr<Commands> commands;
         VkDevice device = VK_NULL_HANDLE;
         VkSurfaceKHR surface = VK_NULL_HANDLE;
         bool rtSupport = false;
@@ -51,7 +51,7 @@ namespace PaperRenderer
         const bool& getRTSupport() const { return rtSupport; }
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR getRTproperties() const { return rtPipelineProperties; }
         VkPhysicalDeviceAccelerationStructurePropertiesKHR getASproperties() const { return asProperties; }
-        const std::unordered_map<PaperMemory::QueueType, PaperMemory::QueuesInFamily>& getQueues() const { return queues; }
-        PaperMemory::QueueFamiliesIndices getQueueFamiliesIndices() const;
+        const std::unordered_map<QueueType, QueuesInFamily>& getQueues() const { return queues; }
+        QueueFamiliesIndices getQueueFamiliesIndices() const;
     };
 }

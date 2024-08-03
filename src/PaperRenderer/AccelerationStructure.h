@@ -1,5 +1,5 @@
 #pragma once
-#include "../ComputeShader.h"
+#include "ComputeShader.h"
 
 #include <unordered_map>
 #include <list>
@@ -12,8 +12,8 @@ namespace PaperRenderer
     {
     private:
         std::string fileName = "TLASInstBuild.spv";
-        std::vector<std::unique_ptr<PaperMemory::Buffer>> uniformBuffers;
-        std::unique_ptr<PaperMemory::DeviceAllocation> uniformBuffersAllocation;
+        std::vector<std::unique_ptr<Buffer>> uniformBuffers;
+        std::unique_ptr<DeviceAllocation> uniformBuffersAllocation;
 
         struct UBOInputData
         {
@@ -26,7 +26,7 @@ namespace PaperRenderer
         TLASInstanceBuildPipeline(RenderEngine* renderer, std::string fileDir);
         ~TLASInstanceBuildPipeline() override;
 
-        void submit(const PaperMemory::SynchronizationInfo& syncInfo, const AccelerationStructure& accelerationStructure);
+        void submit(const SynchronizationInfo& syncInfo, const AccelerationStructure& accelerationStructure);
     };
 
     //----------ACCELERATION STRUCTURE DECLARATIONS----------//
@@ -40,20 +40,20 @@ namespace PaperRenderer
 
     struct AccelerationStructureSynchronizatioInfo
     {
-        std::vector<PaperMemory::SemaphorePair> waitSemaphores;
-        std::vector<PaperMemory::SemaphorePair> TLSignalSemaphores;
+        std::vector<SemaphorePair> waitSemaphores;
+        std::vector<SemaphorePair> TLSignalSemaphores;
     };
 
     class AccelerationStructure
     {
     private:
-        std::unique_ptr<PaperMemory::DeviceAllocation> scratchAllocation;
-        std::unique_ptr<PaperMemory::DeviceAllocation> BLASAllocation;
-        std::unique_ptr<PaperMemory::DeviceAllocation> TLASAllocation; //one shared allocation for the BLs and TL
-        std::unique_ptr<PaperMemory::Buffer> BLBuffer;
-        std::unique_ptr<PaperMemory::Buffer> TLInstancesBuffer;
-        std::unique_ptr<PaperMemory::Buffer> TLBuffer;
-        std::unique_ptr<PaperMemory::Buffer> scratchBuffer;
+        std::unique_ptr<DeviceAllocation> scratchAllocation;
+        std::unique_ptr<DeviceAllocation> BLASAllocation;
+        std::unique_ptr<DeviceAllocation> TLASAllocation; //one shared allocation for the BLs and TL
+        std::unique_ptr<Buffer> BLBuffer;
+        std::unique_ptr<Buffer> TLInstancesBuffer;
+        std::unique_ptr<Buffer> TLBuffer;
+        std::unique_ptr<Buffer> scratchBuffer;
 
         //instances buffers and allocations
         struct InstanceDescription
@@ -65,12 +65,12 @@ namespace PaperRenderer
             uint32_t indexStride;
         };
 
-        static std::unique_ptr<PaperMemory::DeviceAllocation> hostInstancesAllocation;
-        static std::unique_ptr<PaperMemory::DeviceAllocation> deviceInstancesAllocation;
-        std::unique_ptr<PaperMemory::Buffer> hostInstancesBuffer;
-        std::unique_ptr<PaperMemory::Buffer> hostInstanceDescriptionsBuffer;
-        std::unique_ptr<PaperMemory::Buffer> deviceInstancesBuffer;
-        std::unique_ptr<PaperMemory::Buffer> deviceInstanceDescriptionsBuffer;
+        static std::unique_ptr<DeviceAllocation> hostInstancesAllocation;
+        static std::unique_ptr<DeviceAllocation> deviceInstancesAllocation;
+        std::unique_ptr<Buffer> hostInstancesBuffer;
+        std::unique_ptr<Buffer> hostInstanceDescriptionsBuffer;
+        std::unique_ptr<Buffer> deviceInstancesBuffer;
+        std::unique_ptr<Buffer> deviceInstanceDescriptionsBuffer;
 
         VkAccelerationStructureKHR topStructure = VK_NULL_HANDLE;
         std::unordered_map<class Model const*, BottomStructure> bottomStructures;
@@ -121,8 +121,8 @@ namespace PaperRenderer
         void rebuildScratchAllocation();
         void rebuildInstancesBuffers();
         static void rebuildInstancesAllocationsAndBuffers(RenderEngine* renderer);
-        void createBottomLevel(BottomBuildData buildData, const PaperMemory::SynchronizationInfo& synchronizationInfo);
-        void createTopLevel(TopBuildData buildData, const PaperMemory::SynchronizationInfo& synchronizationInfo);
+        void createBottomLevel(BottomBuildData buildData, const SynchronizationInfo& synchronizationInfo);
+        void createTopLevel(TopBuildData buildData, const SynchronizationInfo& synchronizationInfo);
 
         friend TLASInstanceBuildPipeline;
 
@@ -136,7 +136,7 @@ namespace PaperRenderer
         void removeInstance(class ModelInstance* instance);
 
         const VkAccelerationStructureKHR& getTLAS() const { return topStructure; }
-        PaperMemory::Buffer const* getInstanceDescriptionsBuffer() const { return deviceInstanceDescriptionsBuffer.get(); }
+        Buffer const* getInstanceDescriptionsBuffer() const { return deviceInstanceDescriptionsBuffer.get(); }
         const std::unordered_map<class Model const*, BottomStructure>& getBottomStructures() const { return bottomStructures; }
     };
 }

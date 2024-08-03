@@ -2,14 +2,14 @@
 #include "RenderPass.h"
 #include "PaperRenderer.h"
 #include "Material.h"
-#include "RHI/AccelerationStructure.h"
-#include "RHI/IndirectDraw.h"
+#include "AccelerationStructure.h"
+#include "IndirectDraw.h"
 
 namespace PaperRenderer
 {
 	//----------MODEL DEFINITIONS----------//
 
-    Model::Model(RenderEngine *renderer, PaperMemory::DeviceAllocation *allocation, const ModelCreateInfo &creationInfo)
+    Model::Model(RenderEngine *renderer, DeviceAllocation *allocation, const ModelCreateInfo &creationInfo)
         :rendererPtr(renderer),
         allocationPtr(allocation)
     {
@@ -175,38 +175,38 @@ namespace PaperRenderer
 		return memRequirements.memoryRequirements.alignment * 2; //alignment for vertex and index buffer
     }
 
-    std::unique_ptr<PaperMemory::Buffer> Model::createDeviceLocalBuffer(VkDeviceSize size, void *data, VkBufferUsageFlags2KHR usageFlags)
+    std::unique_ptr<Buffer> Model::createDeviceLocalBuffer(VkDeviceSize size, void *data, VkBufferUsageFlags2KHR usageFlags)
     {
 		//create staging buffer
-		std::unique_ptr<PaperMemory::DeviceAllocation> stagingAllocation;
-		PaperMemory::BufferInfo stagingBufferInfo = {};
+		std::unique_ptr<DeviceAllocation> stagingAllocation;
+		BufferInfo stagingBufferInfo = {};
 		stagingBufferInfo.size = size;
 		stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 		stagingBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-		PaperMemory::Buffer vboStaging(rendererPtr->getDevice()->getDevice(), stagingBufferInfo);
+		Buffer vboStaging(rendererPtr->getDevice()->getDevice(), stagingBufferInfo);
 
 		//create staging allocation
-		PaperMemory::DeviceAllocationInfo stagingAllocationInfo = {};
+		DeviceAllocationInfo stagingAllocationInfo = {};
 		stagingAllocationInfo.allocationSize = vboStaging.getMemoryRequirements().size; //alignment doesnt matter here since buffer and allocation are 1:1
 		stagingAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-		stagingAllocation = std::make_unique<PaperMemory::DeviceAllocation>(rendererPtr->getDevice()->getDevice(), rendererPtr->getDevice()->getGPU(), stagingAllocationInfo);
+		stagingAllocation = std::make_unique<DeviceAllocation>(rendererPtr->getDevice()->getDevice(), rendererPtr->getDevice()->getGPU(), stagingAllocationInfo);
 
 		//assign staging allocation and fill with information
 		vboStaging.assignAllocation(stagingAllocation.get());
 
 		//fill staging data
-		PaperMemory::BufferWrite write = {};
+		BufferWrite write = {};
 		write.data = data;
 		write.size = size;
 		write.offset = 0;
 		vboStaging.writeToBuffer({ write });
 
 		//create device local buffer
-		PaperMemory::BufferInfo bufferInfo = {};
+		BufferInfo bufferInfo = {};
 		bufferInfo.size = size;
 		bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | usageFlags;
 		bufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-		std::unique_ptr<PaperMemory::Buffer> buffer = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
+		std::unique_ptr<Buffer> buffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
 
 		//assign memory
 		if(buffer->assignAllocation(allocationPtr) != 0)
@@ -220,18 +220,18 @@ namespace PaperRenderer
 		copyRegion.srcOffset = 0;
 		copyRegion.size = size;
 
-		PaperMemory::SynchronizationInfo synchronizationInfo = {};
-		synchronizationInfo.queueType = PaperMemory::QueueType::TRANSFER;
-		synchronizationInfo.fence = PaperMemory::Commands::getUnsignaledFence(rendererPtr->getDevice()->getDevice());
+		SynchronizationInfo synchronizationInfo = {};
+		synchronizationInfo.queueType = QueueType::TRANSFER;
+		synchronizationInfo.fence = Commands::getUnsignaledFence(rendererPtr->getDevice()->getDevice());
 
-		PaperRenderer::PaperMemory::CommandBuffer cmdBuffer = buffer->copyFromBufferRanges(vboStaging, { copyRegion }, synchronizationInfo);
+		PaperRenderer::CommandBuffer cmdBuffer = buffer->copyFromBufferRanges(vboStaging, { copyRegion }, synchronizationInfo);
 
 		//wait for fence and destroy (potential for efficiency improvements here since this is technically brute force synchronization)
 		vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &synchronizationInfo.fence, VK_TRUE, UINT64_MAX);
 		vkDestroyFence(rendererPtr->getDevice()->getDevice(), synchronizationInfo.fence, nullptr);
 
-		std::vector<PaperMemory::CommandBuffer> cmdBuffers = { cmdBuffer };
-		PaperRenderer::PaperMemory::Commands::freeCommandBuffers(rendererPtr->getDevice()->getDevice(), cmdBuffers);
+		std::vector<CommandBuffer> cmdBuffers = { cmdBuffer };
+		PaperRenderer::Commands::freeCommandBuffers(rendererPtr->getDevice()->getDevice(), cmdBuffers);
 
 		return buffer;
     }
@@ -268,7 +268,7 @@ namespace PaperRenderer
 
 		for(uint32_t lodIndex = 0; lodIndex < modelPtr->getLODs().size(); lodIndex++)
 		{
-			dynamicOffset = PaperMemory::DeviceAllocation::padToMultiple(dynamicOffset, 8);
+			dynamicOffset = DeviceAllocation::padToMultiple(dynamicOffset, 8);
 
 			LODMaterialData lodMaterialData = {};
 			lodMaterialData.meshGroupsOffset = dynamicOffset;
@@ -284,7 +284,7 @@ namespace PaperRenderer
 				MaterialMeshGroup materialMeshGroup = {};
 				materialMeshGroup.bufferAddress = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getBufferAddress();
 				materialMeshGroup.bufferFrameOffsetsOffset = dynamicOffset;
-				dynamicOffset += sizeof(uint32_t) * PaperMemory::Commands::getFrameCount();
+				dynamicOffset += sizeof(uint32_t) * Commands::getFrameCount();
 				newData.resize(dynamicOffset);
 				materialMeshGroup.indirectDrawDatasOffset = dynamicOffset;
 

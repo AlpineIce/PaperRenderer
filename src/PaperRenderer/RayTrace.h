@@ -1,12 +1,12 @@
 #pragma once
-#include "RHI/Pipeline.h"
-#include "RHI/Descriptor.h"
+#include "Pipeline.h"
+#include "Descriptor.h"
 
 namespace PaperRenderer
 {
     struct RayTraceRenderInfo
     {
-        const PaperMemory::Image& image;
+        const Image& image;
         const class Camera& camera;
         VkDependencyInfo const* preRenderBarriers = NULL;
         VkDependencyInfo const* postRenderBarriers = NULL;
@@ -28,6 +28,6 @@ namespace PaperRenderer
         RayTraceRender(RenderEngine* renderer, AccelerationStructure* accelerationStructure, const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets);
         ~RayTraceRender();
 
-        void render(const RayTraceRenderInfo& rtRenderInfo, const PaperMemory::SynchronizationInfo& syncInfo);
+        void render(const RayTraceRenderInfo& rtRenderInfo, const SynchronizationInfo& syncInfo);
     };
 }

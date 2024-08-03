@@ -1,5 +1,5 @@
 #pragma once
-#include "Memory/VulkanResources.h"
+#include "VulkanResources.h"
 
 #include <unordered_map>
 

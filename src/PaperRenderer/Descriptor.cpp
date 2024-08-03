@@ -7,8 +7,8 @@ namespace PaperRenderer
     DescriptorAllocator::DescriptorAllocator(Device *device)
         :devicePtr(device)
     {
-        descriptorPools.resize(PaperMemory::Commands::getFrameCount());
-        currentPools.resize(PaperMemory::Commands::getFrameCount());
+        descriptorPools.resize(Commands::getFrameCount());
+        currentPools.resize(Commands::getFrameCount());
     }
     
     DescriptorAllocator::~DescriptorAllocator()

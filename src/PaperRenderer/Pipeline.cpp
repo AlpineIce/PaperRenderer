@@ -1,4 +1,4 @@
-#include "../PaperRenderer.h"
+#include "PaperRenderer.h"
 
 #include <fstream>
 
@@ -235,8 +235,8 @@ namespace PaperRenderer
     //----------RT PIPELINE DEFINITIONS----------//
 
     std::list<RTPipeline*> RTPipeline::rtPipelines;
-    std::unique_ptr<PaperMemory::DeviceAllocation> RTPipeline::sbtAllocation;
-    std::unique_ptr<PaperMemory::Buffer> RTPipeline::sbtBuffer;
+    std::unique_ptr<DeviceAllocation> RTPipeline::sbtAllocation;
+    std::unique_ptr<Buffer> RTPipeline::sbtBuffer;
 
     RTPipeline::RTPipeline(const RTPipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties)
         :Pipeline(creationInfo),
@@ -442,35 +442,35 @@ namespace PaperRenderer
         }
 
         //create buffers
-        PaperMemory::BufferInfo deviceBufferInfo = {};
+        BufferInfo deviceBufferInfo = {};
         deviceBufferInfo.queueFamiliesIndices = renderer->getDevice()->getQueueFamiliesIndices();
         deviceBufferInfo.size = newSize;
         deviceBufferInfo.usageFlags = VK_BUFFER_USAGE_2_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR;
-        sbtBuffer = std::make_unique<PaperMemory::Buffer>(renderer->getDevice()->getDevice(), deviceBufferInfo);
+        sbtBuffer = std::make_unique<Buffer>(renderer->getDevice()->getDevice(), deviceBufferInfo);
         
-        PaperMemory::BufferInfo stagingBufferInfo = {};
+        BufferInfo stagingBufferInfo = {};
         stagingBufferInfo.queueFamiliesIndices = renderer->getDevice()->getQueueFamiliesIndices();
         stagingBufferInfo.size = newSize;
         stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        PaperMemory::Buffer stagingBuffer(renderer->getDevice()->getDevice(), stagingBufferInfo);
+        Buffer stagingBuffer(renderer->getDevice()->getDevice(), stagingBufferInfo);
 
         //create allocations
-        PaperMemory::DeviceAllocationInfo deviceAllocationInfo = {};
+        DeviceAllocationInfo deviceAllocationInfo = {};
         deviceAllocationInfo.allocationSize = sbtBuffer->getMemoryRequirements().size;
         deviceAllocationInfo.allocFlags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
         deviceAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        sbtAllocation = std::make_unique<PaperMemory::DeviceAllocation>(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), deviceAllocationInfo);
+        sbtAllocation = std::make_unique<DeviceAllocation>(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), deviceAllocationInfo);
         sbtBuffer->assignAllocation(sbtAllocation.get());
 
-        PaperMemory::DeviceAllocationInfo stagingAllocationInfo = {};
+        DeviceAllocationInfo stagingAllocationInfo = {};
         stagingAllocationInfo.allocationSize = stagingBuffer.getMemoryRequirements().size;
         stagingAllocationInfo.allocFlags = 0;
         stagingAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-        PaperMemory::DeviceAllocation stagingAllocation(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), stagingAllocationInfo);
+        DeviceAllocation stagingAllocation(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), stagingAllocationInfo);
         stagingBuffer.assignAllocation(&stagingAllocation);
 
         //copy data
-        PaperMemory::BufferWrite writeInfo = {};
+        BufferWrite writeInfo = {};
         writeInfo.data = allRawData.data();
         writeInfo.size = allRawData.size();
         writeInfo.offset = 0;
@@ -481,9 +481,9 @@ namespace PaperRenderer
         copyRegion.srcOffset = 0;
         copyRegion.size = allRawData.size();
 
-        PaperMemory::SynchronizationInfo syncInfo = {};
-        syncInfo.queueType = PaperMemory::QueueType::TRANSFER;
-        syncInfo.fence = PaperMemory::Commands::getUnsignaledFence(renderer->getDevice()->getDevice());
+        SynchronizationInfo syncInfo = {};
+        syncInfo.queueType = QueueType::TRANSFER;
+        syncInfo.fence = Commands::getUnsignaledFence(renderer->getDevice()->getDevice());
 
         renderer->recycleCommandBuffer(sbtBuffer->copyFromBufferRanges(stagingBuffer, { copyRegion }, syncInfo));
 

@@ -1,11 +1,11 @@
 #include "IndirectDraw.h"
-#include "../PaperRenderer.h"
+#include "PaperRenderer.h"
 
 #include <algorithm>
 
 namespace PaperRenderer
 {
-    std::unique_ptr<PaperMemory::DeviceAllocation> CommonMeshGroup::drawDataAllocation;
+    std::unique_ptr<DeviceAllocation> CommonMeshGroup::drawDataAllocation;
     std::list<CommonMeshGroup*> CommonMeshGroup::commonMeshGroups;
     bool CommonMeshGroup::rebuild = false;
 
@@ -14,7 +14,7 @@ namespace PaperRenderer
         renderPassPtr(renderPass)
     {
         commonMeshGroups.push_back(this);
-        bufferFrameOffsets.resize(PaperMemory::Commands::getFrameCount());
+        bufferFrameOffsets.resize(Commands::getFrameCount());
     }
 
     CommonMeshGroup::~CommonMeshGroup()
@@ -52,15 +52,15 @@ namespace PaperRenderer
         for(const auto& commonMeshGroup : commonMeshGroups)
         {
             commonMeshGroup->rebuildBuffer();
-            newAllocationSize += PaperMemory::DeviceAllocation::padToMultiple(commonMeshGroup->drawDataBuffer->getMemoryRequirements().size, commonMeshGroup->drawDataBuffer->getMemoryRequirements().alignment);
+            newAllocationSize += DeviceAllocation::padToMultiple(commonMeshGroup->drawDataBuffer->getMemoryRequirements().size, commonMeshGroup->drawDataBuffer->getMemoryRequirements().alignment);
         }
 
         //rebuild allocations
-        PaperMemory::DeviceAllocationInfo allocationInfo = {};
+        DeviceAllocationInfo allocationInfo = {};
         allocationInfo.allocationSize = newAllocationSize;
         allocationInfo.allocFlags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
         allocationInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        drawDataAllocation = std::make_unique<PaperMemory::DeviceAllocation>(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), allocationInfo);
+        drawDataAllocation = std::make_unique<DeviceAllocation>(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), allocationInfo);
 
         //assign buffer memory and get instances to update
         std::vector<ModelInstance*> modifiedInstances;
@@ -87,7 +87,7 @@ namespace PaperRenderer
 
         //draw counts size
         drawCountsRange = sizeof(uint32_t) * meshesData.size();
-        dynamicOffset += PaperMemory::DeviceAllocation::padToMultiple(drawCountsRange, rendererPtr->getDevice()->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment);
+        dynamicOffset += DeviceAllocation::padToMultiple(drawCountsRange, rendererPtr->getDevice()->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment);
         
         //iterate meshes
         uint32_t meshIndex = 0;
@@ -101,28 +101,28 @@ namespace PaperRenderer
 
             //draw commands
             meshInstancesData.drawCommandsOffset = dynamicOffset;
-            dynamicOffset += PaperMemory::DeviceAllocation::padToMultiple(sizeof(VkDrawIndexedIndirectCommand) * instanceCount, rendererPtr->getDevice()->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment);
+            dynamicOffset += DeviceAllocation::padToMultiple(sizeof(VkDrawIndexedIndirectCommand) * instanceCount, rendererPtr->getDevice()->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment);
 
             //output objects
             meshInstancesData.outputObjectsOffset = dynamicOffset;
-            dynamicOffset += PaperMemory::DeviceAllocation::padToMultiple(sizeof(ShaderOutputObject) * instanceCount, rendererPtr->getDevice()->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment);
+            dynamicOffset += DeviceAllocation::padToMultiple(sizeof(ShaderOutputObject) * instanceCount, rendererPtr->getDevice()->getGPUProperties().properties.limits.minStorageBufferOffsetAlignment);
             meshIndex++;
         }
 
         //number of sub-buffers equal to frames in flight
         VkDeviceSize oneFrameBufferSize = dynamicOffset;
-        for(uint32_t i = 0; i < PaperMemory::Commands::getFrameCount(); i++)
+        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
         {
             bufferFrameOffsets.at(i) = oneFrameBufferSize * i;
         }
-        dynamicOffset *= PaperMemory::Commands::getFrameCount();
+        dynamicOffset *= Commands::getFrameCount();
 
         //build new buffer
-        PaperMemory::BufferInfo bufferInfo = {};
+        BufferInfo bufferInfo = {};
         bufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
         bufferInfo.size = std::max(dynamicOffset, (VkDeviceSize)64);
         bufferInfo.usageFlags = VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        drawDataBuffer = std::make_unique<PaperMemory::Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
+        drawDataBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
     }
 
     void CommonMeshGroup::addInstanceMeshes(ModelInstance* instance, const std::vector<LODMesh const*>& instanceMeshesData)

@@ -167,55 +167,55 @@ namespace PaperRenderer
         //About queue family selection, queues are selected from importance, with graphics being the highest, and present being the lowest.
         for(int i = 0; i < queueFamiliesProperties.size(); i++)
         {
-            if(queueFamiliesProperties.at(i).queueFlags & VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT && !queues.count(PaperMemory::QueueType::GRAPHICS))
+            if(queueFamiliesProperties.at(i).queueFlags & VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT && !queues.count(QueueType::GRAPHICS))
             {
-                queues[PaperMemory::QueueType::GRAPHICS].queueFamilyIndex = i;
+                queues[QueueType::GRAPHICS].queueFamilyIndex = i;
                 continue;
             }
-            if(queueFamiliesProperties.at(i).queueFlags & VkQueueFlagBits::VK_QUEUE_COMPUTE_BIT && !queues.count(PaperMemory::QueueType::COMPUTE))
+            if(queueFamiliesProperties.at(i).queueFlags & VkQueueFlagBits::VK_QUEUE_COMPUTE_BIT && !queues.count(QueueType::COMPUTE))
             {
-                queues[PaperMemory::QueueType::COMPUTE].queueFamilyIndex = i;
+                queues[QueueType::COMPUTE].queueFamilyIndex = i;
                 continue;
             }
-            if(queueFamiliesProperties.at(i).queueFlags & VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT && !queues.count(PaperMemory::QueueType::TRANSFER))
+            if(queueFamiliesProperties.at(i).queueFlags & VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT && !queues.count(QueueType::TRANSFER))
             {
-                queues[PaperMemory::QueueType::TRANSFER].queueFamilyIndex = i;
+                queues[QueueType::TRANSFER].queueFamilyIndex = i;
                 continue;
             }
 
             VkBool32 presentSupport;
             vkGetPhysicalDeviceSurfaceSupportKHR(GPU, i, surface, &presentSupport);
-            if(presentSupport && !queues.count(PaperMemory::QueueType::PRESENT))
+            if(presentSupport && !queues.count(QueueType::PRESENT))
             {
-                queues[PaperMemory::QueueType::PRESENT].queueFamilyIndex = i;
+                queues[QueueType::PRESENT].queueFamilyIndex = i;
                 continue;
             }
         }
 
         //now fill in any queues that need to be filled
-        if(!queues.count(PaperMemory::QueueType::GRAPHICS)) throw std::runtime_error("No suitable graphics queue family from selected GPU"); //error if no graphics
-        if(!queues.count(PaperMemory::QueueType::COMPUTE))
+        if(!queues.count(QueueType::GRAPHICS)) throw std::runtime_error("No suitable graphics queue family from selected GPU"); //error if no graphics
+        if(!queues.count(QueueType::COMPUTE))
         {
-            queues[PaperMemory::QueueType::COMPUTE].queueFamilyIndex = queues.at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex; //shared graphics/compute queue family
+            queues[QueueType::COMPUTE].queueFamilyIndex = queues.at(QueueType::GRAPHICS).queueFamilyIndex; //shared graphics/compute queue family
         }
-        if(!queues.count(PaperMemory::QueueType::TRANSFER))
+        if(!queues.count(QueueType::TRANSFER))
         {
-            queues[PaperMemory::QueueType::TRANSFER].queueFamilyIndex = queues.at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex; //shared compute/transfer queue family
+            queues[QueueType::TRANSFER].queueFamilyIndex = queues.at(QueueType::COMPUTE).queueFamilyIndex; //shared compute/transfer queue family
         }
-        if(!queues.count(PaperMemory::QueueType::PRESENT))
+        if(!queues.count(QueueType::PRESENT))
         {
             //loop back through until a present queue is found
             for(int i = 0; i < queueFamiliesProperties.size(); i++)
             {
                 VkBool32 presentSupport;
                 vkGetPhysicalDeviceSurfaceSupportKHR(GPU, i, surface, &presentSupport);
-                if(presentSupport && !queues.count(PaperMemory::QueueType::PRESENT))
+                if(presentSupport && !queues.count(QueueType::PRESENT))
                 {
-                    queues[PaperMemory::QueueType::PRESENT].queueFamilyIndex = i;
+                    queues[QueueType::PRESENT].queueFamilyIndex = i;
                     break;
                 }
             }
-            if(!queues.count(PaperMemory::QueueType::PRESENT))
+            if(!queues.count(QueueType::PRESENT))
             {
                 throw std::runtime_error("No surface support");
             }
@@ -248,7 +248,7 @@ namespace PaperRenderer
         //get queues
         for(auto& [familyIndex, properties] : queuecreationInfo)
         {
-            familyQueues[familyIndex] = std::vector<PaperMemory::Queue>(properties.queueCount);
+            familyQueues[familyIndex] = std::vector<Queue>(properties.queueCount);
             for(uint32_t i = 0; i < properties.queueCount; i++)
             {
                 vkGetDeviceQueue(device, familyIndex, i, &familyQueues.at(familyIndex).at(i).queue);
@@ -372,15 +372,15 @@ namespace PaperRenderer
         retrieveQueues(queuesCreationInfo);
 
         //command pools init
-        commands = std::make_unique<PaperMemory::Commands>(device, GPU, surface, &queues);
+        commands = std::make_unique<Commands>(device, GPU, surface, &queues);
     }
-    PaperMemory::QueueFamiliesIndices Device::getQueueFamiliesIndices() const
+    QueueFamiliesIndices Device::getQueueFamiliesIndices() const
     {
-        PaperMemory::QueueFamiliesIndices queueFamiliesIndices = {};
-        queueFamiliesIndices.graphicsFamilyIndex = queues.at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex;
-        queueFamiliesIndices.computeFamilyIndex = queues.at(PaperMemory::QueueType::COMPUTE).queueFamilyIndex;
-        queueFamiliesIndices.transferFamilyIndex = queues.at(PaperMemory::QueueType::TRANSFER).queueFamilyIndex;
-        queueFamiliesIndices.presentationFamilyIndex = queues.at(PaperMemory::QueueType::PRESENT).queueFamilyIndex;
+        QueueFamiliesIndices queueFamiliesIndices = {};
+        queueFamiliesIndices.graphicsFamilyIndex = queues.at(QueueType::GRAPHICS).queueFamilyIndex;
+        queueFamiliesIndices.computeFamilyIndex = queues.at(QueueType::COMPUTE).queueFamilyIndex;
+        queueFamiliesIndices.transferFamilyIndex = queues.at(QueueType::TRANSFER).queueFamilyIndex;
+        queueFamiliesIndices.presentationFamilyIndex = queues.at(QueueType::PRESENT).queueFamilyIndex;
 
         return queueFamiliesIndices;
     }

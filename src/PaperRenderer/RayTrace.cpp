@@ -1,5 +1,5 @@
 #include "RayTrace.h"
-#include "RHI/AccelerationStructure.h"
+#include "AccelerationStructure.h"
 #include "PaperRenderer.h"
 #include "Camera.h"
 #include "Material.h"
@@ -54,7 +54,7 @@ namespace PaperRenderer
         pipeline = rendererPtr->getPipelineBuilder()->buildRTPipeline(pipelineBuildInfo, pipelineProperties);
     }
 
-    void RayTraceRender::render(const RayTraceRenderInfo& rtRenderInfo, const PaperMemory::SynchronizationInfo& syncInfo)
+    void RayTraceRender::render(const RayTraceRenderInfo& rtRenderInfo, const SynchronizationInfo& syncInfo)
     {
         //command buffer
         VkCommandBufferBeginInfo commandInfo;
@@ -63,7 +63,7 @@ namespace PaperRenderer
         commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         commandInfo.pInheritanceInfo = NULL;
 
-        VkCommandBuffer cmdBuffer = PaperMemory::Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), PaperMemory::QueueType::COMPUTE);
+        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), QueueType::COMPUTE);
         vkBeginCommandBuffer(cmdBuffer, &commandInfo);
 
         //bind RT pipeline
@@ -113,9 +113,9 @@ namespace PaperRenderer
         vkEndCommandBuffer(cmdBuffer);
         
         //submit
-        PaperMemory::Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), syncInfo, { cmdBuffer });
+        Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), syncInfo, { cmdBuffer });
 
-        PaperMemory::CommandBuffer commandBuffer = { cmdBuffer, syncInfo.queueType };
+        CommandBuffer commandBuffer = { cmdBuffer, syncInfo.queueType };
         rendererPtr->recycleCommandBuffer(commandBuffer);
     }
 }

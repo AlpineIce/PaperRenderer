@@ -1,5 +1,5 @@
 #include "Swapchain.h"
-#include "../PaperRenderer.h"
+#include "PaperRenderer.h"
 
 #include <algorithm>
 #include <functional>
@@ -81,10 +81,10 @@ namespace PaperRenderer
         glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 
         //sync
-        imageSemaphores.resize(PaperRenderer::PaperMemory::Commands::getFrameCount());
-        for(uint32_t i = 0; i < PaperRenderer::PaperMemory::Commands::getFrameCount(); i++)
+        imageSemaphores.resize(PaperRenderer::Commands::getFrameCount());
+        for(uint32_t i = 0; i < PaperRenderer::Commands::getFrameCount(); i++)
         {
-            imageSemaphores.at(i) = PaperRenderer::PaperMemory::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
+            imageSemaphores.at(i) = PaperRenderer::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
         }
     }
 
@@ -141,9 +141,9 @@ namespace PaperRenderer
         presentSubmitInfo.pResults = &returnResult;//&returnResult;
 
         //too lazy to properly fix this, it probably barely affects performance anyways
-        rendererPtr->getDevice()->getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->threadLock.lock();
-        VkResult presentResult = vkQueuePresentKHR(rendererPtr->getDevice()->getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->queue, &presentSubmitInfo);
-        rendererPtr->getDevice()->getQueues().at(PaperMemory::QueueType::PRESENT).queues.at(0)->threadLock.unlock();
+        rendererPtr->getDevice()->getQueues().at(QueueType::PRESENT).queues.at(0)->threadLock.lock();
+        VkResult presentResult = vkQueuePresentKHR(rendererPtr->getDevice()->getQueues().at(QueueType::PRESENT).queues.at(0)->queue, &presentSubmitInfo);
+        rendererPtr->getDevice()->getQueues().at(QueueType::PRESENT).queues.at(0)->threadLock.unlock();
 
         if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) 
         {
@@ -244,8 +244,8 @@ namespace PaperRenderer
         swapchainInfo.imageArrayLayers = 1;
         swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
-        uint32_t queueFamilies[] = {rendererPtr->getDevice()->getQueues().at(PaperMemory::QueueType::GRAPHICS).queueFamilyIndex,
-                                    rendererPtr->getDevice()->getQueues().at(PaperMemory::QueueType::PRESENT).queueFamilyIndex};
+        uint32_t queueFamilies[] = {rendererPtr->getDevice()->getQueues().at(QueueType::GRAPHICS).queueFamilyIndex,
+                                    rendererPtr->getDevice()->getQueues().at(QueueType::PRESENT).queueFamilyIndex};
         if(queueFamilies[0] == queueFamilies[1])
         {
             swapchainInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;

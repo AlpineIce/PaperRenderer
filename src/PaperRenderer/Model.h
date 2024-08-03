@@ -1,5 +1,5 @@
 #pragma once
-#include "RHI/Device.h"
+#include "Device.h"
 #include "glm/gtc/quaternion.hpp"
 
 #include <filesystem>
@@ -75,8 +75,8 @@ namespace PaperRenderer
         uint32_t vertexPositionOffset;
 
         std::vector<LOD> LODs;
-        std::unique_ptr<PaperMemory::Buffer> vbo;
-        std::unique_ptr<PaperMemory::Buffer> ibo;
+        std::unique_ptr<Buffer> vbo;
+        std::unique_ptr<Buffer> ibo;
         AABB aabb;
 
         //shader data
@@ -116,15 +116,15 @@ namespace PaperRenderer
         void setShaderData();
 
         class RenderEngine* rendererPtr;
-        PaperMemory::DeviceAllocation* allocationPtr;
+        DeviceAllocation* allocationPtr;
 
-        std::unique_ptr<PaperMemory::Buffer> createDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags2KHR usageFlags);
+        std::unique_ptr<Buffer> createDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags2KHR usageFlags);
 
         friend class RenderEngine;
         friend class ModelInstance;
 
     public:
-        Model(RenderEngine* renderer, PaperMemory::DeviceAllocation* allocation, const ModelCreateInfo& creationInfo);
+        Model(RenderEngine* renderer, DeviceAllocation* allocation, const ModelCreateInfo& creationInfo);
         ~Model();
 
         static VkDeviceSize getMemoryAlignment(Device* device);
