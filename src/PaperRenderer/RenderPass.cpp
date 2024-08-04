@@ -159,11 +159,10 @@ namespace PaperRenderer
     std::unique_ptr<DeviceAllocation> RenderPass::deviceInstancesAllocation;
     std::list<RenderPass*> RenderPass::renderPasses;
 
-    RenderPass::RenderPass(RenderEngine* renderer, Camera* camera, MaterialInstance* defaultMaterialInstance, MaterialInstance* defaultPrepassMaterialInstance)
+    RenderPass::RenderPass(RenderEngine* renderer, Camera* camera, MaterialInstance* defaultMaterialInstance)
         :rendererPtr(renderer),
         cameraPtr(camera),
-        defaultMaterialInstancePtr(defaultMaterialInstance),
-        defaultPrepassMaterialInstancePtr(defaultPrepassMaterialInstance)
+        defaultMaterialInstancePtr(defaultMaterialInstance)
     {
         renderPasses.push_back(this);
 
@@ -485,35 +484,8 @@ namespace PaperRenderer
             //MSAA samples
             vkCmdSetRasterizationSamplesEXT(graphicsCmdBuffer, rendererPtr->getRendererState()->msaaSamples);
 
-            //----------PRE-PASS----------//
-
-            if(renderPassInfo.renderPrepass && defaultPrepassMaterialInstancePtr)
-            {
-                vkCmdSetDepthCompareOp(graphicsCmdBuffer, VK_COMPARE_OP_LESS);
-
-                //bind material
-                Material* defaultPrepassMaterial = (Material*)defaultPrepassMaterialInstancePtr->getBaseMaterialPtr();
-                defaultPrepassMaterial->bind(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex());
-                defaultPrepassMaterialInstancePtr->bind(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex());
-                
-                //record draw commands
-                for(const auto& [material, materialInstanceNode] : renderTree) //material
-                {
-                    for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
-                    {
-                        if(meshGroups)
-                        {
-                            meshGroups->draw(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex(), *defaultPrepassMaterial->getRasterPipeline());
-                        }
-                    }
-                }
-
-                vkCmdSetDepthCompareOp(graphicsCmdBuffer, VK_COMPARE_OP_EQUAL);
-            }
-            else
-            {
-                vkCmdSetDepthCompareOp(graphicsCmdBuffer, VK_COMPARE_OP_LESS);
-            }
+            //compare op
+            vkCmdSetDepthCompareOp(graphicsCmdBuffer, renderPassInfo.depthCompareOp);
 
             //----------MAIN PASS----------//
 
