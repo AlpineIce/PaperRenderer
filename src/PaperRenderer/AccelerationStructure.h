@@ -40,8 +40,8 @@ namespace PaperRenderer
 
     struct AccelerationStructureSynchronizatioInfo
     {
-        std::vector<SemaphorePair> waitSemaphores;
-        std::vector<SemaphorePair> TLSignalSemaphores;
+        std::vector<BinarySemaphorePair> waitSemaphores;
+        std::vector<BinarySemaphorePair> TLSignalSemaphores;
     };
 
     class AccelerationStructure

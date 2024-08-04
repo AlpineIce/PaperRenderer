@@ -325,13 +325,18 @@ namespace PaperRenderer
 
         if(rtSupport) drawParamFeatures.pNext = &rayQueryFeatures;
 
+        VkPhysicalDeviceTimelineSemaphoreFeatures timelineSemaphoreFeatures = {};
+        timelineSemaphoreFeatures.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+        timelineSemaphoreFeatures.pNext = &drawParamFeatures;
+        timelineSemaphoreFeatures.timelineSemaphore = VK_TRUE;
+
         VkPhysicalDeviceExtendedDynamicState3FeaturesEXT dynamicState3Features = {};
         dynamicState3Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT;
-        dynamicState3Features.pNext = &drawParamFeatures;
+        dynamicState3Features.pNext = &timelineSemaphoreFeatures;
         dynamicState3Features.extendedDynamicState3RasterizationSamples = VK_TRUE;
 
-        VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderFeatures = {};
-        dynamicRenderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;
+        VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderFeatures = {};
+        dynamicRenderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
         dynamicRenderFeatures.pNext = &dynamicState3Features;
         dynamicRenderFeatures.dynamicRendering = VK_TRUE;
 

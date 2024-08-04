@@ -77,9 +77,11 @@ namespace PaperRenderer
             cmdBufferSubmitInfos.push_back(cmdBufferSubmitInfo);
         }
 
-        //wait semaphores
         std::vector<VkSemaphoreSubmitInfo> semaphoreWaitInfos;
-        for(const SemaphorePair& pair : synchronizationInfo.waitPairs)
+        std::vector<VkSemaphoreSubmitInfo> semaphoreSignalInfos;
+
+        //binary wait semaphores
+        for(const BinarySemaphorePair& pair : synchronizationInfo.binaryWaitPairs)
         {
             VkSemaphoreSubmitInfo semaphoreInfo = {};
             semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
@@ -91,14 +93,41 @@ namespace PaperRenderer
             semaphoreWaitInfos.push_back(semaphoreInfo);
         }
 
-        //signal semaphores
-        std::vector<VkSemaphoreSubmitInfo> semaphoreSignalInfos;
-        for(const SemaphorePair& pair : synchronizationInfo.signalPairs)
+        //binary signal semaphores
+        for(const BinarySemaphorePair& pair : synchronizationInfo.binarySignalPairs)
         {
             VkSemaphoreSubmitInfo semaphoreInfo = {};
             semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
             semaphoreInfo.pNext = NULL;
             semaphoreInfo.semaphore = pair.semaphore;
+            semaphoreInfo.stageMask = pair.stage;
+            semaphoreInfo.deviceIndex = 0;
+
+            semaphoreSignalInfos.push_back(semaphoreInfo);
+        }
+
+        //timeline wait semaphores
+        for(const TimelineSemaphorePair& pair : synchronizationInfo.timelineWaitPairs)
+        {
+            VkSemaphoreSubmitInfo semaphoreInfo = {};
+            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+            semaphoreInfo.pNext = NULL;
+            semaphoreInfo.semaphore = pair.semaphore;
+            semaphoreInfo.value = pair.value;
+            semaphoreInfo.stageMask = pair.stage;
+            semaphoreInfo.deviceIndex = 0;
+
+            semaphoreWaitInfos.push_back(semaphoreInfo);
+        }
+
+        //timeline signal semaphores
+        for(const TimelineSemaphorePair& pair : synchronizationInfo.timelineSignalPairs)
+        {
+            VkSemaphoreSubmitInfo semaphoreInfo = {};
+            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+            semaphoreInfo.pNext = NULL;
+            semaphoreInfo.semaphore = pair.semaphore;
+            semaphoreInfo.value = pair.value;
             semaphoreInfo.stageMask = pair.stage;
             semaphoreInfo.deviceIndex = 0;
 
@@ -175,6 +204,26 @@ namespace PaperRenderer
         VkSemaphoreCreateInfo semaphoreInfo;
         semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
         semaphoreInfo.pNext = NULL;
+        semaphoreInfo.flags = 0;
+
+        vkCreateSemaphore(device, &semaphoreInfo, nullptr, &semaphore);
+
+        return semaphore;
+    }
+
+    VkSemaphore Commands::getTimelineSemaphore(VkDevice device, uint64_t initialValue)
+    {
+        VkSemaphore semaphore;
+
+        VkSemaphoreTypeCreateInfo semaphoreTypeInfo = {};
+        semaphoreTypeInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+        semaphoreTypeInfo.pNext = NULL;
+        semaphoreTypeInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+        semaphoreTypeInfo.initialValue = initialValue;
+
+        VkSemaphoreCreateInfo semaphoreInfo;
+        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        semaphoreInfo.pNext = &semaphoreTypeInfo;
         semaphoreInfo.flags = 0;
 
         vkCreateSemaphore(device, &semaphoreInfo, nullptr, &semaphore);

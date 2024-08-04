@@ -580,8 +580,8 @@ namespace PaperRenderer
 
         PaperRenderer::SynchronizationInfo bufferCopySyncInfo = {};
         bufferCopySyncInfo.queueType = QueueType::TRANSFER;
-        bufferCopySyncInfo.waitPairs = {};
-        bufferCopySyncInfo.signalPairs = { { instancesCopySemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT } };
+        bufferCopySyncInfo.binaryWaitPairs = {};
+        bufferCopySyncInfo.binarySignalPairs = { { instancesCopySemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT } };
         bufferCopySyncInfo.fence = VK_NULL_HANDLE;
 
         Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), bufferCopySyncInfo, { transferBuffer });
@@ -645,13 +645,13 @@ namespace PaperRenderer
         const BuildData buildData = getBuildData();
 
         //set TLAS instances
-        std::vector<SemaphorePair> instancesComputeWaitSemaphores = syncInfo.waitSemaphores;
+        std::vector<BinarySemaphorePair> instancesComputeWaitSemaphores = syncInfo.waitSemaphores;
         instancesComputeWaitSemaphores.push_back({ instancesCopySemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
 
         PaperRenderer::SynchronizationInfo tlasInstancesSyncInfo = {};
         tlasInstancesSyncInfo.queueType = QueueType::COMPUTE;
-        tlasInstancesSyncInfo.waitPairs = instancesComputeWaitSemaphores;
-        tlasInstancesSyncInfo.signalPairs = { { tlasInstanceBuildSignalSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT } };
+        tlasInstancesSyncInfo.binaryWaitPairs = instancesComputeWaitSemaphores;
+        tlasInstancesSyncInfo.binarySignalPairs = { { tlasInstanceBuildSignalSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT } };
         tlasInstancesSyncInfo.fence = VK_NULL_HANDLE;
         rendererPtr->tlasInstanceBuildPipeline.submit(tlasInstancesSyncInfo, *this);
 
@@ -661,23 +661,23 @@ namespace PaperRenderer
         {
             SynchronizationInfo blSyncInfo = {};
             blSyncInfo.queueType = QueueType::COMPUTE;
-            blSyncInfo.waitPairs = {};
-            blSyncInfo.signalPairs = { { blasSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR } };
+            blSyncInfo.binaryWaitPairs = {};
+            blSyncInfo.binarySignalPairs = { { blasSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR } };
             blSyncInfo.fence = VK_NULL_HANDLE;
             createBottomLevel(buildData.bottomData, blSyncInfo);
         }
 
         SynchronizationInfo tlSyncInfo = {};
         tlSyncInfo.queueType = QueueType::COMPUTE;
-        tlSyncInfo.waitPairs = {
+        tlSyncInfo.binaryWaitPairs = {
             { tlasInstanceBuildSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR }
         };
-        tlSyncInfo.signalPairs = syncInfo.TLSignalSemaphores;
+        tlSyncInfo.binarySignalPairs = syncInfo.TLSignalSemaphores;
         tlSyncInfo.fence = accelerationStructureFence;
 
         if(blasBuildNeeded) 
         {
-            tlSyncInfo.waitPairs.push_back({ blasSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR });
+            tlSyncInfo.binaryWaitPairs.push_back({ blasSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR });
         }
         createTopLevel(buildData.topData, tlSyncInfo);
 

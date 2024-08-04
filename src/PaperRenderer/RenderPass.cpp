@@ -414,8 +414,8 @@ namespace PaperRenderer
             
             SynchronizationInfo instancesBufferCopySync = {};
             instancesBufferCopySync.queueType = QueueType::TRANSFER;
-            instancesBufferCopySync.waitPairs = {};
-            instancesBufferCopySync.signalPairs = { { instancesBufferCopySemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
+            instancesBufferCopySync.binaryWaitPairs = {};
+            instancesBufferCopySync.binarySignalPairs = { { instancesBufferCopySemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
             instancesBufferCopySync.fence = VK_NULL_HANDLE;
             rendererPtr->recycleCommandBuffer(deviceInstancesBuffer->copyFromBufferRanges(*hostInstancesBuffer.get(), { instancesRegion }, instancesBufferCopySync));
 
@@ -426,20 +426,20 @@ namespace PaperRenderer
             
             SynchronizationInfo materialDataCopySync = {};
             materialDataCopySync.queueType = QueueType::TRANSFER;
-            materialDataCopySync.waitPairs = {};
-            materialDataCopySync.signalPairs = { { materialDataBufferCopySemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
+            materialDataCopySync.binaryWaitPairs = {};
+            materialDataCopySync.binarySignalPairs = { { materialDataBufferCopySemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
             materialDataCopySync.fence = VK_NULL_HANDLE;
             rendererPtr->recycleCommandBuffer(deviceInstancesDataBuffer->copyFromBufferRanges(*hostInstancesDataBuffer->getBuffer(), { materialDataRegion }, materialDataCopySync));
 
             //compute shader
-            std::vector<SemaphorePair> waitPairs = syncInfo.preprocessWaitPairs;
+            std::vector<BinarySemaphorePair> waitPairs = syncInfo.preprocessWaitPairs;
             waitPairs.push_back({ instancesBufferCopySemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
             waitPairs.push_back({ materialDataBufferCopySemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
 
             SynchronizationInfo preprocessSyncInfo = {};
             preprocessSyncInfo.queueType = QueueType::COMPUTE;
-            preprocessSyncInfo.waitPairs = waitPairs;
-            preprocessSyncInfo.signalPairs = { { preprocessSignalSemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT } };
+            preprocessSyncInfo.binaryWaitPairs = waitPairs;
+            preprocessSyncInfo.binarySignalPairs = { { preprocessSignalSemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT } };
             preprocessSyncInfo.fence = preprocessFence;
 
             rendererPtr->getRasterPreprocessPipeline()->submit(preprocessSyncInfo, *this);
@@ -548,9 +548,9 @@ namespace PaperRenderer
             //submit rendering to GPU   
             SynchronizationInfo graphicsSyncInfo = {};
             graphicsSyncInfo.queueType = QueueType::GRAPHICS;
-            graphicsSyncInfo.waitPairs = syncInfo.renderWaitPairs;
-            graphicsSyncInfo.waitPairs.push_back({ preprocessSignalSemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT });
-            graphicsSyncInfo.signalPairs = syncInfo.renderSignalPairs;
+            graphicsSyncInfo.binaryWaitPairs = syncInfo.renderWaitPairs;
+            graphicsSyncInfo.binaryWaitPairs.push_back({ preprocessSignalSemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT });
+            graphicsSyncInfo.binarySignalPairs = syncInfo.renderSignalPairs;
             graphicsSyncInfo.fence = syncInfo.renderSignalFence;
 
             Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), graphicsSyncInfo, { graphicsCmdBuffer });

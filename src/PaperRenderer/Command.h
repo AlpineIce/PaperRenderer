@@ -14,6 +14,12 @@ namespace PaperRenderer
         TRANSFER = 2,
         PRESENT = 3
     };
+
+    enum SemaphoreType
+    {
+        BINARY = 0,
+        TIMELINE = 1
+    };
     
     struct Queue
     {
@@ -35,18 +41,27 @@ namespace PaperRenderer
         int presentationFamilyIndex = -1;
     };
 
-    struct SemaphorePair
+    struct BinarySemaphorePair
     {
-        VkSemaphore semaphore;
-        VkPipelineStageFlagBits2 stage;
+        VkSemaphore semaphore = VK_NULL_HANDLE;
+        VkPipelineStageFlagBits2 stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    };
+
+    struct TimelineSemaphorePair
+    {
+        VkSemaphore semaphore = VK_NULL_HANDLE;
+        VkPipelineStageFlagBits2 stage = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        uint64_t value = 0;
     };
 
     //generic parameters for synchronization in queues
     struct SynchronizationInfo
     {
         QueueType queueType;
-        std::vector<SemaphorePair> waitPairs = {};
-        std::vector<SemaphorePair> signalPairs = {};
+        std::vector<BinarySemaphorePair> binaryWaitPairs = {};
+        std::vector<BinarySemaphorePair> binarySignalPairs = {};
+        std::vector<TimelineSemaphorePair> timelineWaitPairs = {};
+        std::vector<TimelineSemaphorePair> timelineSignalPairs = {};
         VkFence fence = VK_NULL_HANDLE;
     };
 
@@ -80,6 +95,7 @@ namespace PaperRenderer
         static uint32_t getFrameCount();
 
         static VkSemaphore getSemaphore(VkDevice device);
+        static VkSemaphore getTimelineSemaphore(VkDevice device, uint64_t initialValue);
         static VkFence getSignaledFence(VkDevice device);
         static VkFence getUnsignaledFence(VkDevice device);
         static VkCommandBuffer getCommandBuffer(VkDevice device, QueueType type);

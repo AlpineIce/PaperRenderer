@@ -55,9 +55,9 @@ namespace PaperRenderer
 
     struct RenderPassSynchronizationInfo
     {
-        std::vector<SemaphorePair> preprocessWaitPairs;
-        std::vector<SemaphorePair> renderWaitPairs;
-        std::vector<SemaphorePair> renderSignalPairs;
+        std::vector<BinarySemaphorePair> preprocessWaitPairs;
+        std::vector<BinarySemaphorePair> renderWaitPairs;
+        std::vector<BinarySemaphorePair> renderSignalPairs;
         VkFence renderSignalFence;
     };
 

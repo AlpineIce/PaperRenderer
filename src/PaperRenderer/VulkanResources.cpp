@@ -369,8 +369,10 @@ namespace PaperRenderer
         //copy staging buffer into image
         SynchronizationInfo copySynchronizationInfo = {
             .queueType = QueueType::TRANSFER,
-            .waitPairs = {},
-            .signalPairs = { { copySemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT } },
+            .binaryWaitPairs = {},
+            .binarySignalPairs = { { copySemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT } },
+            .timelineWaitPairs = {},
+            .timelineSignalPairs = {},
             .fence = VK_NULL_HANDLE
         };
         creationBuffers.push_back(copyBufferToImage(imageStagingBuffer.getBuffer(), image, copySynchronizationInfo));
@@ -378,8 +380,10 @@ namespace PaperRenderer
         //generate mipmaps
         SynchronizationInfo blitSynchronization = {
             .queueType = QueueType::GRAPHICS,
-            .waitPairs = { { copySemaphore, VK_PIPELINE_STAGE_2_BLIT_BIT } },
-            .signalPairs = {},
+            .binaryWaitPairs = { { copySemaphore, VK_PIPELINE_STAGE_2_BLIT_BIT } },
+            .binarySignalPairs = {},
+            .timelineWaitPairs = {},
+            .timelineSignalPairs = {},
             .fence = blitFence
         };
         generateMipmaps(blitSynchronization);

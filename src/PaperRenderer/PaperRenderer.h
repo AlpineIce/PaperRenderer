@@ -91,7 +91,7 @@ namespace PaperRenderer
         ~RenderEngine();
 
         //returns the image acquire semaphore from the swapchain
-        const VkSemaphore& beginFrame(const std::vector<VkFence>& waitFences, const std::vector<SemaphorePair>& bufferCopySignalSemaphores);
+        const VkSemaphore& beginFrame(const std::vector<VkFence>& waitFences, const std::vector<BinarySemaphorePair>& bufferCopySignalSemaphores);
         void endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
 
         void recycleCommandBuffer(CommandBuffer& commandBuffer);

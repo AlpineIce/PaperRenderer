@@ -258,7 +258,7 @@ namespace PaperRenderer
         object->rendererSelfIndex = UINT32_MAX;
     }
 
-    const VkSemaphore& RenderEngine::beginFrame(const std::vector<VkFence> &waitFences, const std::vector<SemaphorePair> &bufferCopySignalSemaphores)
+    const VkSemaphore& RenderEngine::beginFrame(const std::vector<VkFence> &waitFences, const std::vector<BinarySemaphorePair> &bufferCopySignalSemaphores)
     {
         //wait for fences
         std::vector<VkFence> allWaitFences = waitFences;
@@ -308,8 +308,8 @@ namespace PaperRenderer
 
         SynchronizationInfo bufferCopySync = {};
         bufferCopySync.queueType = QueueType::TRANSFER;
-        bufferCopySync.waitPairs = {};
-        bufferCopySync.signalPairs = bufferCopySignalSemaphores;
+        bufferCopySync.binaryWaitPairs = {};
+        bufferCopySync.binarySignalPairs = bufferCopySignalSemaphores;
         bufferCopySync.fence = copyFence;
 
         Commands::submitToQueue(device.getDevice(), bufferCopySync, { transferBuffer });
