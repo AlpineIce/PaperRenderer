@@ -10,7 +10,6 @@ namespace PaperRenderer
     bool Commands::isInit = false;
     std::unordered_map<QueueType, QueuesInFamily>* Commands::queuesPtr;
     std::unordered_map<QueueType, VkCommandPool> Commands::commandPools;
-    uint32_t Commands::frameCount = 0;
 
     Commands::Commands(VkDevice device, VkPhysicalDevice gpu, VkSurfaceKHR surface, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr)
         :device(device),
@@ -19,7 +18,6 @@ namespace PaperRenderer
     {
         VkSurfaceCapabilitiesKHR capabilities;
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &capabilities);
-        this->frameCount = std::max(capabilities.minImageCount, (uint32_t)2);
 
         this->queuesPtr = queuesPtr;
         isInit = true;
@@ -181,20 +179,6 @@ namespace PaperRenderer
         }
         
         lockedQueue->threadLock.unlock();
-    }
-
-    uint32_t Commands::getFrameCount()
-    {
-        if(isInit)
-        {
-            return frameCount;
-        }
-        else
-        {
-            throw std::runtime_error("Command pools not yet initialized");
-
-            return 0;
-        }
     }
 
     VkSemaphore Commands::getSemaphore(VkDevice device)

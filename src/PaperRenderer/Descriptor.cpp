@@ -7,18 +7,13 @@ namespace PaperRenderer
     DescriptorAllocator::DescriptorAllocator(Device *device)
         :devicePtr(device)
     {
-        descriptorPools.resize(Commands::getFrameCount());
-        currentPools.resize(Commands::getFrameCount());
     }
     
     DescriptorAllocator::~DescriptorAllocator()
     {   
-        for(std::vector<VkDescriptorPool>& descriptorPoolSet : descriptorPools)
+        for(VkDescriptorPool& pool : descriptorPools)
         {
-            for(VkDescriptorPool& pool : descriptorPoolSet)
-            {
-                vkDestroyDescriptorPool(devicePtr->getDevice(), pool, nullptr);
-            }
+            vkDestroyDescriptorPool(devicePtr->getDevice(), pool, nullptr);
         }
     }
 
@@ -59,14 +54,14 @@ namespace PaperRenderer
         return returnPool;
     }
 
-    VkDescriptorSet DescriptorAllocator::allocateDescriptorSet(VkDescriptorSetLayout setLayout, uint32_t frameIndex)
+    VkDescriptorSet DescriptorAllocator::allocateDescriptorSet(VkDescriptorSetLayout setLayout)
     {
         VkDescriptorSet returnSet;
 
         VkDescriptorSetAllocateInfo allocInfo = {};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.pNext = NULL;
-        allocInfo.descriptorPool = *(currentPools.at(frameIndex));
+        allocInfo.descriptorPool = *currentPool;
         allocInfo.descriptorSetCount = 1;
         allocInfo.pSetLayouts = &setLayout;
 
@@ -74,8 +69,8 @@ namespace PaperRenderer
 
         if(result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL)
         {
-            descriptorPools.at(frameIndex).push_back(allocateDescriptorPool());
-            currentPools.at(frameIndex) = &(descriptorPools.at(frameIndex).back());
+            descriptorPools.push_back(allocateDescriptorPool());
+            currentPool = &(descriptorPools.back());
 
             result = vkAllocateDescriptorSets(devicePtr->getDevice(), &allocInfo, &returnSet);
             if(result != VK_SUCCESS) throw std::runtime_error("Descriptor allocator failed");
@@ -207,14 +202,14 @@ namespace PaperRenderer
             NULL);
     }
 
-    void DescriptorAllocator::refreshPools(uint32_t frameIndex)
+    void DescriptorAllocator::refreshPools()
     {
-        for(VkDescriptorPool& pool : descriptorPools.at(frameIndex))
+        for(VkDescriptorPool& pool : descriptorPools)
         {
             vkDestroyDescriptorPool(devicePtr->getDevice(), pool, nullptr);
         }
-        descriptorPools.at(frameIndex).resize(0);
-        descriptorPools.at(frameIndex).push_back(allocateDescriptorPool());
-        currentPools.at(frameIndex) = &(descriptorPools.at(frameIndex).back());
+        descriptorPools.resize(0);
+        descriptorPools.push_back(allocateDescriptorPool());
+        currentPool = &(descriptorPools.back());
     }
 }

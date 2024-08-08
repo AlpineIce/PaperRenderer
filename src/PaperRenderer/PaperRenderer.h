@@ -40,13 +40,11 @@ namespace PaperRenderer
         RendererState rendererState = {};
 
         //frame rendering stuff
-        std::vector<std::vector<CommandBuffer>> usedCmdBuffers;
+        std::vector<CommandBuffer> usedCmdBuffers;
         std::vector<ModelInstance*> renderingModelInstances;
         std::vector<Model*> renderingModels;
 
         //synchronization
-        std::list<VkFence> preprocessFences;
-        std::list<VkFence> accelerationStructureFences;
         VkFence copyFence; //fence isn't really required, but buffer device address doesn't work properly with validation layer sync (or at least I believe so, it works perfectly fine without the fence)
 
         //----------BUFFERS AND MEMORY----------//
@@ -97,7 +95,6 @@ namespace PaperRenderer
         void recycleCommandBuffer(CommandBuffer& commandBuffer);
         void recycleCommandBuffer(CommandBuffer&& commandBuffer);
 
-        uint32_t getCurrentFrameIndex() const { return currentImage; }
         uint64_t getFramesRenderedCount() const { return frameNumber; }
         Device* getDevice() { return &device; }
         RasterPreprocessPipeline* getRasterPreprocessPipeline() { return &rasterPreprocessPipeline; }

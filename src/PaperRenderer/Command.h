@@ -80,7 +80,6 @@ namespace PaperRenderer
 
         static std::unordered_map<QueueType, QueuesInFamily>* queuesPtr;
         static std::unordered_map<QueueType, VkCommandPool> commandPools;
-        static uint32_t frameCount;
 
         void createCommandPools();
 
@@ -92,7 +91,6 @@ namespace PaperRenderer
 
         static void freeCommandBuffers(VkDevice device, std::vector<CommandBuffer>& commandBuffers);
         static void submitToQueue(VkDevice device, const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers);
-        static uint32_t getFrameCount();
 
         static VkSemaphore getSemaphore(VkDevice device);
         static VkSemaphore getTimelineSemaphore(VkDevice device, uint64_t initialValue);

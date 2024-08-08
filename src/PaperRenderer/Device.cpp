@@ -35,7 +35,7 @@ namespace PaperRenderer
         }
         
         //layers
-        std::vector<const char*> layerNames;
+        std::vector<const char*> layerNames = {};
         std::vector<const char*> extensionNames = {
             VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME
         };
@@ -379,6 +379,7 @@ namespace PaperRenderer
         //command pools init
         commands = std::make_unique<Commands>(device, GPU, surface, &queues);
     }
+
     QueueFamiliesIndices Device::getQueueFamiliesIndices() const
     {
         QueueFamiliesIndices queueFamiliesIndices = {};

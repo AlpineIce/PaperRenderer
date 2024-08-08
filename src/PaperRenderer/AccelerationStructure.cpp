@@ -11,31 +11,23 @@ namespace PaperRenderer
         :ComputeShader(renderer),
         rendererPtr(renderer)
     {
-        //preprocess uniform buffers
-        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
-        {
-            BufferInfo preprocessBuffersInfo = {};
-            preprocessBuffersInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
-            preprocessBuffersInfo.size = sizeof(UBOInputData);
-            preprocessBuffersInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-            uniformBuffers.push_back(std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), preprocessBuffersInfo));
-        }
+        //uniform buffer
+        BufferInfo uboInfo = {};
+        uboInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
+        uboInfo.size = sizeof(UBOInputData);
+        uboInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
+        uniformBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), uboInfo);
+
         //uniform buffers allocation and assignment
-        VkDeviceSize ubosAllocationSize = 0;
-        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
-        {
-            ubosAllocationSize += DeviceAllocation::padToMultiple(uniformBuffers.at(i)->getMemoryRequirements().size, 
-                std::max(uniformBuffers.at(i)->getMemoryRequirements().alignment, rendererPtr->getDevice()->getGPUProperties().properties.limits.minMemoryMapAlignment));
-        }
+        VkDeviceSize uboAllocationSize = DeviceAllocation::padToMultiple(uniformBuffer->getMemoryRequirements().size, 
+                std::max(uniformBuffer->getMemoryRequirements().alignment, rendererPtr->getDevice()->getGPUProperties().properties.limits.minMemoryMapAlignment));
+
         DeviceAllocationInfo uboAllocationInfo = {};
-        uboAllocationInfo.allocationSize = ubosAllocationSize;
+        uboAllocationInfo.allocationSize = uboAllocationSize;
         uboAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT; //use coherent memory for UBOs
-        uniformBuffersAllocation = std::make_unique<DeviceAllocation>(rendererPtr->getDevice()->getDevice(), rendererPtr->getDevice()->getGPU(), uboAllocationInfo);
+        uniformBufferAllocation = std::make_unique<DeviceAllocation>(rendererPtr->getDevice()->getDevice(), rendererPtr->getDevice()->getGPU(), uboAllocationInfo);
         
-        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
-        {
-            uniformBuffers.at(i)->assignAllocation(uniformBuffersAllocation.get());
-        }
+        uniformBuffer->assignAllocation(uniformBufferAllocation.get());
         
         //pipeline info
         shader = { VK_SHADER_STAGE_COMPUTE_BIT, fileDir + fileName };
@@ -73,11 +65,8 @@ namespace PaperRenderer
 
     TLASInstanceBuildPipeline::~TLASInstanceBuildPipeline()
     {
-         for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
-        {
-            uniformBuffers.at(i).reset();
-        }
-        uniformBuffersAllocation.reset();
+        uniformBuffer.reset();
+        uniformBufferAllocation.reset();
     }
 
     void TLASInstanceBuildPipeline::submit(const SynchronizationInfo &syncInfo, const AccelerationStructure &accelerationStructure)
@@ -90,11 +79,11 @@ namespace PaperRenderer
         write.size = sizeof(UBOInputData);
         write.offset = 0;
 
-        uniformBuffers.at(rendererPtr->getCurrentFrameIndex())->writeToBuffer({ write });
+        uniformBuffer->writeToBuffer({ write });
 
         //set0 - binding 0: UBO input data
         VkDescriptorBufferInfo bufferWrite0Info = {};
-        bufferWrite0Info.buffer = uniformBuffers.at(rendererPtr->getCurrentFrameIndex())->getBuffer();
+        bufferWrite0Info.buffer = uniformBuffer->getBuffer();
         bufferWrite0Info.offset = 0;
         bufferWrite0Info.range = sizeof(UBOInputData);
 
@@ -150,7 +139,7 @@ namespace PaperRenderer
         DescriptorWrites descriptorWritesInfo = {};
         descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2, bufferWrite3 };
         descriptorWrites[0] = descriptorWritesInfo;
-        writeDescriptorSet(cmdBuffer, rendererPtr->getCurrentFrameIndex(), 0);
+        writeDescriptorSet(cmdBuffer, 0);
 
         //dispatch
         workGroupSizes.x = ((accelerationStructure.accelerationStructureInstances.size()) / 128) + 1;
@@ -188,7 +177,6 @@ namespace PaperRenderer
         scratchBuffer =     std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
 
         //synchronization things
-        accelerationStructureFence = Commands::getUnsignaledFence(rendererPtr->getDevice()->getDevice());
         instancesCopySemaphore = Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
         blasSignalSemaphore = Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
         tlasInstanceBuildSignalSemaphore = Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
@@ -223,7 +211,6 @@ namespace PaperRenderer
         bottomStructures.clear();
 
         accelerationStructures.remove(this);
-        vkDestroyFence(rendererPtr->getDevice()->getDevice(), accelerationStructureFence, nullptr);
 
         if(!accelerationStructures.size())
         {
@@ -673,15 +660,12 @@ namespace PaperRenderer
             { tlasInstanceBuildSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR }
         };
         tlSyncInfo.binarySignalPairs = syncInfo.TLSignalSemaphores;
-        tlSyncInfo.fence = accelerationStructureFence;
 
         if(blasBuildNeeded) 
         {
             tlSyncInfo.binaryWaitPairs.push_back({ blasSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR });
         }
         createTopLevel(buildData.topData, tlSyncInfo);
-
-        rendererPtr->accelerationStructureFences.push_back(accelerationStructureFence);
     }
 
     void AccelerationStructure::createBottomLevel(BottomBuildData buildData, const SynchronizationInfo &synchronizationInfo)

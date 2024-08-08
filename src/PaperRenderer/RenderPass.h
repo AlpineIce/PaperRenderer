@@ -15,8 +15,8 @@ namespace PaperRenderer
     {
     private:
         std::string fileName = "IndirectDrawBuild.spv";
-        std::vector<std::unique_ptr<Buffer>> uniformBuffers;
-        std::unique_ptr<DeviceAllocation> uniformBuffersAllocation;
+        std::unique_ptr<Buffer> uniformBuffer;
+        std::unique_ptr<DeviceAllocation> uniformBufferAllocation;
 
         struct UBOInputData
         {
@@ -26,7 +26,6 @@ namespace PaperRenderer
             VkDeviceAddress materialDataPtr;
             VkDeviceAddress modelDataPtr;
             uint32_t objectCount;
-            uint32_t frameIndex;
         };
 
         class RenderEngine* rendererPtr;
@@ -94,10 +93,9 @@ namespace PaperRenderer
         void clearDrawCounts(VkCommandBuffer cmdBuffer);
 
         //synchronization
-        VkFence preprocessFence;
-        std::vector<VkSemaphore> preprocessSignalSemaphores;
-        std::vector<VkSemaphore> instancesBufferCopySemaphores;
-        std::vector<VkSemaphore> materialDataBufferCopySemaphores;
+        VkSemaphore preprocessSignalSemaphore;
+        VkSemaphore instancesBufferCopySemaphore;
+        VkSemaphore materialDataBufferCopySemaphore;
 
         RenderEngine* rendererPtr;
         Camera* cameraPtr;

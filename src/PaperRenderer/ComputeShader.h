@@ -25,7 +25,7 @@ namespace PaperRenderer
         virtual ~ComputeShader();
 
         void bind(VkCommandBuffer cmdBuffer);
-        void writeDescriptorSet(VkCommandBuffer cmdBuffer, uint32_t currentImage, uint32_t setNumber);
+        void writeDescriptorSet(VkCommandBuffer cmdBuffer, uint32_t setNumber);
         virtual void dispatch(VkCommandBuffer cmdBuffer);
     };
 }

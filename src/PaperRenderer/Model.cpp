@@ -283,20 +283,10 @@ namespace PaperRenderer
 			{
 				MaterialMeshGroup materialMeshGroup = {};
 				materialMeshGroup.bufferAddress = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getBufferAddress();
-				materialMeshGroup.bufferFrameOffsetsOffset = dynamicOffset;
-				dynamicOffset += sizeof(uint32_t) * Commands::getFrameCount();
 				newData.resize(dynamicOffset);
 				materialMeshGroup.indirectDrawDatasOffset = dynamicOffset;
 
 				memcpy(newData.data() + lodMaterialData.meshGroupsOffset + sizeof(MaterialMeshGroup) * matIndex, &materialMeshGroup, sizeof(MaterialMeshGroup));
-
-				//buffer frame offsets
-				std::vector<uint32_t> bufferFrameOffsets;
-				for(const VkDeviceSize& offset : renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getBufferFrameOffsets())
-				{
-					bufferFrameOffsets.push_back((uint32_t)offset);
-				}
-				memcpy(newData.data() + materialMeshGroup.bufferFrameOffsetsOffset, bufferFrameOffsets.data(), bufferFrameOffsets.size() * sizeof(uint32_t));
 
 				//LOD mesh group meshes data
 				dynamicOffset += sizeof(IndirectDrawData) * modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).size();

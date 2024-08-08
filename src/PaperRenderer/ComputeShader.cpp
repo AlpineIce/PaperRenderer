@@ -27,13 +27,13 @@ namespace PaperRenderer
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->getPipeline());
     }
 
-    void ComputeShader::writeDescriptorSet(VkCommandBuffer cmdBuffer, uint32_t currentImage, uint32_t setNumber)
+    void ComputeShader::writeDescriptorSet(VkCommandBuffer cmdBuffer, uint32_t setNumber)
     {
         if(descriptorWrites.count(setNumber))
         {
             if(descriptorWrites.at(setNumber).bufferViewWrites.size() || descriptorWrites.at(setNumber).bufferWrites.size() || descriptorWrites.at(setNumber).imageWrites.size())
             {
-                VkDescriptorSet descriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(setNumber), currentImage);
+                VkDescriptorSet descriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(setNumber));
                 DescriptorAllocator::writeUniforms(rendererPtr->getDevice()->getDevice(), descriptorSet, descriptorWrites.at(setNumber));
 
                 DescriptorBind bindingInfo = {};

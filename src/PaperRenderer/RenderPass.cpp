@@ -11,31 +11,23 @@ namespace PaperRenderer
         :ComputeShader(renderer),
         rendererPtr(renderer)
     {
-        //preprocess uniform buffers
-        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
-        {
-            BufferInfo preprocessBuffersInfo = {};
-            preprocessBuffersInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
-            preprocessBuffersInfo.size = sizeof(UBOInputData);
-            preprocessBuffersInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-            uniformBuffers.push_back(std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), preprocessBuffersInfo));
-        }
-        //uniform buffers allocation and assignment
-        VkDeviceSize ubosAllocationSize = 0;
-        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
-        {
-            ubosAllocationSize += DeviceAllocation::padToMultiple(uniformBuffers.at(i)->getMemoryRequirements().size, 
-                std::max(uniformBuffers.at(i)->getMemoryRequirements().alignment, rendererPtr->getDevice()->getGPUProperties().properties.limits.minMemoryMapAlignment));
-        }
+        //preprocess uniform buffer
+        BufferInfo preprocessBufferInfo = {};
+        preprocessBufferInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
+        preprocessBufferInfo.size = sizeof(UBOInputData);
+        preprocessBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
+        uniformBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), preprocessBufferInfo);
+
+        //uniform buffer allocation and assignment
+        VkDeviceSize ubosAllocationSize = DeviceAllocation::padToMultiple(uniformBuffer->getMemoryRequirements().size, 
+            std::max(uniformBuffer->getMemoryRequirements().alignment, rendererPtr->getDevice()->getGPUProperties().properties.limits.minMemoryMapAlignment));
+
         DeviceAllocationInfo uboAllocationInfo = {};
         uboAllocationInfo.allocationSize = ubosAllocationSize;
         uboAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT; //use coherent memory for UBOs
-        uniformBuffersAllocation = std::make_unique<DeviceAllocation>(rendererPtr->getDevice()->getDevice(), rendererPtr->getDevice()->getGPU(), uboAllocationInfo);
+        uniformBufferAllocation = std::make_unique<DeviceAllocation>(rendererPtr->getDevice()->getDevice(), rendererPtr->getDevice()->getGPU(), uboAllocationInfo);
         
-        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
-        {
-            uniformBuffers.at(i)->assignAllocation(uniformBuffersAllocation.get());
-        }
+        uniformBuffer->assignAllocation(uniformBufferAllocation.get());
         
         //pipeline info
         shader = { VK_SHADER_STAGE_COMPUTE_BIT, fileDir + fileName };
@@ -66,11 +58,8 @@ namespace PaperRenderer
     
     RasterPreprocessPipeline::~RasterPreprocessPipeline()
     {
-        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
-        {
-            uniformBuffers.at(i).reset();
-        }
-        uniformBuffersAllocation.reset();
+        uniformBuffer.reset();
+        uniformBufferAllocation.reset();
     }
 
     void RasterPreprocessPipeline::submit(const SynchronizationInfo& syncInfo, const RenderPass& renderPass)
@@ -82,18 +71,17 @@ namespace PaperRenderer
         uboInputData.materialDataPtr = renderPass.deviceInstancesDataBuffer->getBufferDeviceAddress();
         uboInputData.modelDataPtr = rendererPtr->deviceModelDataBuffer->getBufferDeviceAddress();
         uboInputData.objectCount = renderPass.renderPassInstances.size();
-        uboInputData.frameIndex = rendererPtr->getCurrentFrameIndex();
 
         BufferWrite write = {};
         write.data = &uboInputData;
         write.size = sizeof(UBOInputData);
         write.offset = 0;
 
-        uniformBuffers.at(rendererPtr->getCurrentFrameIndex())->writeToBuffer({ write });
+        uniformBuffer->writeToBuffer({ write });
 
         //set0 - binding 0: UBO input data
         VkDescriptorBufferInfo bufferWrite0Info = {};
-        bufferWrite0Info.buffer = uniformBuffers.at(rendererPtr->getCurrentFrameIndex())->getBuffer();
+        bufferWrite0Info.buffer = uniformBuffer->getBuffer();
         bufferWrite0Info.offset = 0;
         bufferWrite0Info.range = sizeof(UBOInputData);
 
@@ -138,7 +126,7 @@ namespace PaperRenderer
         DescriptorWrites descriptorWritesInfo = {};
         descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2 };
         descriptorWrites[0] = descriptorWritesInfo;
-        writeDescriptorSet(cullingCmdBuffer, rendererPtr->getCurrentFrameIndex(), 0);
+        writeDescriptorSet(cullingCmdBuffer, 0);
 
         //dispatch
         workGroupSizes.x = ((renderPass.renderPassInstances.size()) / 128) + 1;
@@ -166,31 +154,18 @@ namespace PaperRenderer
     {
         renderPasses.push_back(this);
 
-        instancesBufferCopySemaphores.resize(Commands::getFrameCount());
-        materialDataBufferCopySemaphores.resize(Commands::getFrameCount());
-        preprocessSignalSemaphores.resize(Commands::getFrameCount());
-        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
-        {
-            instancesBufferCopySemaphores.at(i) = Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
-            materialDataBufferCopySemaphores.at(i) = Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
-            preprocessSignalSemaphores.at(i) = Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
-        }
-
-        preprocessFence = PaperRenderer::Commands::getUnsignaledFence(rendererPtr->getDevice()->getDevice());
+        instancesBufferCopySemaphore = Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
+        materialDataBufferCopySemaphore = Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
+        preprocessSignalSemaphore = Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
 
         rebuildAllocationsAndBuffers(rendererPtr);
     }
 
     RenderPass::~RenderPass()
     {
-        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
-        {
-            vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), instancesBufferCopySemaphores.at(i), nullptr);
-            vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), materialDataBufferCopySemaphores.at(i), nullptr);
-            vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), preprocessSignalSemaphores.at(i), nullptr);
-        }
-
-        vkDestroyFence(rendererPtr->getDevice()->getDevice(), preprocessFence, nullptr);
+        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), instancesBufferCopySemaphore, nullptr);
+        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), materialDataBufferCopySemaphore, nullptr);
+        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), preprocessSignalSemaphore, nullptr);
 
         hostInstancesBuffer.reset();
         deviceInstancesBuffer.reset();
@@ -414,7 +389,7 @@ namespace PaperRenderer
             SynchronizationInfo instancesBufferCopySync = {};
             instancesBufferCopySync.queueType = QueueType::TRANSFER;
             instancesBufferCopySync.binaryWaitPairs = {};
-            instancesBufferCopySync.binarySignalPairs = { { instancesBufferCopySemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
+            instancesBufferCopySync.binarySignalPairs = { { instancesBufferCopySemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
             instancesBufferCopySync.fence = VK_NULL_HANDLE;
             rendererPtr->recycleCommandBuffer(deviceInstancesBuffer->copyFromBufferRanges(*hostInstancesBuffer.get(), { instancesRegion }, instancesBufferCopySync));
 
@@ -426,23 +401,21 @@ namespace PaperRenderer
             SynchronizationInfo materialDataCopySync = {};
             materialDataCopySync.queueType = QueueType::TRANSFER;
             materialDataCopySync.binaryWaitPairs = {};
-            materialDataCopySync.binarySignalPairs = { { materialDataBufferCopySemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
+            materialDataCopySync.binarySignalPairs = { { materialDataBufferCopySemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
             materialDataCopySync.fence = VK_NULL_HANDLE;
             rendererPtr->recycleCommandBuffer(deviceInstancesDataBuffer->copyFromBufferRanges(*hostInstancesDataBuffer->getBuffer(), { materialDataRegion }, materialDataCopySync));
 
             //compute shader
             std::vector<BinarySemaphorePair> waitPairs = syncInfo.preprocessWaitPairs;
-            waitPairs.push_back({ instancesBufferCopySemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
-            waitPairs.push_back({ materialDataBufferCopySemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
+            waitPairs.push_back({ instancesBufferCopySemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
+            waitPairs.push_back({ materialDataBufferCopySemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
 
             SynchronizationInfo preprocessSyncInfo = {};
             preprocessSyncInfo.queueType = QueueType::COMPUTE;
             preprocessSyncInfo.binaryWaitPairs = waitPairs;
-            preprocessSyncInfo.binarySignalPairs = { { preprocessSignalSemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT } };
-            preprocessSyncInfo.fence = preprocessFence;
+            preprocessSyncInfo.binarySignalPairs = { { preprocessSignalSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT } };
 
             rendererPtr->getRasterPreprocessPipeline()->submit(preprocessSyncInfo, *this);
-            rendererPtr->preprocessFences.push_back(preprocessFence);
 
             //----------RENDER PASS----------//
 
@@ -492,13 +465,13 @@ namespace PaperRenderer
             //record draw commands
             for(const auto& [material, materialInstanceNode] : renderTree) //material
             {
-                material->bind(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex());
+                material->bind(graphicsCmdBuffer);
                 for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
                 {
                     if(meshGroups)
                     {
-                        materialInstance->bind(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex());
-                        meshGroups->draw(graphicsCmdBuffer, rendererPtr->getCurrentFrameIndex(), *material->getRasterPipeline());
+                        materialInstance->bind(graphicsCmdBuffer);
+                        meshGroups->draw(graphicsCmdBuffer, *material->getRasterPipeline());
                     }
                 }
             }
@@ -521,7 +494,7 @@ namespace PaperRenderer
             SynchronizationInfo graphicsSyncInfo = {};
             graphicsSyncInfo.queueType = QueueType::GRAPHICS;
             graphicsSyncInfo.binaryWaitPairs = syncInfo.renderWaitPairs;
-            graphicsSyncInfo.binaryWaitPairs.push_back({ preprocessSignalSemaphores.at(rendererPtr->getCurrentFrameIndex()), VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT });
+            graphicsSyncInfo.binaryWaitPairs.push_back({ preprocessSignalSemaphore, VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT });
             graphicsSyncInfo.binarySignalPairs = syncInfo.renderSignalPairs;
             graphicsSyncInfo.fence = syncInfo.renderSignalFence;
 

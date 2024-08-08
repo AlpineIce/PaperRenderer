@@ -81,8 +81,11 @@ namespace PaperRenderer
         glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 
         //sync
-        imageSemaphores.resize(PaperRenderer::Commands::getFrameCount());
-        for(uint32_t i = 0; i < PaperRenderer::Commands::getFrameCount(); i++)
+        VkSurfaceCapabilitiesKHR capabilities;
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(rendererPtr->getDevice()->getGPU(), *(rendererPtr->getDevice()->getSurfacePtr()), &capabilities);
+
+        imageSemaphores.resize(capabilities.minImageCount);
+        for(uint32_t i = 0; i < capabilities.minImageCount; i++)
         {
             imageSemaphores.at(i) = PaperRenderer::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
         }

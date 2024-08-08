@@ -14,12 +14,6 @@ namespace PaperRenderer
         rasterPreprocessPipeline(this, creationInfo.shadersDir),
         tlasInstanceBuildPipeline(this, creationInfo.shadersDir)
     {
-        //synchronization and cmd buffers
-        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
-        {
-        }
-        usedCmdBuffers.resize(Commands::getFrameCount());
-
         copyFence = Commands::getSignaledFence(device.getDevice());
 
         rebuildBuffersAndAllocations();
@@ -32,13 +26,10 @@ namespace PaperRenderer
     RenderEngine::~RenderEngine()
     {
         vkDeviceWaitIdle(device.getDevice());
-        
-        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
-        {
-            //free cmd buffers
-            Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers.at(i));
-            usedCmdBuffers.at(i).clear();
-        }
+    
+        //free cmd buffers
+        Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers);
+        usedCmdBuffers.clear();
 
         vkDestroyFence(device.getDevice(), copyFence, nullptr);
 
@@ -263,11 +254,6 @@ namespace PaperRenderer
         //wait for fences
         std::vector<VkFence> allWaitFences = waitFences;
         allWaitFences.push_back(copyFence);
-        allWaitFences.insert(allWaitFences.begin(), preprocessFences.begin(), preprocessFences.end());
-        allWaitFences.insert(allWaitFences.begin(), accelerationStructureFences.begin(), accelerationStructureFences.end());
-
-        preprocessFences.clear();
-        accelerationStructureFences.clear();
 
         vkWaitForFences(device.getDevice(), allWaitFences.size(), allWaitFences.data(), VK_TRUE, UINT64_MAX);
 
@@ -279,9 +265,9 @@ namespace PaperRenderer
         vkResetFences(device.getDevice(), allWaitFences.size(), allWaitFences.data());
 
         //free command buffers and reset descriptor pool
-        Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers.at(currentImage));
-        usedCmdBuffers.at(currentImage).clear();
-        descriptors.refreshPools(currentImage);
+        Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers);
+        usedCmdBuffers.clear();
+        descriptors.refreshPools();
 
         //copy instances and model data (done in one submission)
         VkBufferCopy instancesRegion;
@@ -323,9 +309,6 @@ namespace PaperRenderer
         //presentation
         swapchain.presentImage(waitSemaphores);
 
-        //increment frame counter
-        currentImage = (currentImage + 1) % Commands::getFrameCount();
-
         glfwPollEvents();
     }
 
@@ -333,7 +316,7 @@ namespace PaperRenderer
     {
         if(commandBuffer.buffer)
         {
-            usedCmdBuffers.at(currentImage).push_back(commandBuffer);
+            usedCmdBuffers.push_back(commandBuffer);
             commandBuffer.buffer = VK_NULL_HANDLE;
         }
     }
@@ -342,7 +325,7 @@ namespace PaperRenderer
     {
         if(commandBuffer.buffer)
         {
-            usedCmdBuffers.at(currentImage).push_back(commandBuffer);
+            usedCmdBuffers.push_back(commandBuffer);
         }
     }
 }

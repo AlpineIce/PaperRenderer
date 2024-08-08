@@ -62,8 +62,8 @@ namespace PaperRenderer
     class DescriptorAllocator
     {
     private:
-        std::vector<std::vector<VkDescriptorPool>> descriptorPools;
-        std::vector<VkDescriptorPool*> currentPools;
+        std::vector<VkDescriptorPool> descriptorPools;
+        VkDescriptorPool* currentPool = NULL;
 
         class Device* devicePtr;
 
@@ -76,7 +76,7 @@ namespace PaperRenderer
         static void writeUniforms(VkDevice device, VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo);
         static void bindSet(VkDevice device, VkCommandBuffer cmdBuffer, const DescriptorBind& bindingInfo);
 
-        VkDescriptorSet allocateDescriptorSet(VkDescriptorSetLayout setLayout, uint32_t frameIndex);
-        void refreshPools(uint32_t frameIndex);
+        VkDescriptorSet allocateDescriptorSet(VkDescriptorSetLayout setLayout);
+        void refreshPools();
     };
 }

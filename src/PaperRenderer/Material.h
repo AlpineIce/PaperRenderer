@@ -29,7 +29,7 @@ namespace PaperRenderer
         Material(class RenderEngine* renderer, std::string materialName);
         virtual ~Material();
 
-        virtual void bind(VkCommandBuffer cmdBuffer, uint32_t currentImage); //used per pipeline bind and material instance
+        virtual void bind(VkCommandBuffer cmdBuffer); //used per pipeline bind and material instance
         
         std::string getMaterialName() const { return matName; }
         const RasterPipelineProperties& getRasterPipelineProperties() const { return rasterPipelineProperties; }
@@ -48,7 +48,7 @@ namespace PaperRenderer
         MaterialInstance(class RenderEngine* renderer, Material const* baseMaterial);
         virtual ~MaterialInstance();
         
-        virtual void bind(VkCommandBuffer cmdBuffer, uint32_t currentImage);
+        virtual void bind(VkCommandBuffer cmdBuffer);
 
         Material const* getBaseMaterialPtr() const { return baseMaterial; }
     };

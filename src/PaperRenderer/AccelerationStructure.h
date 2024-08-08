@@ -12,8 +12,8 @@ namespace PaperRenderer
     {
     private:
         std::string fileName = "TLASInstBuild.spv";
-        std::vector<std::unique_ptr<Buffer>> uniformBuffers;
-        std::unique_ptr<DeviceAllocation> uniformBuffersAllocation;
+        std::unique_ptr<Buffer> uniformBuffer;
+        std::unique_ptr<DeviceAllocation> uniformBufferAllocation;
 
         struct UBOInputData
         {
@@ -80,7 +80,6 @@ namespace PaperRenderer
         std::mutex instanceAddRemoveMutex;
 
         //synchronization
-        VkFence accelerationStructureFence;
         VkSemaphore instancesCopySemaphore;
         VkSemaphore tlasInstanceBuildSignalSemaphore;
         VkSemaphore blasSignalSemaphore;

@@ -14,7 +14,6 @@ namespace PaperRenderer
         renderPassPtr(renderPass)
     {
         commonMeshGroups.push_back(this);
-        bufferFrameOffsets.resize(Commands::getFrameCount());
     }
 
     CommonMeshGroup::~CommonMeshGroup()
@@ -109,14 +108,6 @@ namespace PaperRenderer
             meshIndex++;
         }
 
-        //number of sub-buffers equal to frames in flight
-        VkDeviceSize oneFrameBufferSize = dynamicOffset;
-        for(uint32_t i = 0; i < Commands::getFrameCount(); i++)
-        {
-            bufferFrameOffsets.at(i) = oneFrameBufferSize * i;
-        }
-        dynamicOffset *= Commands::getFrameCount();
-
         //build new buffer
         BufferInfo bufferInfo = {};
         bufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
@@ -169,19 +160,19 @@ namespace PaperRenderer
         addAndRemoveLock.unlock();
     }
 
-    void CommonMeshGroup::draw(const VkCommandBuffer &cmdBuffer, uint32_t currentFrame, const RasterPipeline& pipeline)
+    void CommonMeshGroup::draw(const VkCommandBuffer &cmdBuffer, const RasterPipeline& pipeline)
     {
         for(const auto& [mesh, meshData] : meshesData)
         {
             if(!meshData.parentModelPtr) continue; //null safety
 
             //get new descriptor set
-            VkDescriptorSet objDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(pipeline.getDescriptorSetLayouts().at(DescriptorScopes::RASTER_OBJECT), currentFrame);
+            VkDescriptorSet objDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(pipeline.getDescriptorSetLayouts().at(DescriptorScopes::RASTER_OBJECT));
             
             //write uniforms
             VkDescriptorBufferInfo descriptorInfo = {};
             descriptorInfo.buffer = drawDataBuffer->getBuffer();
-            descriptorInfo.offset = meshData.outputObjectsOffset + bufferFrameOffsets.at(rendererPtr->getCurrentFrameIndex());
+            descriptorInfo.offset = meshData.outputObjectsOffset;
             descriptorInfo.range = sizeof(ShaderOutputObject) * meshData.instanceCount;
             BuffersDescriptorWrites write = {};
             write.binding = 0;
@@ -205,9 +196,9 @@ namespace PaperRenderer
             vkCmdDrawIndexedIndirectCount(
                 cmdBuffer,
                 drawDataBuffer->getBuffer(),
-                meshData.drawCommandsOffset + bufferFrameOffsets.at(rendererPtr->getCurrentFrameIndex()),
+                meshData.drawCommandsOffset,
                 drawDataBuffer->getBuffer(),
-                meshData.drawCountsOffset + bufferFrameOffsets.at(rendererPtr->getCurrentFrameIndex()),
+                meshData.drawCountsOffset,
                 meshData.instanceCount,
                 sizeof(VkDrawIndexedIndirectCommand));
         }
@@ -216,6 +207,6 @@ namespace PaperRenderer
     {
         //clear draw counts region
         uint32_t drawCountDefaultValue = 0;
-        vkCmdFillBuffer(cmdBuffer, drawDataBuffer->getBuffer(), bufferFrameOffsets.at(rendererPtr->getCurrentFrameIndex()), drawCountsRange, drawCountDefaultValue);
+        vkCmdFillBuffer(cmdBuffer, drawDataBuffer->getBuffer(), 0, drawCountsRange, drawCountDefaultValue); //draw counts always at 0
     }
 }

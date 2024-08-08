@@ -40,7 +40,6 @@ namespace PaperRenderer
         std::unique_ptr<Buffer> drawDataBuffer; //no need for a host visible copy since this is only written by compute shaders and read by the graphics pipeline. Draw counts does get reset to 0 though
 
         uint32_t drawCountsRange = 0;
-        std::vector<VkDeviceSize> bufferFrameOffsets;
         float instanceCountOverhead = 1.3;
         static std::vector<class ModelInstance*> rebuildAllocationAndBuffers(class RenderEngine* renderer);
         static bool rebuild;
@@ -62,10 +61,9 @@ namespace PaperRenderer
         void addInstanceMeshes(class ModelInstance* instance, const std::vector<struct LODMesh const*>& instanceMeshesData);
         void removeInstanceMeshes(class ModelInstance* instance);
 
-        void draw(const VkCommandBuffer& cmdBuffer, uint32_t currentFrame, const class RasterPipeline& pipeline);
+        void draw(const VkCommandBuffer& cmdBuffer, const class RasterPipeline& pipeline);
         void clearDrawCounts(const VkCommandBuffer& cmdBuffer);
 
-        const std::vector<VkDeviceSize>& getBufferFrameOffsets() const { return bufferFrameOffsets; }
         VkDeviceAddress getBufferAddress() const { return (drawDataBuffer) ? drawDataBuffer->getBufferDeviceAddress() : 0; }
         const std::unordered_map<struct LODMesh const*, MeshInstancesData>& getMeshesData() const { return meshesData; }
     };
