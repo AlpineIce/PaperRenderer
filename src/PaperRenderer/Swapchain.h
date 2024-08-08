@@ -59,8 +59,8 @@ namespace PaperRenderer
 
         GLFWwindow* getGLFWwindow() const { return window; }
         const WindowState& getWindowState() const { return currentWindowState; }
-        const std::vector<VkImageView>& getImageViews() const { return imageViews; }
-        const std::vector<VkImage>& getImages() const { return swapchainImages; }
+        const VkImageView& getCurrentImageView() const { return imageViews.at(frameIndex); }
+        const VkImage& getCurrentImage() const { return swapchainImages.at(frameIndex); }
         const VkFormat& getFormat() const { return swapchainImageFormat; }
         const VkSwapchainKHR& getSwapchain() const { return swapchain; }
         const VkExtent2D& getExtent() const { return swapchainExtent; } //AKA resolution
