@@ -14,6 +14,7 @@ layout(std430, set = 0, binding = 0) uniform InputData
     uint64_t materialDataPtr;
     uint64_t modelDataPtr;
     uint objectCount;
+    bool doCulling;
 } inputData;
 
 //----------PER RENDER PASS INSTANCE DATA (also the main input data)----------//
@@ -142,8 +143,16 @@ void main()
 
     mat4 modelMatrix = getModelMatrix(modelInstance);
 
-    if(isInBounds(modelInstance, model, modelMatrix, inputData.projection, inputData.view) && inputInstance.isVisible) //culling
-    {   
+    //culling
+    bool visible = inputInstance.isVisible;
+    if(inputData.doCulling && visible)
+    {
+        visible = isInBounds(modelInstance, model, modelMatrix, inputData.projection, inputData.view);
+    }
+    
+    //indirect draw build if visible
+    if(visible)
+    {
         //get LOD
         uint lodLevel = min(getLODLevel(modelInstance, model, inputData.camPos), model.lodCount - 1);
 

@@ -71,6 +71,7 @@ namespace PaperRenderer
         uboInputData.materialDataPtr = renderPass.deviceInstancesDataBuffer->getBufferDeviceAddress();
         uboInputData.modelDataPtr = rendererPtr->deviceModelDataBuffer->getBufferDeviceAddress();
         uboInputData.objectCount = renderPass.renderPassInstances.size();
+        uboInputData.doCulling = true;
 
         BufferWrite write = {};
         write.data = &uboInputData;

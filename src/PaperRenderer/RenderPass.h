@@ -20,12 +20,13 @@ namespace PaperRenderer
 
         struct UBOInputData
         {
-            glm::vec4 camPos;
-            glm::mat4 projection;
-            glm::mat4 view;
-            VkDeviceAddress materialDataPtr;
-            VkDeviceAddress modelDataPtr;
-            uint32_t objectCount;
+            glm::vec4 camPos = glm::vec4(0.0f);
+            glm::mat4 projection = glm::mat4(1.0f);
+            glm::mat4 view = glm::mat4(1.0f);
+            VkDeviceAddress materialDataPtr = 0;
+            VkDeviceAddress modelDataPtr = 0;
+            uint32_t objectCount = 0;
+            bool doCulling = true;
         };
 
         class RenderEngine* rendererPtr;
