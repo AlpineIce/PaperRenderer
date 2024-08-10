@@ -62,7 +62,7 @@ namespace PaperRenderer
         uniformBufferAllocation.reset();
     }
 
-    void RasterPreprocessPipeline::submit(const SynchronizationInfo& syncInfo, const RenderPass& renderPass)
+    void RasterPreprocessPipeline::submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass)
     {
         UBOInputData uboInputData = {};
         uboInputData.camPos = glm::vec4(renderPass.cameraPtr->getTranslation().position, 1.0f);
@@ -113,33 +113,18 @@ namespace PaperRenderer
         bufferWrite2.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         bufferWrite2.infos = { bufferWrite2Info };
 
-        VkCommandBufferBeginInfo commandInfo;
-        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        commandInfo.pNext = NULL;
-        commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        commandInfo.pInheritanceInfo = NULL;
+        //----------DISPATCH COMMANDS----------//
 
-        VkCommandBuffer cullingCmdBuffer = Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), syncInfo.queueType);
-
-        vkBeginCommandBuffer(cullingCmdBuffer, &commandInfo);
-        bind(cullingCmdBuffer);
+        bind(cmdBuffer);
 
         DescriptorWrites descriptorWritesInfo = {};
         descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2 };
         descriptorWrites[0] = descriptorWritesInfo;
-        writeDescriptorSet(cullingCmdBuffer, 0);
+        writeDescriptorSet(cmdBuffer, 0);
 
         //dispatch
         workGroupSizes.x = ((renderPass.renderPassInstances.size()) / 128) + 1;
-        dispatch(cullingCmdBuffer);
-        
-        vkEndCommandBuffer(cullingCmdBuffer);
-
-        //submit
-        Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), syncInfo, { cullingCmdBuffer });
-
-        CommandBuffer commandBuffer = { cullingCmdBuffer, syncInfo.queueType };
-        rendererPtr->recycleCommandBuffer(commandBuffer);
+        dispatch(cmdBuffer);
     }
 
     //----------RENDER PASS DEFINITIONS----------//
@@ -154,20 +139,11 @@ namespace PaperRenderer
         defaultMaterialInstancePtr(defaultMaterialInstance)
     {
         renderPasses.push_back(this);
-
-        instancesBufferCopySemaphore = Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
-        materialDataBufferCopySemaphore = Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
-        preprocessSignalSemaphore = Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
-
         rebuildAllocationsAndBuffers(rendererPtr);
     }
 
     RenderPass::~RenderPass()
     {
-        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), instancesBufferCopySemaphore, nullptr);
-        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), materialDataBufferCopySemaphore, nullptr);
-        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), preprocessSignalSemaphore, nullptr);
-
         hostInstancesBuffer.reset();
         deviceInstancesBuffer.reset();
         hostInstancesDataBuffer.reset();
@@ -372,69 +348,123 @@ namespace PaperRenderer
         vkCmdPipelineBarrier2(cmdBuffer, &postClearDependency);
     }
 
-    void RenderPass::render(const RenderPassSynchronizationInfo& syncInfo, const RenderPassInfo& renderPassInfo)
+    void RenderPass::render(VkCommandBuffer cmdBuffer, const RenderPassInfo& renderPassInfo)
     {
         if(renderPassInstances.size())
         {
-            //verify mesh group buffers
-            handleCommonMeshGroupResize(CommonMeshGroup::verifyBuffersSize(rendererPtr));
-
-            //----------PRE-PROCESS----------//
-
-            //copy data
-            VkBufferCopy instancesRegion = {};
-            instancesRegion.dstOffset = 0;
-            instancesRegion.srcOffset = 0;
-            instancesRegion.size = renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance);
-            
-            SynchronizationInfo instancesBufferCopySync = {};
-            instancesBufferCopySync.queueType = QueueType::TRANSFER;
-            instancesBufferCopySync.binaryWaitPairs = {};
-            instancesBufferCopySync.binarySignalPairs = { { instancesBufferCopySemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
-            instancesBufferCopySync.fence = VK_NULL_HANDLE;
-            rendererPtr->recycleCommandBuffer(deviceInstancesBuffer->copyFromBufferRanges(*hostInstancesBuffer.get(), { instancesRegion }, instancesBufferCopySync));
-
-            VkBufferCopy materialDataRegion = {};
-            materialDataRegion.dstOffset = 0;
-            materialDataRegion.srcOffset = 0;
-            materialDataRegion.size = hostInstancesDataBuffer->getStackLocation();
-            
-            SynchronizationInfo materialDataCopySync = {};
-            materialDataCopySync.queueType = QueueType::TRANSFER;
-            materialDataCopySync.binaryWaitPairs = {};
-            materialDataCopySync.binarySignalPairs = { { materialDataBufferCopySemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT }};
-            materialDataCopySync.fence = VK_NULL_HANDLE;
-            rendererPtr->recycleCommandBuffer(deviceInstancesDataBuffer->copyFromBufferRanges(*hostInstancesDataBuffer->getBuffer(), { materialDataRegion }, materialDataCopySync));
-
-            //compute shader
-            std::vector<BinarySemaphorePair> waitPairs = syncInfo.preprocessWaitPairs;
-            waitPairs.push_back({ instancesBufferCopySemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
-            waitPairs.push_back({ materialDataBufferCopySemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
-
-            SynchronizationInfo preprocessSyncInfo = {};
-            preprocessSyncInfo.queueType = QueueType::COMPUTE;
-            preprocessSyncInfo.binaryWaitPairs = waitPairs;
-            preprocessSyncInfo.binarySignalPairs = { { preprocessSignalSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT } };
-
-            rendererPtr->getRasterPreprocessPipeline()->submit(preprocessSyncInfo, *this);
-
-            //----------RENDER PASS----------//
-
-            //command buffer
-            VkCommandBufferBeginInfo commandInfo;
-            commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-            commandInfo.pNext = NULL;
-            commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            commandInfo.pInheritanceInfo = NULL;
-
-            VkCommandBuffer graphicsCmdBuffer = Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), QueueType::GRAPHICS);
-            vkBeginCommandBuffer(graphicsCmdBuffer, &commandInfo);
-
             //pre-render barriers
             if(renderPassInfo.preRenderBarriers)
             {
-                vkCmdPipelineBarrier2(graphicsCmdBuffer, renderPassInfo.preRenderBarriers);
+                vkCmdPipelineBarrier2(cmdBuffer, renderPassInfo.preRenderBarriers);
             }
+            
+            //verify mesh group buffers
+            handleCommonMeshGroupResize(CommonMeshGroup::verifyBuffersSize(rendererPtr));
+
+            //----------DATA COPY----------//
+
+            //instances buffer copy
+            VkBufferCopy2 instancesRegion = {};
+            instancesRegion.sType = VK_STRUCTURE_TYPE_BUFFER_COPY_2;
+            instancesRegion.pNext = NULL;
+            instancesRegion.dstOffset = 0;
+            instancesRegion.srcOffset = 0;
+            instancesRegion.size = renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance);
+
+            VkCopyBufferInfo2 instancesBufferCopyInfo = {};
+            instancesBufferCopyInfo.sType = VK_STRUCTURE_TYPE_COPY_BUFFER_INFO_2;
+            instancesBufferCopyInfo.pNext = NULL;
+            instancesBufferCopyInfo.regionCount = 1;
+            instancesBufferCopyInfo.pRegions = &instancesRegion;
+            instancesBufferCopyInfo.srcBuffer = hostInstancesBuffer->getBuffer();
+            instancesBufferCopyInfo.dstBuffer = deviceInstancesBuffer->getBuffer();
+            
+            vkCmdCopyBuffer2(cmdBuffer, &instancesBufferCopyInfo);
+
+            //material data buffer copy
+            VkBufferCopy2 materialDataRegion = {};
+            materialDataRegion.sType = VK_STRUCTURE_TYPE_BUFFER_COPY_2;
+            materialDataRegion.pNext = NULL;
+            materialDataRegion.dstOffset = 0;
+            materialDataRegion.srcOffset = 0;
+            materialDataRegion.size = hostInstancesDataBuffer->getStackLocation();
+
+            VkCopyBufferInfo2 materialDataBufferCopyInfo = {};
+            materialDataBufferCopyInfo.sType = VK_STRUCTURE_TYPE_COPY_BUFFER_INFO_2;
+            materialDataBufferCopyInfo.pNext = NULL;
+            materialDataBufferCopyInfo.regionCount = 1;
+            materialDataBufferCopyInfo.pRegions = &materialDataRegion;
+            materialDataBufferCopyInfo.srcBuffer = hostInstancesDataBuffer->getBuffer()->getBuffer();
+            materialDataBufferCopyInfo.dstBuffer = deviceInstancesDataBuffer->getBuffer();
+            
+            vkCmdCopyBuffer2(cmdBuffer, &materialDataBufferCopyInfo);
+
+            //memory barriers
+            std::vector<VkBufferMemoryBarrier2> bufferTransferMemBarriers;
+
+            //instances buffer
+            bufferTransferMemBarriers.push_back({
+                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                .pNext = NULL,
+                .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .buffer = deviceInstancesBuffer->getBuffer(),
+                .offset = 0,
+                .size = VK_WHOLE_SIZE
+            });
+
+            //material data buffer
+            bufferTransferMemBarriers.push_back({
+                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                .pNext = NULL,
+                .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .buffer = deviceInstancesDataBuffer->getBuffer(),
+                .offset = 0,
+                .size = VK_WHOLE_SIZE
+            });
+
+            VkDependencyInfo bufferTransferDependencyInfo = {};
+            bufferTransferDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+            bufferTransferDependencyInfo.pNext = NULL;
+            bufferTransferDependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+            bufferTransferDependencyInfo.bufferMemoryBarrierCount = bufferTransferMemBarriers.size();
+            bufferTransferDependencyInfo.pBufferMemoryBarriers = bufferTransferMemBarriers.data();
+
+            vkCmdPipelineBarrier2(cmdBuffer, &bufferTransferDependencyInfo);
+            
+            //----------PRE-PROCESS----------//
+
+            //compute shader
+            rendererPtr->getRasterPreprocessPipeline()->submit(cmdBuffer, *this);
+
+            //memory barrier
+            VkMemoryBarrier2 preprocessMemBarrier = {};
+            preprocessMemBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+            preprocessMemBarrier.pNext = NULL;
+            preprocessMemBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            preprocessMemBarrier.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
+            preprocessMemBarrier.dstStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+            preprocessMemBarrier.dstAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
+
+            VkDependencyInfo preprocessDependencyInfo = {};
+            preprocessDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+            preprocessDependencyInfo.pNext = NULL;
+            preprocessDependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+            preprocessDependencyInfo.memoryBarrierCount = 1;
+            preprocessDependencyInfo.pMemoryBarriers = &preprocessMemBarrier;
+            
+            vkCmdPipelineBarrier2(cmdBuffer, &preprocessDependencyInfo);
+
+            //----------RENDER PASS----------//
 
             //rendering
             VkRenderingInfoKHR renderInfo = {};
@@ -449,60 +479,45 @@ namespace PaperRenderer
             renderInfo.pDepthAttachment = renderPassInfo.depthAttachment;
             renderInfo.pStencilAttachment = renderPassInfo.stencilAttachment;
 
-            vkCmdBeginRendering(graphicsCmdBuffer, &renderInfo);
+            vkCmdBeginRendering(cmdBuffer, &renderInfo);
 
             //scissors (plural) and viewports
-            vkCmdSetViewportWithCount(graphicsCmdBuffer, renderPassInfo.viewports.size(), renderPassInfo.viewports.data());
-            vkCmdSetScissorWithCount(graphicsCmdBuffer, renderPassInfo.scissors.size(), renderPassInfo.scissors.data());
+            vkCmdSetViewportWithCount(cmdBuffer, renderPassInfo.viewports.size(), renderPassInfo.viewports.data());
+            vkCmdSetScissorWithCount(cmdBuffer, renderPassInfo.scissors.size(), renderPassInfo.scissors.data());
 
             //MSAA samples
-            vkCmdSetRasterizationSamplesEXT(graphicsCmdBuffer, rendererPtr->getRendererState()->msaaSamples);
+            vkCmdSetRasterizationSamplesEXT(cmdBuffer, rendererPtr->getRendererState()->msaaSamples);
 
             //compare op
-            vkCmdSetDepthCompareOp(graphicsCmdBuffer, renderPassInfo.depthCompareOp);
+            vkCmdSetDepthCompareOp(cmdBuffer, renderPassInfo.depthCompareOp);
 
             //----------MAIN PASS----------//
 
             //record draw commands
             for(const auto& [material, materialInstanceNode] : renderTree) //material
             {
-                material->bind(graphicsCmdBuffer);
+                material->bind(cmdBuffer);
                 for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
                 {
                     if(meshGroups)
                     {
-                        materialInstance->bind(graphicsCmdBuffer);
-                        meshGroups->draw(graphicsCmdBuffer, *material->getRasterPipeline());
+                        materialInstance->bind(cmdBuffer);
+                        meshGroups->draw(cmdBuffer, *material->getRasterPipeline());
                     }
                 }
             }
 
             //end rendering
-            vkCmdEndRendering(graphicsCmdBuffer);
+            vkCmdEndRendering(cmdBuffer);
 
             //clear draw counts
-            clearDrawCounts(graphicsCmdBuffer);
+            clearDrawCounts(cmdBuffer);
 
             //post-render barriers
             if(renderPassInfo.postRenderBarriers)
             {
-                vkCmdPipelineBarrier2(graphicsCmdBuffer, renderPassInfo.postRenderBarriers);
+                vkCmdPipelineBarrier2(cmdBuffer, renderPassInfo.postRenderBarriers);
             }
-
-            vkEndCommandBuffer(graphicsCmdBuffer);
-
-            //submit rendering to GPU   
-            SynchronizationInfo graphicsSyncInfo = {};
-            graphicsSyncInfo.queueType = QueueType::GRAPHICS;
-            graphicsSyncInfo.binaryWaitPairs = syncInfo.renderWaitPairs;
-            graphicsSyncInfo.binaryWaitPairs.push_back({ preprocessSignalSemaphore, VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT });
-            graphicsSyncInfo.binarySignalPairs = syncInfo.renderSignalPairs;
-            graphicsSyncInfo.fence = syncInfo.renderSignalFence;
-
-            Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), graphicsSyncInfo, { graphicsCmdBuffer });
-
-            CommandBuffer commandBuffer = { graphicsCmdBuffer, QueueType::GRAPHICS };
-            rendererPtr->recycleCommandBuffer(commandBuffer);
         }
     }
 

@@ -35,7 +35,7 @@ namespace PaperRenderer
         RasterPreprocessPipeline(RenderEngine* renderer, std::string fileDir);
         ~RasterPreprocessPipeline() override;
 
-        void submit(const SynchronizationInfo& syncInfo, const RenderPass& renderPass);
+        void submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass);
     };
     
     //----------RENDER PASS----------//
@@ -48,17 +48,9 @@ namespace PaperRenderer
         std::vector<VkViewport> viewports;
         std::vector<VkRect2D> scissors;
         VkRect2D renderArea = {};
-        VkDependencyInfo const* preRenderBarriers = NULL;
-        VkDependencyInfo const* postRenderBarriers = NULL;
+        VkDependencyInfo const* preRenderBarriers = NULL; //applied before data transfers, preprocess and render pass
+        VkDependencyInfo const* postRenderBarriers = NULL; //applied after render pass
         VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS;
-    };
-
-    struct RenderPassSynchronizationInfo
-    {
-        std::vector<BinarySemaphorePair> preprocessWaitPairs;
-        std::vector<BinarySemaphorePair> renderWaitPairs;
-        std::vector<BinarySemaphorePair> renderSignalPairs;
-        VkFence renderSignalFence;
     };
 
     class RenderPass
@@ -93,11 +85,6 @@ namespace PaperRenderer
         void handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances);
         void clearDrawCounts(VkCommandBuffer cmdBuffer);
 
-        //synchronization
-        VkSemaphore preprocessSignalSemaphore;
-        VkSemaphore instancesBufferCopySemaphore;
-        VkSemaphore materialDataBufferCopySemaphore;
-
         RenderEngine* rendererPtr;
         Camera* cameraPtr;
         MaterialInstance* defaultMaterialInstancePtr;
@@ -108,7 +95,7 @@ namespace PaperRenderer
         RenderPass(RenderEngine* renderer, Camera* camera, MaterialInstance* defaultMaterialInstance);
         ~RenderPass();
 
-        void render(const RenderPassSynchronizationInfo& syncInfo, const RenderPassInfo& renderPassInfo);
+        void render(VkCommandBuffer cmdBuffer, const RenderPassInfo& renderPassInfo);
 
         void addInstance(ModelInstance* instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials);
         void removeInstance(ModelInstance* instance);
