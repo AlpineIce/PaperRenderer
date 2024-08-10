@@ -154,7 +154,6 @@ namespace PaperRenderer
             glm::vec4 scale; 
             glm::quat qRotation;
             uint32_t modelDataOffset;
-            glm::vec3 padding;
         };
 
         ShaderModelInstance getShaderInstance() const;

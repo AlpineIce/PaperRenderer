@@ -79,7 +79,7 @@ struct ModelInstance
     //defining a 12 byte padding here just breaks it
 };
 
-layout(std430, set = 0, binding = 1) readonly buffer InputInstances
+layout(scalar, set = 0, binding = 1) readonly buffer InputInstances
 {
     ModelInstance modelInstances[];
 } inputInstances;
