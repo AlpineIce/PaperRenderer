@@ -332,7 +332,7 @@ namespace PaperRenderer
 
         VkPhysicalDeviceExtendedDynamicState3FeaturesEXT dynamicState3Features = {};
         dynamicState3Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT;
-        dynamicState3Features.pNext = &timelineSemaphoreFeatures;
+        dynamicState3Features.pNext = &drawParamFeatures; //timeline semaphore broken with validation layers?
         dynamicState3Features.extendedDynamicState3RasterizationSamples = VK_TRUE;
 
         VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderFeatures = {};

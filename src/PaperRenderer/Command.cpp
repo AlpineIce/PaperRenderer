@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 #include <algorithm>
+#include <thread>
 
 namespace PaperRenderer
 {
@@ -39,7 +40,7 @@ namespace PaperRenderer
             VkCommandPoolCreateInfo graphicsPoolInfo = {};
             graphicsPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
             graphicsPoolInfo.pNext = NULL;
-            graphicsPoolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+            graphicsPoolInfo.flags = 0;
             graphicsPoolInfo.queueFamilyIndex = queues.queueFamilyIndex;
             vkCreateCommandPool(device, &graphicsPoolInfo, nullptr, &commandPools[queueType]);
         }

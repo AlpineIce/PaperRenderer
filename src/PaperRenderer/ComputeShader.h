@@ -14,7 +14,7 @@ namespace PaperRenderer
         ShaderPair shader;
         std::unordered_map<uint32_t, DescriptorWrites> descriptorWrites; //key is the descriptor set
         std::unordered_map<uint32_t, DescriptorSet> descriptorSets;
-        glm::uvec3 workGroupSizes = glm::uvec3(1, 1, 1);
+        glm::uvec3 workGroupSizes = glm::uvec3(32, 32, 32);
 
         void buildPipeline();
 
