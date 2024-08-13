@@ -47,6 +47,7 @@ struct MaterialMeshGroup
 {
     uint64_t bufferAddress;
     uint indirectDrawDatasOffset;
+    uint padding;
 };
 
 layout(std430, buffer_reference) readonly buffer LODsMaterialMeshGroups
@@ -151,7 +152,7 @@ void main()
     }
     
     //indirect draw build if visible
-    if(visible)
+    if(true)
     {
         //get LOD
         uint lodLevel = min(getLODLevel(modelInstance, model, inputData.camPos), model.lodCount - 1);
@@ -176,7 +177,7 @@ void main()
                 DrawCommands outputCommands = DrawCommands(materialMeshGroup.bufferAddress + uint64_t(indirectDrawData.drawCommandsOffset));
                 OutputObjects outputObjects = OutputObjects(materialMeshGroup.bufferAddress + uint64_t(indirectDrawData.outputObjectsOffset));
 
-                uint writeIndex = atomicAdd(drawCounts.count, 1);
+                uint writeIndex = gID;//atomicAdd(drawCounts.count, 1);
 
                 //draw commands
                 outputCommands.commands[writeIndex] = buildDrawCommand(meshData, writeIndex);

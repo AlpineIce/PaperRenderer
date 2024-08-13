@@ -154,6 +154,7 @@ namespace PaperRenderer
             glm::vec4 scale; 
             glm::quat qRotation;
             uint32_t modelDataOffset;
+            glm::vec3 padding;
         };
 
         ShaderModelInstance getShaderInstance() const;
@@ -184,6 +185,7 @@ namespace PaperRenderer
         {
             VkDeviceAddress bufferAddress;
             uint32_t indirectDrawDatasOffset;
+            uint32_t padding;
         };
 
         struct IndirectDrawData

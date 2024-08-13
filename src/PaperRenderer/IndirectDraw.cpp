@@ -2,6 +2,7 @@
 #include "PaperRenderer.h"
 
 #include <algorithm>
+#include <iostream>
 
 namespace PaperRenderer
 {
@@ -9,7 +10,7 @@ namespace PaperRenderer
     std::list<CommonMeshGroup*> CommonMeshGroup::commonMeshGroups;
     bool CommonMeshGroup::rebuild = false;
 
-    CommonMeshGroup::CommonMeshGroup(class RenderEngine* renderer, class RenderPass const* renderPass)
+    CommonMeshGroup::CommonMeshGroup(RenderEngine* renderer, RenderPass const* renderPass)
         :rendererPtr(renderer),
         renderPassPtr(renderPass)
     {
@@ -32,9 +33,9 @@ namespace PaperRenderer
         }
     }
 
-    std::vector<class ModelInstance*> CommonMeshGroup::verifyBuffersSize(RenderEngine* renderer)
+    std::vector<ModelInstance*> CommonMeshGroup::verifyBuffersSize(RenderEngine* renderer)
     {
-        std::vector<class ModelInstance *> returnInstances;
+        std::vector<ModelInstance *> returnInstances;
         if(rebuild)
         {
             returnInstances = rebuildAllocationAndBuffers(renderer);
@@ -44,7 +45,7 @@ namespace PaperRenderer
         return returnInstances;
     }
 
-    std::vector<class ModelInstance*> CommonMeshGroup::rebuildAllocationAndBuffers(RenderEngine* renderer)
+    std::vector<ModelInstance*> CommonMeshGroup::rebuildAllocationAndBuffers(RenderEngine* renderer)
     {
         //rebuild buffers and get new size
         VkDeviceSize newAllocationSize = 0;
@@ -57,7 +58,7 @@ namespace PaperRenderer
         //rebuild allocations
         DeviceAllocationInfo allocationInfo = {};
         allocationInfo.allocationSize = newAllocationSize;
-        allocationInfo.allocFlags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+        allocationInfo.allocFlags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT; 
         allocationInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         drawDataAllocation = std::make_unique<DeviceAllocation>(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), allocationInfo);
 
