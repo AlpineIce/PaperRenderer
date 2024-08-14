@@ -69,7 +69,7 @@ namespace PaperRenderer
         uniformBufferAllocation.reset();
     }
 
-    void TLASInstanceBuildPipeline::submit(const SynchronizationInfo &syncInfo, const AccelerationStructure &accelerationStructure)
+    void TLASInstanceBuildPipeline::submit(VkCommandBuffer cmdBuffer, const AccelerationStructure &accelerationStructure)
     {
         UBOInputData uboInputData = {};
         uboInputData.objectCount = accelerationStructure.accelerationStructureInstances.size();
@@ -125,15 +125,7 @@ namespace PaperRenderer
         bufferWrite3.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         bufferWrite3.infos = { bufferWrite3Info };
 
-        VkCommandBufferBeginInfo commandInfo;
-        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        commandInfo.pNext = NULL;
-        commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        commandInfo.pInheritanceInfo = NULL;
-
-        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), syncInfo.queueType);
-
-        vkBeginCommandBuffer(cmdBuffer, &commandInfo);
+        //bind, write, and dispatch
         bind(cmdBuffer);
 
         DescriptorWrites descriptorWritesInfo = {};
@@ -144,14 +136,6 @@ namespace PaperRenderer
         //dispatch
         workGroupSizes.x = ((accelerationStructure.accelerationStructureInstances.size()) / 128) + 1;
         dispatch(cmdBuffer);
-        
-        vkEndCommandBuffer(cmdBuffer);
-
-        //submit
-        Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), syncInfo, { cmdBuffer });
-
-        CommandBuffer commandBuffer = { cmdBuffer, syncInfo.queueType };
-        rendererPtr->recycleCommandBuffer(commandBuffer);
     }
 
     //----------ACCELERATION STRUCTURE DEFINITIONS----------//
@@ -176,11 +160,6 @@ namespace PaperRenderer
         bufferInfo.usageFlags =    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
         scratchBuffer =     std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
 
-        //synchronization things
-        instancesCopySemaphore = Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
-        blasSignalSemaphore = Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
-        tlasInstanceBuildSignalSemaphore = Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
-
         accelerationStructures.push_back(this);
 
         rebuildBLASAllocation();
@@ -198,10 +177,6 @@ namespace PaperRenderer
         hostInstanceDescriptionsBuffer.reset();
         deviceInstancesBuffer.reset();
         deviceInstanceDescriptionsBuffer.reset();
-        
-        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), instancesCopySemaphore, nullptr);
-        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), blasSignalSemaphore, nullptr);
-        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), tlasInstanceBuildSignalSemaphore, nullptr);
 
         vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), topStructure, nullptr);
         for(auto& [ptr, structure] : bottomStructures)
@@ -322,7 +297,7 @@ namespace PaperRenderer
         deviceInstanceDescriptionsBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), deviceInstanceDescriptionsBufferInfo);
     }
 
-    AccelerationStructure::BuildData AccelerationStructure::getBuildData()
+    AccelerationStructure::BuildData AccelerationStructure::getBuildData(VkCommandBuffer cmdBuffer)
     {
         BottomBuildData BLBuildData = {};
         TopBuildData TLBuildData = {};
@@ -553,27 +528,8 @@ namespace PaperRenderer
         hostInstanceDescriptionsRegion.size = sizeof(InstanceDescription) * accelerationStructureInstances.size();
         hostInstanceDescriptionsRegion.dstOffset = 0;
 
-        VkCommandBuffer transferBuffer = Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), QueueType::TRANSFER);
-
-        VkCommandBufferBeginInfo beginInfo = {};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.pNext = NULL;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-        vkBeginCommandBuffer(transferBuffer, &beginInfo);
-        vkCmdCopyBuffer(transferBuffer, hostInstancesBuffer->getBuffer(), deviceInstancesBuffer->getBuffer(), 1, &hostInstancesRegion);
-        vkCmdCopyBuffer(transferBuffer, hostInstanceDescriptionsBuffer->getBuffer(), deviceInstanceDescriptionsBuffer->getBuffer(), 1, &hostInstanceDescriptionsRegion);
-        vkEndCommandBuffer(transferBuffer);
-
-        PaperRenderer::SynchronizationInfo bufferCopySyncInfo = {};
-        bufferCopySyncInfo.queueType = QueueType::TRANSFER;
-        bufferCopySyncInfo.binaryWaitPairs = {};
-        bufferCopySyncInfo.binarySignalPairs = { { instancesCopySemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT } };
-        bufferCopySyncInfo.fence = VK_NULL_HANDLE;
-
-        Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), bufferCopySyncInfo, { transferBuffer });
-
-        rendererPtr->recycleCommandBuffer({ transferBuffer, QueueType::TRANSFER });
+        vkCmdCopyBuffer(cmdBuffer, hostInstancesBuffer->getBuffer(), deviceInstancesBuffer->getBuffer(), 1, &hostInstancesRegion);
+        vkCmdCopyBuffer(cmdBuffer, hostInstanceDescriptionsBuffer->getBuffer(), deviceInstanceDescriptionsBuffer->getBuffer(), 1, &hostInstanceDescriptionsRegion);
 
         return { std::move(BLBuildData), std::move(TLBuildData) };
     }
@@ -626,49 +582,124 @@ namespace PaperRenderer
         scratchBuffer->assignAllocation(scratchAllocation.get());
     }
 
-    void AccelerationStructure::updateAccelerationStructures(const AccelerationStructureSynchronizatioInfo& syncInfo)
+    void AccelerationStructure::updateAccelerationStructures(const SynchronizationInfo& syncInfo)
     {
-        //get necessary data and buffer sizing
-        const BuildData buildData = getBuildData();
+        vkDeviceWaitIdle(rendererPtr->getDevice()->getDevice());
+        //start command buffer
+        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), syncInfo.queueType);
 
-        //set TLAS instances
-        std::vector<BinarySemaphorePair> instancesComputeWaitSemaphores = syncInfo.waitSemaphores;
-        instancesComputeWaitSemaphores.push_back({ instancesCopySemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT });
+        VkCommandBufferBeginInfo beginInfo = {};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.pNext = NULL;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-        PaperRenderer::SynchronizationInfo tlasInstancesSyncInfo = {};
-        tlasInstancesSyncInfo.queueType = QueueType::COMPUTE;
-        tlasInstancesSyncInfo.binaryWaitPairs = instancesComputeWaitSemaphores;
-        tlasInstancesSyncInfo.binarySignalPairs = { { tlasInstanceBuildSignalSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT } };
-        tlasInstancesSyncInfo.fence = VK_NULL_HANDLE;
-        rendererPtr->tlasInstanceBuildPipeline.submit(tlasInstancesSyncInfo, *this);
+        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
 
-        //acceleration structure builds
+        //get build data
+        const BuildData buildData = getBuildData(cmdBuffer);
+
+        //blas builds (if needed)
         bool blasBuildNeeded = blasBuildModels.size();
         if(blasBuildNeeded) 
         {
-            SynchronizationInfo blSyncInfo = {};
-            blSyncInfo.queueType = QueueType::COMPUTE;
-            blSyncInfo.binaryWaitPairs = {};
-            blSyncInfo.binarySignalPairs = { { blasSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR } };
-            blSyncInfo.fence = VK_NULL_HANDLE;
-            createBottomLevel(buildData.bottomData, blSyncInfo);
+            createBottomLevel(cmdBuffer, buildData.bottomData);
         }
 
-        SynchronizationInfo tlSyncInfo = {};
-        tlSyncInfo.queueType = QueueType::COMPUTE;
-        tlSyncInfo.binaryWaitPairs = {
-            { tlasInstanceBuildSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR }
-        };
-        tlSyncInfo.binarySignalPairs = syncInfo.TLSignalSemaphores;
+        //memory barriers
+        std::vector<VkBufferMemoryBarrier2> buildDataAndBLASMemBarriers;
+        buildDataAndBLASMemBarriers.push_back({
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+            .pNext = NULL,
+            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = deviceInstancesBuffer->getBuffer(),
+            .offset = 0,
+            .size = VK_WHOLE_SIZE
+        });
 
-        if(blasBuildNeeded) 
+        buildDataAndBLASMemBarriers.push_back({
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+            .pNext = NULL,
+            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = deviceInstanceDescriptionsBuffer->getBuffer(),
+            .offset = 0,
+            .size = VK_WHOLE_SIZE
+        });
+
+        if(blasBuildNeeded)
         {
-            tlSyncInfo.binaryWaitPairs.push_back({ blasSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR });
+            buildDataAndBLASMemBarriers.push_back({
+                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                .pNext = NULL,
+                .srcStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                .srcAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
+                .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                .dstAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .buffer = BLBuffer->getBuffer(),
+                .offset = 0,
+                .size = VK_WHOLE_SIZE
+            });
         }
-        createTopLevel(buildData.topData, tlSyncInfo);
+        
+
+        VkDependencyInfo buildDataDependencyInfo = {};
+        buildDataDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        buildDataDependencyInfo.pNext = NULL;
+        buildDataDependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        buildDataDependencyInfo.bufferMemoryBarrierCount = buildDataAndBLASMemBarriers.size();
+        buildDataDependencyInfo.pBufferMemoryBarriers = buildDataAndBLASMemBarriers.data();
+
+        vkCmdPipelineBarrier2(cmdBuffer, &buildDataDependencyInfo);
+
+        //build TLAS instance data
+        rendererPtr->tlasInstanceBuildPipeline.submit(cmdBuffer, *this);
+
+        //TLAS instance data memory barrier
+        VkBufferMemoryBarrier2 tlasInstanceMemBarrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+            .pNext = NULL,
+            .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            .srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+            .dstAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = TLInstancesBuffer->getBuffer(),
+            .offset = 0,
+            .size = VK_WHOLE_SIZE
+        };
+
+        VkDependencyInfo tlasInstanceDependencyInfo = {};
+        tlasInstanceDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        tlasInstanceDependencyInfo.pNext = NULL;
+        tlasInstanceDependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        tlasInstanceDependencyInfo.bufferMemoryBarrierCount = 1;
+        tlasInstanceDependencyInfo.pBufferMemoryBarriers = &tlasInstanceMemBarrier;
+
+        vkCmdPipelineBarrier2(cmdBuffer, &tlasInstanceDependencyInfo);
+
+        createTopLevel(cmdBuffer, buildData.topData);
+
+        vkEndCommandBuffer(cmdBuffer);
+
+        //submit
+        Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), syncInfo, { cmdBuffer });
+
+        rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
     }
 
-    void AccelerationStructure::createBottomLevel(BottomBuildData buildData, const SynchronizationInfo &synchronizationInfo)
+    void AccelerationStructure::createBottomLevel(VkCommandBuffer cmdBuffer, BottomBuildData buildData)
     {
         //build all models in queue
         uint32_t modelIndex = 0;
@@ -717,30 +748,16 @@ namespace PaperRenderer
             vectorBuildGeos.push_back(buildGeo);
         }
 
-        //command buffer and BLAS build
-        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), synchronizationInfo.queueType);
-
-        VkCommandBufferBeginInfo beginInfo = {};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.pNext = NULL;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        beginInfo.pInheritanceInfo = NULL;
-        
-        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+        //BLAS build
         vkCmdBuildAccelerationStructuresKHR(cmdBuffer, vectorBuildGeos.size(), vectorBuildGeos.data(), buildRangesPtrArray.data());
-        vkEndCommandBuffer(cmdBuffer);
-
-        Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), synchronizationInfo, { cmdBuffer });
 
         for(auto& ptr : buildRangesPtrArray)
         {
             free(ptr);
         }
-
-        rendererPtr->recycleCommandBuffer({ cmdBuffer, synchronizationInfo.queueType });
     }
 
-    void AccelerationStructure::createTopLevel(TopBuildData buildData, const SynchronizationInfo& synchronizationInfo)
+    void AccelerationStructure::createTopLevel(VkCommandBuffer cmdBuffer, TopBuildData buildData)
     {
         //destroy old
         vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), topStructure, nullptr);
@@ -766,21 +783,7 @@ namespace PaperRenderer
         buildRange.transformOffset = 0;
         std::vector<VkAccelerationStructureBuildRangeInfoKHR*> buildRangesPtrArray = {&buildRange};
 
-        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), synchronizationInfo.queueType);
-
-        VkCommandBufferBeginInfo beginInfo = {};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.pNext = NULL;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        beginInfo.pInheritanceInfo = NULL;
-        
-        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
         vkCmdBuildAccelerationStructuresKHR(cmdBuffer, 1, &buildData.buildGeoInfo, buildRangesPtrArray.data());
-        vkEndCommandBuffer(cmdBuffer);
-
-        Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), synchronizationInfo, { cmdBuffer });
-
-        rendererPtr->recycleCommandBuffer({ cmdBuffer, synchronizationInfo.queueType });
     }
 
     void AccelerationStructure::addInstance(ModelInstance *instance)

@@ -26,7 +26,7 @@ namespace PaperRenderer
         TLASInstanceBuildPipeline(RenderEngine* renderer, std::string fileDir);
         ~TLASInstanceBuildPipeline() override;
 
-        void submit(const SynchronizationInfo& syncInfo, const AccelerationStructure& accelerationStructure);
+        void submit(VkCommandBuffer cmdBuffer, const AccelerationStructure& accelerationStructure);
     };
 
     //----------ACCELERATION STRUCTURE DECLARATIONS----------//
@@ -36,12 +36,6 @@ namespace PaperRenderer
         uint32_t referenceCount = 0;
         VkAccelerationStructureKHR structure = VK_NULL_HANDLE;
         VkDeviceAddress bufferAddress = 0;
-    };
-
-    struct AccelerationStructureSynchronizatioInfo
-    {
-        std::vector<BinarySemaphorePair> waitSemaphores;
-        std::vector<BinarySemaphorePair> TLSignalSemaphores;
     };
 
     class AccelerationStructure
@@ -79,11 +73,6 @@ namespace PaperRenderer
         static std::list<AccelerationStructure*> accelerationStructures;
         std::mutex instanceAddRemoveMutex;
 
-        //synchronization
-        VkSemaphore instancesCopySemaphore;
-        VkSemaphore tlasInstanceBuildSignalSemaphore;
-        VkSemaphore blasSignalSemaphore;
-
         VkDeviceSize instancesBufferSize;
         uint32_t instancesCount;
         struct BottomBuildData
@@ -114,14 +103,14 @@ namespace PaperRenderer
         class RenderEngine* rendererPtr;
 
         const float instancesOverhead = 1.5;
-        BuildData getBuildData();
+        BuildData getBuildData(VkCommandBuffer cmdBuffer);
         void rebuildBLASAllocation();
         void rebuildTLASAllocation();
         void rebuildScratchAllocation();
         void rebuildInstancesBuffers();
         static void rebuildInstancesAllocationsAndBuffers(RenderEngine* renderer);
-        void createBottomLevel(BottomBuildData buildData, const SynchronizationInfo& synchronizationInfo);
-        void createTopLevel(TopBuildData buildData, const SynchronizationInfo& synchronizationInfo);
+        void createBottomLevel(VkCommandBuffer cmdBuffer, BottomBuildData buildData);
+        void createTopLevel(VkCommandBuffer cmdBuffer, TopBuildData buildData);
 
         friend TLASInstanceBuildPipeline;
 
@@ -129,7 +118,7 @@ namespace PaperRenderer
         AccelerationStructure(RenderEngine* renderer);
         ~AccelerationStructure();
 
-        void updateAccelerationStructures(const AccelerationStructureSynchronizatioInfo& syncInfo);
+        void updateAccelerationStructures(const SynchronizationInfo& syncInfo);
 
         void addInstance(class ModelInstance* instance);
         void removeInstance(class ModelInstance* instance);
