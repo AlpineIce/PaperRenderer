@@ -584,7 +584,6 @@ namespace PaperRenderer
 
     void AccelerationStructure::updateAccelerationStructures(const SynchronizationInfo& syncInfo)
     {
-        vkDeviceWaitIdle(rendererPtr->getDevice()->getDevice());
         //start command buffer
         VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), syncInfo.queueType);
 
