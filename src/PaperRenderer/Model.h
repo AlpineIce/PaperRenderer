@@ -190,10 +190,8 @@ namespace PaperRenderer
 
         struct IndirectDrawData
         {
-            uint32_t drawCountsOffset = UINT32_MAX;
-            uint32_t drawCommandsOffset = UINT32_MAX;
+            uint32_t drawCommandOffset = UINT32_MAX;
             uint32_t outputObjectsOffset = UINT32_MAX;
-            uint32_t padding;
         };
 
         void setRenderPassInstanceData(class RenderPass const* renderPass);

@@ -296,10 +296,8 @@ namespace PaperRenderer
 				{
 					LODMesh const* lodMeshPtr = &modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex);
 					IndirectDrawData indirectDrawData = {};
-					indirectDrawData.drawCountsOffset = 
-						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getMeshesData().at(lodMeshPtr).drawCountsOffset;
-					indirectDrawData.drawCommandsOffset = 
-						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getMeshesData().at(lodMeshPtr).drawCommandsOffset;
+					indirectDrawData.drawCommandOffset = 
+						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getMeshesData().at(lodMeshPtr).drawCommandOffset;
 					indirectDrawData.outputObjectsOffset = 
 						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getMeshesData().at(lodMeshPtr).outputObjectsOffset;
 				

@@ -12,6 +12,12 @@ namespace PaperRenderer
     private:
         std::unique_ptr<RasterPipeline> rasterPipeline;
 
+        struct GlobalInputData
+        {
+            glm::mat4 projection;
+            glm::mat4 view;
+        };
+
     protected:
         std::string matName;
         RasterPipelineBuildInfo rasterInfo;
@@ -19,6 +25,7 @@ namespace PaperRenderer
         std::vector<ShaderPair> shaderPairs;
         DescriptorWrites rasterDescriptorWrites = {};
         std::unordered_map<uint32_t, DescriptorSet> rasterDescriptorSets;
+        std::vector<VkPushConstantRange> pcRanges;
         RasterPipelineProperties rasterPipelineProperties = {};
 
         void buildRasterPipeline(RasterPipelineBuildInfo const* rasterInfo, const RasterPipelineProperties& rasterProperties);
@@ -29,7 +36,7 @@ namespace PaperRenderer
         Material(class RenderEngine* renderer, std::string materialName);
         virtual ~Material();
 
-        virtual void bind(VkCommandBuffer cmdBuffer); //used per pipeline bind and material instance
+        virtual void bind(VkCommandBuffer cmdBuffer, class Camera* camera); //used per pipeline bind and material instance
         
         std::string getMaterialName() const { return matName; }
         const RasterPipelineProperties& getRasterPipelineProperties() const { return rasterPipelineProperties; }

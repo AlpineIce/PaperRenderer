@@ -1,4 +1,5 @@
 #include "Material.h"
+#include "Camera.h"
 #include "PaperRenderer.h"
 
 namespace PaperRenderer
@@ -10,12 +11,19 @@ namespace PaperRenderer
         matName(materialName),
         rasterInfo({
             .shaderInfo = shaderPairs,
-            .descriptors = rasterDescriptorSets
+            .descriptors = rasterDescriptorSets,
+            .pcRanges = pcRanges
         })
     {
         rasterDescriptorSets[DescriptorScopes::RASTER_MATERIAL];
         rasterDescriptorSets[DescriptorScopes::RASTER_MATERIAL_INSTANCE];
         rasterDescriptorSets[DescriptorScopes::RASTER_OBJECT];
+
+        pcRanges.push_back({
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .offset = 0,
+            .size = sizeof(GlobalInputData)
+        });
     }
 
     Material::~Material()
@@ -28,9 +36,16 @@ namespace PaperRenderer
         if(rasterInfo) this->rasterPipeline = rendererPtr->getPipelineBuilder()->buildRasterPipeline(*rasterInfo, rasterProperties);
     }
 
-    void Material::bind(VkCommandBuffer cmdBuffer)
+    void Material::bind(VkCommandBuffer cmdBuffer, Camera* camera)
     {
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
+
+        
+        GlobalInputData inputData = {};
+        inputData.projection = camera->getProjection();
+        inputData.view = camera->getViewMatrix();
+
+        vkCmdPushConstants(cmdBuffer, rasterPipeline->getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GlobalInputData), &inputData);
 
         if(rasterDescriptorWrites.bufferViewWrites.size() || rasterDescriptorWrites.bufferWrites.size() || rasterDescriptorWrites.imageWrites.size())
         {

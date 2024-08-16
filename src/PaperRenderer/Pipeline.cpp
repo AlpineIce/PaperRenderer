@@ -583,7 +583,7 @@ namespace PaperRenderer
         return setLayouts;
     }
 
-    VkPipelineLayout PipelineBuilder::createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts) const
+    VkPipelineLayout PipelineBuilder::createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, std::vector<VkPushConstantRange> pcRanges) const
     {
         std::vector<VkDescriptorSetLayout> vSetLayouts;
         for(const auto& [setNum, set] : setLayouts)
@@ -597,8 +597,8 @@ namespace PaperRenderer
         layoutInfo.flags = 0;
         layoutInfo.setLayoutCount = vSetLayouts.size();
         layoutInfo.pSetLayouts = vSetLayouts.data();
-        layoutInfo.pushConstantRangeCount = 0;
-        layoutInfo.pPushConstantRanges = NULL;
+        layoutInfo.pushConstantRangeCount = pcRanges.size();
+        layoutInfo.pPushConstantRanges = pcRanges.data();
 
         VkPipelineLayout returnLayout;
         VkResult result = vkCreatePipelineLayout(rendererPtr->getDevice()->getDevice(), &layoutInfo, nullptr, &returnLayout);
@@ -613,7 +613,7 @@ namespace PaperRenderer
         pipelineInfo.renderer = rendererPtr;
         pipelineInfo.cache = cache;
         pipelineInfo.setLayouts = createDescriptorLayouts(info.descriptors);
-        pipelineInfo.pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts);
+        pipelineInfo.pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts, info.pcRanges);
         pipelineInfo.shader = createShader(info.shaderInfo);
 
         return std::make_unique<ComputePipeline>(pipelineInfo);
@@ -625,7 +625,8 @@ namespace PaperRenderer
         pipelineInfo.renderer = rendererPtr;
         pipelineInfo.cache = cache;
         pipelineInfo.setLayouts = createDescriptorLayouts(info.descriptors);
-        pipelineInfo.pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts);
+        pipelineInfo.pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts, info.pcRanges);
+        pipelineInfo.pcRanges = info.pcRanges;
         
         //set shaders
         for(const ShaderPair& pair : info.shaderInfo)
@@ -642,7 +643,7 @@ namespace PaperRenderer
         pipelineInfo.renderer = rendererPtr;
         pipelineInfo.cache = cache;
         pipelineInfo.setLayouts = createDescriptorLayouts(info.descriptors);
-        pipelineInfo.pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts);
+        pipelineInfo.pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts, info.pcRanges);
         
         //get all shaders needed
         pipelineInfo.shaderGroups.resize(info.shaderGroups.size());

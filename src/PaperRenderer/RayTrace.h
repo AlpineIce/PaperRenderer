@@ -19,13 +19,18 @@ namespace PaperRenderer
         std::unique_ptr<RTPipeline> pipeline;
         RTPipelineProperties pipelineProperties = {};
 
-        void buildPipeline(const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets);
+        void buildPipeline(const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets, std::vector<VkPushConstantRange> pcRanges);
 
         class RenderEngine* rendererPtr;
         class AccelerationStructure* accelerationStructurePtr;
 
     public:
-        RayTraceRender(RenderEngine* renderer, AccelerationStructure* accelerationStructure, const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets);
+        RayTraceRender(
+            RenderEngine* renderer,
+            AccelerationStructure* accelerationStructure,
+            const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets,
+            std::vector<VkPushConstantRange> pcRanges
+        );
         ~RayTraceRender();
 
         void render(const RayTraceRenderInfo& rtRenderInfo, const SynchronizationInfo& syncInfo);

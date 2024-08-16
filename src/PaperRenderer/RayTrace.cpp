@@ -6,11 +6,16 @@
 
 namespace PaperRenderer
 {
-    RayTraceRender::RayTraceRender(RenderEngine* renderer, AccelerationStructure* accelerationStructure, const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets)
+    RayTraceRender::RayTraceRender(
+        RenderEngine* renderer,
+        AccelerationStructure* accelerationStructure,
+        const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets,
+        std::vector<VkPushConstantRange> pcRanges
+    )
         :rendererPtr(renderer),
         accelerationStructurePtr(accelerationStructure)
     {
-        buildPipeline(descriptorSets);
+        buildPipeline(descriptorSets, pcRanges);
     }
 
     RayTraceRender::~RayTraceRender()
@@ -18,7 +23,7 @@ namespace PaperRenderer
         pipeline.reset();
     }
 
-    void RayTraceRender::buildPipeline(const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets)
+    void RayTraceRender::buildPipeline(const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets, std::vector<VkPushConstantRange> pcRanges)
     {
         std::vector<std::vector<ShaderPair>> shaderGroups;
 
@@ -49,7 +54,8 @@ namespace PaperRenderer
         RTPipelineBuildInfo pipelineBuildInfo = {
             .rgenShader = rgenShader,
             .shaderGroups = shaderGroups,
-            .descriptors = descriptorSets
+            .descriptors = descriptorSets,
+            .pcRanges = pcRanges
         };
         pipeline = rendererPtr->getPipelineBuilder()->buildRTPipeline(pipelineBuildInfo, pipelineProperties);
     }

@@ -45,6 +45,7 @@ namespace PaperRenderer
         class RenderEngine* renderer;
         VkPipelineCache cache;
         std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
+        std::vector<VkPushConstantRange> pcRanges;
         VkPipelineLayout pipelineLayout;
     };
 
@@ -76,6 +77,7 @@ namespace PaperRenderer
     {
         const ShaderPair& shaderInfo;
         const std::unordered_map<uint32_t, DescriptorSet>& descriptors;
+        const std::vector<VkPushConstantRange>& pcRanges;
     };
 
     class ComputePipeline : public Pipeline
@@ -98,6 +100,7 @@ namespace PaperRenderer
     {
         const std::vector<ShaderPair>& shaderInfo;
         const std::unordered_map<uint32_t, DescriptorSet>& descriptors;
+        const std::vector<VkPushConstantRange>& pcRanges;
     };
 
     struct RasterPipelineProperties
@@ -170,6 +173,7 @@ namespace PaperRenderer
         const ShaderPair& rgenShader;
         const std::vector<std::vector<ShaderPair>>& shaderGroups;
         const std::unordered_map<uint32_t, DescriptorSet>& descriptors;
+        const std::vector<VkPushConstantRange>& pcRanges;
     };
 
     struct RTPipelineProperties
@@ -219,7 +223,7 @@ namespace PaperRenderer
 
         std::shared_ptr<Shader> createShader(const ShaderPair& pair) const;
         std::unordered_map<uint32_t, VkDescriptorSetLayout> createDescriptorLayouts(const std::unordered_map<uint32_t, DescriptorSet>& descriptorSets) const;
-        VkPipelineLayout createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts) const;
+        VkPipelineLayout createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, std::vector<VkPushConstantRange> pcRanges) const;
 
         class RenderEngine* rendererPtr;
 

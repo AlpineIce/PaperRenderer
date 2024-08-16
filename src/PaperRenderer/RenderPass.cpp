@@ -325,7 +325,7 @@ namespace PaperRenderer
             {
                 if(meshGroups)
                 {
-                    meshGroups->clearDrawCounts(cmdBuffer);
+                    meshGroups->clearDrawCommand(cmdBuffer);
                 }
             }
         }
@@ -496,7 +496,7 @@ namespace PaperRenderer
             //record draw commands
             for(const auto& [material, materialInstanceNode] : renderTree) //material
             {
-                material->bind(cmdBuffer);
+                material->bind(cmdBuffer, cameraPtr);
                 for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
                 {
                     if(meshGroups)

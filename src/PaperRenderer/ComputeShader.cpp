@@ -7,7 +7,8 @@ namespace PaperRenderer
         :rendererPtr(renderer),
         pipelineBuildInfo({
             .shaderInfo = shader,
-            .descriptors = descriptorSets
+            .descriptors = descriptorSets,
+            .pcRanges = pcRanges
         })
     {
     }
