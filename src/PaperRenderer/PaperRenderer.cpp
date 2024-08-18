@@ -170,7 +170,7 @@ namespace PaperRenderer
         //copy initial data into host visible instances data
         std::vector<char> shaderData = model->getShaderData();
 
-        hostModelDataBuffer->newWrite(shaderData.data(), shaderData.size(), 0, &model->shaderDataLocation);
+        hostModelDataBuffer->newWrite(shaderData.data(), shaderData.size(), 8, &model->shaderDataLocation);
     }
 
     void RenderEngine::removeModelData(Model* model)

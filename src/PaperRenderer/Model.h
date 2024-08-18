@@ -96,17 +96,9 @@ namespace PaperRenderer
         struct ShaderModelLODMeshGroup
         {
             uint32_t meshCount;
-            uint32_t meshesOffset;
+            uint32_t meshesOffset; //old variable, but still here for 16 byte alignment
             uint32_t iboOffset; //for ray tracing
             uint32_t vboOffset; //for ray tracing
-        };
-
-        struct ShaderModelMeshData
-        {
-            uint32_t vboOffset;
-            uint32_t vertexCount;
-            uint32_t iboOffset;
-            uint32_t indexCount;
         };
 
         uint64_t selfIndex;
@@ -183,15 +175,13 @@ namespace PaperRenderer
 
         struct MaterialMeshGroup
         {
-            VkDeviceAddress bufferAddress;
             uint32_t indirectDrawDatasOffset;
-            uint32_t padding;
         };
 
         struct IndirectDrawData
         {
-            uint32_t drawCommandOffset = UINT32_MAX;
-            uint32_t outputObjectsOffset = UINT32_MAX;
+            uint32_t instanceCountIndex = UINT32_MAX;
+            uint32_t matricesStartIndex = UINT32_MAX;
         };
 
         void setRenderPassInstanceData(class RenderPass const* renderPass);

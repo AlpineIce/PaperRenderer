@@ -130,21 +130,6 @@ namespace PaperRenderer
 				materialMeshGroup.vboOffset = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(0).vboOffset;
 
 				memcpy(newData.data() + modelLOD.meshGroupsOffset + sizeof(ShaderModelLODMeshGroup) * matIndex, &materialMeshGroup, sizeof(ShaderModelLODMeshGroup));
-
-				//LOD mesh group meshes data
-				dynamicOffset += sizeof(ShaderModelMeshData) * LODs.at(lodIndex).meshMaterialData.at(matIndex).size();
-				newData.resize(dynamicOffset);
-
-				for(uint32_t meshIndex = 0; meshIndex < LODs.at(lodIndex).meshMaterialData.at(matIndex).size(); meshIndex++)
-				{
-					ShaderModelMeshData meshData = {};
-					meshData.vboOffset = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex).vboOffset;
-					meshData.vertexCount = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex).vertexCount;
-					meshData.iboOffset = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex).iboOffset;
-					meshData.indexCount = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex).indexCount;
-					
-					memcpy(newData.data() + materialMeshGroup.meshesOffset + sizeof(ShaderModelMeshData) * meshIndex, &meshData, sizeof(ShaderModelMeshData));
-				}
 			}
 		}
         
@@ -281,9 +266,10 @@ namespace PaperRenderer
 
 			for(uint32_t matIndex = 0; matIndex < modelPtr->getLODs().at(lodIndex).meshMaterialData.size(); matIndex++)
 			{
-				MaterialMeshGroup materialMeshGroup = {};
-				materialMeshGroup.bufferAddress = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getBufferAddress();
+				dynamicOffset = DeviceAllocation::padToMultiple(dynamicOffset, 8);
 				newData.resize(dynamicOffset);
+
+				MaterialMeshGroup materialMeshGroup = {};
 				materialMeshGroup.indirectDrawDatasOffset = dynamicOffset;
 
 				memcpy(newData.data() + lodMaterialData.meshGroupsOffset + sizeof(MaterialMeshGroup) * matIndex, &materialMeshGroup, sizeof(MaterialMeshGroup));
@@ -296,10 +282,10 @@ namespace PaperRenderer
 				{
 					LODMesh const* lodMeshPtr = &modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex);
 					IndirectDrawData indirectDrawData = {};
-					indirectDrawData.drawCommandOffset = 
-						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getMeshesData().at(lodMeshPtr).drawCommandOffset;
-					indirectDrawData.outputObjectsOffset = 
-						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getMeshesData().at(lodMeshPtr).outputObjectsOffset;
+					indirectDrawData.instanceCountIndex = 
+						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getMeshesData().at(lodMeshPtr).drawCommandIndex;
+					indirectDrawData.matricesStartIndex = 
+						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getMeshesData().at(lodMeshPtr).matricesStartIndex;
 				
 					memcpy(newData.data() + materialMeshGroup.indirectDrawDatasOffset + sizeof(IndirectDrawData) * meshIndex, &indirectDrawData, sizeof(IndirectDrawData));
 				}

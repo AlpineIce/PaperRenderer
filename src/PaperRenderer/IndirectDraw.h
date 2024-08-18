@@ -28,21 +28,35 @@ namespace PaperRenderer
             class Model const* parentModelPtr = NULL;
             uint32_t lastRebuildInstanceCount = 0; //includes extra overhead
             uint32_t instanceCount = 0;
-            uint32_t drawCommandOffset = 0;
-            uint32_t outputObjectsOffset = 0;
+            uint32_t drawCommandIndex = 0;
+            uint32_t matricesStartIndex = 0;
         };
 
         //buffers and allocation
-        static std::unique_ptr<DeviceAllocation> drawDataAllocation;
+        static std::unique_ptr<DeviceAllocation> modelMatricesAllocation;
+        static std::unique_ptr<DeviceAllocation> drawCommandsAllocation;
+        static std::unique_ptr<Buffer> modelMatricesBuffer;
+        static std::unique_ptr<Buffer> drawCommandsBuffer;
         static std::list<CommonMeshGroup*> commonMeshGroups;
-        std::unique_ptr<Buffer> drawDataBuffer; //no need for a host visible copy since this is only written by compute shaders and read by the graphics pipeline. Draw counts does get reset to 0 though
+
+        struct BufferSizeRequirements
+        {
+            uint32_t drawCommandCount = 0;
+            uint32_t matricesCount = 0;
+
+            void operator +=(BufferSizeRequirements sizeRequirements)
+            {
+                drawCommandCount += sizeRequirements.drawCommandCount;
+                matricesCount += sizeRequirements.matricesCount;
+            }
+        };
 
         uint32_t drawCommandCount = 0;
         float instanceCountOverhead = 1.3;
         static std::vector<class ModelInstance*> rebuildAllocationAndBuffers(class RenderEngine* renderer);
         static bool rebuild;
-        void rebuildBuffer();
-        void setDrawCommandData();
+        BufferSizeRequirements getBuffersRequirements(const BufferSizeRequirements currentSizes);
+        void setDrawCommandData(const Buffer& stagingBuffer) const;
 
         std::mutex addAndRemoveLock;
         std::unordered_map<struct LODMesh const*, struct MeshInstancesData> meshesData;
@@ -63,7 +77,8 @@ namespace PaperRenderer
         void draw(const VkCommandBuffer& cmdBuffer, const class RasterPipeline& pipeline);
         void clearDrawCommand(const VkCommandBuffer& cmdBuffer);
 
-        VkDeviceAddress getBufferAddress() const { return (drawDataBuffer) ? drawDataBuffer->getBufferDeviceAddress() : 0; }
+        static Buffer const* getModelMatricesBuffer() { return modelMatricesBuffer.get(); }
+        static Buffer const* getDrawCommandsBuffer() { return drawCommandsBuffer.get(); }
         const std::unordered_map<struct LODMesh const*, MeshInstancesData>& getMeshesData() const { return meshesData; }
     };
 }

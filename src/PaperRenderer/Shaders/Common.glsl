@@ -53,20 +53,6 @@ layout(scalar, buffer_reference) readonly buffer ModelLODMeshGroups
     ModelLODMeshGroup groups[];
 };
 
-//mesh
-struct ModelMeshData
-{
-    uint vboOffset;
-    uint vertexCount;
-    uint iboOffset;
-    uint indexCount;
-};
-
-layout(scalar, buffer_reference) readonly buffer ModelLODMeshGroupMeshes
-{
-    ModelMeshData meshesData[];
-};
-
 //----------MODEL INSTANCE INPUT DATA----------//
 
 //model instance

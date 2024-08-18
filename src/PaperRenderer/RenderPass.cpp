@@ -53,6 +53,20 @@ namespace PaperRenderer
         inputRenderPassInstancesDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         descriptorSets[0].descriptorBindings[2] = inputRenderPassInstancesDescriptor;
 
+        VkDescriptorSetLayoutBinding instanceCountsDescriptor = {};
+        instanceCountsDescriptor.binding = 3;
+        instanceCountsDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        instanceCountsDescriptor.descriptorCount = 1;
+        instanceCountsDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        descriptorSets[0].descriptorBindings[3] = instanceCountsDescriptor;
+
+        VkDescriptorSetLayoutBinding modelMatricesDescriptor = {};
+        modelMatricesDescriptor.binding = 4;
+        modelMatricesDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        modelMatricesDescriptor.descriptorCount = 1;
+        modelMatricesDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        descriptorSets[0].descriptorBindings[4] = modelMatricesDescriptor;
+
         buildPipeline();
     }
     
@@ -113,12 +127,34 @@ namespace PaperRenderer
         bufferWrite2.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         bufferWrite2.infos = { bufferWrite2Info };
 
+        //set0 - binding 3: instance counts
+        VkDescriptorBufferInfo bufferWrite3Info = {};
+        bufferWrite3Info.buffer = CommonMeshGroup::getDrawCommandsBuffer()->getBuffer();
+        bufferWrite3Info.offset = 0;
+        bufferWrite3Info.range = VK_WHOLE_SIZE;
+
+        BuffersDescriptorWrites bufferWrite3 = {};
+        bufferWrite3.binding = 3;
+        bufferWrite3.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bufferWrite3.infos = { bufferWrite3Info };
+
+        //set0 - binding 4: output objects
+        VkDescriptorBufferInfo bufferWrite4Info = {};
+        bufferWrite4Info.buffer = CommonMeshGroup::getModelMatricesBuffer()->getBuffer();
+        bufferWrite4Info.offset = 0;
+        bufferWrite4Info.range = VK_WHOLE_SIZE;
+
+        BuffersDescriptorWrites bufferWrite4 = {};
+        bufferWrite4.binding = 4;
+        bufferWrite4.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bufferWrite4.infos = { bufferWrite4Info };
+
         //----------DISPATCH COMMANDS----------//
 
         bind(cmdBuffer);
 
         DescriptorWrites descriptorWritesInfo = {};
-        descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2 };
+        descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2, bufferWrite3, bufferWrite4 };
         descriptorWrites[0] = descriptorWritesInfo;
         writeDescriptorSet(cmdBuffer, 0);
 
@@ -302,19 +338,25 @@ namespace PaperRenderer
     void RenderPass::clearDrawCounts(VkCommandBuffer cmdBuffer)
     {
         //memory barrier
-        VkMemoryBarrier2 preClearMemBarrier = {};
-        preClearMemBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
-        preClearMemBarrier.pNext = NULL;
-        preClearMemBarrier.srcAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
-        preClearMemBarrier.srcStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
-        preClearMemBarrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-        preClearMemBarrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        VkBufferMemoryBarrier2 preClearMemBarrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+            .pNext = NULL,
+            .srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+            .srcAccessMask = VK_ACCESS_2_NONE,
+            .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = CommonMeshGroup::getDrawCommandsBuffer()->getBuffer(),
+            .offset = 0,
+            .size = VK_WHOLE_SIZE
+        };
 
         VkDependencyInfo preClearDependency = {};
         preClearDependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
         preClearDependency.pNext = NULL;
-        preClearDependency.memoryBarrierCount = 1;
-        preClearDependency.pMemoryBarriers = &preClearMemBarrier;
+        preClearDependency.bufferMemoryBarrierCount = 1;
+        preClearDependency.pBufferMemoryBarriers = &preClearMemBarrier;
 
         vkCmdPipelineBarrier2(cmdBuffer, &preClearDependency);
 
@@ -331,19 +373,25 @@ namespace PaperRenderer
         }
 
         //memory barrier
-        VkMemoryBarrier2 postClearMemBarrier = {};
-        postClearMemBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
-        postClearMemBarrier.pNext = NULL;
-        postClearMemBarrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-        postClearMemBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-        postClearMemBarrier.dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
-        postClearMemBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+        VkBufferMemoryBarrier2 postClearMemBarrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+            .pNext = NULL,
+            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            .dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = CommonMeshGroup::getDrawCommandsBuffer()->getBuffer(),
+            .offset = 0,
+            .size = VK_WHOLE_SIZE
+        };
 
         VkDependencyInfo postClearDependency = {};
         postClearDependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
         postClearDependency.pNext = NULL;
-        postClearDependency.memoryBarrierCount = 1;
-        postClearDependency.pMemoryBarriers = &postClearMemBarrier;
+        postClearDependency.bufferMemoryBarrierCount = 1;
+        postClearDependency.pBufferMemoryBarriers = &postClearMemBarrier;
 
         vkCmdPipelineBarrier2(cmdBuffer, &postClearDependency);
     }
@@ -399,6 +447,9 @@ namespace PaperRenderer
             
             vkCmdCopyBuffer2(cmdBuffer, &materialDataBufferCopyInfo);
 
+            //clear draw counts
+            clearDrawCounts(cmdBuffer);
+
             //memory barriers
             std::vector<VkBufferMemoryBarrier2> bufferTransferMemBarriers;
 
@@ -451,9 +502,9 @@ namespace PaperRenderer
             preprocessMemBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
             preprocessMemBarrier.pNext = NULL;
             preprocessMemBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-            preprocessMemBarrier.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
-            preprocessMemBarrier.dstStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
-            preprocessMemBarrier.dstAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
+            preprocessMemBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
+            preprocessMemBarrier.dstStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
+            preprocessMemBarrier.dstAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_READ_BIT;
 
             VkDependencyInfo preprocessDependencyInfo = {};
             preprocessDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
@@ -509,9 +560,6 @@ namespace PaperRenderer
 
             //end rendering
             vkCmdEndRendering(cmdBuffer);
-
-            //clear draw counts
-            clearDrawCounts(cmdBuffer);
 
             //post-render barriers
             if(renderPassInfo.postRenderBarriers)

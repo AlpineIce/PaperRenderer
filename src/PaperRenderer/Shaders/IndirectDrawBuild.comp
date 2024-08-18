@@ -45,9 +45,7 @@ layout(std430, buffer_reference) readonly buffer LODsMaterialData
 
 struct MaterialMeshGroup
 {
-    uint64_t bufferAddress;
     uint indirectDrawDatasOffset;
-    uint padding;
 };
 
 layout(std430, buffer_reference) readonly buffer LODsMaterialMeshGroups
@@ -58,8 +56,8 @@ layout(std430, buffer_reference) readonly buffer LODsMaterialMeshGroups
 //mesh group data
 struct IndirectDrawData
 {
-    uint drawCommandOffset;
-    uint outputObjectsOffset;
+    uint drawCommandIndex;
+    uint matricesStartIndex;
 };
 
 layout(std430, buffer_reference) readonly buffer IndirectDrawDatas
@@ -67,15 +65,8 @@ layout(std430, buffer_reference) readonly buffer IndirectDrawDatas
     IndirectDrawData datas[]; //count grabbed from model and is assumed to be in order
 };
 
-//----------OUTPUT DATA----------//
+//----------MODEL MATRICES AND DRAW COMMANDS----------//
 
-//draw counts
-layout(std430, buffer_reference) buffer DrawCounts
-{
-    uint count;
-};
-
-//draw commands
 struct DrawCommand
 {
     uint indexCount;
@@ -85,17 +76,15 @@ struct DrawCommand
     uint firstInstance;
 };
 
-layout(std430, buffer_reference) buffer DrawCommands
+layout(scalar, set = 0, binding = 3) buffer DrawCommands
 {
     DrawCommand commands[];
-};
+} drawCommands;
 
-//output model matrices
-
-layout(std430, buffer_reference) writeonly buffer OutputObjects
+layout(scalar, set = 0, binding = 4) writeonly buffer OutputObjects
 {
     mat4 modelMatrices[];
-};
+} outputObjects;
 
 //----------ENTRY POINT----------//
 
@@ -122,7 +111,7 @@ void main()
     }
     
     //indirect draw build if visible
-    if(true)
+    if(visible)
     {
         //get LOD
         uint lodLevel = min(getLODLevel(modelInstance, model, inputData.camPos), model.lodCount - 1);
@@ -139,21 +128,14 @@ void main()
             //loop through material meshes
             for(uint meshIndex = 0; meshIndex < modelMeshGroup.meshCount; meshIndex++)
             {
-                ModelMeshData meshData = ModelLODMeshGroupMeshes(inputData.modelDataPtr + uint64_t(modelInstance.modelDataOffset + modelMeshGroup.meshesOffset)).meshesData[meshIndex];
+                //draw data
                 IndirectDrawData indirectDrawData = IndirectDrawDatas(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset + materialMeshGroup.indirectDrawDatasOffset)).datas[meshIndex];
 
-                //draw counts and output objects
-                uint64_t inputMaterialPtr = inputData.materialDataPtr;
-                uint64_t inputModelPtr = inputData.modelDataPtr;
-                uint64_t commandAddress = materialMeshGroup.bufferAddress;
-                uint64_t objectsAddress = materialMeshGroup.bufferAddress + uint64_t(indirectDrawData.outputObjectsOffset);
-                DrawCommands outputCommands = DrawCommands(materialMeshGroup.bufferAddress);
-                OutputObjects outputObjects = OutputObjects(materialMeshGroup.bufferAddress + uint64_t(indirectDrawData.outputObjectsOffset));
-
-                uint writeIndex = atomicAdd(outputCommands.commands[indirectDrawData.drawCommandOffset].instanceCount, 1);
+                //instance count
+                uint writeIndex = atomicAdd(drawCommands.commands[indirectDrawData.drawCommandIndex].instanceCount, 1);
 
                 //output objects
-                outputObjects.modelMatrices[gID] = modelMatrix;
+                outputObjects.modelMatrices[writeIndex + indirectDrawData.matricesStartIndex] = modelMatrix;
             }
         }
     }

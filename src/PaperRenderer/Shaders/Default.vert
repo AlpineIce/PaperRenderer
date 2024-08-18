@@ -29,7 +29,6 @@ void main()
 {
     normal = normalize(mat3(transpose(inverse(objBuffer.data[gl_InstanceIndex].model))) * vertexNormal);
     texCoord = vertexTexCoord;
-    
     worldPosition = vec3(objBuffer.data[gl_InstanceIndex].model * vec4(vertexPosition, 1.0)).xyz;
 
     gl_Position = inputData.projection * inputData.view * objBuffer.data[gl_InstanceIndex].model *  vec4(vertexPosition, 1.0);

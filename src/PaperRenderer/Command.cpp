@@ -50,9 +50,14 @@ namespace PaperRenderer
     {
         if(isInit)
         {
+            std::unordered_map<QueueType, std::vector<VkCommandBuffer>> sortedCommandBuffers;
             for(CommandBuffer& cmdBuffer : commandBuffers)
             {
-                vkFreeCommandBuffers(device, commandPools.at(cmdBuffer.type), 1, &cmdBuffer.buffer);
+                sortedCommandBuffers[cmdBuffer.type].push_back(cmdBuffer.buffer);
+            }
+            for(const auto& [type, buffers] : sortedCommandBuffers)
+            {
+                vkFreeCommandBuffers(device, commandPools.at(type), buffers.size(), buffers.data());
             }
         }
         else
