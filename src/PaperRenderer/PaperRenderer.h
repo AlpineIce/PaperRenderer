@@ -92,7 +92,7 @@ namespace PaperRenderer
         const VkSemaphore& beginFrame(
             const std::vector<VkFence> &waitFences,
             const std::vector<BinarySemaphorePair> &binaryBufferCopySignalSemaphores,
-            const std::vector<BinarySemaphorePair> &timelineBufferCopySignalSemaphores
+            const std::vector<TimelineSemaphorePair> &timelineBufferCopySignalSemaphores
         );
         void endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
 

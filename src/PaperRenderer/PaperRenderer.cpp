@@ -252,7 +252,7 @@ namespace PaperRenderer
     const VkSemaphore& RenderEngine::beginFrame(
         const std::vector<VkFence> &waitFences,
         const std::vector<BinarySemaphorePair> &binaryBufferCopySignalSemaphores,
-        const std::vector<BinarySemaphorePair> &timelineBufferCopySignalSemaphores
+        const std::vector<TimelineSemaphorePair> &timelineBufferCopySignalSemaphores
     )
     {
         //wait for fences
