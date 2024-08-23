@@ -19,7 +19,10 @@ message("Vulkan Version: ${Vulkan_VERSION}")
 
 #VOLK
 message("Getting Volk package")
-find_package(Volk REQUIRED)
+set(VOLK_SOURCE_DIR "${PROJECT_SOURCE_DIR}/lib/volk")
+add_subdirectory(${VOLK_SOURCE_DIR})
+target_link_libraries(${PROJECT_NAME} PUBLIC volk)
+target_include_directories(volk PUBLIC "$<BUILD_INTERFACE:${VOLK_SOURCE_DIR}>$<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/volk>")
 
 #GLM
 message("Getting GLM package")
