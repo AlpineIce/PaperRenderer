@@ -1,0 +1,6 @@
+[submodule "lib/glfw"]
+	path = lib/glfw
+	url = https://github.com/glfw/glfw.git
+[submodule "lib/volk"]
+	path = lib/volk
+	url = https://github.com/zeux/volk.git
