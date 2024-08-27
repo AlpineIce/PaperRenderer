@@ -1,4 +1,13 @@
 #include "PaperRenderer.h"
+#define VK_NO_PROTOTYPES
+#include "volk.h"
+#define VMA_IMPLEMENTATION
+#define VMA_VULKAN_VERSION 1003000
+#define VMA_STATIC_VULKAN_FUNCTIONS 0
+#define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
+#include "vk_mem_alloc.h"
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE 
+#include "glm/glm.hpp"
 
 #include <iostream>
 #include <math.h>
