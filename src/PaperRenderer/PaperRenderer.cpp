@@ -7,14 +7,14 @@ namespace PaperRenderer
 {
     RenderEngine::RenderEngine(RendererCreationStruct creationInfo)
         :shadersDir(creationInfo.shadersDir),
-        device(creationInfo.windowState.windowName),
+        device(this, creationInfo.windowState.windowName),
         swapchain(this, creationInfo.windowState),
-        descriptors(&device),
+        descriptors(this),
         pipelineBuilder(this),
         rasterPreprocessPipeline(this, creationInfo.shadersDir),
         tlasInstanceBuildPipeline(this, creationInfo.shadersDir)
     {
-        copyFence = Commands::getSignaledFence(device.getDevice());
+        copyFence = Commands::getSignaledFence(this);
 
         rebuildBuffersAndAllocations();
 
@@ -28,7 +28,7 @@ namespace PaperRenderer
         vkDeviceWaitIdle(device.getDevice());
     
         //free cmd buffers
-        Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers);
+        Commands::freeCommandBuffers(this, usedCmdBuffers);
         usedCmdBuffers.clear();
 
         vkDestroyFence(device.getDevice(), copyFence, nullptr);
@@ -110,15 +110,13 @@ namespace PaperRenderer
         BufferInfo hostModelsBufferInfo = {};
         hostModelsBufferInfo.size = rebuildSize * modelsDataOverhead;
         hostModelsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        hostModelsBufferInfo.queueFamiliesIndices = device.getQueueFamiliesIndices();
-        hostModelDataBuffer = std::make_unique<FragmentableBuffer>(device.getDevice(), hostModelsBufferInfo);
+        hostModelDataBuffer = std::make_unique<FragmentableBuffer>(this, hostModelsBufferInfo);
         hostModelDataBuffer->setCompactionCallback([this](std::vector<CompactionResult> results){ handleModelDataCompaction(results); });
 
         BufferInfo deviceModelsBufferInfo = {};
         deviceModelsBufferInfo.size = hostModelsBufferInfo.size;
         deviceModelsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
-        deviceModelsBufferInfo.queueFamiliesIndices = device.getQueueFamiliesIndices();
-        deviceModelDataBuffer = std::make_unique<Buffer>(device.getDevice(), deviceModelsBufferInfo);
+        deviceModelDataBuffer = std::make_unique<Buffer>(this, deviceModelsBufferInfo);
     }
 
     void RenderEngine::handleModelDataCompaction(std::vector<CompactionResult> results) //UNTESTED FUNCTION
@@ -150,15 +148,13 @@ namespace PaperRenderer
         BufferInfo hostBufferInfo = {};
         hostBufferInfo.size = std::max((VkDeviceSize)(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance) * instancesDataOverhead), (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
         hostBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        hostBufferInfo.queueFamiliesIndices = device.getQueueFamiliesIndices();
-        hostInstancesDataBuffer = std::make_unique<Buffer>(device.getDevice(), hostBufferInfo);
+        hostInstancesDataBuffer = std::make_unique<Buffer>(this, hostBufferInfo);
 
         //device local
         BufferInfo deviceBufferInfo = {};
         deviceBufferInfo.size = hostBufferInfo.size; //same size as host visible buffer
         deviceBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
-        deviceBufferInfo.queueFamiliesIndices = device.getQueueFamiliesIndices();
-        deviceInstancesDataBuffer = std::make_unique<Buffer>(device.getDevice(), deviceBufferInfo);
+        deviceInstancesDataBuffer = std::make_unique<Buffer>(this, deviceBufferInfo);
     }
 
     void RenderEngine::addModelData(Model* model)
@@ -269,7 +265,7 @@ namespace PaperRenderer
         vkResetFences(device.getDevice(), allWaitFences.size(), allWaitFences.data());
 
         //free command buffers and reset descriptor pool
-        Commands::freeCommandBuffers(device.getDevice(), usedCmdBuffers);
+        Commands::freeCommandBuffers(this, usedCmdBuffers);
         usedCmdBuffers.clear();
         descriptors.refreshPools();
 
@@ -284,7 +280,7 @@ namespace PaperRenderer
         modelsRegion.dstOffset = 0;
         modelsRegion.size = hostModelDataBuffer->getStackLocation();
 
-        VkCommandBuffer transferBuffer = Commands::getCommandBuffer(device.getDevice(), QueueType::TRANSFER);
+        VkCommandBuffer transferBuffer = Commands::getCommandBuffer(this, QueueType::TRANSFER);
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -303,7 +299,7 @@ namespace PaperRenderer
         bufferCopySync.timelineSignalPairs = timelineBufferCopySignalSemaphores;
         bufferCopySync.fence = copyFence;
 
-        Commands::submitToQueue(device.getDevice(), bufferCopySync, { transferBuffer });
+        Commands::submitToQueue(bufferCopySync, { transferBuffer });
         recycleCommandBuffer({ transferBuffer, QueueType::TRANSFER });
 
         return imageAcquireSemaphore;

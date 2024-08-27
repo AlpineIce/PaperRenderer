@@ -23,7 +23,6 @@ namespace PaperRenderer
     {
         VkDeviceSize size = 0;
         VkBufferUsageFlagBits2KHR usageFlags;
-        QueueFamiliesIndices queueFamiliesIndices = {};
     };
 
     struct BufferWrite
@@ -42,13 +41,13 @@ namespace PaperRenderer
         ResourceBindingInfo bindingInfo;
         VkMemoryRequirements2 memRequirements;
 
-        VkDevice device;
+        class RenderEngine* rendererPtr;
         DeviceAllocation* allocationPtr;
 
         virtual int assignAllocation(DeviceAllocation* allocation); //uses vulkan result for convenience
 
     public:
-        VulkanResource(VkDevice device);
+        VulkanResource(class RenderEngine* renderer);
         virtual ~VulkanResource();
 
         VkDeviceSize getSize() const { return size; }
@@ -66,7 +65,7 @@ namespace PaperRenderer
         void* hostDataPtr = NULL;
         
     public:
-        Buffer(VkDevice device, const BufferInfo& bufferInfo);
+        Buffer(class RenderEngine* renderer, const BufferInfo& bufferInfo);
         ~Buffer() override;
 
         int assignAllocation(DeviceAllocation* allocation) override;
@@ -113,11 +112,11 @@ namespace PaperRenderer
 
         std::function<void(std::vector<CompactionResult>)> compactionCallback = NULL;
 
-        const VkDevice& device;
+        class RenderEngine* rendererPtr;
         DeviceAllocation* allocationPtr = NULL;
 
     public:
-        FragmentableBuffer(VkDevice device, const BufferInfo& bufferInfo);
+        FragmentableBuffer(class RenderEngine* renderer, const BufferInfo& bufferInfo);
         ~FragmentableBuffer();
 
         //Callback for when a compaction occurs. Extremely useful for re-referencing, with the function taking in std::vector<CompactionResult>
@@ -171,14 +170,14 @@ namespace PaperRenderer
         CommandBuffer generateMipmaps(const SynchronizationInfo& synchronizationInfo);
 
     public:
-        Image(VkDevice device, const ImageInfo& imageInfo);
+        Image(class RenderEngine* renderer, const ImageInfo& imageInfo);
         ~Image() override;
 
         int assignAllocation(DeviceAllocation* allocation);
         void setImageData(const Buffer& imageStagingBuffer);
 
-        static VkImageView getNewImageView(const Image& image, VkDevice device, VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format);
-        static VkSampler getNewSampler(const Image& image, VkDevice device, VkPhysicalDevice gpu);
+        static VkImageView getNewImageView(const Image& image, class RenderEngine* renderer, VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format);
+        static VkSampler getNewSampler(const Image& image, class RenderEngine* renderer);
 
         const VkImage& getImage() const { return image; }
         const VkExtent3D getExtent() const { return imageInfo.extent; }\

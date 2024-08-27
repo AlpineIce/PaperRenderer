@@ -74,9 +74,7 @@ namespace PaperRenderer
     class Commands
     {
     private:
-        VkDevice device;
-        VkPhysicalDevice gpu;
-        VkSurfaceKHR surface;
+        class RenderEngine* rendererPtr;
 
         static std::unordered_map<QueueType, QueuesInFamily>* queuesPtr;
         static std::unordered_map<QueueType, VkCommandPool> commandPools;
@@ -86,16 +84,16 @@ namespace PaperRenderer
         static bool isInit;
         
     public:
-        Commands(VkDevice device, VkPhysicalDevice gpu, VkSurfaceKHR surface, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr);
+        Commands(class RenderEngine* renderer, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr);
         ~Commands();
 
-        static void freeCommandBuffers(VkDevice device, std::vector<CommandBuffer>& commandBuffers);
-        static void submitToQueue(VkDevice device, const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers);
+        static void freeCommandBuffers(class RenderEngine* renderer, std::vector<CommandBuffer>& commandBuffers);
+        static void submitToQueue(const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers);
 
-        static VkSemaphore getSemaphore(VkDevice device);
-        static VkSemaphore getTimelineSemaphore(VkDevice device, uint64_t initialValue);
-        static VkFence getSignaledFence(VkDevice device);
-        static VkFence getUnsignaledFence(VkDevice device);
-        static VkCommandBuffer getCommandBuffer(VkDevice device, QueueType type);
+        static VkSemaphore getSemaphore(class RenderEngine* renderer);
+        static VkSemaphore getTimelineSemaphore(class RenderEngine* renderer, uint64_t initialValue);
+        static VkFence getSignaledFence(class RenderEngine* renderer);
+        static VkFence getUnsignaledFence(class RenderEngine* renderer);
+        static VkCommandBuffer getCommandBuffer(class RenderEngine* renderer, QueueType type);
     };
 }

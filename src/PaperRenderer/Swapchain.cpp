@@ -45,7 +45,7 @@ namespace PaperRenderer
         }
 
         //surface and device creation
-        VkResult result = glfwCreateWindowSurface(rendererPtr->getDevice()->getInstance(), window, nullptr, rendererPtr->getDevice()->getSurfacePtr());
+        VkResult result = glfwCreateWindowSurface(rendererPtr->getDevice()->getInstance(), window, nullptr, (VkSurfaceKHR*)(&rendererPtr->getDevice()->getSurface()));
         if(result != VK_SUCCESS)
         {
             throw std::runtime_error("Window surface creation failed");
@@ -55,9 +55,9 @@ namespace PaperRenderer
         //----------PRESENT MODE----------//
 
         uint32_t presentModeCount;
-        vkGetPhysicalDeviceSurfacePresentModesKHR(rendererPtr->getDevice()->getGPU(), *(rendererPtr->getDevice()->getSurfacePtr()), &presentModeCount, nullptr);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(rendererPtr->getDevice()->getGPU(), rendererPtr->getDevice()->getSurface(), &presentModeCount, nullptr);
         std::vector<VkPresentModeKHR> presentModes(presentModeCount);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(rendererPtr->getDevice()->getGPU(), *(rendererPtr->getDevice()->getSurfacePtr()), &presentModeCount, presentModes.data());
+        vkGetPhysicalDeviceSurfacePresentModesKHR(rendererPtr->getDevice()->getGPU(), rendererPtr->getDevice()->getSurface(), &presentModeCount, presentModes.data());
 
         for(VkPresentModeKHR presentMode : presentModes)
         {
@@ -82,12 +82,12 @@ namespace PaperRenderer
 
         //sync
         VkSurfaceCapabilitiesKHR capabilities;
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(rendererPtr->getDevice()->getGPU(), *(rendererPtr->getDevice()->getSurfacePtr()), &capabilities);
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(rendererPtr->getDevice()->getGPU(), rendererPtr->getDevice()->getSurface(), &capabilities);
 
         imageSemaphores.resize(capabilities.minImageCount);
         for(uint32_t i = 0; i < capabilities.minImageCount; i++)
         {
-            imageSemaphores.at(i) = PaperRenderer::Commands::getSemaphore(rendererPtr->getDevice()->getDevice());
+            imageSemaphores.at(i) = PaperRenderer::Commands::getSemaphore(rendererPtr);
         }
     }
 
@@ -106,7 +106,7 @@ namespace PaperRenderer
         }
 
         //glfw window and surface
-        vkDestroySurfaceKHR(rendererPtr->getDevice()->getInstance(), *rendererPtr->getDevice()->getSurfacePtr(), nullptr);
+        vkDestroySurfaceKHR(rendererPtr->getDevice()->getInstance(), rendererPtr->getDevice()->getSurface(), nullptr);
         glfwDestroyWindow(window);
     }
 
@@ -167,9 +167,9 @@ namespace PaperRenderer
         //----------COLOR SPACE SELECTION----------//
 
         uint32_t formatCount;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(rendererPtr->getDevice()->getGPU(), *(rendererPtr->getDevice()->getSurfacePtr()), &formatCount, nullptr);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(rendererPtr->getDevice()->getGPU(), rendererPtr->getDevice()->getSurface(), &formatCount, nullptr);
         std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(rendererPtr->getDevice()->getGPU(), *(rendererPtr->getDevice()->getSurfacePtr()), &formatCount, surfaceFormats.data());
+        vkGetPhysicalDeviceSurfaceFormatsKHR(rendererPtr->getDevice()->getGPU(), rendererPtr->getDevice()->getSurface(), &formatCount, surfaceFormats.data());
         
         this->swapchainImageFormat = VK_FORMAT_UNDEFINED;
 
@@ -231,7 +231,7 @@ namespace PaperRenderer
         //----------BUILD----------//
 
         VkSurfaceCapabilitiesKHR capabilities;
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(rendererPtr->getDevice()->getGPU(), *(rendererPtr->getDevice()->getSurfacePtr()), &capabilities);
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(rendererPtr->getDevice()->getGPU(), rendererPtr->getDevice()->getSurface(), &capabilities);
         this->swapchainExtent.width = std::min(currentWindowState.resX, capabilities.maxImageExtent.width);
         this->swapchainExtent.height = std::min(currentWindowState.resY, capabilities.maxImageExtent.height);
 
@@ -239,7 +239,7 @@ namespace PaperRenderer
         swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
         swapchainInfo.pNext = NULL;
         swapchainInfo.flags =  0;
-        swapchainInfo.surface = *(rendererPtr->getDevice()->getSurfacePtr());
+        swapchainInfo.surface = rendererPtr->getDevice()->getSurface();
         swapchainInfo.minImageCount = std::max(capabilities.minImageCount, (uint32_t)2);
         swapchainInfo.imageFormat = this->swapchainImageFormat;
         swapchainInfo.imageColorSpace = this->imageColorSpace;

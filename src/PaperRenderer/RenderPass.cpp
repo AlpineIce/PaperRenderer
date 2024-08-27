@@ -15,8 +15,7 @@ namespace PaperRenderer
         BufferInfo preprocessBufferInfo = {};
         preprocessBufferInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
         preprocessBufferInfo.size = sizeof(UBOInputData);
-        preprocessBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-        uniformBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), preprocessBufferInfo);
+        uniformBuffer = std::make_unique<Buffer>(rendererPtr, preprocessBufferInfo);
 
         //uniform buffer allocation and assignment
         VkDeviceSize ubosAllocationSize = DeviceAllocation::padToMultiple(uniformBuffer->getMemoryRequirements().size, 
@@ -283,29 +282,25 @@ namespace PaperRenderer
         VkDeviceSize newInstancesMaterialDataBufferSize = newMaterialDataBufferSize * instancesOverhead;
 
         BufferInfo hostInstancesBufferInfo = {};
-        hostInstancesBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
         hostInstancesBufferInfo.size = newInstancesBufferSize;
         hostInstancesBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        hostInstancesBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), hostInstancesBufferInfo);
+        hostInstancesBuffer = std::make_unique<Buffer>(rendererPtr, hostInstancesBufferInfo);
 
         BufferInfo hostInstancesMaterialDataBufferInfo = {};
-        hostInstancesMaterialDataBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
         hostInstancesMaterialDataBufferInfo.size = newInstancesMaterialDataBufferSize;
         hostInstancesMaterialDataBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        hostInstancesDataBuffer = std::make_unique<FragmentableBuffer>(rendererPtr->getDevice()->getDevice(), hostInstancesMaterialDataBufferInfo);
+        hostInstancesDataBuffer = std::make_unique<FragmentableBuffer>(rendererPtr, hostInstancesMaterialDataBufferInfo);
         hostInstancesDataBuffer->setCompactionCallback([this](std::vector<CompactionResult> results){ handleMaterialDataCompaction(results); });
 
         BufferInfo deviceInstancesBufferInfo = {};
-        deviceInstancesBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
         deviceInstancesBufferInfo.size = newInstancesBufferSize;
         deviceInstancesBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
-        deviceInstancesBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), deviceInstancesBufferInfo);
+        deviceInstancesBuffer = std::make_unique<Buffer>(rendererPtr, deviceInstancesBufferInfo);
 
         BufferInfo deviceInstancesMaterialDataBufferInfo = {};
-        deviceInstancesMaterialDataBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
         deviceInstancesMaterialDataBufferInfo.size = newInstancesMaterialDataBufferSize;
         deviceInstancesMaterialDataBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
-        deviceInstancesDataBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), deviceInstancesMaterialDataBufferInfo);
+        deviceInstancesDataBuffer = std::make_unique<Buffer>(rendererPtr, deviceInstancesMaterialDataBufferInfo);
     }
 
     void RenderPass::handleMaterialDataCompaction(std::vector<CompactionResult> results) //UNTESTED

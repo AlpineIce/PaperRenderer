@@ -1,11 +1,10 @@
 #include "Descriptor.h"
-#include "Device.h"
-#include "AccelerationStructure.h"
+#include "PaperRenderer.h"
 
 namespace PaperRenderer
 {
-    DescriptorAllocator::DescriptorAllocator(Device *device)
-        :devicePtr(device)
+    DescriptorAllocator::DescriptorAllocator(RenderEngine* renderer)
+        :rendererPtr(renderer)
     {
     }
     
@@ -13,7 +12,7 @@ namespace PaperRenderer
     {   
         for(VkDescriptorPool& pool : descriptorPools)
         {
-            vkDestroyDescriptorPool(devicePtr->getDevice(), pool, nullptr);
+            vkDestroyDescriptorPool(rendererPtr->getDevice()->getDevice(), pool, nullptr);
         }
     }
 
@@ -45,7 +44,7 @@ namespace PaperRenderer
         poolInfo.pPoolSizes = poolSizes.data();
 
         VkDescriptorPool returnPool;
-        VkResult result = vkCreateDescriptorPool(devicePtr->getDevice(), &poolInfo, nullptr, &returnPool);
+        VkResult result = vkCreateDescriptorPool(rendererPtr->getDevice()->getDevice(), &poolInfo, nullptr, &returnPool);
         if(result != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to create descriptor pool");
@@ -65,21 +64,21 @@ namespace PaperRenderer
         allocInfo.descriptorSetCount = 1;
         allocInfo.pSetLayouts = &setLayout;
 
-        VkResult result = vkAllocateDescriptorSets(devicePtr->getDevice(), &allocInfo, &returnSet);
+        VkResult result = vkAllocateDescriptorSets(rendererPtr->getDevice()->getDevice(), &allocInfo, &returnSet);
 
         if(result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL)
         {
             descriptorPools.push_back(allocateDescriptorPool());
             currentPool = &(descriptorPools.back());
 
-            result = vkAllocateDescriptorSets(devicePtr->getDevice(), &allocInfo, &returnSet);
+            result = vkAllocateDescriptorSets(rendererPtr->getDevice()->getDevice(), &allocInfo, &returnSet);
             if(result != VK_SUCCESS) throw std::runtime_error("Descriptor allocator failed");
         }
 
         return returnSet;
     }
 
-    void DescriptorAllocator::writeUniforms(VkDevice device, VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo)
+    void DescriptorAllocator::writeUniforms(RenderEngine* renderer, VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo)
     {
         //4 different writes for 4 different types
         std::vector<VkWriteDescriptorSet> descriptorWrites;
@@ -185,11 +184,11 @@ namespace PaperRenderer
         
         if(descriptorWrites.size()) //valid usage per spec, encouraging runtime safety
         {
-            vkUpdateDescriptorSets(device, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
+            vkUpdateDescriptorSets(renderer->getDevice()->getDevice(), descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
         }
     }
 
-    void DescriptorAllocator::bindSet(VkDevice device, VkCommandBuffer cmdBuffer, const DescriptorBind& bindingInfo)
+    void DescriptorAllocator::bindSet(VkCommandBuffer cmdBuffer, const DescriptorBind& bindingInfo)
     {
         vkCmdBindDescriptorSets(
             cmdBuffer,
@@ -206,7 +205,7 @@ namespace PaperRenderer
     {
         for(VkDescriptorPool& pool : descriptorPools)
         {
-            vkDestroyDescriptorPool(devicePtr->getDevice(), pool, nullptr);
+            vkDestroyDescriptorPool(rendererPtr->getDevice()->getDevice(), pool, nullptr);
         }
         descriptorPools.resize(0);
         descriptorPools.push_back(allocateDescriptorPool());

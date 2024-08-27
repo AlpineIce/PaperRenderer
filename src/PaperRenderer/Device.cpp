@@ -1,11 +1,13 @@
 #include "Device.h"
+#include "PaperRenderer.h"
 
 #include <iostream>
 #include <unordered_map>
 
 namespace PaperRenderer
 {
-    Device::Device(std::string appName)
+    Device::Device(RenderEngine* renderer, std::string appName)
+        :rendererPtr(renderer)
     {
         //volk
         VkResult result = volkInitialize();
@@ -396,7 +398,7 @@ namespace PaperRenderer
         vmaFunctions.vkCmdCopyBuffer                     = vkCmdCopyBuffer;
 
         VmaAllocatorCreateInfo allocatorCreateInfo = {};
-        allocatorCreateInfo.flags = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT;
+        allocatorCreateInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
         allocatorCreateInfo.vulkanApiVersion = VK_API_VERSION_1_3;
         allocatorCreateInfo.physicalDevice = GPU;
         allocatorCreateInfo.device = device;
@@ -409,7 +411,7 @@ namespace PaperRenderer
         retrieveQueues(queuesCreationInfo);
 
         //command pools init
-        commands = std::make_unique<Commands>(device, GPU, surface, &queues);
+        commands = std::make_unique<Commands>(rendererPtr, &queues);
     }
 
     QueueFamiliesIndices Device::getQueueFamiliesIndices() const

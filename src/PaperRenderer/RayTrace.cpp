@@ -69,7 +69,7 @@ namespace PaperRenderer
         commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         commandInfo.pInheritanceInfo = NULL;
 
-        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), QueueType::COMPUTE);
+        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr, QueueType::COMPUTE);
         vkBeginCommandBuffer(cmdBuffer, &commandInfo);
 
         //bind RT pipeline
@@ -80,7 +80,7 @@ namespace PaperRenderer
             rtRenderInfo.rtDescriptorWrites.imageWrites.size() || rtRenderInfo.rtDescriptorWrites.accelerationStructureWrites.size())
         {
             VkDescriptorSet rtDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(0));
-            DescriptorAllocator::writeUniforms(rendererPtr->getDevice()->getDevice(), rtDescriptorSet, rtRenderInfo.rtDescriptorWrites);
+            DescriptorAllocator::writeUniforms(rendererPtr, rtDescriptorSet, rtRenderInfo.rtDescriptorWrites);
 
             DescriptorBind bindingInfo = {};
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
@@ -88,7 +88,7 @@ namespace PaperRenderer
             bindingInfo.descriptorScope = 0;
             bindingInfo.layout = pipeline->getLayout();
             
-            DescriptorAllocator::bindSet(rendererPtr->getDevice()->getDevice(), cmdBuffer, bindingInfo);
+            DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
         }
 
         //pre-pipeline barrier
@@ -119,7 +119,7 @@ namespace PaperRenderer
         vkEndCommandBuffer(cmdBuffer);
         
         //submit
-        Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), syncInfo, { cmdBuffer });
+        Commands::submitToQueue(syncInfo, { cmdBuffer });
 
         CommandBuffer commandBuffer = { cmdBuffer, syncInfo.queueType };
         rendererPtr->recycleCommandBuffer(commandBuffer);

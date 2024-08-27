@@ -62,16 +62,14 @@ namespace PaperRenderer
 
         //rebuild buffers
         BufferInfo matricesBufferInfo = {};
-        matricesBufferInfo.queueFamiliesIndices = renderer->getDevice()->getQueueFamiliesIndices();
         matricesBufferInfo.size = bufferSizeRequirements.matricesCount * sizeof(ShaderOutputObject);
         matricesBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
-        modelMatricesBuffer = std::make_unique<Buffer>(renderer->getDevice()->getDevice(), matricesBufferInfo);
+        modelMatricesBuffer = std::make_unique<Buffer>(renderer, matricesBufferInfo);
 
         BufferInfo drawCommandsBufferInfo = {};
-        drawCommandsBufferInfo.queueFamiliesIndices = renderer->getDevice()->getQueueFamiliesIndices();
         drawCommandsBufferInfo.size = bufferSizeRequirements.drawCommandCount * sizeof(VkDrawIndexedIndirectCommand);
         drawCommandsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR;
-        drawCommandsBuffer = std::make_unique<Buffer>(renderer->getDevice()->getDevice(), drawCommandsBufferInfo);
+        drawCommandsBuffer = std::make_unique<Buffer>(renderer, drawCommandsBufferInfo);
 
         //rebuild allocations and assign memory
         DeviceAllocationInfo modelMatricesAllocInfo = {};
@@ -96,10 +94,9 @@ namespace PaperRenderer
         DeviceAllocation stagingAllocation(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), stagingAllocationInfo);
 
         BufferInfo stagingBufferInfo = {};
-        stagingBufferInfo.queueFamiliesIndices = renderer->getDevice()->getQueueFamiliesIndices();
         stagingBufferInfo.size = bufferSizeRequirements.drawCommandCount * sizeof(VkDrawIndexedIndirectCommand);
         stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        Buffer stagingBuffer(renderer->getDevice()->getDevice(), stagingBufferInfo);
+        Buffer stagingBuffer(renderer, stagingBufferInfo);
         stagingBuffer.assignAllocation(&stagingAllocation);
 
         for(const auto& commonMeshGroup : commonMeshGroups)
@@ -115,7 +112,7 @@ namespace PaperRenderer
 
         SynchronizationInfo syncInfo = {};
         syncInfo.queueType = TRANSFER;
-        syncInfo.fence = Commands::getUnsignaledFence(renderer->getDevice()->getDevice());
+        syncInfo.fence = Commands::getUnsignaledFence(renderer);
 
         drawCommandsBuffer->copyFromBufferRanges(stagingBuffer, { drawCommandsRegion }, syncInfo);
 
@@ -247,7 +244,7 @@ namespace PaperRenderer
 
             DescriptorWrites descriptorWritesInfo = {};
             descriptorWritesInfo.bufferWrites = { write };
-            DescriptorAllocator::writeUniforms(rendererPtr->getDevice()->getDevice(), objDescriptorSet, descriptorWritesInfo);
+            DescriptorAllocator::writeUniforms(rendererPtr, objDescriptorSet, descriptorWritesInfo);
 
             //bind set
             DescriptorBind bindingInfo = {};
@@ -255,7 +252,7 @@ namespace PaperRenderer
             bindingInfo.set = objDescriptorSet;
             bindingInfo.layout = pipeline.getLayout();
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-            DescriptorAllocator::bindSet(rendererPtr->getDevice()->getDevice(), cmdBuffer, bindingInfo);
+            DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
 
             //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)
             meshData.parentModelPtr->bindBuffers(cmdBuffer);

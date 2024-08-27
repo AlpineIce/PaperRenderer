@@ -15,8 +15,7 @@ namespace PaperRenderer
         BufferInfo uboInfo = {};
         uboInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
         uboInfo.size = sizeof(UBOInputData);
-        uboInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-        uniformBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), uboInfo);
+        uniformBuffer = std::make_unique<Buffer>(rendererPtr, uboInfo);
 
         //uniform buffers allocation and assignment
         VkDeviceSize uboAllocationSize = DeviceAllocation::padToMultiple(uniformBuffer->getMemoryRequirements().size, 
@@ -149,16 +148,14 @@ namespace PaperRenderer
     {
         BufferInfo bufferInfo = {};
         bufferInfo.size = 256; //arbitrary starting size
-        bufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-        
         bufferInfo.usageFlags =    VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-        BLBuffer =          std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
+        BLBuffer =          std::make_unique<Buffer>(rendererPtr, bufferInfo);
         bufferInfo.usageFlags =    VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-        TLInstancesBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
+        TLInstancesBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
         bufferInfo.usageFlags =    VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-        TLBuffer =          std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
+        TLBuffer =          std::make_unique<Buffer>(rendererPtr, bufferInfo);
         bufferInfo.usageFlags =    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-        scratchBuffer =     std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
+        scratchBuffer =     std::make_unique<Buffer>(rendererPtr, bufferInfo);
 
         accelerationStructures.push_back(this);
 
@@ -268,16 +265,14 @@ namespace PaperRenderer
             (VkDeviceSize)(sizeof(ModelInstance::AccelerationStructureInstance) * 64));
 
         BufferInfo hostInstancesBufferInfo = {};
-        hostInstancesBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
         hostInstancesBufferInfo.size = newInstancesBufferSize;
         hostInstancesBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        hostInstancesBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), hostInstancesBufferInfo);
+        hostInstancesBuffer = std::make_unique<Buffer>(rendererPtr, hostInstancesBufferInfo);
 
         BufferInfo deviceInstancesBufferInfo = {};
-        deviceInstancesBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
         deviceInstancesBufferInfo.size = newInstancesBufferSize;
         deviceInstancesBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
-        deviceInstancesBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), deviceInstancesBufferInfo);
+        deviceInstancesBuffer = std::make_unique<Buffer>(rendererPtr, deviceInstancesBufferInfo);
 
         //instances description
         VkDeviceSize newInstanceDescriptionsBufferSize = 0;
@@ -285,16 +280,14 @@ namespace PaperRenderer
             (VkDeviceSize)(sizeof(InstanceDescription) * 64));
 
         BufferInfo hostInstanceDescriptionsBufferInfo = {};
-        hostInstanceDescriptionsBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
         hostInstanceDescriptionsBufferInfo.size = newInstanceDescriptionsBufferSize;
         hostInstanceDescriptionsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        hostInstanceDescriptionsBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), hostInstanceDescriptionsBufferInfo);
+        hostInstanceDescriptionsBuffer = std::make_unique<Buffer>(rendererPtr, hostInstanceDescriptionsBufferInfo);
 
         BufferInfo deviceInstanceDescriptionsBufferInfo = {};
-        deviceInstanceDescriptionsBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
         deviceInstanceDescriptionsBufferInfo.size = newInstanceDescriptionsBufferSize;
         deviceInstanceDescriptionsBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
-        deviceInstanceDescriptionsBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), deviceInstanceDescriptionsBufferInfo);
+        deviceInstanceDescriptionsBuffer = std::make_unique<Buffer>(rendererPtr, deviceInstanceDescriptionsBufferInfo);
     }
 
     AccelerationStructure::BuildData AccelerationStructure::getBuildData(VkCommandBuffer cmdBuffer)
@@ -452,8 +445,7 @@ namespace PaperRenderer
             BufferInfo bufferInfo = {};
             bufferInfo.size = BLBuildData.totalBuildSize * 1.1; //allocate 10% more than what's currently needed
             bufferInfo.usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-            bufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-            BLBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
+            BLBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
 
             rebuildBLASAllocation();
         }
@@ -474,14 +466,12 @@ namespace PaperRenderer
             BufferInfo bufferInfo0 = {};
             bufferInfo0.size = instancesBufferSize * 1.2; //allocate 20% more than what's currently needed
             bufferInfo0.usageFlags = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-            bufferInfo0.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-            TLInstancesBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo0);
+            TLInstancesBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo0);
 
             BufferInfo bufferInfo1 = {};
             bufferInfo1.size = TLBuildSizes.accelerationStructureSize * 1.2; //allocate 20% more than what's currently needed
             bufferInfo1.usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
-            bufferInfo1.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-            TLBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo1);
+            TLBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo1);
 
             rebuildTLASAllocation();
 
@@ -495,8 +485,7 @@ namespace PaperRenderer
             BufferInfo bufferInfo = {};
             bufferInfo.size = scratchSize * 1.1;
             bufferInfo.usageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-            bufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-            scratchBuffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
+            scratchBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
 
             rebuildScratchAllocation();
         }
@@ -585,7 +574,7 @@ namespace PaperRenderer
     void AccelerationStructure::updateAccelerationStructures(const SynchronizationInfo& syncInfo)
     {
         //start command buffer
-        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr->getDevice()->getDevice(), syncInfo.queueType);
+        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr, syncInfo.queueType);
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -693,7 +682,7 @@ namespace PaperRenderer
         vkEndCommandBuffer(cmdBuffer);
 
         //submit
-        Commands::submitToQueue(rendererPtr->getDevice()->getDevice(), syncInfo, { cmdBuffer });
+        Commands::submitToQueue(syncInfo, { cmdBuffer });
 
         rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
     }

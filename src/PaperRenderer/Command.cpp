@@ -1,4 +1,5 @@
 #include "Command.h"
+#include "PaperRenderer.h"
 
 #include <stdexcept>
 #include <algorithm>
@@ -12,13 +13,11 @@ namespace PaperRenderer
     std::unordered_map<QueueType, QueuesInFamily>* Commands::queuesPtr;
     std::unordered_map<QueueType, VkCommandPool> Commands::commandPools;
 
-    Commands::Commands(VkDevice device, VkPhysicalDevice gpu, VkSurfaceKHR surface, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr)
-        :device(device),
-        gpu(gpu),
-        surface(surface)
+    Commands::Commands(RenderEngine* renderer, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr)
+        :rendererPtr(renderer)
     {
         VkSurfaceCapabilitiesKHR capabilities;
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu, surface, &capabilities);
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(rendererPtr->getDevice()->getGPU(), rendererPtr->getDevice()->getSurface(), &capabilities);
 
         this->queuesPtr = queuesPtr;
         isInit = true;
@@ -29,7 +28,7 @@ namespace PaperRenderer
     {
         for(auto [type, pool] : commandPools)
         {
-            vkDestroyCommandPool(device, pool, nullptr);
+            vkDestroyCommandPool(rendererPtr->getDevice()->getDevice(), pool, nullptr);
         }
     }
 
@@ -42,11 +41,11 @@ namespace PaperRenderer
             graphicsPoolInfo.pNext = NULL;
             graphicsPoolInfo.flags = 0;
             graphicsPoolInfo.queueFamilyIndex = queues.queueFamilyIndex;
-            vkCreateCommandPool(device, &graphicsPoolInfo, nullptr, &commandPools[queueType]);
+            vkCreateCommandPool(rendererPtr->getDevice()->getDevice(), &graphicsPoolInfo, nullptr, &commandPools[queueType]);
         }
     }
 
-    void Commands::freeCommandBuffers(VkDevice device, std::vector<CommandBuffer>& commandBuffers)
+    void Commands::freeCommandBuffers(RenderEngine* renderer, std::vector<CommandBuffer>& commandBuffers)
     {
         if(isInit)
         {
@@ -57,7 +56,7 @@ namespace PaperRenderer
             }
             for(const auto& [type, buffers] : sortedCommandBuffers)
             {
-                vkFreeCommandBuffers(device, commandPools.at(type), buffers.size(), buffers.data());
+                vkFreeCommandBuffers(renderer->getDevice()->getDevice(), commandPools.at(type), buffers.size(), buffers.data());
             }
         }
         else
@@ -66,7 +65,7 @@ namespace PaperRenderer
         }
     }
 
-    void Commands::submitToQueue(VkDevice device, const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers)
+    void Commands::submitToQueue(const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers)
     {
         //command buffers
         std::vector<VkCommandBufferSubmitInfo> cmdBufferSubmitInfos = {};
@@ -187,7 +186,7 @@ namespace PaperRenderer
         lockedQueue->threadLock.unlock();
     }
 
-    VkSemaphore Commands::getSemaphore(VkDevice device)
+    VkSemaphore Commands::getSemaphore(RenderEngine* renderer)
     {
         VkSemaphore semaphore;
 
@@ -196,12 +195,12 @@ namespace PaperRenderer
         semaphoreInfo.pNext = NULL;
         semaphoreInfo.flags = 0;
 
-        vkCreateSemaphore(device, &semaphoreInfo, nullptr, &semaphore);
+        vkCreateSemaphore(renderer->getDevice()->getDevice(), &semaphoreInfo, nullptr, &semaphore);
 
         return semaphore;
     }
 
-    VkSemaphore Commands::getTimelineSemaphore(VkDevice device, uint64_t initialValue)
+    VkSemaphore Commands::getTimelineSemaphore(RenderEngine* renderer, uint64_t initialValue)
     {
         VkSemaphore semaphore;
 
@@ -216,12 +215,12 @@ namespace PaperRenderer
         semaphoreInfo.pNext = &semaphoreTypeInfo;
         semaphoreInfo.flags = 0;
 
-        vkCreateSemaphore(device, &semaphoreInfo, nullptr, &semaphore);
+        vkCreateSemaphore(renderer->getDevice()->getDevice(), &semaphoreInfo, nullptr, &semaphore);
 
         return semaphore;
     }
 
-    VkFence Commands::getSignaledFence(VkDevice device)
+    VkFence Commands::getSignaledFence(RenderEngine* renderer)
     {
         VkFence fence;
         VkFenceCreateInfo fenceInfo = {};
@@ -229,12 +228,12 @@ namespace PaperRenderer
         fenceInfo.pNext = NULL;
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-        vkCreateFence(device, &fenceInfo, nullptr, &fence);
+        vkCreateFence(renderer->getDevice()->getDevice(), &fenceInfo, nullptr, &fence);
 
         return fence;
     }
 
-    VkFence Commands::getUnsignaledFence(VkDevice device)
+    VkFence Commands::getUnsignaledFence(RenderEngine* renderer)
     {
         VkFence fence;
         VkFenceCreateInfo fenceInfo = {};
@@ -242,12 +241,12 @@ namespace PaperRenderer
         fenceInfo.pNext = NULL;
         fenceInfo.flags = 0;
 
-        vkCreateFence(device, &fenceInfo, nullptr, &fence);
+        vkCreateFence(renderer->getDevice()->getDevice(), &fenceInfo, nullptr, &fence);
 
         return fence;
     }
 
-    VkCommandBuffer Commands::getCommandBuffer(VkDevice device, QueueType type)
+    VkCommandBuffer Commands::getCommandBuffer(RenderEngine* renderer, QueueType type)
     {
         if(isInit)
         {
@@ -259,7 +258,7 @@ namespace PaperRenderer
             bufferInfo.commandPool = commandPools.at(type);
 
             VkCommandBuffer returnBuffer;
-            VkResult result = vkAllocateCommandBuffers(device, &bufferInfo, &returnBuffer);
+            VkResult result = vkAllocateCommandBuffers(renderer->getDevice()->getDevice(), &bufferInfo, &returnBuffer);
             
             return returnBuffer;
         }

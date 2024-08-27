@@ -443,16 +443,14 @@ namespace PaperRenderer
 
         //create buffers
         BufferInfo deviceBufferInfo = {};
-        deviceBufferInfo.queueFamiliesIndices = renderer->getDevice()->getQueueFamiliesIndices();
         deviceBufferInfo.size = newSize;
         deviceBufferInfo.usageFlags = VK_BUFFER_USAGE_2_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR;
-        sbtBuffer = std::make_unique<Buffer>(renderer->getDevice()->getDevice(), deviceBufferInfo);
+        sbtBuffer = std::make_unique<Buffer>(renderer, deviceBufferInfo);
         
         BufferInfo stagingBufferInfo = {};
-        stagingBufferInfo.queueFamiliesIndices = renderer->getDevice()->getQueueFamiliesIndices();
         stagingBufferInfo.size = newSize;
         stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        Buffer stagingBuffer(renderer->getDevice()->getDevice(), stagingBufferInfo);
+        Buffer stagingBuffer(renderer, stagingBufferInfo);
 
         //create allocations
         DeviceAllocationInfo deviceAllocationInfo = {};
@@ -483,7 +481,7 @@ namespace PaperRenderer
 
         SynchronizationInfo syncInfo = {};
         syncInfo.queueType = QueueType::TRANSFER;
-        syncInfo.fence = Commands::getUnsignaledFence(renderer->getDevice()->getDevice());
+        syncInfo.fence = Commands::getUnsignaledFence(renderer);
 
         renderer->recycleCommandBuffer(sbtBuffer->copyFromBufferRanges(stagingBuffer, { copyRegion }, syncInfo));
 

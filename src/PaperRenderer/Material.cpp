@@ -50,7 +50,7 @@ namespace PaperRenderer
         if(rasterDescriptorWrites.bufferViewWrites.size() || rasterDescriptorWrites.bufferWrites.size() || rasterDescriptorWrites.imageWrites.size())
         {
             VkDescriptorSet materialDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(RASTER_MATERIAL));
-            DescriptorAllocator::writeUniforms(rendererPtr->getDevice()->getDevice(), materialDescriptorSet, rasterDescriptorWrites);
+            DescriptorAllocator::writeUniforms(rendererPtr, materialDescriptorSet, rasterDescriptorWrites);
 
             DescriptorBind bindingInfo = {};
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -58,7 +58,7 @@ namespace PaperRenderer
             bindingInfo.descriptorScope = RASTER_MATERIAL;
             bindingInfo.layout = rasterPipeline->getLayout();
             
-            DescriptorAllocator::bindSet(rendererPtr->getDevice()->getDevice(), cmdBuffer, bindingInfo);
+            DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
         }
     }
 
@@ -79,7 +79,7 @@ namespace PaperRenderer
         if(descriptorWrites.bufferViewWrites.size() || descriptorWrites.bufferWrites.size() || descriptorWrites.imageWrites.size())
         {
             VkDescriptorSet instDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(baseMaterial->getRasterPipeline()->getDescriptorSetLayouts().at(RASTER_MATERIAL_INSTANCE));
-            DescriptorAllocator::writeUniforms(rendererPtr->getDevice()->getDevice(), instDescriptorSet, descriptorWrites);
+            DescriptorAllocator::writeUniforms(rendererPtr, instDescriptorSet, descriptorWrites);
 
             DescriptorBind bindingInfo = {};
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -87,7 +87,7 @@ namespace PaperRenderer
             bindingInfo.descriptorScope = RASTER_MATERIAL_INSTANCE;
             bindingInfo.layout = baseMaterial->getRasterPipeline()->getLayout();
             
-            DescriptorAllocator::bindSet(rendererPtr->getDevice()->getDevice(), cmdBuffer, bindingInfo);
+            DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
         }
     }
 }

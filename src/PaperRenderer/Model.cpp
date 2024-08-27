@@ -167,8 +167,7 @@ namespace PaperRenderer
 		BufferInfo stagingBufferInfo = {};
 		stagingBufferInfo.size = size;
 		stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-		stagingBufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-		Buffer vboStaging(rendererPtr->getDevice()->getDevice(), stagingBufferInfo);
+		Buffer vboStaging(rendererPtr, stagingBufferInfo);
 
 		//create staging allocation
 		DeviceAllocationInfo stagingAllocationInfo = {};
@@ -190,8 +189,7 @@ namespace PaperRenderer
 		BufferInfo bufferInfo = {};
 		bufferInfo.size = size;
 		bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | usageFlags;
-		bufferInfo.queueFamiliesIndices = rendererPtr->getDevice()->getQueueFamiliesIndices();
-		std::unique_ptr<Buffer> buffer = std::make_unique<Buffer>(rendererPtr->getDevice()->getDevice(), bufferInfo);
+		std::unique_ptr<Buffer> buffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
 
 		//assign memory
 		if(buffer->assignAllocation(allocationPtr) != 0)
@@ -207,7 +205,7 @@ namespace PaperRenderer
 
 		SynchronizationInfo synchronizationInfo = {};
 		synchronizationInfo.queueType = QueueType::TRANSFER;
-		synchronizationInfo.fence = Commands::getUnsignaledFence(rendererPtr->getDevice()->getDevice());
+		synchronizationInfo.fence = Commands::getUnsignaledFence(rendererPtr);
 
 		PaperRenderer::CommandBuffer cmdBuffer = buffer->copyFromBufferRanges(vboStaging, { copyRegion }, synchronizationInfo);
 
@@ -216,7 +214,7 @@ namespace PaperRenderer
 		vkDestroyFence(rendererPtr->getDevice()->getDevice(), synchronizationInfo.fence, nullptr);
 
 		std::vector<CommandBuffer> cmdBuffers = { cmdBuffer };
-		PaperRenderer::Commands::freeCommandBuffers(rendererPtr->getDevice()->getDevice(), cmdBuffers);
+		PaperRenderer::Commands::freeCommandBuffers(rendererPtr, cmdBuffers);
 
 		return buffer;
     }

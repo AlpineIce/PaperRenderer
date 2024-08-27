@@ -29,6 +29,8 @@ namespace PaperRenderer
         VkSurfaceKHR surface = VK_NULL_HANDLE;
         bool rtSupport = false;
 
+        class RenderEngine* rendererPtr;
+
         void createContext(std::string appName);
         void findGPU();
         void findQueueFamilies(uint32_t& queueFamilyCount, std::vector<VkQueueFamilyProperties>& queueFamiliesProperties);
@@ -38,20 +40,20 @@ namespace PaperRenderer
         void retrieveQueues(std::unordered_map<uint32_t, VkDeviceQueueCreateInfo>& queuecreationInfo);
         
     public:
-        Device(std::string appName);
+        Device(class RenderEngine* renderer, std::string appName);
         ~Device();
 
         void createDevice();
 
-        VkDevice getDevice() const { return device; }
-        VkSurfaceKHR* getSurfacePtr() { return &surface; }
-        VkInstance getInstance() const { return instance; }
-        VkPhysicalDevice getGPU() const { return GPU; }
-        VkPhysicalDeviceProperties2 getGPUProperties() const { return gpuProperties; }
-        VkPhysicalDeviceFeatures getGPUFeatures() const { return gpuFeatures; }
+        const VkDevice& getDevice() const { return device; }
+        const VkSurfaceKHR& getSurface() { return surface; }
+        const VkInstance& getInstance() const { return instance; }
+        const VkPhysicalDevice& getGPU() const { return GPU; }
+        const VkPhysicalDeviceProperties2& getGPUProperties() const { return gpuProperties; }
+        const VkPhysicalDeviceFeatures& getGPUFeatures() const { return gpuFeatures; }
         const bool& getRTSupport() const { return rtSupport; }
-        VkPhysicalDeviceRayTracingPipelinePropertiesKHR getRTproperties() const { return rtPipelineProperties; }
-        VkPhysicalDeviceAccelerationStructurePropertiesKHR getASproperties() const { return asProperties; }
+        const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& getRTproperties() const { return rtPipelineProperties; }
+        const VkPhysicalDeviceAccelerationStructurePropertiesKHR& getASproperties() const { return asProperties; }
         const std::unordered_map<QueueType, QueuesInFamily>& getQueues() const { return queues; }
         QueueFamiliesIndices getQueueFamiliesIndices() const;
     };
