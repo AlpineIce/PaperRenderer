@@ -373,6 +373,38 @@ namespace PaperRenderer
         //volk
         volkLoadDevice(device);
 
+        //vma
+        VmaVulkanFunctions vmaFunctions{};
+        vmaFunctions.vkAllocateMemory                    = vkAllocateMemory;
+        vmaFunctions.vkBindBufferMemory                  = vkBindBufferMemory;
+        vmaFunctions.vkBindImageMemory                   = vkBindImageMemory;
+        vmaFunctions.vkCreateBuffer                      = vkCreateBuffer;
+        vmaFunctions.vkCreateImage                       = vkCreateImage;
+        vmaFunctions.vkDestroyBuffer                     = vkDestroyBuffer;
+        vmaFunctions.vkDestroyImage                      = vkDestroyImage;
+        vmaFunctions.vkFlushMappedMemoryRanges           = vkFlushMappedMemoryRanges;
+        vmaFunctions.vkFreeMemory                        = vkFreeMemory;
+        vmaFunctions.vkGetBufferMemoryRequirements       = vkGetBufferMemoryRequirements;
+        vmaFunctions.vkGetDeviceProcAddr                 = vkGetDeviceProcAddr;
+        vmaFunctions.vkGetImageMemoryRequirements        = vkGetImageMemoryRequirements;
+        vmaFunctions.vkGetInstanceProcAddr               = vkGetInstanceProcAddr;
+        vmaFunctions.vkGetPhysicalDeviceMemoryProperties = vkGetPhysicalDeviceMemoryProperties;
+        vmaFunctions.vkGetPhysicalDeviceProperties       = vkGetPhysicalDeviceProperties;
+        vmaFunctions.vkInvalidateMappedMemoryRanges      = vkInvalidateMappedMemoryRanges;
+        vmaFunctions.vkMapMemory                         = vkMapMemory;
+        vmaFunctions.vkUnmapMemory                       = vkUnmapMemory;
+        vmaFunctions.vkCmdCopyBuffer                     = vkCmdCopyBuffer;
+
+        VmaAllocatorCreateInfo allocatorCreateInfo = {};
+        allocatorCreateInfo.flags = VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT;
+        allocatorCreateInfo.vulkanApiVersion = VK_API_VERSION_1_3;
+        allocatorCreateInfo.physicalDevice = GPU;
+        allocatorCreateInfo.device = device;
+        allocatorCreateInfo.instance = instance;
+        allocatorCreateInfo.pVulkanFunctions = &vmaFunctions;
+        
+        vmaCreateAllocator(&allocatorCreateInfo, &allocator);
+
         //queues
         retrieveQueues(queuesCreationInfo);
 

@@ -10,6 +10,7 @@ set(source_dir "${PROJECT_SOURCE_DIR}/src")
 file(GLOB_RECURSE main_s ${source_dir}/*.cpp)
 file(GLOB_RECURSE main_h ${source_dir}/*.h)
 
+#library
 add_library(${PROJECT_NAME} STATIC ${main_s} ${main_h})
 
 #VULKAN
@@ -24,6 +25,11 @@ add_subdirectory(${VOLK_SOURCE_DIR})
 target_link_libraries(${PROJECT_NAME} PUBLIC volk)
 target_include_directories(volk PUBLIC "$<BUILD_INTERFACE:${VOLK_SOURCE_DIR}>$<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/volk>")
 
+#VMA
+message("Getting VMA")
+set(VMA_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/lib/vma/include/")
+target_include_directories(${PROJECT_NAME} PUBLIC "$<BUILD_INTERFACE:${VMA_INCLUDE_DIR}>$<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/vma>")
+
 #GLM
 message("Getting GLM package")
 find_package(glm REQUIRED)
@@ -37,7 +43,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC glfw)
 target_include_directories(glfw PUBLIC "$<BUILD_INTERFACE:${GLFW_INCUDE_DIR}>$<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/GLFW>")
 
 #INCLUDES
-set(INCLUDE_DIRS "${Vulkan_INCLUDE_DIRS};${VOLK_SOURCE_DIR};${GLFW_INCUDE_DIR};${GLM_INCUDE_DIR}")
+set(INCLUDE_DIRS "${Vulkan_INCLUDE_DIRS};${VOLK_SOURCE_DIR};${VMA_INCLUDE_DIR};${GLFW_INCUDE_DIR};${GLM_INCUDE_DIR}")
 include_directories(${INCLUDE_DIRS})
 
 add_dependencies(${PROJECT_NAME} glfw)

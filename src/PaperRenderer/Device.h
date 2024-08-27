@@ -16,6 +16,7 @@ namespace PaperRenderer
     private:
         VkInstance instance = VK_NULL_HANDLE;
         VkPhysicalDevice GPU = VK_NULL_HANDLE;
+        VmaAllocator allocator = NULL;
         std::vector<VkExtensionProperties> extensions;
         VkPhysicalDeviceProperties2 gpuProperties;
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtPipelineProperties = {};
