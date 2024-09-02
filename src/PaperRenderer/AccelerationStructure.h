@@ -13,7 +13,6 @@ namespace PaperRenderer
     private:
         std::string fileName = "TLASInstBuild.spv";
         std::unique_ptr<Buffer> uniformBuffer;
-        std::unique_ptr<DeviceAllocation> uniformBufferAllocation;
 
         struct UBOInputData
         {
@@ -41,9 +40,6 @@ namespace PaperRenderer
     class AccelerationStructure
     {
     private:
-        std::unique_ptr<DeviceAllocation> scratchAllocation;
-        std::unique_ptr<DeviceAllocation> BLASAllocation;
-        std::unique_ptr<DeviceAllocation> TLASAllocation; //one shared allocation for the BLs and TL
         std::unique_ptr<Buffer> BLBuffer;
         std::unique_ptr<Buffer> TLInstancesBuffer;
         std::unique_ptr<Buffer> TLBuffer;
@@ -59,8 +55,6 @@ namespace PaperRenderer
             uint32_t indexStride;
         };
 
-        static std::unique_ptr<DeviceAllocation> hostInstancesAllocation;
-        static std::unique_ptr<DeviceAllocation> deviceInstancesAllocation;
         std::unique_ptr<Buffer> hostInstancesBuffer;
         std::unique_ptr<Buffer> hostInstanceDescriptionsBuffer;
         std::unique_ptr<Buffer> deviceInstancesBuffer;
@@ -104,11 +98,7 @@ namespace PaperRenderer
 
         const float instancesOverhead = 1.5;
         BuildData getBuildData(VkCommandBuffer cmdBuffer);
-        void rebuildBLASAllocation();
-        void rebuildTLASAllocation();
-        void rebuildScratchAllocation();
         void rebuildInstancesBuffers();
-        static void rebuildInstancesAllocationsAndBuffers(RenderEngine* renderer);
         void createBottomLevel(VkCommandBuffer cmdBuffer, BottomBuildData buildData);
         void createTopLevel(VkCommandBuffer cmdBuffer, TopBuildData buildData);
 

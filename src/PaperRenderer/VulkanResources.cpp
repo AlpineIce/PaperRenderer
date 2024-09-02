@@ -9,23 +9,12 @@ namespace PaperRenderer
     //----------RESOURCE BASE CLASS DEFINITIONS----------//
 
     VulkanResource::VulkanResource(RenderEngine* renderer)
-        :rendererPtr(renderer),
-        allocationPtr(NULL)
+        :rendererPtr(renderer)
     {
-        memRequirements = {};
-        memRequirements.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
-        memRequirements.pNext = NULL;
     }
 
     VulkanResource::~VulkanResource()
     {
-    }
-
-    int VulkanResource::assignAllocation(DeviceAllocation *allocation)
-    {
-        allocationPtr = allocation;
-
-        return 0;
     }
     
     //----------BUFFER DEFINITIONS----------//
@@ -55,16 +44,19 @@ namespace PaperRenderer
         
         bufferCreateInfo.queueFamilyIndexCount = queueFamilyIndices.size();
         bufferCreateInfo.pQueueFamilyIndices = queueFamilyIndices.data();
-        
-        vkCreateBuffer(rendererPtr->getDevice()->getDevice(), &bufferCreateInfo, nullptr, &buffer);
 
-        //get memory requirements
-        bufferMemRequirements.sType = VK_STRUCTURE_TYPE_DEVICE_BUFFER_MEMORY_REQUIREMENTS;
-        bufferMemRequirements.pNext = NULL;
-        bufferMemRequirements.pCreateInfo = &bufferCreateInfo;
+        VmaAllocationCreateInfo allocCreateInfo = {};
+        allocCreateInfo.flags = bufferInfo.allocationFlags;
+        allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
-        vkGetDeviceBufferMemoryRequirements(rendererPtr->getDevice()->getDevice(), &bufferMemRequirements, &memRequirements);
-        size = 0; //default size of 0 to show no allocation
+        VmaAllocationInfo allocInfo = {};
+        VkResult result = vmaCreateBuffer(rendererPtr->getDevice()->getAllocator(), &bufferCreateInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
+        if(result != VK_SUCCESS)
+        {
+            throw std::runtime_error("Buffer creation failed");
+        }
+
+        size = bufferInfo.size;
     }
 
     Buffer::~Buffer()
@@ -72,68 +64,32 @@ namespace PaperRenderer
         vkDestroyBuffer(rendererPtr->getDevice()->getDevice(), buffer, nullptr);
     }
 
-    int Buffer::assignAllocation(DeviceAllocation *allocation)
-    {
-        VulkanResource::assignAllocation(allocation);
-
-        needsFlush = allocation->getFlushRequirement();
-
-        //bind memory
-        bindingInfo = allocation->bindBuffer(buffer, memRequirements.memoryRequirements);
-        size = memRequirements.memoryRequirements.size;
-        if(bindingInfo.allocatedSize == 0)
-        {
-            return 1; //error in this case should just be that its out of memory, or wrong memory type was used
-        }
-
-        hostDataPtr = (char*)allocation->getMappedPtr() + bindingInfo.allocationLocation;
-
-        return 0; //success, also VK_SUCCESS
-    }
-
     int Buffer::writeToBuffer(const std::vector<BufferWrite>& writes) const
     {
-        //make sure memory is even mappable
-        if(hostDataPtr)
+        //write data
+        for(const BufferWrite& write : writes)
         {
-            //gather ranges to flush and invalidate (if needed)
-            std::vector<VkMappedMemoryRange> toFlushRanges;
-            if(needsFlush)
+            if(write.data && write.size)
             {
-                for(const BufferWrite& write : writes)
-                {
-                    VkMappedMemoryRange range = {};
-                    range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-                    range.pNext = NULL;
-                    range.memory = allocationPtr->getAllocation();
-                    range.offset = write.offset;
-                    range.size = write.size;
-
-                    toFlushRanges.push_back(range);
-                }
-
-                //invalidate all the ranges for coherency
-                if(vkInvalidateMappedMemoryRanges(rendererPtr->getDevice()->getDevice(), toFlushRanges.size(), toFlushRanges.data()) != VK_SUCCESS) return 1;
+                if(vmaCopyMemoryToAllocation(rendererPtr->getDevice()->getAllocator(), write.data, allocation, write.offset, write.size) != VK_SUCCESS) return 1;
             }
-
-            //write data
-            for(const BufferWrite& write : writes)
-            {
-                memcpy(hostDataPtr, (char*)write.data + write.offset, write.size); //cast to char for 1 byte increment pointer arithmetic
-            }
-
-            //flush data from cache if needed
-            if(needsFlush)
-            {
-                if(vkFlushMappedMemoryRanges(rendererPtr->getDevice()->getDevice(), toFlushRanges.size(), toFlushRanges.data()) != VK_SUCCESS) return 1;
-            }
-
-            return 0;
         }
-        else
+
+        return 0;
+    }
+
+    int Buffer::readFromBuffer(const std::vector<BufferWrite> &reads) const
+    {
+        //read data
+        for(const BufferWrite& read : reads)
         {
-            throw std::runtime_error("Tried to write to unmapped memory");
+            if(read.data && read.size)
+            {
+               if(vmaCopyAllocationToMemory(rendererPtr->getDevice()->getAllocator(), allocation, read.offset, read.data, read.size) != VK_SUCCESS) return 1;
+            }
         }
+
+        return 0;
     }
 
     CommandBuffer Buffer::copyFromBufferRanges(Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
@@ -191,25 +147,13 @@ namespace PaperRenderer
     {
     }
 
-    void FragmentableBuffer::assignAllocation(DeviceAllocation* newAllocation)
-    {
-        if(newAllocation->getMemoryType().propertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
-        {
-            buffer->assignAllocation(newAllocation);
-            allocationPtr = newAllocation;
-        }
-        else
-        {
-            throw std::runtime_error("Tried to assign allocation which was created with neither VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT or VK_MEMORY_PROPERTY_HOST_COHERENT_BIT to a fragmentable buffer");
-        }
-    }
-
     FragmentableBuffer::WriteResult FragmentableBuffer::newWrite(void* data, VkDeviceSize size, VkDeviceSize minAlignment, VkDeviceSize* returnLocation)
     {
         WriteResult result = SUCCESS;
-        desiredLocation += DeviceAllocation::padToMultiple(size, minAlignment);
+        desiredLocation += rendererPtr->getDevice()->getAlignment(size, minAlignment);
+        desiredLocation += rendererPtr->getDevice()->getAlignment(size, minAlignment);
 
-        if(stackLocation + DeviceAllocation::padToMultiple(size, minAlignment) > buffer->getSize())
+        if(stackLocation + rendererPtr->getDevice()->getAlignment(size, minAlignment) > buffer->getSize())
         {
             //if compaction gives back no results then there's no more available memory
             if(!compact().size() || stackLocation + size > buffer->getSize())
@@ -223,9 +167,14 @@ namespace PaperRenderer
             //otherwise the compaction succeeded and enough available memory was created;
             result = COMPACTED;
         }
+
+        BufferWrite write = {};
+        write.data = data;
+        write.offset = rendererPtr->getDevice()->getAlignment(stackLocation, minAlignment);
+        write.size = size;
         
-        memcpy((char*)buffer->getHostDataPtr() + DeviceAllocation::padToMultiple(stackLocation, minAlignment), data, size);
-        if(returnLocation) *returnLocation = DeviceAllocation::padToMultiple(stackLocation, minAlignment);
+        buffer->writeToBuffer({ write });
+        if(returnLocation) *returnLocation = rendererPtr->getDevice()->getAlignment(stackLocation, minAlignment);
 
         stackLocation = desiredLocation;
 
@@ -248,11 +197,29 @@ namespace PaperRenderer
         //if statement because the compaction callback shouldnt be invoked if no memory fragments exists, which leads to no effective compaction
         if(memoryFragments.size())
         {
+            //move data from memory fragment (location + size) into (location), subtract (size) from (stackLocation), and remove memory fragment from stack
             while(memoryFragments.size())
             {
-                //move data from memory fragment (location + size) into (location), subtract (size) from (stackLocation), and remove memory fragment from stack
+
+                //init temporary variables and chunk ref
                 const Chunk& chunk = memoryFragments.top();
-                memmove((char*)buffer->getHostDataPtr() + chunk.location, (char*)buffer->getHostDataPtr() + chunk.location + chunk.size, stackLocation - (chunk.location + chunk.size));
+                std::vector<char> readData(stackLocation - (chunk.location + chunk.size));
+
+                //read data
+                BufferWrite read = {};
+                read.offset = chunk.location + chunk.size;
+                read.size = stackLocation - (chunk.location + chunk.size);
+                read.data = readData.data();
+                buffer->readFromBuffer({ read });
+
+                //copy data into buffer location
+                BufferWrite write = {};
+                write.offset = chunk.location;
+                write.size = stackLocation - (chunk.location + chunk.size);
+                write.data = readData.data();
+                buffer->writeToBuffer({ write });
+
+                //move stack "pointer" and remove fragment
                 stackLocation -= chunk.size;
                 memoryFragments.pop();
 
@@ -306,36 +273,23 @@ namespace PaperRenderer
         
         imageCreateInfo.queueFamilyIndexCount = queueFamilyIndices.size();
         imageCreateInfo.pQueueFamilyIndices = queueFamilyIndices.data();
-        
-        vkCreateImage(rendererPtr->getDevice()->getDevice(), &imageCreateInfo, nullptr, &image);
 
-        //get memory requirements
-        imageMemRequirements.sType = VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS;
-        imageMemRequirements.pNext = NULL;
-        imageMemRequirements.pCreateInfo = &imageCreateInfo;
-        imageMemRequirements.planeAspect = imageInfo.imageAspect;
+        VmaAllocationCreateInfo allocCreateInfo = {};
+        allocCreateInfo.flags = 0;
+        allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
-        vkGetDeviceImageMemoryRequirements(rendererPtr->getDevice()->getDevice(), &imageMemRequirements, &memRequirements);
+        VmaAllocationInfo allocInfo = {};
+        if(vmaCreateImage(rendererPtr->getDevice()->getAllocator(), &imageCreateInfo, &allocCreateInfo, &image, &allocation, &allocInfo) != VK_SUCCESS)
+        {
+            throw std::runtime_error("Buffer creation failed");
+        }
+
+        size = 0; //TODO?
     }
 
     Image::~Image()
     {
         vkDestroyImage(rendererPtr->getDevice()->getDevice(), image, nullptr);
-    }
-
-    int Image::assignAllocation(DeviceAllocation* allocation)
-    {
-        VulkanResource::assignAllocation(allocation);
-
-        //bind memory
-        bindingInfo = allocationPtr->bindImage(image, memRequirements.memoryRequirements);
-        size = memRequirements.memoryRequirements.size;
-        if(bindingInfo.allocatedSize == 0)
-        {
-            return 1; //error in this case should just be that its out of memory, or wrong memory type was used
-        }
-
-        return 0;
     }
 
     VkImageView Image::getNewImageView(const Image& image, RenderEngine* renderer, VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format)

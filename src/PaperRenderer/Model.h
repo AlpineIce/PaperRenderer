@@ -1,6 +1,6 @@
 #pragma once
 #include "Device.h"
-#include "glm/gtc/quaternion.hpp"
+#include "VulkanResources.h"
 
 #include <filesystem>
 #include <unordered_map>
@@ -108,7 +108,6 @@ namespace PaperRenderer
         void setShaderData();
 
         class RenderEngine* rendererPtr;
-        DeviceAllocation* allocationPtr;
 
         std::unique_ptr<Buffer> createDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags2KHR usageFlags);
 
@@ -116,10 +115,8 @@ namespace PaperRenderer
         friend class ModelInstance;
 
     public:
-        Model(RenderEngine* renderer, DeviceAllocation* allocation, const ModelCreateInfo& creationInfo);
+        Model(RenderEngine* renderer, const ModelCreateInfo& creationInfo);
         ~Model();
-
-        static VkDeviceSize getMemoryAlignment(Device* device);
 
         void bindBuffers(const VkCommandBuffer& cmdBuffer) const;
 

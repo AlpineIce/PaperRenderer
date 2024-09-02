@@ -33,8 +33,6 @@ namespace PaperRenderer
         };
 
         //buffers and allocation
-        static std::unique_ptr<DeviceAllocation> modelMatricesAllocation;
-        static std::unique_ptr<DeviceAllocation> drawCommandsAllocation;
         static std::unique_ptr<Buffer> modelMatricesBuffer;
         static std::unique_ptr<Buffer> drawCommandsBuffer;
         static std::list<CommonMeshGroup*> commonMeshGroups;
@@ -53,7 +51,7 @@ namespace PaperRenderer
 
         uint32_t drawCommandCount = 0;
         float instanceCountOverhead = 1.3;
-        static std::vector<class ModelInstance*> rebuildAllocationAndBuffers(class RenderEngine* renderer);
+        static std::vector<class ModelInstance*> rebuildBuffers(class RenderEngine* renderer);
         static bool rebuild;
         BufferSizeRequirements getBuffersRequirements(const BufferSizeRequirements currentSizes);
         void setDrawCommandData(const Buffer& stagingBuffer) const;

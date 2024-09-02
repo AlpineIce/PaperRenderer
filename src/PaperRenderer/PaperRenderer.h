@@ -47,11 +47,7 @@ namespace PaperRenderer
         //synchronization
         VkFence copyFence; //fence isn't really required, but buffer device address doesn't work properly with validation layer sync (or at least I believe so, it works perfectly fine without the fence)
 
-        //----------BUFFERS AND MEMORY----------//
-
-        //allocations
-        std::unique_ptr<DeviceAllocation> hostDataAllocation;
-        std::unique_ptr<DeviceAllocation> deviceDataAllocation;
+        //----------BUFFERS----------//
 
         //host visible buffers
         const float instancesDataOverhead = 1.4f;
@@ -63,12 +59,11 @@ namespace PaperRenderer
         std::unique_ptr<Buffer> deviceInstancesDataBuffer;
         std::unique_ptr<Buffer> deviceModelDataBuffer;
         
-        void rebuildBuffersAndAllocations();
-        void rebuildInstancesbuffers();
-        void rebuildModelDataBuffers(VkDeviceSize rebuildSize);
+        void rebuildInstancesbuffer();
+        void rebuildModelDataBuffer();
         void handleModelDataCompaction(std::vector<CompactionResult> results);
 
-        //----------END OF BUFFERS AND MEMORY----------//
+        //----------END OF BUFFERS----------//
 
         void addModelData(Model* model);
         void removeModelData(Model* model);

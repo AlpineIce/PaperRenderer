@@ -1,6 +1,6 @@
 #include "VulkanMemory.h"
 
-#include <stdexcept>
+/*#include <stdexcept>
 
 namespace PaperRenderer
 {
@@ -194,4 +194,4 @@ namespace PaperRenderer
             throw std::runtime_error("New image binding will exceed available memory in allocation");
         }
     }
-}
+}*/

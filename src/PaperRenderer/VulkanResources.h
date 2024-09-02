@@ -1,7 +1,5 @@
 #pragma once
-#include "VulkanMemory.h"
-#include "Command.h"
-#include "glm/glm.hpp"
+#include "Device.h"
 
 #include <cstring> //linux bs
 #include <functional>
@@ -22,14 +20,15 @@ namespace PaperRenderer
     struct BufferInfo
     {
         VkDeviceSize size = 0;
-        VkBufferUsageFlagBits2KHR usageFlags;
+        VkBufferUsageFlagBits2KHR usageFlags = 0;
+        VmaAllocationCreateFlags allocationFlags = 0;
     };
 
     struct BufferWrite
     {
         VkDeviceSize offset;
         VkDeviceSize size;
-        void const* data;
+        void* data;
     };
 
     //----------RESOURCE BASE CLASS DECLARATIONS----------//
@@ -38,20 +37,15 @@ namespace PaperRenderer
     {
     protected:
         VkDeviceSize size = 0;
-        ResourceBindingInfo bindingInfo;
-        VkMemoryRequirements2 memRequirements;
 
         class RenderEngine* rendererPtr;
-        DeviceAllocation* allocationPtr;
-
-        virtual int assignAllocation(DeviceAllocation* allocation); //uses vulkan result for convenience
+        VmaAllocation allocation = VK_NULL_HANDLE;
 
     public:
         VulkanResource(class RenderEngine* renderer);
         virtual ~VulkanResource();
 
         VkDeviceSize getSize() const { return size; }
-        VkMemoryRequirements getMemoryRequirements() const { return memRequirements.memoryRequirements; }
     };
 
     //----------BUFFER DECLARATIONS----------//
@@ -60,23 +54,17 @@ namespace PaperRenderer
     {
     private:
         VkBuffer buffer = VK_NULL_HANDLE;
-        VkDeviceBufferMemoryRequirements bufferMemRequirements;
-        bool needsFlush = true;
-        void* hostDataPtr = NULL;
         
     public:
         Buffer(class RenderEngine* renderer, const BufferInfo& bufferInfo);
         ~Buffer() override;
 
-        int assignAllocation(DeviceAllocation* allocation) override;
         int writeToBuffer(const std::vector<BufferWrite>& writes) const; //returns 0 if successful, 1 if unsuccessful (probably because not host visible)
+        int readFromBuffer(const std::vector<BufferWrite>& reads) const;
         CommandBuffer copyFromBufferRanges(Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const;
 
         const VkBuffer& getBuffer() const { return buffer; }
-        VkDeviceSize getAllocatedSize() const { return bindingInfo.allocatedSize; }
         VkDeviceAddress getBufferDeviceAddress() const;
-        void* getHostDataPtr() const { return hostDataPtr; }
-        const VkDeviceBufferMemoryRequirements& getBufferMemoryRequirements() const { return bufferMemRequirements; }
     };
 
     //----------FRAGMENTABLE BUFFER DECLARATIONS----------//
@@ -113,7 +101,7 @@ namespace PaperRenderer
         std::function<void(std::vector<CompactionResult>)> compactionCallback = NULL;
 
         class RenderEngine* rendererPtr;
-        DeviceAllocation* allocationPtr = NULL;
+        VmaAllocation allocation;
 
     public:
         FragmentableBuffer(class RenderEngine* renderer, const BufferInfo& bufferInfo);
@@ -128,8 +116,6 @@ namespace PaperRenderer
             COMPACTED = 1, //buffer was compacted after reaching fragmentation threshold, or to squeeze more available memory out of the buffer
             OUT_OF_MEMORY = 2 //allocation has no available memory for a resize
         };
-
-        void assignAllocation(DeviceAllocation* newAllocation);
 
         //Return location is a pointer to a variable where the write location relative to buffer will be returned. Returns UINT64_MAX into that variable if write failed
         WriteResult newWrite(void* data, VkDeviceSize size, VkDeviceSize minAlignment, VkDeviceSize* returnLocation); 
@@ -162,7 +148,6 @@ namespace PaperRenderer
     private:
         VkImage image;
         const ImageInfo imageInfo;
-        VkDeviceImageMemoryRequirements imageMemRequirements;
         uint32_t mipmapLevels;
         std::vector<CommandBuffer> creationBuffers;
 
@@ -173,14 +158,14 @@ namespace PaperRenderer
         Image(class RenderEngine* renderer, const ImageInfo& imageInfo);
         ~Image() override;
 
-        int assignAllocation(DeviceAllocation* allocation);
         void setImageData(const Buffer& imageStagingBuffer);
 
         static VkImageView getNewImageView(const Image& image, class RenderEngine* renderer, VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format);
         static VkSampler getNewSampler(const Image& image, class RenderEngine* renderer);
 
         const VkImage& getImage() const { return image; }
-        const VkExtent3D getExtent() const { return imageInfo.extent; }\
-        const VkDeviceImageMemoryRequirements& getImageMemoryRequirements() const { return imageMemRequirements; }
+        const VkExtent3D getExtent() const { return imageInfo.extent; }
+
+        
     };
 }

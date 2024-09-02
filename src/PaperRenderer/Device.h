@@ -1,6 +1,10 @@
 #pragma once
-#include "VulkanResources.h"
+#include "volk.h"
+#include "vk_mem_alloc.h"
 #include "GLFW/glfw3.h"
+#include "glm/glm.hpp"
+#include "glm/gtc/quaternion.hpp"
+#include "Command.h"
 
 #include <vector>
 #include <string>
@@ -45,7 +49,9 @@ namespace PaperRenderer
 
         void createDevice();
 
+        static VkDeviceSize getAlignment(VkDeviceSize size, VkDeviceSize alignment) { return (size + (alignment - 1)) & ~(alignment - 1); };
         const VkDevice& getDevice() const { return device; }
+        const VmaAllocator& getAllocator() const { return allocator; }
         const VkSurfaceKHR& getSurface() { return surface; }
         const VkInstance& getInstance() const { return instance; }
         const VkPhysicalDevice& getGPU() const { return GPU; }

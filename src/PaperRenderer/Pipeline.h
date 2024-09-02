@@ -199,10 +199,9 @@ namespace PaperRenderer
         static std::list<RTPipeline*> rtPipelines;
 
         //SBT allocation and buffer
-        static std::unique_ptr<DeviceAllocation> sbtAllocation;
         static std::unique_ptr<Buffer> sbtBuffer;
 
-        static void rebuildSBTBufferAndAllocation(RenderEngine* renderer);
+        static void rebuildSBTBuffer(RenderEngine* renderer);
 
     public:
         RTPipeline(const RTPipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties);

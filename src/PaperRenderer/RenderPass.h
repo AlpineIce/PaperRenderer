@@ -16,7 +16,6 @@ namespace PaperRenderer
     private:
         std::string fileName = "IndirectDrawBuild.spv";
         std::unique_ptr<Buffer> uniformBuffer;
-        std::unique_ptr<DeviceAllocation> uniformBufferAllocation;
 
         struct UBOInputData
         {
@@ -67,9 +66,7 @@ namespace PaperRenderer
         float instancesOverhead = 1.5f;
         std::vector<ModelInstance*> renderPassInstances;
         
-        //allocations
-        static std::unique_ptr<DeviceAllocation> hostInstancesAllocation;
-        static std::unique_ptr<DeviceAllocation> deviceInstancesAllocation;
+        //all render passes
         static std::list<RenderPass*> renderPasses;
 
         //buffers
@@ -79,8 +76,7 @@ namespace PaperRenderer
         std::unique_ptr<FragmentableBuffer> hostInstancesDataBuffer;
         std::unique_ptr<Buffer> deviceInstancesDataBuffer;
 
-        static void rebuildAllocationsAndBuffers(RenderEngine* renderer);
-        void rebuildBuffers(VkDeviceSize newMaterialDataBufferSize);
+        void rebuildBuffers();
         void handleMaterialDataCompaction(std::vector<CompactionResult> results);
         void handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances);
         void clearDrawCounts(VkCommandBuffer cmdBuffer);

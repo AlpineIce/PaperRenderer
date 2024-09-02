@@ -235,7 +235,6 @@ namespace PaperRenderer
     //----------RT PIPELINE DEFINITIONS----------//
 
     std::list<RTPipeline*> RTPipeline::rtPipelines;
-    std::unique_ptr<DeviceAllocation> RTPipeline::sbtAllocation;
     std::unique_ptr<Buffer> RTPipeline::sbtBuffer;
 
     RTPipeline::RTPipeline(const RTPipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties)
@@ -359,21 +358,19 @@ namespace PaperRenderer
         while(!isBuilt()) {}
 
         //setup shader binding table
-        auto getAlignment = [&](VkDeviceSize size, VkDeviceSize alignment){ return (size + (alignment - 1)) & ~(alignment - 1); }; //from NVIDIA
-
         const uint32_t handleCount = rtShaderGroups.size();
         const uint32_t handleSize  = rendererPtr->getDevice()->getRTproperties().shaderGroupHandleSize;
         const uint32_t handleAlignment = rendererPtr->getDevice()->getRTproperties().shaderGroupBaseAlignment;
-        const uint32_t alignedSize = getAlignment(handleSize, handleAlignment);
+        const uint32_t alignedSize = rendererPtr->getDevice()->getAlignment(handleSize, handleAlignment);
         
         shaderBindingTableData.raygenShaderBindingTable.stride = alignedSize;
-        shaderBindingTableData.raygenShaderBindingTable.size   = getAlignment(raygenCount * alignedSize, handleAlignment);
+        shaderBindingTableData.raygenShaderBindingTable.size   = rendererPtr->getDevice()->getAlignment(raygenCount * alignedSize, handleAlignment);
         shaderBindingTableData.missShaderBindingTable.stride = alignedSize;
-        shaderBindingTableData.missShaderBindingTable.size   = getAlignment(missCount * alignedSize, handleAlignment);
+        shaderBindingTableData.missShaderBindingTable.size   = rendererPtr->getDevice()->getAlignment(missCount * alignedSize, handleAlignment);
         shaderBindingTableData.hitShaderBindingTable.stride  = alignedSize;
-        shaderBindingTableData.hitShaderBindingTable.size    = getAlignment(hitCount * alignedSize, handleAlignment);
+        shaderBindingTableData.hitShaderBindingTable.size    = rendererPtr->getDevice()->getAlignment(hitCount * alignedSize, handleAlignment);
         shaderBindingTableData.callableShaderBindingTable.stride  = alignedSize;
-        shaderBindingTableData.callableShaderBindingTable.size    = getAlignment(callableCount * alignedSize, handleAlignment);
+        shaderBindingTableData.callableShaderBindingTable.size    = rendererPtr->getDevice()->getAlignment(callableCount * alignedSize, handleAlignment);
 
         //get shader handles
         std::vector<char> handleData(handleSize * handleCount);
@@ -412,7 +409,7 @@ namespace PaperRenderer
         }
 
         //set SBT data
-        rebuildSBTBufferAndAllocation(rendererPtr);
+        rebuildSBTBuffer(rendererPtr);
     }
 
     RTPipeline::~RTPipeline()
@@ -420,17 +417,16 @@ namespace PaperRenderer
         rtPipelines.remove(this);
         if(rtPipelines.size())
         {
-            rebuildSBTBufferAndAllocation(rendererPtr);
+            rebuildSBTBuffer(rendererPtr);
         }
         else
         {
             sbtBuffer.reset();
-            sbtAllocation.reset();
         }
        
     }
 
-    void RTPipeline::rebuildSBTBufferAndAllocation(RenderEngine* renderer)
+    void RTPipeline::rebuildSBTBuffer(RenderEngine* renderer)
     {
         //get size and data
         VkDeviceSize newSize = 0;
@@ -443,29 +439,16 @@ namespace PaperRenderer
 
         //create buffers
         BufferInfo deviceBufferInfo = {};
+        deviceBufferInfo.allocationFlags = 0;
         deviceBufferInfo.size = newSize;
         deviceBufferInfo.usageFlags = VK_BUFFER_USAGE_2_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR;
         sbtBuffer = std::make_unique<Buffer>(renderer, deviceBufferInfo);
         
         BufferInfo stagingBufferInfo = {};
+        stagingBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
         stagingBufferInfo.size = newSize;
         stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
         Buffer stagingBuffer(renderer, stagingBufferInfo);
-
-        //create allocations
-        DeviceAllocationInfo deviceAllocationInfo = {};
-        deviceAllocationInfo.allocationSize = sbtBuffer->getMemoryRequirements().size;
-        deviceAllocationInfo.allocFlags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-        deviceAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        sbtAllocation = std::make_unique<DeviceAllocation>(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), deviceAllocationInfo);
-        sbtBuffer->assignAllocation(sbtAllocation.get());
-
-        DeviceAllocationInfo stagingAllocationInfo = {};
-        stagingAllocationInfo.allocationSize = stagingBuffer.getMemoryRequirements().size;
-        stagingAllocationInfo.allocFlags = 0;
-        stagingAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-        DeviceAllocation stagingAllocation(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), stagingAllocationInfo);
-        stagingBuffer.assignAllocation(&stagingAllocation);
 
         //copy data
         BufferWrite writeInfo = {};

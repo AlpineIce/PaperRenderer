@@ -6,8 +6,6 @@
 
 namespace PaperRenderer
 {
-    std::unique_ptr<DeviceAllocation> CommonMeshGroup::modelMatricesAllocation;
-    std::unique_ptr<DeviceAllocation> CommonMeshGroup::drawCommandsAllocation;
     std::unique_ptr<Buffer> CommonMeshGroup::modelMatricesBuffer;
     std::unique_ptr<Buffer> CommonMeshGroup::drawCommandsBuffer;
     std::list<CommonMeshGroup*> CommonMeshGroup::commonMeshGroups;
@@ -33,8 +31,6 @@ namespace PaperRenderer
         {
             modelMatricesBuffer.reset();
             drawCommandsBuffer.reset();
-            modelMatricesAllocation.reset();
-            drawCommandsAllocation.reset();
         }
     }
 
@@ -43,16 +39,16 @@ namespace PaperRenderer
         std::vector<ModelInstance *> returnInstances;
         if(rebuild)
         {
-            returnInstances = rebuildAllocationAndBuffers(renderer);
+            returnInstances = rebuildBuffers(renderer);
         }
         
         rebuild = false;
         return returnInstances;
     }
 
-    std::vector<ModelInstance*> CommonMeshGroup::rebuildAllocationAndBuffers(RenderEngine* renderer)
+    std::vector<ModelInstance*> CommonMeshGroup::rebuildBuffers(RenderEngine* renderer)
     {
-        //rebuild buffers and get new size
+        //get new size
         BufferSizeRequirements bufferSizeRequirements = {};
         for(const auto& commonMeshGroup : commonMeshGroups)
         {
@@ -62,42 +58,23 @@ namespace PaperRenderer
 
         //rebuild buffers
         BufferInfo matricesBufferInfo = {};
+        matricesBufferInfo.allocationFlags = 0;
         matricesBufferInfo.size = bufferSizeRequirements.matricesCount * sizeof(ShaderOutputObject);
         matricesBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
         modelMatricesBuffer = std::make_unique<Buffer>(renderer, matricesBufferInfo);
 
         BufferInfo drawCommandsBufferInfo = {};
+        drawCommandsBufferInfo.allocationFlags = 0;
         drawCommandsBufferInfo.size = bufferSizeRequirements.drawCommandCount * sizeof(VkDrawIndexedIndirectCommand);
         drawCommandsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR;
         drawCommandsBuffer = std::make_unique<Buffer>(renderer, drawCommandsBufferInfo);
 
-        //rebuild allocations and assign memory
-        DeviceAllocationInfo modelMatricesAllocInfo = {};
-        modelMatricesAllocInfo.allocationSize = modelMatricesBuffer->getMemoryRequirements().size;
-        modelMatricesAllocInfo.allocFlags = 0; 
-        modelMatricesAllocInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        modelMatricesAllocation = std::make_unique<DeviceAllocation>(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), modelMatricesAllocInfo);
-        modelMatricesBuffer->assignAllocation(modelMatricesAllocation.get());
-
-        DeviceAllocationInfo drawCommandsAllocationInfo = {};
-        drawCommandsAllocationInfo.allocationSize = drawCommandsBuffer->getMemoryRequirements().size;
-        drawCommandsAllocationInfo.allocFlags = 0; 
-        drawCommandsAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        drawCommandsAllocation = std::make_unique<DeviceAllocation>(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), drawCommandsAllocationInfo);
-        drawCommandsBuffer->assignAllocation(drawCommandsAllocation.get());
-
         //staging buffer to add draw commands
-        DeviceAllocationInfo stagingAllocationInfo = {};
-        stagingAllocationInfo.allocationSize = bufferSizeRequirements.drawCommandCount * sizeof(VkDrawIndexedIndirectCommand);
-        stagingAllocationInfo.allocFlags = 0; 
-        stagingAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-        DeviceAllocation stagingAllocation(renderer->getDevice()->getDevice(), renderer->getDevice()->getGPU(), stagingAllocationInfo);
-
         BufferInfo stagingBufferInfo = {};
+        stagingBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
         stagingBufferInfo.size = bufferSizeRequirements.drawCommandCount * sizeof(VkDrawIndexedIndirectCommand);
         stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
         Buffer stagingBuffer(renderer, stagingBufferInfo);
-        stagingBuffer.assignAllocation(&stagingAllocation);
 
         for(const auto& commonMeshGroup : commonMeshGroups)
         {
@@ -169,12 +146,18 @@ namespace PaperRenderer
     {
         for(auto& [mesh, meshInstancesData] : meshesData)
         {
-            VkDrawIndexedIndirectCommand* command = ((VkDrawIndexedIndirectCommand*)(stagingBuffer.getHostDataPtr()) + meshInstancesData.drawCommandIndex);
-            command->indexCount = mesh->indexCount;
-            command->instanceCount = 0;
-            command->firstIndex = mesh->iboOffset;
-            command->vertexOffset = mesh->vboOffset;
-            command->firstInstance = 0;
+            VkDrawIndexedIndirectCommand command = {};
+            command.indexCount = mesh->indexCount;
+            command.instanceCount = 0;
+            command.firstIndex = mesh->iboOffset;
+            command.vertexOffset = mesh->vboOffset;
+            command.firstInstance = 0;
+
+            BufferWrite write = {};
+            write.offset = sizeof(VkDrawIndexedIndirectCommand) * meshInstancesData.drawCommandIndex;
+            write.size = sizeof(VkDrawIndexedIndirectCommand);
+            write.data = &command;
+            stagingBuffer.writeToBuffer({ write });
         }
     }
 

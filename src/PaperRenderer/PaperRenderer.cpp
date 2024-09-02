@@ -25,7 +25,8 @@ namespace PaperRenderer
     {
         copyFence = Commands::getSignaledFence(this);
 
-        rebuildBuffersAndAllocations();
+        rebuildModelDataBuffer();
+        rebuildInstancesbuffer();
 
         //finish up
         vkDeviceWaitIdle(device.getDevice());
@@ -42,90 +43,50 @@ namespace PaperRenderer
 
         vkDestroyFence(device.getDevice(), copyFence, nullptr);
 
-        hostDataAllocation.reset();
-        deviceDataAllocation.reset();
         hostInstancesDataBuffer.reset();
         hostModelDataBuffer.reset();
         deviceInstancesDataBuffer.reset();
         deviceModelDataBuffer.reset();
     }
 
-    void RenderEngine::rebuildBuffersAndAllocations()
+    void RenderEngine::rebuildModelDataBuffer()
     {
         //copy old data into temporary variables and "delete" buffers
-        std::vector<char> oldModelInstancesData(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance));
-        if(hostInstancesDataBuffer)
-        {
-            memcpy(oldModelInstancesData.data(), hostInstancesDataBuffer->getHostDataPtr(), oldModelInstancesData.size());
-            hostInstancesDataBuffer.reset();
-        }
-        
-        VkDeviceSize oldModelsDataSize = 4096;
-        std::vector<char> oldModelsData;
+        std::vector<char> oldData;
+        VkDeviceSize newModelDataSize = 4096;
         if(hostModelDataBuffer)
         {
             hostModelDataBuffer->compact();
-            oldModelsDataSize = hostModelDataBuffer->getStackLocation();
-
-            oldModelsData.resize(oldModelsDataSize);
-            memcpy(oldModelsData.data(), hostModelDataBuffer->getBuffer()->getHostDataPtr(), oldModelsData.size());
+            newModelDataSize = hostModelDataBuffer->getDesiredLocation();
+            oldData.resize(hostModelDataBuffer->getStackLocation());
+            
+            BufferWrite read = {};
+            read.offset = 0;
+            read.size = oldData.size();
+            read.data = oldData.data();
+            hostModelDataBuffer->getBuffer()->readFromBuffer({ read });
             hostModelDataBuffer.reset();
         }
-        
-        //delete old allocations (technically not needed)
-        hostDataAllocation.reset();
-        deviceDataAllocation.reset();
 
-        //rebuild buffers
-        rebuildInstancesbuffers();
-        rebuildModelDataBuffers(oldModelsDataSize);
-
-        //get allocation size requirements
-        VkDeviceSize hostAllocationSize = 0;
-        hostAllocationSize += std::max(hostInstancesDataBuffer->getMemoryRequirements().size, (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
-        hostAllocationSize = DeviceAllocation::padToMultiple(hostAllocationSize, hostInstancesDataBuffer->getMemoryRequirements().alignment); //pad buffer to allocation requirement
-        hostAllocationSize += hostModelDataBuffer->getBuffer()->getMemoryRequirements().size;
-
-        VkDeviceSize deviceAllocationSize = 0;
-        deviceAllocationSize += std::max(deviceInstancesDataBuffer->getMemoryRequirements().size, (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
-        deviceAllocationSize = DeviceAllocation::padToMultiple(deviceAllocationSize, deviceInstancesDataBuffer->getMemoryRequirements().alignment); //pad buffer to allocation requirement
-        deviceAllocationSize += deviceModelDataBuffer->getMemoryRequirements().size;
-
-        //create new allocations
-        DeviceAllocationInfo hostAllocationInfo = {};
-        hostAllocationInfo.allocationSize = hostAllocationSize;
-        hostAllocationInfo.allocFlags = 0;
-        hostAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-        hostDataAllocation = std::make_unique<DeviceAllocation>(device.getDevice(), device.getGPU(), hostAllocationInfo);
-
-        DeviceAllocationInfo deviceAllocationInfo = {};
-        deviceAllocationInfo.allocationSize = deviceAllocationSize;
-        deviceAllocationInfo.allocFlags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-        deviceAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        deviceDataAllocation = std::make_unique<DeviceAllocation>(device.getDevice(), device.getGPU(), deviceAllocationInfo);
-
-        //assign allocations and copy old data back in
-        hostInstancesDataBuffer->assignAllocation(hostDataAllocation.get());
-        memcpy(hostInstancesDataBuffer->getHostDataPtr(), oldModelInstancesData.data(), oldModelInstancesData.size());
-        hostModelDataBuffer->assignAllocation(hostDataAllocation.get());
-        hostModelDataBuffer->newWrite(oldModelsData.data(), oldModelsData.size(), 0, NULL); //location isn't needed
-
-        deviceInstancesDataBuffer->assignAllocation(deviceDataAllocation.get());
-        deviceModelDataBuffer->assignAllocation(deviceDataAllocation.get());
-    }
-
-    void RenderEngine::rebuildModelDataBuffers(VkDeviceSize rebuildSize)
-    {
         BufferInfo hostModelsBufferInfo = {};
-        hostModelsBufferInfo.size = rebuildSize * modelsDataOverhead;
+        hostModelsBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+        hostModelsBufferInfo.size = newModelDataSize * modelsDataOverhead;
         hostModelsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
         hostModelDataBuffer = std::make_unique<FragmentableBuffer>(this, hostModelsBufferInfo);
         hostModelDataBuffer->setCompactionCallback([this](std::vector<CompactionResult> results){ handleModelDataCompaction(results); });
 
         BufferInfo deviceModelsBufferInfo = {};
+        deviceModelsBufferInfo.allocationFlags = 0;
         deviceModelsBufferInfo.size = hostModelsBufferInfo.size;
         deviceModelsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
         deviceModelDataBuffer = std::make_unique<Buffer>(this, deviceModelsBufferInfo);
+
+        //rewrite data
+        BufferWrite write = {};
+        write.offset = 0;
+        write.size = oldData.size();
+        write.data = oldData.data();
+        hostModelDataBuffer->getBuffer()->writeToBuffer({ write });
     }
 
     void RenderEngine::handleModelDataCompaction(std::vector<CompactionResult> results) //UNTESTED FUNCTION
@@ -146,24 +107,51 @@ namespace PaperRenderer
         //then fix instances data
         for(ModelInstance* instance : renderingModelInstances)
         {
-            ModelInstance::ShaderModelInstance& shaderModelInstance = *((ModelInstance::ShaderModelInstance*)hostInstancesDataBuffer->getHostDataPtr() + instance->rendererSelfIndex);
-            shaderModelInstance.modelDataOffset = instance->getParentModelPtr()->getShaderDataLocation();
+            uint32_t dataOffset = instance->getParentModelPtr()->getShaderDataLocation();
+            
+            //write data
+            BufferWrite write = {};
+            write.offset = offsetof(ModelInstance::ShaderModelInstance, modelDataOffset) + (sizeof(ModelInstance::ShaderModelInstance) * instance->rendererSelfIndex);
+            write.size = sizeof(ModelInstance::ShaderModelInstance::modelDataOffset);
+            write.data = &dataOffset;
+            hostInstancesDataBuffer->writeToBuffer({ write });
         }
     }
 
-    void RenderEngine::rebuildInstancesbuffers()
+    void RenderEngine::rebuildInstancesbuffer()
     {
+        //copy old data into temporary variables and "delete" buffers
+        std::vector<char> oldData(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance));
+        if(hostInstancesDataBuffer)
+        {
+            BufferWrite read = {};
+            read.offset = 0;
+            read.size = oldData.size();
+            read.data = oldData.data();
+            hostInstancesDataBuffer->readFromBuffer({ read });
+            hostInstancesDataBuffer.reset();
+        }
+
         //host visible
         BufferInfo hostBufferInfo = {};
+        hostBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
         hostBufferInfo.size = std::max((VkDeviceSize)(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance) * instancesDataOverhead), (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
         hostBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
         hostInstancesDataBuffer = std::make_unique<Buffer>(this, hostBufferInfo);
 
         //device local
         BufferInfo deviceBufferInfo = {};
+        deviceBufferInfo.allocationFlags = 0;
         deviceBufferInfo.size = hostBufferInfo.size; //same size as host visible buffer
         deviceBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
         deviceInstancesDataBuffer = std::make_unique<Buffer>(this, deviceBufferInfo);
+
+        //rewrite data
+        BufferWrite write = {};
+        write.offset = 0;
+        write.size = oldData.size();
+        write.data = oldData.data();
+        hostInstancesDataBuffer->writeToBuffer({ write });
     }
 
     void RenderEngine::addModelData(Model* model)
@@ -213,12 +201,18 @@ namespace PaperRenderer
             //check buffer size and rebuild if too small
             if(hostInstancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128)
             {
-                rebuildBuffersAndAllocations(); //TODO SYNCHRONIZATION
+                rebuildInstancesbuffer(); //TODO SYNCHRONIZATION
             }
 
             //copy initial data into host visible instances data
             ModelInstance::ShaderModelInstance shaderModelInstance = object->getShaderInstance();
-            memcpy((ModelInstance::ShaderModelInstance*)hostInstancesDataBuffer->getHostDataPtr() + object->rendererSelfIndex, &shaderModelInstance, sizeof(ModelInstance::ShaderModelInstance));
+            
+            //write data
+            BufferWrite write = {};
+            write.offset = sizeof(ModelInstance::ShaderModelInstance) * object->rendererSelfIndex;
+            write.size = sizeof(ModelInstance::ShaderModelInstance);
+            write.data = &shaderModelInstance;
+            hostInstancesDataBuffer->writeToBuffer({ write });
         }
     }
 
@@ -230,18 +224,29 @@ namespace PaperRenderer
             renderingModelInstances.at(object->rendererSelfIndex) = renderingModelInstances.back();
             renderingModelInstances.at(object->rendererSelfIndex)->rendererSelfIndex = object->rendererSelfIndex;
 
-            //re-copy data
-            memcpy(
-                (ModelInstance::ShaderModelInstance*)hostInstancesDataBuffer->getHostDataPtr() + object->rendererSelfIndex, 
-                (ModelInstance::ShaderModelInstance*)hostInstancesDataBuffer->getHostDataPtr() + renderingModelInstances.size() - 1,
-                sizeof(ModelInstance::ShaderModelInstance));
+            //read data to move
+            ModelInstance::ShaderModelInstance moveData;
 
+            BufferWrite read = {};
+            read.offset = sizeof(ModelInstance::ShaderModelInstance) * (renderingModelInstances.size() - 1);
+            read.size = sizeof(ModelInstance::ShaderModelInstance);
+            read.data = &moveData;
+            hostInstancesDataBuffer->readFromBuffer({ read });
+
+            //write data to move
+            BufferWrite write = {};
+            write.offset = sizeof(ModelInstance::ShaderModelInstance) * object->rendererSelfIndex;
+            write.size = sizeof(ModelInstance::ShaderModelInstance);
+            write.data = &moveData;
+            hostInstancesDataBuffer->writeToBuffer({ write });
+
+            //remove last element from instances vector (the one that was moved in the mirrored buffer)
             renderingModelInstances.pop_back();
 
             //check buffer size and rebuild if unnecessarily large by a factor of 2
             if(hostInstancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) > renderingModelInstances.size() * 2 && renderingModelInstances.size() > 128)
             {
-                rebuildBuffersAndAllocations(); //TODO THIS NEEDS TO WAIT ON BOTH FRAME FENCES
+                rebuildInstancesbuffer(); //TODO THIS NEEDS TO WAIT ON BOTH FRAME FENCES
             }
         }
         else

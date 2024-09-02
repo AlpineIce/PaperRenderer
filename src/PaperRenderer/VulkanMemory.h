@@ -1,5 +1,5 @@
 #pragma once
-#include "volk.h"
+/*#include "volk.h"
 #include "vk_mem_alloc.h"
 
 #include <atomic>
@@ -63,4 +63,4 @@ namespace PaperRenderer
         VkDeviceSize getMemorySize() const { return allocationSize; }
         VkDeviceSize getAvailableMemorySize() const { return allocationSize - currentOffset; }
     };
-}
+}*/

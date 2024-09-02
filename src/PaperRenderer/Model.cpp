@@ -9,9 +9,8 @@ namespace PaperRenderer
 {
 	//----------MODEL DEFINITIONS----------//
 
-    Model::Model(RenderEngine *renderer, DeviceAllocation *allocation, const ModelCreateInfo &creationInfo)
-        :rendererPtr(renderer),
-        allocationPtr(allocation)
+    Model::Model(RenderEngine *renderer, const ModelCreateInfo &creationInfo)
+        :rendererPtr(renderer)
     {
 		//temporary variables for creating the singular vertex and index buffer
 		std::vector<char> creationVerticesData;
@@ -136,47 +135,14 @@ namespace PaperRenderer
 		shaderData = newData;
     }
 
-    VkDeviceSize Model::getMemoryAlignment(Device* device)
-    {
-		//kind of "hackish" but I'm not sure of any other way to do this
-       	VkBufferCreateInfo bufferCreateInfo = {};
-		bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-		bufferCreateInfo.pNext = NULL;
-		bufferCreateInfo.flags = 0;
-		bufferCreateInfo.size = 1000000;
-		bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
-		bufferCreateInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
-
-		VkDeviceBufferMemoryRequirements bufferMemRequirements;
-		bufferMemRequirements.sType = VK_STRUCTURE_TYPE_DEVICE_BUFFER_MEMORY_REQUIREMENTS;
-		bufferMemRequirements.pNext = NULL;
-		bufferMemRequirements.pCreateInfo = &bufferCreateInfo;
-
-		VkMemoryRequirements2 memRequirements = {};
-		memRequirements.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
-		vkGetDeviceBufferMemoryRequirements(device->getDevice(), &bufferMemRequirements, &memRequirements);
-
-		return memRequirements.memoryRequirements.alignment * 2; //alignment for vertex and index buffer
-    }
-
     std::unique_ptr<Buffer> Model::createDeviceLocalBuffer(VkDeviceSize size, void *data, VkBufferUsageFlags2KHR usageFlags)
     {
 		//create staging buffer
-		std::unique_ptr<DeviceAllocation> stagingAllocation;
 		BufferInfo stagingBufferInfo = {};
+		stagingBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 		stagingBufferInfo.size = size;
 		stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 		Buffer vboStaging(rendererPtr, stagingBufferInfo);
-
-		//create staging allocation
-		DeviceAllocationInfo stagingAllocationInfo = {};
-		stagingAllocationInfo.allocationSize = vboStaging.getMemoryRequirements().size; //alignment doesnt matter here since buffer and allocation are 1:1
-		stagingAllocationInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-		stagingAllocation = std::make_unique<DeviceAllocation>(rendererPtr->getDevice()->getDevice(), rendererPtr->getDevice()->getGPU(), stagingAllocationInfo);
-
-		//assign staging allocation and fill with information
-		vboStaging.assignAllocation(stagingAllocation.get());
 
 		//fill staging data
 		BufferWrite write = {};
@@ -187,15 +153,10 @@ namespace PaperRenderer
 
 		//create device local buffer
 		BufferInfo bufferInfo = {};
+		bufferInfo.allocationFlags = 0;
 		bufferInfo.size = size;
 		bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | usageFlags;
 		std::unique_ptr<Buffer> buffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
-
-		//assign memory
-		if(buffer->assignAllocation(allocationPtr) != 0)
-		{
-			throw std::runtime_error("Buffer device local allocation assignment failed");
-		}
 
 		//copy
 		VkBufferCopy copyRegion;
@@ -251,7 +212,7 @@ namespace PaperRenderer
 
 		for(uint32_t lodIndex = 0; lodIndex < modelPtr->getLODs().size(); lodIndex++)
 		{
-			dynamicOffset = DeviceAllocation::padToMultiple(dynamicOffset, 8);
+			dynamicOffset = Device::getAlignment(dynamicOffset, 8);
 
 			LODMaterialData lodMaterialData = {};
 			lodMaterialData.meshGroupsOffset = dynamicOffset;
@@ -264,7 +225,7 @@ namespace PaperRenderer
 
 			for(uint32_t matIndex = 0; matIndex < modelPtr->getLODs().at(lodIndex).meshMaterialData.size(); matIndex++)
 			{
-				dynamicOffset = DeviceAllocation::padToMultiple(dynamicOffset, 8);
+				dynamicOffset = Device::getAlignment(dynamicOffset, 8);
 				newData.resize(dynamicOffset);
 
 				MaterialMeshGroup materialMeshGroup = {};
@@ -311,15 +272,38 @@ namespace PaperRenderer
 
     void ModelInstance::setTransformation(const ModelTransformation &newTransformation)
     {
-		ModelInstance::ShaderModelInstance& shaderObject = *((ModelInstance::ShaderModelInstance*)rendererPtr->hostInstancesDataBuffer->getHostDataPtr() + rendererSelfIndex);
+		ModelInstance::ShaderModelInstance shaderObject;
+
+		//read data
+		BufferWrite instanceRead = {};
+		instanceRead.offset = sizeof(ModelInstance::ShaderModelInstance) * rendererSelfIndex;
+		instanceRead.size = sizeof(ModelInstance::ShaderModelInstance);
+		instanceRead.data = &shaderObject;
+		rendererPtr->hostInstancesDataBuffer->readFromBuffer({ instanceRead });
+
+		//transform
 		shaderObject.position = glm::vec4(newTransformation.position, 1.0f);
 		shaderObject.scale = glm::vec4(newTransformation.scale, 1.0f);
 		shaderObject.qRotation = newTransformation.rotation;
+
+		//write data
+		BufferWrite instanceWrite = {};
+		instanceWrite.offset = sizeof(ModelInstance::ShaderModelInstance) * rendererSelfIndex;
+		instanceWrite.size = sizeof(ModelInstance::ShaderModelInstance);
+		instanceWrite.data = &shaderObject;
+		rendererPtr->hostInstancesDataBuffer->writeToBuffer({ instanceWrite });
     }
 
     ModelTransformation ModelInstance::getTransformation() const
     {
-		const ModelInstance::ShaderModelInstance& shaderObject = *((ModelInstance::ShaderModelInstance*)rendererPtr->hostInstancesDataBuffer->getHostDataPtr() + rendererSelfIndex);
+		ModelInstance::ShaderModelInstance shaderObject;
+
+		//read data
+		BufferWrite instanceRead = {};
+		instanceRead.offset = sizeof(ModelInstance::ShaderModelInstance) * rendererSelfIndex;
+		instanceRead.size = sizeof(ModelInstance::ShaderModelInstance);
+		instanceRead.data = &shaderObject;
+		rendererPtr->hostInstancesDataBuffer->readFromBuffer({ instanceRead });
 
 		ModelTransformation transformation;
 		transformation.position = shaderObject.position;
