@@ -36,7 +36,7 @@ namespace PaperRenderer
         Material(class RenderEngine* renderer, std::string materialName);
         virtual ~Material();
 
-        virtual void bind(VkCommandBuffer cmdBuffer, class Camera* camera); //used per pipeline bind and material instance
+        virtual void bind(VkCommandBuffer cmdBuffer, class Camera* camera); //used per pipeline bind and material instance; camera is optional
         
         std::string getMaterialName() const { return matName; }
         const RasterPipelineProperties& getRasterPipelineProperties() const { return rasterPipelineProperties; }

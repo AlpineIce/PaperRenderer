@@ -128,8 +128,8 @@ namespace PaperRenderer
         vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
         vertexInputInfo.pNext = NULL;
         vertexInputInfo.flags = 0;
-        vertexInputInfo.vertexBindingDescriptionCount = 1;
-        vertexInputInfo.pVertexBindingDescriptions = &pipelineProperties.vertexDescription;
+        vertexInputInfo.vertexBindingDescriptionCount = pipelineProperties.vertexDescriptions.size();
+        vertexInputInfo.pVertexBindingDescriptions = pipelineProperties.vertexDescriptions.data();
         vertexInputInfo.vertexAttributeDescriptionCount = pipelineProperties.vertexAttributes.size();
         vertexInputInfo.pVertexAttributeDescriptions = pipelineProperties.vertexAttributes.data();
 

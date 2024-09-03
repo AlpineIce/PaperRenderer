@@ -40,13 +40,15 @@ namespace PaperRenderer
     {
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
 
+        if(camera)
+        {
+            GlobalInputData inputData = {};
+            inputData.projection = camera->getProjection();
+            inputData.view = camera->getViewMatrix();
+
+            vkCmdPushConstants(cmdBuffer, rasterPipeline->getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GlobalInputData), &inputData);
+        }
         
-        GlobalInputData inputData = {};
-        inputData.projection = camera->getProjection();
-        inputData.view = camera->getViewMatrix();
-
-        vkCmdPushConstants(cmdBuffer, rasterPipeline->getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GlobalInputData), &inputData);
-
         if(rasterDescriptorWrites.bufferViewWrites.size() || rasterDescriptorWrites.bufferWrites.size() || rasterDescriptorWrites.imageWrites.size())
         {
             VkDescriptorSet materialDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(RASTER_MATERIAL));

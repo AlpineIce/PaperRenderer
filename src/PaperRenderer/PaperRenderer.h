@@ -8,6 +8,7 @@
 #include "RenderPass.h"
 #include "RayTrace.h"
 #include "Model.h"
+#include "Camera.h"
 
 #include <string>
 #include <memory>

@@ -687,8 +687,9 @@ namespace PaperRenderer
         instance->accelerationStructureSelfReferences[this].selfIndex = accelerationStructureInstances.size();
         accelerationStructureInstances.push_back(instance);
 
-        //check size
-        if(hostInstancesBuffer->getSize() < (accelerationStructureInstances.size()) * sizeof(ModelInstance::AccelerationStructureInstance))
+        //check sizes
+        if(hostInstancesBuffer->getSize() < accelerationStructureInstances.size() * sizeof(ModelInstance::AccelerationStructureInstance) ||
+            hostInstanceDescriptionsBuffer->getSize() < accelerationStructureInstances.size() * sizeof(InstanceDescription))
         {
             rebuildInstancesBuffers();
         }

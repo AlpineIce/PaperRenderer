@@ -174,8 +174,6 @@ namespace PaperRenderer
             renderingModels.at(model->selfIndex) = renderingModels.back();
             renderingModels.at(model->selfIndex)->selfIndex = model->selfIndex;
             renderingModels.pop_back();
-
-            //(no need to copy data because fragmentable buffer)
         }
         else
         {
