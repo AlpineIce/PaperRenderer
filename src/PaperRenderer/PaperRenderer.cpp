@@ -270,7 +270,7 @@ namespace PaperRenderer
         vkWaitForFences(device.getDevice(), allWaitFences.size(), allWaitFences.data(), VK_TRUE, UINT64_MAX);
 
         //acquire next image
-        const VkSemaphore& imageAcquireSemaphore = swapchain.acquireNextImage(currentImage);
+        const VkSemaphore& imageAcquireSemaphore = swapchain.acquireNextImage();
         frameNumber++;
 
         //reset fences
@@ -321,6 +321,9 @@ namespace PaperRenderer
     {
         //presentation
         swapchain.presentImage(waitSemaphores);
+
+        if(bufferIndex == 0) bufferIndex = 1;
+        else bufferIndex = 0;
 
         glfwPollEvents();
     }

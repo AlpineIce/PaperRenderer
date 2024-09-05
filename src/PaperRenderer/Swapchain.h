@@ -35,6 +35,7 @@ namespace PaperRenderer
         std::vector<VkImageView> imageViews;
         std::vector<VkSemaphore> imageSemaphores;
         uint32_t frameIndex;
+        uint32_t semaphoreIndex;
         GLFWwindow* window = NULL;
         WindowState currentWindowState;
         bool usingHDR = false;
@@ -52,7 +53,7 @@ namespace PaperRenderer
         ~Swapchain();
 
         //returns the image acquire semaphore
-        const VkSemaphore& acquireNextImage(uint32_t currentImage);
+        const VkSemaphore& acquireNextImage();
         void presentImage(const std::vector<VkSemaphore>& waitSemaphores);
         void recreate();
         void setSwapchainRebuildCallback(std::function<void(VkExtent2D newExtent)> callbackFunction) { this->swapchainRebuildCallback = callbackFunction; }

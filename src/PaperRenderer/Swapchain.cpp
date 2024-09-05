@@ -110,24 +110,34 @@ namespace PaperRenderer
         glfwDestroyWindow(window);
     }
 
-    const VkSemaphore& Swapchain::acquireNextImage(uint32_t currentImage)
+    const VkSemaphore& Swapchain::acquireNextImage()
     {
+        //increment semaphore index
+        if(semaphoreIndex >= imageSemaphores.size() - 1)
+        {
+            semaphoreIndex = 0;
+        }
+        else
+        {
+            semaphoreIndex++;
+        }
+        
         //get available image
         VkResult imageAcquireResult = vkAcquireNextImageKHR(
             rendererPtr->getDevice()->getDevice(),
             swapchain,
             UINT64_MAX,
-            imageSemaphores.at(currentImage),
+            imageSemaphores.at(semaphoreIndex),
             VK_NULL_HANDLE,
             &frameIndex);
 
         if(imageAcquireResult == VK_ERROR_OUT_OF_DATE_KHR || imageAcquireResult == VK_SUBOPTIMAL_KHR)
         {
             recreate();
-            acquireNextImage(frameIndex);
+            acquireNextImage();
         }
 
-        return imageSemaphores.at(currentImage);
+        return imageSemaphores.at(semaphoreIndex);
     }
 
     void Swapchain::presentImage(const std::vector<VkSemaphore>& waitSemaphores)
