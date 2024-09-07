@@ -27,6 +27,46 @@ namespace PaperRenderer
         VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
     };
 
+    //Dynamically resizing staging buffer to be used for most staging data operations used by the renderer (render passes, acceleration structures, instances, etc)
+    class EngineStagingBuffer
+    {
+    private:
+        std::unique_ptr<Buffer> stagingBuffer;
+        const float bufferOverhead = 1.5f;
+
+        struct QueuedTransfer
+        {
+            const Buffer& dstBuffer;
+            VkDeviceSize dstOffset;
+            std::vector<char> data;
+        };
+
+        std::vector<QueuedTransfer> transferQueue;
+
+        VkSemaphore transferSemaphore;
+        VkDeviceSize lastSubmissionSize = 0;
+        VkDeviceSize queueSize = 0;
+        uint64_t finalSemaphoreValue = 0;
+
+        struct TransferInfo
+        {
+            uint64_t semaphoreSignalValue;
+            VkDeviceSize size;
+            VkDeviceSize offset;
+        };
+        std::list<TransferInfo> previousTransfers;
+
+        class RenderEngine* rendererPtr;
+
+    public:
+        EngineStagingBuffer(RenderEngine* renderer);
+        ~EngineStagingBuffer();
+        
+        void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char>& data);
+        void submitQueuedTransfers(SynchronizationInfo syncInfo); //Submits all queued transfers and clears the queue. Does not need to be explicitly synced with last transfer
+    };
+
+    //Render engine object. Contains the entire state of the renderer and some important buffers
     class RenderEngine
     {
     private:
@@ -36,6 +76,7 @@ namespace PaperRenderer
         PipelineBuilder pipelineBuilder;
         RasterPreprocessPipeline rasterPreprocessPipeline;
         TLASInstanceBuildPipeline tlasInstanceBuildPipeline;
+        EngineStagingBuffer stagingBuffer;
 
         std::string shadersDir;
         RendererState rendererState = {};
@@ -86,7 +127,6 @@ namespace PaperRenderer
 
         //returns the image acquire semaphore from the swapchain
         const VkSemaphore& beginFrame(
-            const std::vector<VkFence> &waitFences,
             const std::vector<BinarySemaphorePair> &binaryBufferCopySignalSemaphores,
             const std::vector<TimelineSemaphorePair> &timelineBufferCopySignalSemaphores
         );
@@ -103,6 +143,7 @@ namespace PaperRenderer
         PipelineBuilder* getPipelineBuilder() { return &pipelineBuilder; }
         RendererState* getRendererState() { return &rendererState; }
         Swapchain* getSwapchain() { return &swapchain; }
+        EngineStagingBuffer* getEngineStagingBuffer() { return &stagingBuffer; }
         const std::vector<Model*>& getModelReferences() const { return renderingModels; }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
         Buffer* getModelDataBuffer() const { return deviceModelDataBuffer.get(); }

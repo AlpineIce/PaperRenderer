@@ -14,6 +14,229 @@
 
 namespace PaperRenderer
 {
+    //----------STAGING BUFFER DEFINITIONS----------//
+    
+    EngineStagingBuffer::EngineStagingBuffer(RenderEngine *renderer)
+        :rendererPtr(renderer)
+    {
+        transferSemaphore = Commands::getTimelineSemaphore(rendererPtr, finalSemaphoreValue);
+    }
+
+    EngineStagingBuffer::~EngineStagingBuffer()
+    {
+        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), transferSemaphore, nullptr);
+    }
+
+    void EngineStagingBuffer::queueDataTransfers(const Buffer &dstBuffer, VkDeviceSize dstOffset, const std::vector<char> &data)
+    {
+        //push transfer to queue
+        transferQueue.emplace_back(
+            dstBuffer,
+            dstOffset,
+            data
+        );
+        queueSize += data.size();
+    }
+
+    void EngineStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
+    {
+        //check previous transfers
+        uint64_t currentSemaphoreValue;
+        vkGetSemaphoreCounterValue(rendererPtr->getDevice()->getDevice(), transferSemaphore, &currentSemaphoreValue);
+
+        auto transferInfo = previousTransfers.begin();
+        while(transferInfo != previousTransfers.end())
+        {
+            if(currentSemaphoreValue >= transferInfo->semaphoreSignalValue)
+            {
+                transferInfo = previousTransfers.erase(transferInfo);
+            }
+            else
+            {
+                transferInfo++;
+            }
+        }
+
+        //create a list of memory fragments that can be filled
+        struct MemoryFragment
+        {
+            VkDeviceSize offset;
+            VkDeviceSize size;
+        };
+
+        std::list<MemoryFragment> fragments;
+        fragments.push_back({ 0, stagingBuffer->getSize() }); //push the initial full size fragment
+        VkDeviceSize availableSize = fragments.front().size;
+        
+        for(const TransferInfo& transfer : previousTransfers)
+        {
+            auto fragment = fragments.begin();
+            while(fragment != fragments.end())
+            {
+                //split fragment if a transfer overlaps
+                if(transfer.offset < fragment->size + fragment->offset)
+                {
+                    availableSize -= fragment->size;
+
+                    //generate left fragment
+                    MemoryFragment left = {
+                        .offset = fragment->offset,
+                        .size = transfer.offset - fragment->offset
+                    };
+                    if(left.size)
+                    {
+                        fragments.push_front(left);
+                        availableSize += left.size;
+                    }
+
+                    //generate right fragment
+                    MemoryFragment right = {
+                        .offset = transfer.offset + transfer.size,
+                        .size = (fragment->offset + fragment->size) - (transfer.offset + transfer.size)
+                    };
+                    if(right.size)
+                    {
+                        fragments.push_front(right);
+                        availableSize += right.size;
+                    }
+
+                    //remove old
+                    fragments.erase(fragment);
+
+                    break; //a transfer should never overlap more than one fragment as that would imply a transfer is within a transfer
+                }
+                else
+                {
+                    fragment++;
+                }
+            }
+        }
+
+        //rebuild buffer if needed
+        if(queueSize > availableSize)
+        {
+            //wait for timeline semaphore
+            VkSemaphoreWaitInfo waitInfo = {};
+            waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
+            waitInfo.pNext = NULL;
+            waitInfo.flags = 0;
+            waitInfo.semaphoreCount = 1;
+            waitInfo.pSemaphores = &transferSemaphore;
+            waitInfo.pValues = &finalSemaphoreValue;
+
+            vkWaitSemaphores(rendererPtr->getDevice()->getDevice(), &waitInfo, UINT64_MAX);
+
+            //rebuild buffer
+            const VkDeviceSize currentBufferSize = stagingBuffer ? stagingBuffer->getSize() : 0;
+
+            BufferInfo bufferInfo = {};
+            bufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+            bufferInfo.size = (queueSize - availableSize + currentBufferSize) * bufferOverhead;
+            bufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
+            stagingBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
+
+            availableSize = bufferInfo.size;
+
+            //clear any previous transfers
+            previousTransfers.clear();
+        }
+
+        //modify semaphore values
+        finalSemaphoreValue++;
+        syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValue });
+
+        //fill in the staging buffer with queued transfers
+        struct DstCopy
+        {
+            const QueuedTransfer& transfer;
+            VkBufferCopy copyInfo;
+        };
+        std::vector<DstCopy> dstCopies;
+        for(const QueuedTransfer& transfer : transferQueue)
+        {
+            //dynamic buffer write
+            BufferWrite dynamicBufferWrite = {
+                .offset = 0,
+                .size = transfer.data.size(),
+                .data = (char*)transfer.data.data()
+            };
+
+            //fill staging buffer
+            auto fragment = fragments.begin();
+            while(fragment != fragments.end())
+            {
+                dynamicBufferWrite.offset = fragment->offset;
+
+                //split the transfer data if size is larger than fragment; remove fragment from list
+                if(fragment->size < dynamicBufferWrite.size)
+                {
+                    BufferWrite fragmentedWrite = dynamicBufferWrite;
+                    fragmentedWrite.size = fragment->size;
+
+                    dynamicBufferWrite.offset += fragmentedWrite.size;
+                    dynamicBufferWrite.size -= fragmentedWrite.size;
+
+                    fragments.erase(fragment);
+
+                    stagingBuffer->writeToBuffer({ fragmentedWrite });
+
+                    previousTransfers.push_back({
+                        .semaphoreSignalValue = finalSemaphoreValue,
+                        .size = fragmentedWrite.size,
+                        .offset = fragmentedWrite.offset
+                    });
+                }
+                //else push the transfer and shrink the fragment
+                else
+                {
+                    MemoryFragment newFragment = {
+                        .offset = dynamicBufferWrite.size,
+                        .size = fragment->size - dynamicBufferWrite.size
+                    };
+                    fragments.erase(fragment);
+                    fragments.push_front(newFragment);
+                    
+                    stagingBuffer->writeToBuffer({ dynamicBufferWrite });
+
+                    previousTransfers.push_back({
+                        .semaphoreSignalValue = finalSemaphoreValue,
+                        .size = dynamicBufferWrite.size,
+                        .offset = dynamicBufferWrite.offset
+                    });
+
+                    break;
+                }
+            }
+        }
+
+        //start command buffer
+        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr, syncInfo.queueType);
+
+        VkCommandBufferBeginInfo beginInfo = {};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.pNext = NULL;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+
+        //copy to dst
+        for(const auto& [transfer, copyInfo] : dstCopies)
+        {
+            vkCmdCopyBuffer(cmdBuffer, stagingBuffer->getBuffer(), transfer.dstBuffer.getBuffer(), 1, &copyInfo);
+        }
+
+        vkEndCommandBuffer(cmdBuffer);
+
+        //submit
+        Commands::submitToQueue(syncInfo, { cmdBuffer });
+
+        rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
+
+        queueSize = 0;
+    }
+
+    //----------RENDER ENGINE DEFINITIONS----------//
+
     RenderEngine::RenderEngine(RendererCreationStruct creationInfo)
         :shadersDir(creationInfo.shadersDir),
         device(this, creationInfo.windowState.windowName),
@@ -21,7 +244,8 @@ namespace PaperRenderer
         descriptors(this),
         pipelineBuilder(this),
         rasterPreprocessPipeline(this, creationInfo.shadersDir),
-        tlasInstanceBuildPipeline(this, creationInfo.shadersDir)
+        tlasInstanceBuildPipeline(this, creationInfo.shadersDir),
+        stagingBuffer(this)
     {
         copyFence = Commands::getSignaledFence(this);
 
@@ -112,7 +336,7 @@ namespace PaperRenderer
             //write data
             BufferWrite write = {};
             write.offset = offsetof(ModelInstance::ShaderModelInstance, modelDataOffset) + (sizeof(ModelInstance::ShaderModelInstance) * instance->rendererSelfIndex);
-            write.size = sizeof(ModelInstance::ShaderModelInstance::modelDataOffset);
+            write.size = sizeof(uint32_t);
             write.data = &dataOffset;
             hostInstancesDataBuffer->writeToBuffer({ write });
         }
@@ -152,6 +376,8 @@ namespace PaperRenderer
         write.size = oldData.size();
         write.data = oldData.data();
         hostInstancesDataBuffer->writeToBuffer({ write });
+        hostInstancesDataBuffer->readFromBuffer({ write });
+        int a = 0;
     }
 
     void RenderEngine::addModelData(Model* model)
@@ -258,23 +484,22 @@ namespace PaperRenderer
     }
 
     const VkSemaphore& RenderEngine::beginFrame(
-        const std::vector<VkFence> &waitFences,
         const std::vector<BinarySemaphorePair> &binaryBufferCopySignalSemaphores,
         const std::vector<TimelineSemaphorePair> &timelineBufferCopySignalSemaphores
     )
     {
         //wait for fences
-        std::vector<VkFence> allWaitFences = waitFences;
-        allWaitFences.push_back(copyFence);
+        std::vector<VkFence> waitFences;
+        waitFences.push_back(copyFence);
 
-        vkWaitForFences(device.getDevice(), allWaitFences.size(), allWaitFences.data(), VK_TRUE, UINT64_MAX);
+        vkWaitForFences(device.getDevice(), waitFences.size(), waitFences.data(), VK_TRUE, UINT64_MAX);
 
         //acquire next image
         const VkSemaphore& imageAcquireSemaphore = swapchain.acquireNextImage();
         frameNumber++;
 
         //reset fences
-        vkResetFences(device.getDevice(), allWaitFences.size(), allWaitFences.data());
+        vkResetFences(device.getDevice(), waitFences.size(), waitFences.data());
 
         //free command buffers and reset descriptor pool
         Commands::freeCommandBuffers(this, usedCmdBuffers);
