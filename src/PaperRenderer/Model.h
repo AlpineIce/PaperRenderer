@@ -201,6 +201,8 @@ namespace PaperRenderer
         };
         std::unordered_map<class AccelerationStructure const*, AccelerationStructureData> accelerationStructureSelfReferences;
 
+        ModelTransformation transform = {};
+
         class RenderEngine* rendererPtr;
         Model const* modelPtr = NULL;
 
@@ -219,7 +221,7 @@ namespace PaperRenderer
         //void setVisibility(class RenderPass* renderPass, bool newVisibility); //renderPass can be NULL if setting the visibility for all is desired
         
         Model const* getParentModelPtr() const { return modelPtr; }
-        ModelTransformation getTransformation() const;
+        const ModelTransformation& getTransformation() const { return transform; };
         //bool getVisibility(class RenderPass* renderPass) const;
     };
 }

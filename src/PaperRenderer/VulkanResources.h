@@ -54,6 +54,7 @@ namespace PaperRenderer
     {
     private:
         VkBuffer buffer = VK_NULL_HANDLE;
+        bool writable = false;
         
     public:
         Buffer(class RenderEngine* renderer, const BufferInfo& bufferInfo);
@@ -64,6 +65,7 @@ namespace PaperRenderer
         CommandBuffer copyFromBufferRanges(Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const;
 
         const VkBuffer& getBuffer() const { return buffer; }
+        const bool& isWritable() const { return writable; }
         VkDeviceAddress getBufferDeviceAddress() const;
     };
 

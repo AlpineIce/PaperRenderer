@@ -82,7 +82,7 @@ namespace PaperRenderer
 
         //set0 - binding 1: model instances
         VkDescriptorBufferInfo bufferWrite1Info = {};
-        bufferWrite1Info.buffer = rendererPtr->deviceInstancesDataBuffer->getBuffer();
+        bufferWrite1Info.buffer = rendererPtr->instancesDataBuffer->getBuffer();
         bufferWrite1Info.offset = 0;
         bufferWrite1Info.range = rendererPtr->renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance);
 

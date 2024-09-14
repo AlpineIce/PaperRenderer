@@ -262,55 +262,19 @@ namespace PaperRenderer
     ModelInstance::ShaderModelInstance ModelInstance::getShaderInstance() const
     {
 		ShaderModelInstance shaderModelInstance = {};
-		shaderModelInstance.position = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
-		shaderModelInstance.qRotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-		shaderModelInstance.scale = glm::vec4(1.0f);
-		shaderModelInstance.modelDataOffset = modelPtr->shaderDataLocation; //TODO
+		shaderModelInstance.position = glm::vec4(transform.position, 1.0);
+		shaderModelInstance.qRotation = transform.rotation;
+		shaderModelInstance.scale = glm::vec4(transform.scale, 1.0f);
+		shaderModelInstance.modelDataOffset = modelPtr->shaderDataLocation;
 
 		return shaderModelInstance;
     }
 
     void ModelInstance::setTransformation(const ModelTransformation &newTransformation)
     {
-		ModelInstance::ShaderModelInstance shaderObject;
 
-		//read data
-		BufferWrite instanceRead = {};
-		instanceRead.offset = sizeof(ModelInstance::ShaderModelInstance) * rendererSelfIndex;
-		instanceRead.size = sizeof(ModelInstance::ShaderModelInstance);
-		instanceRead.data = &shaderObject;
-		rendererPtr->hostInstancesDataBuffer->readFromBuffer({ instanceRead });
-
-		//transform
-		shaderObject.position = glm::vec4(newTransformation.position, 1.0f);
-		shaderObject.scale = glm::vec4(newTransformation.scale, 1.0f);
-		shaderObject.qRotation = newTransformation.rotation;
-
-		//write data
-		BufferWrite instanceWrite = {};
-		instanceWrite.offset = sizeof(ModelInstance::ShaderModelInstance) * rendererSelfIndex;
-		instanceWrite.size = sizeof(ModelInstance::ShaderModelInstance);
-		instanceWrite.data = &shaderObject;
-		rendererPtr->hostInstancesDataBuffer->writeToBuffer({ instanceWrite });
-    }
-
-    ModelTransformation ModelInstance::getTransformation() const
-    {
-		ModelInstance::ShaderModelInstance shaderObject;
-
-		//read data
-		BufferWrite instanceRead = {};
-		instanceRead.offset = sizeof(ModelInstance::ShaderModelInstance) * rendererSelfIndex;
-		instanceRead.size = sizeof(ModelInstance::ShaderModelInstance);
-		instanceRead.data = &shaderObject;
-		rendererPtr->hostInstancesDataBuffer->readFromBuffer({ instanceRead });
-
-		ModelTransformation transformation;
-		transformation.position = shaderObject.position;
-		transformation.rotation = shaderObject.qRotation;
-		transformation.scale = shaderObject.scale;
-
-		return transformation;
+		this->transform = newTransformation;
+		rendererPtr->toUpdateModelInstances.push_front(this);
     }
 
     /*bool ModelInstance::getVisibility(RenderPass *renderPass) const

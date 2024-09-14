@@ -27,11 +27,10 @@ namespace PaperRenderer
         vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), transferSemaphore, nullptr);
     }
 
-    void EngineStagingBuffer::queueDataTransfers(const Buffer &dstBuffer, VkDeviceSize dstOffset, const std::vector<char> &data)
+    void EngineStagingBuffer::queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char> &data)
     {
         //push transfer to queue
-        transferQueue.emplace_back(
-            dstBuffer,
+        transferQueues[&dstBuffer].emplace_front(
             dstOffset,
             data
         );
@@ -40,105 +39,28 @@ namespace PaperRenderer
 
     void EngineStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
     {
-        //check previous transfers
-        uint64_t currentSemaphoreValue;
-        vkGetSemaphoreCounterValue(rendererPtr->getDevice()->getDevice(), transferSemaphore, &currentSemaphoreValue);
+        //wait for transfer to complete
+        VkSemaphoreWaitInfo waitInfo = {};
+        waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
+        waitInfo.pNext = NULL;
+        waitInfo.flags = 0;
+        waitInfo.semaphoreCount = 1;
+        waitInfo.pSemaphores = &transferSemaphore;
+        waitInfo.pValues = &finalSemaphoreValue;
 
-        auto transferInfo = previousTransfers.begin();
-        while(transferInfo != previousTransfers.end())
-        {
-            if(currentSemaphoreValue >= transferInfo->semaphoreSignalValue)
-            {
-                transferInfo = previousTransfers.erase(transferInfo);
-            }
-            else
-            {
-                transferInfo++;
-            }
-        }
-
-        //create a list of memory fragments that can be filled
-        struct MemoryFragment
-        {
-            VkDeviceSize offset;
-            VkDeviceSize size;
-        };
-
-        std::list<MemoryFragment> fragments;
-        fragments.push_back({ 0, stagingBuffer->getSize() }); //push the initial full size fragment
-        VkDeviceSize availableSize = fragments.front().size;
-        
-        for(const TransferInfo& transfer : previousTransfers)
-        {
-            auto fragment = fragments.begin();
-            while(fragment != fragments.end())
-            {
-                //split fragment if a transfer overlaps
-                if(transfer.offset < fragment->size + fragment->offset)
-                {
-                    availableSize -= fragment->size;
-
-                    //generate left fragment
-                    MemoryFragment left = {
-                        .offset = fragment->offset,
-                        .size = transfer.offset - fragment->offset
-                    };
-                    if(left.size)
-                    {
-                        fragments.push_front(left);
-                        availableSize += left.size;
-                    }
-
-                    //generate right fragment
-                    MemoryFragment right = {
-                        .offset = transfer.offset + transfer.size,
-                        .size = (fragment->offset + fragment->size) - (transfer.offset + transfer.size)
-                    };
-                    if(right.size)
-                    {
-                        fragments.push_front(right);
-                        availableSize += right.size;
-                    }
-
-                    //remove old
-                    fragments.erase(fragment);
-
-                    break; //a transfer should never overlap more than one fragment as that would imply a transfer is within a transfer
-                }
-                else
-                {
-                    fragment++;
-                }
-            }
-        }
+        vkWaitSemaphores(rendererPtr->getDevice()->getDevice(), &waitInfo, UINT64_MAX);
 
         //rebuild buffer if needed
+        VkDeviceSize availableSize = stagingBuffer ? stagingBuffer->getSize() : 0;
         if(queueSize > availableSize)
         {
-            //wait for timeline semaphore
-            VkSemaphoreWaitInfo waitInfo = {};
-            waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
-            waitInfo.pNext = NULL;
-            waitInfo.flags = 0;
-            waitInfo.semaphoreCount = 1;
-            waitInfo.pSemaphores = &transferSemaphore;
-            waitInfo.pValues = &finalSemaphoreValue;
-
-            vkWaitSemaphores(rendererPtr->getDevice()->getDevice(), &waitInfo, UINT64_MAX);
-
-            //rebuild buffer
-            const VkDeviceSize currentBufferSize = stagingBuffer ? stagingBuffer->getSize() : 0;
-
             BufferInfo bufferInfo = {};
             bufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-            bufferInfo.size = (queueSize - availableSize + currentBufferSize) * bufferOverhead;
+            bufferInfo.size = (queueSize - availableSize) * bufferOverhead;
             bufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
             stagingBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
 
             availableSize = bufferInfo.size;
-
-            //clear any previous transfers
-            previousTransfers.clear();
         }
 
         //modify semaphore values
@@ -148,65 +70,39 @@ namespace PaperRenderer
         //fill in the staging buffer with queued transfers
         struct DstCopy
         {
-            const QueuedTransfer& transfer;
+            const Buffer& dstBuffer;
             VkBufferCopy copyInfo;
         };
+        VkDeviceSize dynamicSrcOffset = 0;
         std::vector<DstCopy> dstCopies;
-        for(const QueuedTransfer& transfer : transferQueue)
+        for(auto& [buffer, transfers] : transferQueues)
         {
-            //dynamic buffer write
-            BufferWrite dynamicBufferWrite = {
-                .offset = 0,
-                .size = transfer.data.size(),
-                .data = (char*)transfer.data.data()
-            };
-
-            //fill staging buffer
-            auto fragment = fragments.begin();
-            while(fragment != fragments.end())
+            for(const QueuedTransfer& transfer : transfers)
             {
-                dynamicBufferWrite.offset = fragment->offset;
+                //buffer write
+                BufferWrite bufferWrite = {
+                    .offset = dynamicSrcOffset,
+                    .size = transfer.data.size(),
+                    .data = (char*)transfer.data.data()
+                };
 
-                //split the transfer data if size is larger than fragment; remove fragment from list
-                if(fragment->size < dynamicBufferWrite.size)
-                {
-                    BufferWrite fragmentedWrite = dynamicBufferWrite;
-                    fragmentedWrite.size = fragment->size;
+                //fill staging buffer           
+                stagingBuffer->writeToBuffer({ bufferWrite });
 
-                    dynamicBufferWrite.offset += fragmentedWrite.size;
-                    dynamicBufferWrite.size -= fragmentedWrite.size;
+                //push VkBufferCopy
+                VkBufferCopy bufferCopyInfo = {
+                    .srcOffset = bufferWrite.offset,
+                    .dstOffset = transfer.dstOffset,
+                    .size = bufferWrite.size
+                };
+                dstCopies.emplace_back(
+                    *buffer,
+                    bufferCopyInfo
+                );
 
-                    fragments.erase(fragment);
-
-                    stagingBuffer->writeToBuffer({ fragmentedWrite });
-
-                    previousTransfers.push_back({
-                        .semaphoreSignalValue = finalSemaphoreValue,
-                        .size = fragmentedWrite.size,
-                        .offset = fragmentedWrite.offset
-                    });
-                }
-                //else push the transfer and shrink the fragment
-                else
-                {
-                    MemoryFragment newFragment = {
-                        .offset = dynamicBufferWrite.size,
-                        .size = fragment->size - dynamicBufferWrite.size
-                    };
-                    fragments.erase(fragment);
-                    fragments.push_front(newFragment);
-                    
-                    stagingBuffer->writeToBuffer({ dynamicBufferWrite });
-
-                    previousTransfers.push_back({
-                        .semaphoreSignalValue = finalSemaphoreValue,
-                        .size = dynamicBufferWrite.size,
-                        .offset = dynamicBufferWrite.offset
-                    });
-
-                    break;
-                }
+                dynamicSrcOffset += bufferWrite.size;
             }
+            transfers.clear();
         }
 
         //start command buffer
@@ -220,9 +116,9 @@ namespace PaperRenderer
         vkBeginCommandBuffer(cmdBuffer, &beginInfo);
 
         //copy to dst
-        for(const auto& [transfer, copyInfo] : dstCopies)
+        for(const auto& copy : dstCopies)
         {
-            vkCmdCopyBuffer(cmdBuffer, stagingBuffer->getBuffer(), transfer.dstBuffer.getBuffer(), 1, &copyInfo);
+            vkCmdCopyBuffer(cmdBuffer, stagingBuffer->getBuffer(), copy.dstBuffer.getBuffer(), 1, &copy.copyInfo);
         }
 
         vkEndCommandBuffer(cmdBuffer);
@@ -247,8 +143,6 @@ namespace PaperRenderer
         tlasInstanceBuildPipeline(this, creationInfo.shadersDir),
         stagingBuffer(this)
     {
-        copyFence = Commands::getSignaledFence(this);
-
         rebuildModelDataBuffer();
         rebuildInstancesbuffer();
 
@@ -265,52 +159,49 @@ namespace PaperRenderer
         Commands::freeCommandBuffers(this, usedCmdBuffers);
         usedCmdBuffers.clear();
 
-        vkDestroyFence(device.getDevice(), copyFence, nullptr);
-
-        hostInstancesDataBuffer.reset();
-        hostModelDataBuffer.reset();
-        deviceInstancesDataBuffer.reset();
-        deviceModelDataBuffer.reset();
+        modelDataBuffer.reset();
+        instancesDataBuffer.reset();
     }
 
     void RenderEngine::rebuildModelDataBuffer()
     {
-        //copy old data into temporary variables and "delete" buffers
-        std::vector<char> oldData;
+        //new buffer to replace old
         VkDeviceSize newModelDataSize = 4096;
-        if(hostModelDataBuffer)
+        VkDeviceSize newWriteSize = 0;
+        if(modelDataBuffer)
         {
-            hostModelDataBuffer->compact();
-            newModelDataSize = hostModelDataBuffer->getDesiredLocation();
-            oldData.resize(hostModelDataBuffer->getStackLocation());
+            modelDataBuffer->compact();
+            newModelDataSize = modelDataBuffer->getDesiredLocation();
+            newWriteSize = modelDataBuffer->getStackLocation();
             
-            BufferWrite read = {};
-            read.offset = 0;
-            read.size = oldData.size();
-            read.data = oldData.data();
-            hostModelDataBuffer->getBuffer()->readFromBuffer({ read });
-            hostModelDataBuffer.reset();
         }
 
-        BufferInfo hostModelsBufferInfo = {};
-        hostModelsBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-        hostModelsBufferInfo.size = newModelDataSize * modelsDataOverhead;
-        hostModelsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        hostModelDataBuffer = std::make_unique<FragmentableBuffer>(this, hostModelsBufferInfo);
-        hostModelDataBuffer->setCompactionCallback([this](std::vector<CompactionResult> results){ handleModelDataCompaction(results); });
+        BufferInfo modelsBufferInfo = {};
+        modelsBufferInfo.allocationFlags = 0;
+        modelsBufferInfo.size = newModelDataSize * modelsDataOverhead;
+        modelsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
+        std::unique_ptr<FragmentableBuffer> newBuffer = std::make_unique<FragmentableBuffer>(this, modelsBufferInfo);
+        newBuffer->setCompactionCallback([this](std::vector<CompactionResult> results){ handleModelDataCompaction(results); });
 
-        BufferInfo deviceModelsBufferInfo = {};
-        deviceModelsBufferInfo.allocationFlags = 0;
-        deviceModelsBufferInfo.size = hostModelsBufferInfo.size;
-        deviceModelsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
-        deviceModelDataBuffer = std::make_unique<Buffer>(this, deviceModelsBufferInfo);
+        //copy old data into new if old buffer existed
+        if(newWriteSize)
+        {
+            VkBufferCopy copyRegion = {};
+            copyRegion.srcOffset = 0;
+            copyRegion.dstOffset = 0;
+            copyRegion.size = newWriteSize;
 
-        //rewrite data
-        BufferWrite write = {};
-        write.offset = 0;
-        write.size = oldData.size();
-        write.data = oldData.data();
-        hostModelDataBuffer->getBuffer()->writeToBuffer({ write });
+            SynchronizationInfo syncInfo = {};
+            syncInfo.fence = Commands::getUnsignaledFence(this);
+            newBuffer->getBuffer()->copyFromBufferRanges(*instancesDataBuffer, { copyRegion }, syncInfo);
+            vkWaitForFences(device.getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
+
+            //pseudo write
+            newBuffer->newWrite(NULL, newWriteSize, 1, NULL);
+        }
+
+        //replace old buffer
+        modelDataBuffer = std::move(newBuffer);
     }
 
     void RenderEngine::handleModelDataCompaction(std::vector<CompactionResult> results) //UNTESTED FUNCTION
@@ -318,7 +209,6 @@ namespace PaperRenderer
         //fix model data first
         for(const CompactionResult compactionResult : results)
         {
-            
             for(Model* model : renderingModels)
             {
                 if(model->shaderDataLocation > compactionResult.location)
@@ -328,68 +218,57 @@ namespace PaperRenderer
             }
         }
 
+        //TODO MOVE DATA AROUND IN DEVICE BUFFER
+
         //then fix instances data
         for(ModelInstance* instance : renderingModelInstances)
         {
-            uint32_t dataOffset = instance->getParentModelPtr()->getShaderDataLocation();
-            
-            //write data
-            BufferWrite write = {};
-            write.offset = offsetof(ModelInstance::ShaderModelInstance, modelDataOffset) + (sizeof(ModelInstance::ShaderModelInstance) * instance->rendererSelfIndex);
-            write.size = sizeof(uint32_t);
-            write.data = &dataOffset;
-            hostInstancesDataBuffer->writeToBuffer({ write });
+            toUpdateModelInstances.push_front(instance);
         }
     }
 
     void RenderEngine::rebuildInstancesbuffer()
     {
-        //copy old data into temporary variables and "delete" buffers
-        std::vector<char> oldData(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance));
-        if(hostInstancesDataBuffer)
+        //new buffer to replace old
+        BufferInfo bufferInfo = {};
+        bufferInfo.allocationFlags = 0;
+        bufferInfo.size = std::max((VkDeviceSize)(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance) * instancesDataOverhead), (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
+        bufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
+        std::unique_ptr<Buffer> newBuffer = std::make_unique<Buffer>(this, bufferInfo);
+
+        //copy old data into new if old existed
+        if(instancesDataBuffer)
         {
-            BufferWrite read = {};
-            read.offset = 0;
-            read.size = oldData.size();
-            read.data = oldData.data();
-            hostInstancesDataBuffer->readFromBuffer({ read });
-            hostInstancesDataBuffer.reset();
+            VkBufferCopy copyRegion = {};
+            copyRegion.srcOffset = 0;
+            copyRegion.dstOffset = 0;
+            copyRegion.size = instancesDataBuffer->getSize();
+
+            SynchronizationInfo syncInfo = {};
+            syncInfo.queueType = TRANSFER;
+            syncInfo.fence = Commands::getUnsignaledFence(this);
+            newBuffer->copyFromBufferRanges(*instancesDataBuffer, { copyRegion }, syncInfo);
+            vkWaitForFences(device.getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
         }
-
-        //host visible
-        BufferInfo hostBufferInfo = {};
-        hostBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-        hostBufferInfo.size = std::max((VkDeviceSize)(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance) * instancesDataOverhead), (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
-        hostBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        hostInstancesDataBuffer = std::make_unique<Buffer>(this, hostBufferInfo);
-
-        //device local
-        BufferInfo deviceBufferInfo = {};
-        deviceBufferInfo.allocationFlags = 0;
-        deviceBufferInfo.size = hostBufferInfo.size; //same size as host visible buffer
-        deviceBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
-        deviceInstancesDataBuffer = std::make_unique<Buffer>(this, deviceBufferInfo);
-
-        //rewrite data
-        BufferWrite write = {};
-        write.offset = 0;
-        write.size = oldData.size();
-        write.data = oldData.data();
-        hostInstancesDataBuffer->writeToBuffer({ write });
-        hostInstancesDataBuffer->readFromBuffer({ write });
-        int a = 0;
+        
+        //replace old buffer
+        instancesDataBuffer = std::move(newBuffer);
     }
 
     void RenderEngine::addModelData(Model* model)
     {
+        //self reference
         model->selfIndex = renderingModels.size();
         renderingModels.push_back(model);
         
+        //"write"
+        if(modelDataBuffer->newWrite(NULL, model->getShaderData().size(), 8, &model->shaderDataLocation) == FragmentableBuffer::WriteResult::OUT_OF_MEMORY)
+        {
+            rebuildModelDataBuffer();
+        }
 
-        //copy initial data into host visible instances data
-        std::vector<char> shaderData = model->getShaderData();
-
-        hostModelDataBuffer->newWrite(shaderData.data(), shaderData.size(), 8, &model->shaderDataLocation);
+        //queue data transfer
+        toUpdateModels.push_front(model);
     }
 
     void RenderEngine::removeModelData(Model* model)
@@ -407,7 +286,7 @@ namespace PaperRenderer
         }
 
         //remove from buffer
-        hostModelDataBuffer->removeFromRange(model->shaderDataLocation, model->getShaderData().size());
+        modelDataBuffer->removeFromRange(model->shaderDataLocation, model->getShaderData().size());
         
         model->selfIndex = UINT64_MAX;
 
@@ -423,20 +302,13 @@ namespace PaperRenderer
             renderingModelInstances.push_back(object);
 
             //check buffer size and rebuild if too small
-            if(hostInstancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128)
+            if(instancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128)
             {
                 rebuildInstancesbuffer(); //TODO SYNCHRONIZATION
             }
-
-            //copy initial data into host visible instances data
-            ModelInstance::ShaderModelInstance shaderModelInstance = object->getShaderInstance();
             
-            //write data
-            BufferWrite write = {};
-            write.offset = sizeof(ModelInstance::ShaderModelInstance) * object->rendererSelfIndex;
-            write.size = sizeof(ModelInstance::ShaderModelInstance);
-            write.data = &shaderModelInstance;
-            hostInstancesDataBuffer->writeToBuffer({ write });
+            //queue data transfer
+            toUpdateModelInstances.push_front(object);
         }
     }
 
@@ -448,29 +320,16 @@ namespace PaperRenderer
             renderingModelInstances.at(object->rendererSelfIndex) = renderingModelInstances.back();
             renderingModelInstances.at(object->rendererSelfIndex)->rendererSelfIndex = object->rendererSelfIndex;
 
-            //read data to move
-            ModelInstance::ShaderModelInstance moveData;
-
-            BufferWrite read = {};
-            read.offset = sizeof(ModelInstance::ShaderModelInstance) * (renderingModelInstances.size() - 1);
-            read.size = sizeof(ModelInstance::ShaderModelInstance);
-            read.data = &moveData;
-            hostInstancesDataBuffer->readFromBuffer({ read });
-
-            //write data to move
-            BufferWrite write = {};
-            write.offset = sizeof(ModelInstance::ShaderModelInstance) * object->rendererSelfIndex;
-            write.size = sizeof(ModelInstance::ShaderModelInstance);
-            write.data = &moveData;
-            hostInstancesDataBuffer->writeToBuffer({ write });
+            //queue data transfer
+            toUpdateModelInstances.push_front(renderingModelInstances.at(object->rendererSelfIndex));
 
             //remove last element from instances vector (the one that was moved in the mirrored buffer)
             renderingModelInstances.pop_back();
 
             //check buffer size and rebuild if unnecessarily large by a factor of 2
-            if(hostInstancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) > renderingModelInstances.size() * 2 && renderingModelInstances.size() > 128)
+            if(instancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) > renderingModelInstances.size() * 2 && renderingModelInstances.size() > 128)
             {
-                rebuildInstancesbuffer(); //TODO THIS NEEDS TO WAIT ON BOTH FRAME FENCES
+                rebuildInstancesbuffer();
             }
         }
         else
@@ -483,62 +342,58 @@ namespace PaperRenderer
         object->rendererSelfIndex = UINT32_MAX;
     }
 
-    const VkSemaphore& RenderEngine::beginFrame(
-        const std::vector<BinarySemaphorePair> &binaryBufferCopySignalSemaphores,
-        const std::vector<TimelineSemaphorePair> &timelineBufferCopySignalSemaphores
-    )
+    void RenderEngine::queueModelsAndInstancesTransfers()
     {
-        //wait for fences
-        std::vector<VkFence> waitFences;
-        waitFences.push_back(copyFence);
+        //sort instances and models; remove duplicates
+        std::sort(toUpdateModelInstances.begin(), toUpdateModelInstances.end());
+        auto sortedInstances = std::unique(toUpdateModelInstances.begin(), toUpdateModelInstances.end());
+        toUpdateModelInstances.erase(sortedInstances, toUpdateModelInstances.end());
 
-        vkWaitForFences(device.getDevice(), waitFences.size(), waitFences.data(), VK_TRUE, UINT64_MAX);
+        std::sort(toUpdateModels.begin(), toUpdateModels.end());
+        auto sortedModels = std::unique(toUpdateModels.begin(), toUpdateModels.end());
+        toUpdateModels.erase(sortedModels, toUpdateModels.end());
+
+        //queue instance data
+        for(ModelInstance* instance : toUpdateModelInstances)
+        {
+            ModelInstance::ShaderModelInstance shaderInstance = instance->getShaderInstance();
+
+            //write data
+            std::vector<char> data(sizeof(ModelInstance::ShaderModelInstance));
+            memcpy(data.data(), &shaderInstance, data.size());
+            
+            stagingBuffer.queueDataTransfers(*instancesDataBuffer, sizeof(ModelInstance::ShaderModelInstance) * instance->rendererSelfIndex, data);
+        }
+
+        //queue model data
+        for(Model* model : toUpdateModels)
+        {
+            stagingBuffer.queueDataTransfers(*modelDataBuffer->getBuffer(), model->shaderDataLocation, model->getShaderData());
+        }
+
+        //clear deques
+        toUpdateModelInstances.clear();
+        toUpdateModels.clear();
+    }
+
+    const VkSemaphore& RenderEngine::beginFrame(SynchronizationInfo syncInfo)
+    {
+        //queue data transfers
+        queueModelsAndInstancesTransfers();
 
         //acquire next image
         const VkSemaphore& imageAcquireSemaphore = swapchain.acquireNextImage();
         frameNumber++;
-
-        //reset fences
-        vkResetFences(device.getDevice(), waitFences.size(), waitFences.data());
 
         //free command buffers and reset descriptor pool
         Commands::freeCommandBuffers(this, usedCmdBuffers);
         usedCmdBuffers.clear();
         descriptors.refreshPools();
 
-        //copy instances and model data (done in one submission)
-        VkBufferCopy instancesRegion;
-        instancesRegion.srcOffset = 0;
-        instancesRegion.dstOffset = 0;
-        instancesRegion.size = renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance);
+        //write all staged transfers
+        stagingBuffer.submitQueuedTransfers(syncInfo);
 
-        VkBufferCopy modelsRegion;
-        modelsRegion.srcOffset = 0;
-        modelsRegion.dstOffset = 0;
-        modelsRegion.size = hostModelDataBuffer->getStackLocation();
-
-        VkCommandBuffer transferBuffer = Commands::getCommandBuffer(this, QueueType::TRANSFER);
-
-        VkCommandBufferBeginInfo beginInfo = {};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.pNext = NULL;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-        vkBeginCommandBuffer(transferBuffer, &beginInfo);
-        vkCmdCopyBuffer(transferBuffer, hostInstancesDataBuffer->getBuffer(), deviceInstancesDataBuffer->getBuffer(), 1, &instancesRegion);
-        vkCmdCopyBuffer(transferBuffer, hostModelDataBuffer->getBuffer()->getBuffer(), deviceModelDataBuffer->getBuffer(), 1, &modelsRegion);
-        vkEndCommandBuffer(transferBuffer);
-
-        SynchronizationInfo bufferCopySync = {};
-        bufferCopySync.queueType = QueueType::TRANSFER;
-        bufferCopySync.binaryWaitPairs = {};
-        bufferCopySync.binarySignalPairs = binaryBufferCopySignalSemaphores;
-        bufferCopySync.timelineSignalPairs = timelineBufferCopySignalSemaphores;
-        bufferCopySync.fence = copyFence;
-
-        Commands::submitToQueue(bufferCopySync, { transferBuffer });
-        recycleCommandBuffer({ transferBuffer, QueueType::TRANSFER });
-
+        //return image acquire semaphore
         return imageAcquireSemaphore;
     }
 

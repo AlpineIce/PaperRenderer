@@ -71,7 +71,7 @@ namespace PaperRenderer
         uboInputData.projection = renderPass.cameraPtr->getProjection();
         uboInputData.view = renderPass.cameraPtr->getViewMatrix();
         uboInputData.materialDataPtr = renderPass.deviceInstancesDataBuffer->getBufferDeviceAddress();
-        uboInputData.modelDataPtr = rendererPtr->deviceModelDataBuffer->getBufferDeviceAddress();
+        uboInputData.modelDataPtr = rendererPtr->modelDataBuffer->getBuffer()->getBufferDeviceAddress();
         uboInputData.objectCount = renderPass.renderPassInstances.size();
         uboInputData.doCulling = true;
 
@@ -95,7 +95,7 @@ namespace PaperRenderer
 
         //set0 - binding 1: model instances
         VkDescriptorBufferInfo bufferWrite1Info = {};
-        bufferWrite1Info.buffer = rendererPtr->deviceInstancesDataBuffer->getBuffer();
+        bufferWrite1Info.buffer = rendererPtr->instancesDataBuffer->getBuffer();
         bufferWrite1Info.offset = 0;
         bufferWrite1Info.range = rendererPtr->renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance);
 

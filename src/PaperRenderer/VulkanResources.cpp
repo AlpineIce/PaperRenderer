@@ -56,6 +56,10 @@ namespace PaperRenderer
             throw std::runtime_error("Buffer creation failed");
         }
 
+        VkMemoryPropertyFlags memPropertyFlags;
+        vmaGetAllocationMemoryProperties(rendererPtr->getDevice()->getAllocator(), allocation, &memPropertyFlags);
+        if(memPropertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) writable = true;
+        
         size = bufferInfo.size;
     }
 
@@ -168,12 +172,18 @@ namespace PaperRenderer
             result = COMPACTED;
         }
 
-        BufferWrite write = {};
-        write.data = data;
-        write.offset = rendererPtr->getDevice()->getAlignment(stackLocation, minAlignment);
-        write.size = size;
+        //write if host visible
+        if(buffer->isWritable() && data)
+        {
+            BufferWrite write = {};
+            write.data = data;
+            write.offset = rendererPtr->getDevice()->getAlignment(stackLocation, minAlignment);
+            write.size = size;
+            
+            buffer->writeToBuffer({ write });
+        }
         
-        buffer->writeToBuffer({ write });
+
         if(returnLocation) *returnLocation = rendererPtr->getDevice()->getAlignment(stackLocation, minAlignment);
 
         stackLocation = desiredLocation;
@@ -203,21 +213,26 @@ namespace PaperRenderer
 
                 //init temporary variables and chunk ref
                 const Chunk& chunk = memoryFragments.top();
-                std::vector<char> readData(stackLocation - (chunk.location + chunk.size));
+                
+                //physically move data in buffer if writable
+                if(buffer->isWritable())
+                {
+                    std::vector<char> readData(stackLocation - (chunk.location + chunk.size));
 
-                //read data
-                BufferWrite read = {};
-                read.offset = chunk.location + chunk.size;
-                read.size = stackLocation - (chunk.location + chunk.size);
-                read.data = readData.data();
-                buffer->readFromBuffer({ read });
+                    //read data
+                    BufferWrite read = {};
+                    read.offset = chunk.location + chunk.size;
+                    read.size = stackLocation - (chunk.location + chunk.size);
+                    read.data = readData.data();
+                    buffer->readFromBuffer({ read });
 
-                //copy data into buffer location
-                BufferWrite write = {};
-                write.offset = chunk.location;
-                write.size = stackLocation - (chunk.location + chunk.size);
-                write.data = readData.data();
-                buffer->writeToBuffer({ write });
+                    //copy data into buffer location
+                    BufferWrite write = {};
+                    write.offset = chunk.location;
+                    write.size = stackLocation - (chunk.location + chunk.size);
+                    write.data = readData.data();
+                    buffer->writeToBuffer({ write });
+                }
 
                 //move stack "pointer" and remove fragment
                 stackLocation -= chunk.size;

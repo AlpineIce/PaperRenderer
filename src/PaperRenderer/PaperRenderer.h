@@ -13,6 +13,8 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <deque>
+#include <queue>
 
 namespace PaperRenderer
 {
@@ -36,25 +38,15 @@ namespace PaperRenderer
 
         struct QueuedTransfer
         {
-            const Buffer& dstBuffer;
             VkDeviceSize dstOffset;
             std::vector<char> data;
         };
 
-        std::vector<QueuedTransfer> transferQueue;
+        std::unordered_map<Buffer const*, std::deque<QueuedTransfer>> transferQueues;
 
         VkSemaphore transferSemaphore;
-        VkDeviceSize lastSubmissionSize = 0;
         VkDeviceSize queueSize = 0;
         uint64_t finalSemaphoreValue = 0;
-
-        struct TransferInfo
-        {
-            uint64_t semaphoreSignalValue;
-            VkDeviceSize size;
-            VkDeviceSize offset;
-        };
-        std::list<TransferInfo> previousTransfers;
 
         class RenderEngine* rendererPtr;
 
@@ -62,7 +54,7 @@ namespace PaperRenderer
         EngineStagingBuffer(RenderEngine* renderer);
         ~EngineStagingBuffer();
         
-        void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char>& data);
+        void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char>& data); //do not submit more than 1 transfer with the same destination! undefined behavior!
         void submitQueuedTransfers(SynchronizationInfo syncInfo); //Submits all queued transfers and clears the queue. Does not need to be explicitly synced with last transfer
     };
 
@@ -84,33 +76,30 @@ namespace PaperRenderer
         //frame rendering stuff
         std::vector<CommandBuffer> usedCmdBuffers;
         std::vector<ModelInstance*> renderingModelInstances;
+        std::deque<ModelInstance*> toUpdateModelInstances; //queued instance references that need to have their data in GPU buffers updated
         std::vector<Model*> renderingModels;
-
-        //synchronization
-        VkFence copyFence; //fence isn't really required, but buffer device address doesn't work properly with validation layer sync (or at least I believe so, it works perfectly fine without the fence)
+        std::deque<Model*> toUpdateModels; //queued model references that need to have their data in GPU buffers updated
 
         //----------BUFFERS----------//
 
-        //host visible buffers
         const float instancesDataOverhead = 1.4f;
-        std::unique_ptr<Buffer> hostInstancesDataBuffer;
         const float modelsDataOverhead = 1.2f;
-        std::unique_ptr<FragmentableBuffer> hostModelDataBuffer;
-        
-        //device local buffers (mirror of host visible buffers)
-        std::unique_ptr<Buffer> deviceInstancesDataBuffer;
-        std::unique_ptr<Buffer> deviceModelDataBuffer;
+        std::unique_ptr<Buffer> instancesDataBuffer;
+        std::unique_ptr<FragmentableBuffer> modelDataBuffer;
         
         void rebuildInstancesbuffer();
         void rebuildModelDataBuffer();
         void handleModelDataCompaction(std::vector<CompactionResult> results);
 
-        //----------END OF BUFFERS----------//
+        //----------MODEL AND INSTANCE FUNCTIONS----------//
 
         void addModelData(Model* model);
         void removeModelData(Model* model);
         void addObject(ModelInstance* object);
         void removeObject(ModelInstance* object);
+        void queueModelsAndInstancesTransfers();
+
+        //----------MISC----------//
 
         friend Model;
         friend ModelInstance;
@@ -126,10 +115,7 @@ namespace PaperRenderer
         ~RenderEngine();
 
         //returns the image acquire semaphore from the swapchain
-        const VkSemaphore& beginFrame(
-            const std::vector<BinarySemaphorePair> &binaryBufferCopySignalSemaphores,
-            const std::vector<TimelineSemaphorePair> &timelineBufferCopySignalSemaphores
-        );
+        const VkSemaphore& beginFrame(SynchronizationInfo syncInfo);
         void endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
 
         void recycleCommandBuffer(CommandBuffer& commandBuffer);
@@ -146,6 +132,6 @@ namespace PaperRenderer
         EngineStagingBuffer* getEngineStagingBuffer() { return &stagingBuffer; }
         const std::vector<Model*>& getModelReferences() const { return renderingModels; }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
-        Buffer* getModelDataBuffer() const { return deviceModelDataBuffer.get(); }
+        Buffer* getModelDataBuffer() const { return modelDataBuffer->getBuffer(); }
     };
 }
