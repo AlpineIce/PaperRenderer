@@ -254,11 +254,6 @@ namespace PaperRenderer
 		renderPassSelfReferences.at(renderPass).renderPassInstanceData = newData;
     }
 
-    std::vector<char> ModelInstance::getRenderPassInstanceData(RenderPass const* renderPass) const
-    {
-        return renderPassSelfReferences.at(renderPass).renderPassInstanceData;
-    }
-
     ModelInstance::ShaderModelInstance ModelInstance::getShaderInstance() const
     {
 		ShaderModelInstance shaderModelInstance = {};

@@ -155,7 +155,6 @@ namespace PaperRenderer
     {
         WriteResult result = SUCCESS;
         desiredLocation += rendererPtr->getDevice()->getAlignment(size, minAlignment);
-        desiredLocation += rendererPtr->getDevice()->getAlignment(size, minAlignment);
 
         if(stackLocation + rendererPtr->getDevice()->getAlignment(size, minAlignment) > buffer->getSize())
         {

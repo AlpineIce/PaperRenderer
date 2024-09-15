@@ -63,9 +63,7 @@ namespace PaperRenderer
         std::list<class Model const*> blasBuildModels;
         std::vector<class ModelInstance*> accelerationStructureInstances;
         std::deque<class ModelInstance*> toUpdateInstances;
-        static std::list<AccelerationStructure*> accelerationStructures;
         std::mutex instanceAddRemoveMutex;
-        VkSemaphore transferSignalSemaphore;
 
         VkDeviceSize instancesBufferSize;
         uint32_t instancesCount;
@@ -92,16 +90,16 @@ namespace PaperRenderer
         {
             BottomBuildData bottomData;
             TopBuildData topData;
-        };
+        } buildData;
 
         class RenderEngine* rendererPtr;
 
         const float instancesOverhead = 1.5;
-        BuildData getBuildData();
+        void setBuildData();
         void rebuildInstancesBuffers();
         void createBottomLevel(VkCommandBuffer cmdBuffer, BottomBuildData buildData);
         void createTopLevel(VkCommandBuffer cmdBuffer, TopBuildData buildData);
-        void queueInstanceTransfers();
+        
 
         friend TLASInstanceBuildPipeline;
 
@@ -109,6 +107,7 @@ namespace PaperRenderer
         AccelerationStructure(RenderEngine* renderer);
         ~AccelerationStructure();
 
+        void queueInstanceTransfers();
         void updateAccelerationStructures(SynchronizationInfo syncInfo);
 
         void addInstance(class ModelInstance* instance);

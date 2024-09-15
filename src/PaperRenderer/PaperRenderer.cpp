@@ -385,6 +385,17 @@ namespace PaperRenderer
         usedCmdBuffers.clear();
         descriptors.refreshPools();
 
+        //stage transfers for render passes
+        for(RenderPass* renderPass : renderPasses)
+        {
+            renderPass->queueInstanceTransfers();
+        }
+        //stage transfers for acceleration structures
+        for(AccelerationStructure* accelerationStructure : accelerationStructures)
+        {
+            accelerationStructure->queueInstanceTransfers();
+        }
+
         //write all staged transfers
         stagingBuffer.submitQueuedTransfers(syncInfo);
 

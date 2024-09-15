@@ -128,13 +128,9 @@ namespace PaperRenderer
 
     //----------ACCELERATION STRUCTURE DEFINITIONS----------//
 
-    std::list<AccelerationStructure*> AccelerationStructure::accelerationStructures;
-
     AccelerationStructure::AccelerationStructure(RenderEngine* renderer)
         :rendererPtr(renderer)
-    {
-        transferSignalSemaphore = Commands::getSemaphore(rendererPtr);
-        
+    {        
         BufferInfo bufferInfo = {};
         bufferInfo.allocationFlags = 0;
         bufferInfo.size = 256; //arbitrary starting size
@@ -147,7 +143,7 @@ namespace PaperRenderer
         bufferInfo.usageFlags =    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
         scratchBuffer =     std::make_unique<Buffer>(rendererPtr, bufferInfo);
 
-        accelerationStructures.push_back(this);
+        rendererPtr->accelerationStructures.push_back(this);
 
         rebuildInstancesBuffers();
     }
@@ -157,8 +153,6 @@ namespace PaperRenderer
         instancesBuffer.reset();
         instanceDescriptionsBuffer.reset();
 
-        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), transferSignalSemaphore, nullptr);
-
         vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), topStructure, nullptr);
         for(auto& [ptr, structure] : bottomStructures)
         {
@@ -166,7 +160,7 @@ namespace PaperRenderer
         }
         bottomStructures.clear();
 
-        accelerationStructures.remove(this);
+        rendererPtr->accelerationStructures.remove(this);
     }
 
     void AccelerationStructure::rebuildInstancesBuffers()
@@ -238,7 +232,7 @@ namespace PaperRenderer
         instanceDescriptionsBuffer = std::move(newInstanceDescriptionsBuffer);
     }
 
-    AccelerationStructure::BuildData AccelerationStructure::getBuildData()
+    void AccelerationStructure::setBuildData()
     {
         BottomBuildData BLBuildData = {};
         TopBuildData TLBuildData = {};
@@ -448,24 +442,11 @@ namespace PaperRenderer
             }
         }
 
-        return { std::move(BLBuildData), std::move(TLBuildData) };
+        buildData = { std::move(BLBuildData), std::move(TLBuildData) };
     }
 
     void AccelerationStructure::updateAccelerationStructures(SynchronizationInfo syncInfo)
     {
-        //get build data
-        const BuildData buildData = getBuildData();
-
-        //transfer data
-        queueInstanceTransfers();
-
-        SynchronizationInfo transferSyncInfo = {};
-        transferSyncInfo.queueType = TRANSFER;
-        transferSyncInfo.binarySignalPairs = { { transferSignalSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT } };
-        rendererPtr->getEngineStagingBuffer()->submitQueuedTransfers(transferSyncInfo);
-
-        syncInfo.binaryWaitPairs.push_back( { transferSignalSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT } );
-
         //start command buffer
         VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr, syncInfo.queueType);
 
@@ -633,6 +614,9 @@ namespace PaperRenderer
 
     void AccelerationStructure::queueInstanceTransfers()
     {
+        //set build data
+        setBuildData();
+
         //check buffer sizes
         if(instancesBuffer->getSize() / sizeof(ModelInstance::AccelerationStructureInstance) < accelerationStructureInstances.size() ||
             instancesBuffer->getSize() / sizeof(ModelInstance::AccelerationStructureInstance) > accelerationStructureInstances.size() * 2)

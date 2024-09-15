@@ -65,18 +65,14 @@ namespace PaperRenderer
 
         float instancesOverhead = 1.5f;
         std::vector<ModelInstance*> renderPassInstances;
-        
-        //all render passes
-        static std::list<RenderPass*> renderPasses;
+        std::deque<ModelInstance*> toUpdateInstances;
 
         //buffers
-        std::unique_ptr<Buffer> hostInstancesBuffer;
-        std::unique_ptr<Buffer> deviceInstancesBuffer;
+        std::unique_ptr<Buffer> instancesBuffer;
+        std::unique_ptr<FragmentableBuffer> instancesDataBuffer;
 
-        std::unique_ptr<FragmentableBuffer> hostInstancesDataBuffer;
-        std::unique_ptr<Buffer> deviceInstancesDataBuffer;
-
-        void rebuildBuffers();
+        void rebuildInstancesBuffer();
+        void rebuildMaterialDataBuffer();
         void handleMaterialDataCompaction(std::vector<CompactionResult> results);
         void handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances);
         void clearDrawCounts(VkCommandBuffer cmdBuffer);
@@ -91,6 +87,7 @@ namespace PaperRenderer
         RenderPass(RenderEngine* renderer, Camera* camera, MaterialInstance* defaultMaterialInstance);
         ~RenderPass();
 
+        void queueInstanceTransfers();
         void render(VkCommandBuffer cmdBuffer, const RenderPassInfo& renderPassInfo);
 
         void addInstance(ModelInstance* instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials);

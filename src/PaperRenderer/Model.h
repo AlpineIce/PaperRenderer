@@ -182,13 +182,14 @@ namespace PaperRenderer
         };
 
         void setRenderPassInstanceData(class RenderPass const* renderPass);
-        std::vector<char> getRenderPassInstanceData(class RenderPass const* renderPass) const;
+        const std::vector<char>& getRenderPassInstanceData(class RenderPass const* renderPass) const { return renderPassSelfReferences.at(renderPass).renderPassInstanceData; };
 
         uint32_t rendererSelfIndex;
 
         struct RenderPassData
         {
             std::vector<char> renderPassInstanceData;
+            VkDeviceSize LODsMaterialDataOffset = 0;
             std::unordered_map<std::vector<LODMesh> const*, class CommonMeshGroup*> meshGroupReferences;
             uint32_t selfIndex;
         };
