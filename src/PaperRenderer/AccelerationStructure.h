@@ -32,9 +32,9 @@ namespace PaperRenderer
 
     struct BottomStructure
     {
-        uint32_t referenceCount = 0;
         VkAccelerationStructureKHR structure = VK_NULL_HANDLE;
         VkDeviceAddress bufferAddress = 0;
+        std::list<class ModelInstance*> referencedInstances;
     };
 
     class AccelerationStructure
@@ -55,17 +55,17 @@ namespace PaperRenderer
             uint32_t indexStride;
         };
 
-        std::unique_ptr<Buffer> hostInstancesBuffer;
-        std::unique_ptr<Buffer> hostInstanceDescriptionsBuffer;
-        std::unique_ptr<Buffer> deviceInstancesBuffer;
-        std::unique_ptr<Buffer> deviceInstanceDescriptionsBuffer;
+        std::unique_ptr<Buffer> instancesBuffer;
+        std::unique_ptr<Buffer> instanceDescriptionsBuffer;
 
         VkAccelerationStructureKHR topStructure = VK_NULL_HANDLE;
         std::unordered_map<class Model const*, BottomStructure> bottomStructures;
         std::list<class Model const*> blasBuildModels;
         std::vector<class ModelInstance*> accelerationStructureInstances;
+        std::deque<class ModelInstance*> toUpdateInstances;
         static std::list<AccelerationStructure*> accelerationStructures;
         std::mutex instanceAddRemoveMutex;
+        VkSemaphore transferSignalSemaphore;
 
         VkDeviceSize instancesBufferSize;
         uint32_t instancesCount;
@@ -97,10 +97,11 @@ namespace PaperRenderer
         class RenderEngine* rendererPtr;
 
         const float instancesOverhead = 1.5;
-        BuildData getBuildData(VkCommandBuffer cmdBuffer);
+        BuildData getBuildData();
         void rebuildInstancesBuffers();
         void createBottomLevel(VkCommandBuffer cmdBuffer, BottomBuildData buildData);
         void createTopLevel(VkCommandBuffer cmdBuffer, TopBuildData buildData);
+        void queueInstanceTransfers();
 
         friend TLASInstanceBuildPipeline;
 
@@ -108,13 +109,13 @@ namespace PaperRenderer
         AccelerationStructure(RenderEngine* renderer);
         ~AccelerationStructure();
 
-        void updateAccelerationStructures(const SynchronizationInfo& syncInfo);
+        void updateAccelerationStructures(SynchronizationInfo syncInfo);
 
         void addInstance(class ModelInstance* instance);
         void removeInstance(class ModelInstance* instance);
 
         const VkAccelerationStructureKHR& getTLAS() const { return topStructure; }
-        Buffer const* getInstanceDescriptionsBuffer() const { return deviceInstanceDescriptionsBuffer.get(); }
+        Buffer const* getInstanceDescriptionsBuffer() const { return instanceDescriptionsBuffer.get(); }
         const std::unordered_map<class Model const*, BottomStructure>& getBottomStructures() const { return bottomStructures; }
     };
 }

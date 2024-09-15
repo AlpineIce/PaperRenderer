@@ -93,7 +93,7 @@ namespace PaperRenderer
 
         //set0 - binding 2: input objects               //BIG OL TODO
         VkDescriptorBufferInfo bufferWrite2Info = {};
-        bufferWrite2Info.buffer = accelerationStructure.deviceInstancesBuffer->getBuffer();
+        bufferWrite2Info.buffer = accelerationStructure.instancesBuffer->getBuffer();
         bufferWrite2Info.offset = 0;
         bufferWrite2Info.range = accelerationStructure.accelerationStructureInstances.size() * sizeof(ModelInstance::AccelerationStructureInstance);
 
@@ -133,6 +133,8 @@ namespace PaperRenderer
     AccelerationStructure::AccelerationStructure(RenderEngine* renderer)
         :rendererPtr(renderer)
     {
+        transferSignalSemaphore = Commands::getSemaphore(rendererPtr);
+        
         BufferInfo bufferInfo = {};
         bufferInfo.allocationFlags = 0;
         bufferInfo.size = 256; //arbitrary starting size
@@ -142,7 +144,7 @@ namespace PaperRenderer
         TLInstancesBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
         bufferInfo.usageFlags =    VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
         TLBuffer =          std::make_unique<Buffer>(rendererPtr, bufferInfo);
-        bufferInfo.usageFlags =    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+        bufferInfo.usageFlags =    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
         scratchBuffer =     std::make_unique<Buffer>(rendererPtr, bufferInfo);
 
         accelerationStructures.push_back(this);
@@ -152,10 +154,10 @@ namespace PaperRenderer
 
     AccelerationStructure::~AccelerationStructure()
     {
-        hostInstancesBuffer.reset();
-        hostInstanceDescriptionsBuffer.reset();
-        deviceInstancesBuffer.reset();
-        deviceInstanceDescriptionsBuffer.reset();
+        instancesBuffer.reset();
+        instanceDescriptionsBuffer.reset();
+
+        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), transferSignalSemaphore, nullptr);
 
         vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), topStructure, nullptr);
         for(auto& [ptr, structure] : bottomStructures)
@@ -169,84 +171,74 @@ namespace PaperRenderer
 
     void AccelerationStructure::rebuildInstancesBuffers()
     {
-        //get old data
-        struct OldData
-        {
-            std::vector<char> instanceData;
-            std::vector<char> instanceDescriptionData;
-        };
-
-        OldData oldInstanceData = {
-            .instanceData = std::vector<char>(accelerationStructureInstances.size() * sizeof(ModelInstance::AccelerationStructureInstance)),
-            .instanceDescriptionData = std::vector<char>(accelerationStructureInstances.size() * sizeof(InstanceDescription))
-        };
-
-        if(hostInstancesBuffer && hostInstanceDescriptionsBuffer)
-        {
-            BufferWrite instanceDataRead = {};
-            instanceDataRead.offset = 0;
-            instanceDataRead.size = oldInstanceData.instanceData.size();
-            instanceDataRead.data = oldInstanceData.instanceData.data();
-            hostInstancesBuffer->readFromBuffer({ instanceDataRead });
-            hostInstancesBuffer.reset();
-
-            BufferWrite instanceDescriptoinDataRead = {};
-            instanceDescriptoinDataRead.offset = 0;
-            instanceDescriptoinDataRead.size = oldInstanceData.instanceDescriptionData.size();
-            instanceDescriptoinDataRead.data = oldInstanceData.instanceDescriptionData.data();
-            hostInstanceDescriptionsBuffer->readFromBuffer({ instanceDescriptoinDataRead });
-            hostInstanceDescriptionsBuffer.reset();
-        }
+        //create new buffers
 
         //instances
         VkDeviceSize newInstancesBufferSize = 0;
         newInstancesBufferSize += std::max((VkDeviceSize)(accelerationStructureInstances.size() * sizeof(ModelInstance::AccelerationStructureInstance) * instancesOverhead),
             (VkDeviceSize)(sizeof(ModelInstance::AccelerationStructureInstance) * 64));
 
-        BufferInfo hostInstancesBufferInfo = {};
-        hostInstancesBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-        hostInstancesBufferInfo.size = newInstancesBufferSize;
-        hostInstancesBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        hostInstancesBuffer = std::make_unique<Buffer>(rendererPtr, hostInstancesBufferInfo);
-
-        BufferInfo deviceInstancesBufferInfo = {};
-        deviceInstancesBufferInfo.allocationFlags = 0;
-        deviceInstancesBufferInfo.size = newInstancesBufferSize;
-        deviceInstancesBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
-        deviceInstancesBuffer = std::make_unique<Buffer>(rendererPtr, deviceInstancesBufferInfo);
+        BufferInfo instancesBufferInfo = {};
+        instancesBufferInfo.allocationFlags = 0;
+        instancesBufferInfo.size = newInstancesBufferSize;
+        instancesBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
+        std::unique_ptr<Buffer> newInstancesBuffer = std::make_unique<Buffer>(rendererPtr, instancesBufferInfo);
 
         //instances description
         VkDeviceSize newInstanceDescriptionsBufferSize = 0;
         newInstanceDescriptionsBufferSize += std::max((VkDeviceSize)(accelerationStructureInstances.size() * sizeof(InstanceDescription) * instancesOverhead),
             (VkDeviceSize)(sizeof(InstanceDescription) * 64));
 
-        BufferInfo hostInstanceDescriptionsBufferInfo = {};
-        hostInstanceDescriptionsBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-        hostInstanceDescriptionsBufferInfo.size = newInstanceDescriptionsBufferSize;
-        hostInstanceDescriptionsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        hostInstanceDescriptionsBuffer = std::make_unique<Buffer>(rendererPtr, hostInstanceDescriptionsBufferInfo);
+        BufferInfo instanceDescriptionsBufferInfo = {};
+        instanceDescriptionsBufferInfo.allocationFlags = 0;
+        instanceDescriptionsBufferInfo.size = newInstanceDescriptionsBufferSize;
+        instanceDescriptionsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
+        std::unique_ptr<Buffer> newInstanceDescriptionsBuffer = std::make_unique<Buffer>(rendererPtr, instanceDescriptionsBufferInfo);
 
-        BufferInfo deviceInstanceDescriptionsBufferInfo = {};
-        deviceInstanceDescriptionsBufferInfo.allocationFlags = 0;
-        deviceInstanceDescriptionsBufferInfo.size = newInstanceDescriptionsBufferSize;
-        deviceInstanceDescriptionsBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
-        deviceInstanceDescriptionsBuffer = std::make_unique<Buffer>(rendererPtr, deviceInstanceDescriptionsBufferInfo);
+        //copy old data into new if old existed
+        if(instancesBuffer && instanceDescriptionsBuffer)
+        {
+            VkBufferCopy instancesCopyRegion = {};
+            instancesCopyRegion.srcOffset = 0;
+            instancesCopyRegion.dstOffset = 0;
+            instancesCopyRegion.size = std::min(accelerationStructureInstances.size() * sizeof(ModelInstance::AccelerationStructureInstance), instancesBuffer->getSize());
 
-        //rewrite old data
-        BufferWrite instanceDataWrite = {};
-        instanceDataWrite.offset = 0;
-        instanceDataWrite.size = oldInstanceData.instanceData.size();
-        instanceDataWrite.data = oldInstanceData.instanceData.data();
-        hostInstancesBuffer->writeToBuffer({ instanceDataWrite });
+            VkBufferCopy instanceDescriptionsCopyRegion = {};
+            instanceDescriptionsCopyRegion.srcOffset = 0;
+            instanceDescriptionsCopyRegion.dstOffset = 0;
+            instanceDescriptionsCopyRegion.size = std::min(accelerationStructureInstances.size() * sizeof(InstanceDescription), instanceDescriptionsBuffer->getSize());
 
-        BufferWrite instanceDescriptionDataWrite = {};
-        instanceDescriptionDataWrite.offset = 0;
-        instanceDescriptionDataWrite.size = oldInstanceData.instanceDescriptionData.size();
-        instanceDescriptionDataWrite.data = oldInstanceData.instanceDescriptionData.data();
-        hostInstanceDescriptionsBuffer->writeToBuffer({ instanceDescriptionDataWrite });
+            SynchronizationInfo syncInfo = {};
+            syncInfo.queueType = TRANSFER;
+            syncInfo.fence = Commands::getUnsignaledFence(rendererPtr);
+
+            //start command buffer
+            VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr, syncInfo.queueType);
+
+            VkCommandBufferBeginInfo beginInfo = {};
+            beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            beginInfo.pNext = NULL;
+            beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+            vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+            vkCmdCopyBuffer(cmdBuffer, instancesBuffer->getBuffer(), newInstancesBuffer->getBuffer(), 1, &instancesCopyRegion);
+            vkCmdCopyBuffer(cmdBuffer, instanceDescriptionsBuffer->getBuffer(), newInstanceDescriptionsBuffer->getBuffer(), 1, &instanceDescriptionsCopyRegion);
+            vkEndCommandBuffer(cmdBuffer);
+
+            //submit
+            Commands::submitToQueue(syncInfo, { cmdBuffer });
+
+            rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
+
+            vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
+        }
+        
+        //replace old buffers
+        instancesBuffer = std::move(newInstancesBuffer);
+        instanceDescriptionsBuffer = std::move(newInstanceDescriptionsBuffer);
     }
 
-    AccelerationStructure::BuildData AccelerationStructure::getBuildData(VkCommandBuffer cmdBuffer)
+    AccelerationStructure::BuildData AccelerationStructure::getBuildData()
     {
         BottomBuildData BLBuildData = {};
         TopBuildData TLBuildData = {};
@@ -434,7 +426,7 @@ namespace PaperRenderer
             BufferInfo bufferInfo = {};
             bufferInfo.allocationFlags = 0;
             bufferInfo.size = scratchSize * 1.1;
-            bufferInfo.usageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+            bufferInfo.usageFlags = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
             scratchBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
         }
 
@@ -444,40 +436,36 @@ namespace PaperRenderer
         {
             bottomStructures.at(model).bufferAddress = BLBuffer->getBufferDeviceAddress() + BLBuildData.asOffsets.at(modelIndex);
             modelIndex++;
+
+            //set references instances BLAS address
+            for(ModelInstance* instance : bottomStructures.at(model).referencedInstances)
+            {
+                uint64_t blasAddress = bottomStructures.at(instance->getParentModelPtr()).bufferAddress;
+                instance->accelerationStructureSelfReferences.at(this).blasAddress = blasAddress;
+
+                //queue data transfer
+                toUpdateInstances.push_front(instance);
+            }
         }
-
-        //set instances BLAS address
-        for(ModelInstance* instance : accelerationStructureInstances)
-        {
-            uint64_t blasAddress = bottomStructures.at(instance->getParentModelPtr()).bufferAddress;
-            instance->accelerationStructureSelfReferences.at(this).blasAddress = blasAddress;
-
-            BufferWrite instanceWrite = {};
-            instanceWrite.offset = offsetof(ModelInstance::AccelerationStructureInstance, blasReference) + (sizeof(ModelInstance::AccelerationStructureInstance) * instance->accelerationStructureSelfReferences.at(this).selfIndex);
-            instanceWrite.size = sizeof(ModelInstance::AccelerationStructureInstance::blasReference);
-            instanceWrite.data = &blasAddress;
-            hostInstancesBuffer->writeToBuffer({ instanceWrite });
-        }
-
-        //copy instances data
-        VkBufferCopy hostInstancesRegion = {};
-        hostInstancesRegion.srcOffset = 0;
-        hostInstancesRegion.size = sizeof(ModelInstance::AccelerationStructureInstance) * accelerationStructureInstances.size();
-        hostInstancesRegion.dstOffset = 0;
-
-        VkBufferCopy hostInstanceDescriptionsRegion = {};
-        hostInstanceDescriptionsRegion.srcOffset = 0;
-        hostInstanceDescriptionsRegion.size = sizeof(InstanceDescription) * accelerationStructureInstances.size();
-        hostInstanceDescriptionsRegion.dstOffset = 0;
-
-        vkCmdCopyBuffer(cmdBuffer, hostInstancesBuffer->getBuffer(), deviceInstancesBuffer->getBuffer(), 1, &hostInstancesRegion);
-        vkCmdCopyBuffer(cmdBuffer, hostInstanceDescriptionsBuffer->getBuffer(), deviceInstanceDescriptionsBuffer->getBuffer(), 1, &hostInstanceDescriptionsRegion);
 
         return { std::move(BLBuildData), std::move(TLBuildData) };
     }
 
-    void AccelerationStructure::updateAccelerationStructures(const SynchronizationInfo& syncInfo)
+    void AccelerationStructure::updateAccelerationStructures(SynchronizationInfo syncInfo)
     {
+        //get build data
+        const BuildData buildData = getBuildData();
+
+        //transfer data
+        queueInstanceTransfers();
+
+        SynchronizationInfo transferSyncInfo = {};
+        transferSyncInfo.queueType = TRANSFER;
+        transferSyncInfo.binarySignalPairs = { { transferSignalSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT } };
+        rendererPtr->getEngineStagingBuffer()->submitQueuedTransfers(transferSyncInfo);
+
+        syncInfo.binaryWaitPairs.push_back( { transferSignalSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT } );
+
         //start command buffer
         VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr, syncInfo.queueType);
 
@@ -488,49 +476,14 @@ namespace PaperRenderer
 
         vkBeginCommandBuffer(cmdBuffer, &beginInfo);
 
-        //get build data
-        const BuildData buildData = getBuildData(cmdBuffer);
-
         //blas builds (if needed)
         bool blasBuildNeeded = blasBuildModels.size();
         if(blasBuildNeeded) 
         {
             createBottomLevel(cmdBuffer, buildData.bottomData);
-        }
 
-        //memory barriers
-        std::vector<VkBufferMemoryBarrier2> buildDataAndBLASMemBarriers;
-        buildDataAndBLASMemBarriers.push_back({
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .pNext = NULL,
-            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-            .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = deviceInstancesBuffer->getBuffer(),
-            .offset = 0,
-            .size = VK_WHOLE_SIZE
-        });
-
-        buildDataAndBLASMemBarriers.push_back({
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .pNext = NULL,
-            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-            .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = deviceInstanceDescriptionsBuffer->getBuffer(),
-            .offset = 0,
-            .size = VK_WHOLE_SIZE
-        });
-
-        if(blasBuildNeeded)
-        {
-            buildDataAndBLASMemBarriers.push_back({
+            //memory barriers
+            VkBufferMemoryBarrier2 BLASMemBarrier = {
                 .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
                 .pNext = NULL,
                 .srcStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
@@ -542,18 +495,17 @@ namespace PaperRenderer
                 .buffer = BLBuffer->getBuffer(),
                 .offset = 0,
                 .size = VK_WHOLE_SIZE
-            });
+            };
+
+            VkDependencyInfo buildDataDependencyInfo = {};
+            buildDataDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+            buildDataDependencyInfo.pNext = NULL;
+            buildDataDependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+            buildDataDependencyInfo.bufferMemoryBarrierCount = 1;
+            buildDataDependencyInfo.pBufferMemoryBarriers = &BLASMemBarrier;
+
+            vkCmdPipelineBarrier2(cmdBuffer, &buildDataDependencyInfo);
         }
-        
-
-        VkDependencyInfo buildDataDependencyInfo = {};
-        buildDataDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-        buildDataDependencyInfo.pNext = NULL;
-        buildDataDependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-        buildDataDependencyInfo.bufferMemoryBarrierCount = buildDataAndBLASMemBarriers.size();
-        buildDataDependencyInfo.pBufferMemoryBarriers = buildDataAndBLASMemBarriers.data();
-
-        vkCmdPipelineBarrier2(cmdBuffer, &buildDataDependencyInfo);
 
         //build TLAS instance data
         rendererPtr->tlasInstanceBuildPipeline.submit(cmdBuffer, *this);
@@ -679,6 +631,53 @@ namespace PaperRenderer
         vkCmdBuildAccelerationStructuresKHR(cmdBuffer, 1, &buildData.buildGeoInfo, buildRangesPtrArray.data());
     }
 
+    void AccelerationStructure::queueInstanceTransfers()
+    {
+        //check buffer sizes
+        if(instancesBuffer->getSize() / sizeof(ModelInstance::AccelerationStructureInstance) < accelerationStructureInstances.size() ||
+            instancesBuffer->getSize() / sizeof(ModelInstance::AccelerationStructureInstance) > accelerationStructureInstances.size() * 2)
+        {
+            rebuildInstancesBuffers(); //TODO SYNCHRONIZATION
+        }
+
+        //sort instances; remove duplicates
+        std::sort(toUpdateInstances.begin(), toUpdateInstances.end());
+        auto sortedInstances = std::unique(toUpdateInstances.begin(), toUpdateInstances.end());
+        toUpdateInstances.erase(sortedInstances, toUpdateInstances.end());
+
+        //queue instance data
+        for(ModelInstance* instance : toUpdateInstances)
+        {
+            //write instance data
+            ModelInstance::AccelerationStructureInstance instanceShaderData = {};
+            instanceShaderData.blasReference = instance->accelerationStructureSelfReferences.at(this).blasAddress;
+            instanceShaderData.modelInstanceIndex = instance->rendererSelfIndex;
+
+            std::vector<char> instanceData(sizeof(ModelInstance::AccelerationStructureInstance));
+            memcpy(instanceData.data(), &instanceShaderData, instanceData.size());
+            
+            //queue data transfer
+            rendererPtr->getEngineStagingBuffer()->queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::AccelerationStructureInstance) * instance->rendererSelfIndex, instanceData);
+
+            //write description data
+            InstanceDescription descriptionShaderData = {};
+            descriptionShaderData.vertexAddress = instance->getParentModelPtr()->getVBOAddress(); //LOD 0 (only LOD for now) is always at location 0 in the buffer
+            descriptionShaderData.indexAddress = instance->getParentModelPtr()->getIBOAddress(); //LOD 0 (only LOD for now) is always at location 0 in the buffer
+            descriptionShaderData.modelDataOffset = instance->getParentModelPtr()->getShaderDataLocation(); //TODO MODEL DATA COMPACTION ERROR
+            descriptionShaderData.vertexStride = instance->getParentModelPtr()->getVertexDescription().stride;
+            descriptionShaderData.indexStride = sizeof(uint32_t); //ibo should always use 32 bit index buffers
+
+            std::vector<char> descriptionData(sizeof(InstanceDescription));
+            memcpy(descriptionData.data(), &descriptionShaderData, descriptionData.size());
+            
+            //queue data transfer
+            rendererPtr->getEngineStagingBuffer()->queueDataTransfers(*instanceDescriptionsBuffer, sizeof(InstanceDescription) * instance->rendererSelfIndex, descriptionData);
+        }
+
+        //clear deques
+        toUpdateInstances.clear();
+    }
+
     void AccelerationStructure::addInstance(ModelInstance *instance)
     {
         instanceAddRemoveMutex.lock();
@@ -687,44 +686,16 @@ namespace PaperRenderer
         instance->accelerationStructureSelfReferences[this].selfIndex = accelerationStructureInstances.size();
         accelerationStructureInstances.push_back(instance);
 
-        //check sizes
-        if(hostInstancesBuffer->getSize() < accelerationStructureInstances.size() * sizeof(ModelInstance::AccelerationStructureInstance) ||
-            hostInstanceDescriptionsBuffer->getSize() < accelerationStructureInstances.size() * sizeof(InstanceDescription))
-        {
-            rebuildInstancesBuffers();
-        }
-
-        //set shader data
-        ModelInstance::AccelerationStructureInstance shaderData = {};
-        shaderData.blasReference = 0;
-        shaderData.modelInstanceIndex = instance->rendererSelfIndex;
-
-        BufferWrite instanceWrite = {};
-        instanceWrite.offset = sizeof(ModelInstance::AccelerationStructureInstance) * instance->accelerationStructureSelfReferences.at(this).selfIndex;
-        instanceWrite.size = sizeof(ModelInstance::AccelerationStructureInstance);
-        instanceWrite.data = &shaderData;
-        hostInstancesBuffer->writeToBuffer({ instanceWrite });
-
-        InstanceDescription descriptionShaderData = {};
-        descriptionShaderData.vertexAddress = instance->getParentModelPtr()->getVBOAddress(); //LOD 0 (only LOD for now) is always at location 0 in the buffer
-        descriptionShaderData.indexAddress = instance->getParentModelPtr()->getIBOAddress(); //LOD 0 (only LOD for now) is always at location 0 in the buffer
-        descriptionShaderData.modelDataOffset = instance->getParentModelPtr()->getShaderDataLocation(); //TODO MODEL DATA COMPACTION ERROR
-        descriptionShaderData.vertexStride = instance->getParentModelPtr()->getVertexDescription().stride;
-        descriptionShaderData.indexStride = sizeof(uint32_t); //ibo should always use 32 bit index buffers
-
-        BufferWrite instanceDescriptionWrite = {};
-        instanceDescriptionWrite.offset = sizeof(InstanceDescription) * instance->accelerationStructureSelfReferences.at(this).selfIndex;
-        instanceDescriptionWrite.size = sizeof(InstanceDescription);
-        instanceDescriptionWrite.data = &descriptionShaderData;
-        hostInstanceDescriptionsBuffer->writeToBuffer({ instanceDescriptionWrite });
+        //queue data transfer
+        toUpdateInstances.push_front(instance);
 
         //add model reference and queue BLAS build if needed
         if(!bottomStructures.count(instance->getParentModelPtr()))
         {
             blasBuildModels.push_back(instance->getParentModelPtr());
             bottomStructures[instance->getParentModelPtr()] = {};
-            bottomStructures.at(instance->getParentModelPtr()).referenceCount++;
         }
+        bottomStructures.at(instance->getParentModelPtr()).referencedInstances.push_back(instance);
 
         instanceAddRemoveMutex.unlock();
     }
@@ -745,5 +716,6 @@ namespace PaperRenderer
         }
 
         instance->accelerationStructureSelfReferences.erase(this);
+        bottomStructures.at(instance->getParentModelPtr()).referencedInstances.remove(instance);
     }
 }

@@ -173,7 +173,6 @@ namespace PaperRenderer
             modelDataBuffer->compact();
             newModelDataSize = modelDataBuffer->getDesiredLocation();
             newWriteSize = modelDataBuffer->getStackLocation();
-            
         }
 
         BufferInfo modelsBufferInfo = {};
@@ -219,6 +218,7 @@ namespace PaperRenderer
         }
 
         //TODO MOVE DATA AROUND IN DEVICE BUFFER
+        throw std::runtime_error("todo");
 
         //then fix instances data
         for(ModelInstance* instance : renderingModelInstances)
@@ -242,7 +242,7 @@ namespace PaperRenderer
             VkBufferCopy copyRegion = {};
             copyRegion.srcOffset = 0;
             copyRegion.dstOffset = 0;
-            copyRegion.size = instancesDataBuffer->getSize();
+            copyRegion.size = std::min(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance), instancesDataBuffer->getSize());
 
             SynchronizationInfo syncInfo = {};
             syncInfo.queueType = TRANSFER;
@@ -300,12 +300,6 @@ namespace PaperRenderer
             //self reference
             object->rendererSelfIndex = renderingModelInstances.size();
             renderingModelInstances.push_back(object);
-
-            //check buffer size and rebuild if too small
-            if(instancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128)
-            {
-                rebuildInstancesbuffer(); //TODO SYNCHRONIZATION
-            }
             
             //queue data transfer
             toUpdateModelInstances.push_front(object);
@@ -325,12 +319,6 @@ namespace PaperRenderer
 
             //remove last element from instances vector (the one that was moved in the mirrored buffer)
             renderingModelInstances.pop_back();
-
-            //check buffer size and rebuild if unnecessarily large by a factor of 2
-            if(instancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) > renderingModelInstances.size() * 2 && renderingModelInstances.size() > 128)
-            {
-                rebuildInstancesbuffer();
-            }
         }
         else
         {
@@ -344,6 +332,13 @@ namespace PaperRenderer
 
     void RenderEngine::queueModelsAndInstancesTransfers()
     {
+        //check buffer sizes
+        if((instancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128) ||
+            (instancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) > renderingModelInstances.size() * 2 && renderingModelInstances.size() > 128))
+        {
+            rebuildInstancesbuffer(); //TODO SYNCHRONIZATION
+        }
+
         //sort instances and models; remove duplicates
         std::sort(toUpdateModelInstances.begin(), toUpdateModelInstances.end());
         auto sortedInstances = std::unique(toUpdateModelInstances.begin(), toUpdateModelInstances.end());
