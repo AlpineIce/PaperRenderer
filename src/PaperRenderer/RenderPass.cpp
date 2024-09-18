@@ -308,6 +308,15 @@ namespace PaperRenderer
 
     void RenderPass::handleMaterialDataCompaction(std::vector<CompactionResult> results) //UNTESTED
     {
+        //start command buffer
+        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr, TRANSFER);
+
+        VkCommandBufferBeginInfo beginInfo = {};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.pNext = NULL;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
         for(const CompactionResult compactionResult : results)
         {
             for(ModelInstance* instance : renderPassInstances)
@@ -315,13 +324,56 @@ namespace PaperRenderer
                 VkDeviceSize& materialDataOffset = instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset;
                 if(materialDataOffset > compactionResult.location)
                 {
+                    //buffer copy src
+                    VkBufferCopy copyRegion = {};
+                    copyRegion.srcOffset = materialDataOffset;
+
+                    //shift stored location
                     materialDataOffset -= compactionResult.shiftSize;
+
+                    //buffer copy dst
+                    copyRegion.dstOffset = materialDataOffset;
+
+                    vkCmdCopyBuffer(cmdBuffer, instancesDataBuffer->getBuffer()->getBuffer(), instancesDataBuffer->getBuffer()->getBuffer(), 1, &copyRegion);
+
+                    //insert memory barrier at src offset
+                    VkBufferMemoryBarrier2 memBarrier = {
+                        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                        .pNext = NULL,
+                        .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                        .srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
+                        .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                        .dstAccessMask = VK_ACCESS_2_NONE,
+                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .buffer = instancesDataBuffer->getBuffer()->getBuffer(),
+                        .offset = copyRegion.srcOffset,
+                        .size = copyRegion.size
+                    };
+
+                    VkDependencyInfo dependencyInfo = {};
+                    dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+                    dependencyInfo.pNext = NULL;
+                    dependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+                    dependencyInfo.bufferMemoryBarrierCount = 1;
+                    dependencyInfo.pBufferMemoryBarriers = &memBarrier;
+
+                    vkCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
                 }
             }
         }
 
-        //TODO MOVE DATA AROUND IN DEVICE BUFFER
-        throw std::runtime_error("todo");
+        vkEndCommandBuffer(cmdBuffer);
+
+        //submit
+        SynchronizationInfo syncInfo = {};
+        syncInfo.queueType = TRANSFER;
+        syncInfo.fence = Commands::getUnsignaledFence(rendererPtr);
+        Commands::submitToQueue(syncInfo, { cmdBuffer });
+
+        rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
+
+        vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
 
         //then fix instances data
         for(ModelInstance* instance : renderPassInstances)

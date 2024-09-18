@@ -3,7 +3,7 @@
 
 #include <cstring> //linux bs
 #include <functional>
-#include <stack>
+#include <deque>
 #include <set>
 
 namespace PaperRenderer
@@ -94,8 +94,13 @@ namespace PaperRenderer
         {
             VkDeviceSize location;
             VkDeviceSize size;
+
+            static bool compareByLocation(const Chunk &a, const Chunk &b)
+            {
+                return a.location < b.location;
+            }
         };
-        std::stack<Chunk> memoryFragments;
+        std::deque<Chunk> memoryFragments;
         std::set<VkDeviceSize> memoryWriteLocations; //mainly used to redefine old pointers for when compaction occurs
 
         void verifyFragmentation();
@@ -109,7 +114,7 @@ namespace PaperRenderer
         FragmentableBuffer(class RenderEngine* renderer, const BufferInfo& bufferInfo);
         ~FragmentableBuffer();
 
-        //Callback for when a compaction occurs. Extremely useful for re-referencing, with the function taking in std::vector<CompactionResult>
+        //Callback for when a compaction occurs. Extremely useful for re-referencing, with the function taking in a sorted std::vector<CompactionResult>
         void setCompactionCallback(std::function<void(std::vector<CompactionResult>)> compactionCallback) { this->compactionCallback = compactionCallback; }
 
         enum WriteResult
@@ -123,7 +128,7 @@ namespace PaperRenderer
         WriteResult newWrite(void* data, VkDeviceSize size, VkDeviceSize minAlignment, VkDeviceSize* returnLocation); 
         void removeFromRange(VkDeviceSize offset, VkDeviceSize size);
 
-        std::vector<CompactionResult> compact(); //inkoves on demand compaction; useful for when recreating an allocation to get the actual current size requirement
+        std::vector<CompactionResult> compact(); //inkoves on demand compaction; useful for when recreating an allocation to get the actual current size requirement. results are sorted
 
         Buffer* getBuffer() { return buffer.get(); }
         const VkDeviceSize& getStackLocation() const { return stackLocation; } //returns the location relative to the start of the buffer (always 0) of where unwritten data is

@@ -196,7 +196,7 @@ namespace PaperRenderer
             .location = offset,
             .size = size
         };
-        memoryFragments.push(memoryFragment);
+        memoryFragments.push_back(memoryFragment);
     }
 
     std::vector<CompactionResult> FragmentableBuffer::compact()
@@ -206,13 +206,12 @@ namespace PaperRenderer
         //if statement because the compaction callback shouldnt be invoked if no memory fragments exists, which leads to no effective compaction
         if(memoryFragments.size())
         {
-            //move data from memory fragment (location + size) into (location), subtract (size) from (stackLocation), and remove memory fragment from stack
-            while(memoryFragments.size())
-            {
+            //sort memory fragments first
+            std::sort(memoryFragments.begin(), memoryFragments.end(), FragmentableBuffer::Chunk::compareByLocation);
 
-                //init temporary variables and chunk ref
-                const Chunk& chunk = memoryFragments.top();
-                
+            //move data from memory fragment (location + size) into (location), subtract (size) from (stackLocation), and remove memory fragment from stack
+            for(const Chunk& chunk : memoryFragments)
+            {
                 //physically move data in buffer if writable
                 if(buffer->isWritable())
                 {
@@ -233,9 +232,8 @@ namespace PaperRenderer
                     buffer->writeToBuffer({ write });
                 }
 
-                //move stack "pointer" and remove fragment
+                //move stack "pointer"
                 stackLocation -= chunk.size;
-                memoryFragments.pop();
 
                 //create compaction result
                 compactionLocations.push_back({
@@ -243,6 +241,9 @@ namespace PaperRenderer
                     .shiftSize = chunk.size
                 });
             }
+
+            //clear memory fragments
+            memoryFragments.clear();
 
             //call callback function
             if(compactionCallback) compactionCallback(compactionLocations);
