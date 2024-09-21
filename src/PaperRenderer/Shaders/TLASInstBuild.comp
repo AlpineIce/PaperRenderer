@@ -2,7 +2,7 @@
 #extension GL_GOOGLE_include_directive : require
 #include "Common.glsl"
 
-layout (local_size_x = 128) in;
+layout (local_size_x = 256) in;
 
 //----------UNIFORM INPUT DATA----------//
 

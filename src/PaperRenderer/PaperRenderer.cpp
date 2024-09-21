@@ -24,6 +24,7 @@ namespace PaperRenderer
 
     EngineStagingBuffer::~EngineStagingBuffer()
     {
+        stagingBuffer.reset();
         vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), transferSemaphore, nullptr);
     }
 
@@ -56,7 +57,7 @@ namespace PaperRenderer
         {
             BufferInfo bufferInfo = {};
             bufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-            bufferInfo.size = (queueSize - availableSize) * bufferOverhead;
+            bufferInfo.size = queueSize * bufferOverhead;
             bufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
             stagingBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
 
@@ -95,6 +96,7 @@ namespace PaperRenderer
                     .dstOffset = transfer.dstOffset,
                     .size = bufferWrite.size
                 };
+
                 dstCopies.emplace_back(
                     *buffer,
                     bufferCopyInfo
@@ -194,6 +196,7 @@ namespace PaperRenderer
             syncInfo.fence = Commands::getUnsignaledFence(this);
             newBuffer->getBuffer()->copyFromBufferRanges(*instancesDataBuffer, { copyRegion }, syncInfo);
             vkWaitForFences(device.getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
+            vkDestroyFence(device.getDevice(), syncInfo.fence, nullptr);
 
             //pseudo write
             newBuffer->newWrite(NULL, newWriteSize, 1, NULL);
@@ -205,16 +208,6 @@ namespace PaperRenderer
 
     void RenderEngine::handleModelDataCompaction(std::vector<CompactionResult> results) //UNTESTED FUNCTION
     {
-        //start command buffer
-        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(this, TRANSFER);
-
-        VkCommandBufferBeginInfo beginInfo = {};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.pNext = NULL;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-
         //fix model data first
         for(const CompactionResult compactionResult : results)
         {
@@ -222,56 +215,11 @@ namespace PaperRenderer
             {
                 if(model->shaderDataLocation > compactionResult.location)
                 {
-                    //buffer copy src
-                    VkBufferCopy copyRegion = {};
-                    copyRegion.srcOffset = model->shaderDataLocation;
-
                     //shift stored location
                     model->shaderDataLocation -= compactionResult.shiftSize;
-
-                    //buffer copy dst
-                    copyRegion.dstOffset = model->shaderDataLocation;
-
-                    vkCmdCopyBuffer(cmdBuffer, modelDataBuffer->getBuffer()->getBuffer(), modelDataBuffer->getBuffer()->getBuffer(), 1, &copyRegion);
-
-                    //insert memory barrier at src offset
-                    VkBufferMemoryBarrier2 memBarrier = {
-                        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                        .pNext = NULL,
-                        .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                        .srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
-                        .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                        .dstAccessMask = VK_ACCESS_2_NONE,
-                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                        .buffer = modelDataBuffer->getBuffer()->getBuffer(),
-                        .offset = copyRegion.srcOffset,
-                        .size = copyRegion.size
-                    };
-
-                    VkDependencyInfo dependencyInfo = {};
-                    dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-                    dependencyInfo.pNext = NULL;
-                    dependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-                    dependencyInfo.bufferMemoryBarrierCount = 1;
-                    dependencyInfo.pBufferMemoryBarriers = &memBarrier;
-
-                    vkCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
                 }
             }
         }
-
-        vkEndCommandBuffer(cmdBuffer);
-
-        //submit
-        SynchronizationInfo syncInfo = {};
-        syncInfo.queueType = TRANSFER;
-        syncInfo.fence = Commands::getUnsignaledFence(this);
-        Commands::submitToQueue(syncInfo, { cmdBuffer });
-
-        recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
-
-        vkWaitForFences(device.getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
 
         //then fix instances data
         for(ModelInstance* instance : renderingModelInstances)
@@ -302,6 +250,7 @@ namespace PaperRenderer
             syncInfo.fence = Commands::getUnsignaledFence(this);
             newBuffer->copyFromBufferRanges(*instancesDataBuffer, { copyRegion }, syncInfo);
             vkWaitForFences(device.getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
+            vkDestroyFence(device.getDevice(), syncInfo.fence, nullptr);
         }
         
         //replace old buffer
@@ -378,6 +327,15 @@ namespace PaperRenderer
             renderingModelInstances.clear();
         }
 
+        //null out any instances that may be queued
+        for(ModelInstance*& instance : toUpdateModelInstances)
+        {
+            if(instance == object)
+            {
+                instance = NULL;
+            }
+        }
+
         //TODO UPDATE DEPENDENCIES
         
         object->rendererSelfIndex = UINT32_MAX;
@@ -404,6 +362,9 @@ namespace PaperRenderer
         //queue instance data
         for(ModelInstance* instance : toUpdateModelInstances)
         {
+            //skip if instance is NULL
+            if(!instance) continue;
+
             ModelInstance::ShaderModelInstance shaderInstance = instance->getShaderInstance();
 
             //write data

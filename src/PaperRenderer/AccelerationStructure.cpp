@@ -122,7 +122,7 @@ namespace PaperRenderer
         writeDescriptorSet(cmdBuffer, 0);
 
         //dispatch
-        workGroupSizes.x = ((accelerationStructure.accelerationStructureInstances.size()) / 128) + 1;
+        workGroupSizes.x = ((accelerationStructure.accelerationStructureInstances.size()) / 256) + 1;
         dispatch(cmdBuffer);
     }
 
@@ -225,6 +225,7 @@ namespace PaperRenderer
             rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
 
             vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
+            vkDestroyFence(rendererPtr->getDevice()->getDevice(), syncInfo.fence, nullptr);
         }
         
         //replace old buffers
@@ -632,6 +633,9 @@ namespace PaperRenderer
         //queue instance data
         for(ModelInstance* instance : toUpdateInstances)
         {
+            //skip if instance is NULL
+            if(!instance) continue;
+
             //write instance data
             ModelInstance::AccelerationStructureInstance instanceShaderData = {};
             instanceShaderData.blasReference = instance->accelerationStructureSelfReferences.at(this).blasAddress;
@@ -681,6 +685,9 @@ namespace PaperRenderer
         }
         bottomStructures.at(instance->getParentModelPtr()).referencedInstances.push_back(instance);
 
+        //set BLAS address
+        instance->accelerationStructureSelfReferences.at(this).blasAddress = bottomStructures.at(instance->getParentModelPtr()).bufferAddress;
+
         instanceAddRemoveMutex.unlock();
     }
     
@@ -692,11 +699,24 @@ namespace PaperRenderer
             uint32_t& selfReference = instance->accelerationStructureSelfReferences.at(this).selfIndex;
             accelerationStructureInstances.at(selfReference) = accelerationStructureInstances.back();
             accelerationStructureInstances.at(selfReference)->accelerationStructureSelfReferences.at(this).selfIndex = selfReference;
+
+            //queue data transfer
+            toUpdateInstances.push_front(accelerationStructureInstances.at(instance->accelerationStructureSelfReferences.at(this).selfIndex));
+            
             accelerationStructureInstances.pop_back();
         }
         else
         {
             accelerationStructureInstances.clear();
+        }
+
+        //null out any instances that may be queued
+        for(ModelInstance*& thisInstance : toUpdateInstances)
+        {
+            if(thisInstance == instance)
+            {
+                thisInstance = NULL;
+            }
         }
 
         instance->accelerationStructureSelfReferences.erase(this);

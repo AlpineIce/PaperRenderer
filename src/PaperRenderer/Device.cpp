@@ -21,6 +21,8 @@ namespace PaperRenderer
         commands.reset();
         vkDestroyDevice(device, nullptr);
         vkDestroyInstance(instance, nullptr);
+
+        vmaDestroyAllocator(allocator);
     }
 
     void Device::createContext(std::string appName)

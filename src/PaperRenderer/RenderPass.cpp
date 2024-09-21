@@ -205,6 +205,7 @@ namespace PaperRenderer
             syncInfo.fence = Commands::getUnsignaledFence(rendererPtr);
             newInstancesBuffer->copyFromBufferRanges(*instancesBuffer, { instancesCopyRegion }, syncInfo);
             vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
+            vkDestroyFence(rendererPtr->getDevice()->getDevice(), syncInfo.fence, nullptr);
         }
 
         //replace old buffer
@@ -248,6 +249,7 @@ namespace PaperRenderer
             newInstancesDataBuffer->getBuffer()->copyFromBufferRanges(*instancesDataBuffer->getBuffer(), { materialDataCopyRegion }, syncInfo);
 
             vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
+            vkDestroyFence(rendererPtr->getDevice()->getDevice(), syncInfo.fence, nullptr);
         }
         
         //replace old buffer
@@ -274,17 +276,31 @@ namespace PaperRenderer
         //material data pseudo writes
         for(ModelInstance* instance : toUpdateInstances)
         {
+            //skip if instance is NULL
+            if(!instance) continue;
+
             const std::vector<char>& materialData = instance->getRenderPassInstanceData(this);
-            if(instancesDataBuffer->newWrite(NULL, materialData.size(), 8, &(instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset)) == FragmentableBuffer::OUT_OF_MEMORY)
+            FragmentableBuffer::WriteResult writeResult = instancesDataBuffer->newWrite(NULL, materialData.size(), 8, &(instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset));
+            if(writeResult == FragmentableBuffer::OUT_OF_MEMORY)
             {
                 rebuildMaterialDataBuffer();
                 instancesDataBuffer->newWrite(NULL, materialData.size(), 8, &(instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset));
+            }
+            else if(writeResult == FragmentableBuffer::COMPACTED)
+            {
+                //recursive redo
+                queueInstanceTransfers();
+
+                return;
             }
         }
 
         //queue instance data
         for(ModelInstance* instance : toUpdateInstances)
         {
+            //skip if instance is NULL
+            if(!instance) continue;
+
             //queue material data write
             const std::vector<char>& materialData = instance->getRenderPassInstanceData(this);
             rendererPtr->getEngineStagingBuffer()->queueDataTransfers(*instancesDataBuffer->getBuffer(), instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset, materialData);
@@ -308,15 +324,7 @@ namespace PaperRenderer
 
     void RenderPass::handleMaterialDataCompaction(std::vector<CompactionResult> results) //UNTESTED
     {
-        //start command buffer
-        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr, TRANSFER);
-
-        VkCommandBufferBeginInfo beginInfo = {};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.pNext = NULL;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+        //fix material data offsets
         for(const CompactionResult compactionResult : results)
         {
             for(ModelInstance* instance : renderPassInstances)
@@ -324,58 +332,13 @@ namespace PaperRenderer
                 VkDeviceSize& materialDataOffset = instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset;
                 if(materialDataOffset > compactionResult.location)
                 {
-                    //buffer copy src
-                    VkBufferCopy copyRegion = {};
-                    copyRegion.srcOffset = materialDataOffset;
-
                     //shift stored location
                     materialDataOffset -= compactionResult.shiftSize;
-
-                    //buffer copy dst
-                    copyRegion.dstOffset = materialDataOffset;
-
-                    vkCmdCopyBuffer(cmdBuffer, instancesDataBuffer->getBuffer()->getBuffer(), instancesDataBuffer->getBuffer()->getBuffer(), 1, &copyRegion);
-
-                    //insert memory barrier at src offset
-                    VkBufferMemoryBarrier2 memBarrier = {
-                        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                        .pNext = NULL,
-                        .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                        .srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
-                        .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                        .dstAccessMask = VK_ACCESS_2_NONE,
-                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                        .buffer = instancesDataBuffer->getBuffer()->getBuffer(),
-                        .offset = copyRegion.srcOffset,
-                        .size = copyRegion.size
-                    };
-
-                    VkDependencyInfo dependencyInfo = {};
-                    dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-                    dependencyInfo.pNext = NULL;
-                    dependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-                    dependencyInfo.bufferMemoryBarrierCount = 1;
-                    dependencyInfo.pBufferMemoryBarriers = &memBarrier;
-
-                    vkCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
                 }
             }
         }
 
-        vkEndCommandBuffer(cmdBuffer);
-
-        //submit
-        SynchronizationInfo syncInfo = {};
-        syncInfo.queueType = TRANSFER;
-        syncInfo.fence = Commands::getUnsignaledFence(rendererPtr);
-        Commands::submitToQueue(syncInfo, { cmdBuffer });
-
-        rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
-
-        vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
-
-        //then fix instances data
+        //then queue data transfers
         for(ModelInstance* instance : renderPassInstances)
         {
             toUpdateInstances.push_front(instance);
@@ -613,11 +576,30 @@ namespace PaperRenderer
             uint32_t& selfReference = instance->renderPassSelfReferences.at(this).selfIndex;
             renderPassInstances.at(selfReference) = renderPassInstances.back();
             renderPassInstances.at(selfReference)->renderPassSelfReferences.at(this).selfIndex = selfReference;
+
+            //queue data transfer
+            toUpdateInstances.push_front(renderPassInstances.at(instance->renderPassSelfReferences.at(this).selfIndex));
+            
             renderPassInstances.pop_back();
         }
         else
         {
             renderPassInstances.clear();
+        }
+
+        //null out any instances that may be queued
+        for(ModelInstance*& thisInstance : toUpdateInstances)
+        {
+            if(thisInstance == instance)
+            {
+                thisInstance = NULL;
+            }
+        }
+
+        //remove data from fragmenable buffer if referenced
+        if(instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset != UINT64_MAX)
+        {
+            instancesDataBuffer->removeFromRange(instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset, instance->getRenderPassInstanceData(this).size());
         }
 
         instance->renderPassSelfReferences.erase(this);

@@ -65,7 +65,7 @@ namespace PaperRenderer
 
     Buffer::~Buffer()
     {
-        vkDestroyBuffer(rendererPtr->getDevice()->getDevice(), buffer, nullptr);
+        vmaDestroyBuffer(rendererPtr->getDevice()->getAllocator(), buffer, allocation);
     }
 
     int Buffer::writeToBuffer(const std::vector<BufferWrite>& writes) const
@@ -168,6 +168,7 @@ namespace PaperRenderer
             }
 
             //otherwise the compaction succeeded and enough available memory was created;
+            desiredLocation = stackLocation;
             result = COMPACTED;
         }
 
@@ -181,12 +182,14 @@ namespace PaperRenderer
             
             buffer->writeToBuffer({ write });
         }
-        
 
         if(returnLocation) *returnLocation = rendererPtr->getDevice()->getAlignment(stackLocation, minAlignment);
 
-        stackLocation = desiredLocation;
-
+        if(result == SUCCESS)
+        {
+            stackLocation = desiredLocation;
+        }
+        
         return result;
     }
 
@@ -209,27 +212,101 @@ namespace PaperRenderer
             //sort memory fragments first
             std::sort(memoryFragments.begin(), memoryFragments.end(), FragmentableBuffer::Chunk::compareByLocation);
 
-            //move data from memory fragment (location + size) into (location), subtract (size) from (stackLocation), and remove memory fragment from stack
-            for(const Chunk& chunk : memoryFragments)
+            //start a command buffer if the buffer isnt writable from CPU (transfer will be done by GPU instead)
+            VkCommandBuffer cmdBuffer = VK_NULL_HANDLE;
+            if(!buffer->isWritable())
             {
-                //physically move data in buffer if writable
-                if(buffer->isWritable())
+                //start command buffer
+                cmdBuffer = Commands::getCommandBuffer(rendererPtr, TRANSFER);
+
+                VkCommandBufferBeginInfo beginInfo = {};
+                beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+                beginInfo.pNext = NULL;
+                beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+                vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+            }
+
+            //move data from memory fragment (location + size) into (location), subtract (size) from (stackLocation), and remove memory fragment from stack
+            for(uint32_t i = 0; i < memoryFragments.size(); i++)
+            {
+                const Chunk& chunk = memoryFragments.at(i);
+
+                //get copy size
+                VkDeviceSize copySize = 0;
+                if(i < memoryFragments.size() - 1)
+                {
+                    //use "distance" to next chunk
+                    const Chunk& nextChunk = memoryFragments.at(i + 1);
+                    copySize = nextChunk.location - (chunk.location + chunk.size);
+                }
+                else
+                {
+                    //use rest of the range of buffer
+                    copySize = stackLocation - (chunk.location + chunk.size);
+                }
+                
+                //CPU data move
+                if(!cmdBuffer)
                 {
                     std::vector<char> readData(stackLocation - (chunk.location + chunk.size));
 
                     //read data
                     BufferWrite read = {};
                     read.offset = chunk.location + chunk.size;
-                    read.size = stackLocation - (chunk.location + chunk.size);
+                    read.size = copySize;
                     read.data = readData.data();
                     buffer->readFromBuffer({ read });
 
                     //copy data into buffer location
                     BufferWrite write = {};
                     write.offset = chunk.location;
-                    write.size = stackLocation - (chunk.location + chunk.size);
+                    write.size = copySize;
                     write.data = readData.data();
                     buffer->writeToBuffer({ write });
+                }
+                //GPU data move     //TODO TEST IF THIS STUFF ACTUALLY WORKS!!!
+                else
+                {
+                    const VkDeviceSize maxTransferSize = chunk.size;
+
+                    uint32_t iterations = std::ceil((double)copySize / (double)maxTransferSize);
+                    for(uint32_t j = 0; j < iterations; j++)
+                    {
+                        //buffer copy src
+                        VkBufferCopy copyRegion = {};
+                        copyRegion.srcOffset = chunk.location + chunk.size;
+                        copyRegion.size = std::min(copySize, maxTransferSize);
+                        copyRegion.dstOffset = chunk.location;
+                        
+                        vkCmdCopyBuffer(cmdBuffer, buffer->getBuffer(), buffer->getBuffer(), 1, &copyRegion);
+
+                        //insert memory barrier at src offset. dst barrier isnt needed since future writes should not read/write from/into previous writes
+                        VkBufferMemoryBarrier2 memBarrier = {
+                            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                            .pNext = NULL,
+                            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                            .srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT,
+                            .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                            .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                            .buffer = buffer->getBuffer(),
+                            .offset = copyRegion.srcOffset,
+                            .size = copyRegion.size
+                        };
+
+                        VkDependencyInfo dependencyInfo = {};
+                        dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+                        dependencyInfo.pNext = NULL;
+                        dependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+                        dependencyInfo.bufferMemoryBarrierCount = 1;
+                        dependencyInfo.pBufferMemoryBarriers = &memBarrier;
+
+                        vkCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
+
+                        copySize -= copyRegion.size;
+                    }
                 }
 
                 //move stack "pointer"
@@ -240,6 +317,23 @@ namespace PaperRenderer
                     .location = chunk.location,
                     .shiftSize = chunk.size
                 });
+            }
+
+            //end command buffer if used and submit
+            if(cmdBuffer)
+            {
+                vkEndCommandBuffer(cmdBuffer);
+
+                //submit
+                SynchronizationInfo syncInfo = {};
+                syncInfo.queueType = TRANSFER;
+                syncInfo.fence = Commands::getUnsignaledFence(rendererPtr);
+                Commands::submitToQueue(syncInfo, { cmdBuffer });
+
+                rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
+
+                vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
+                vkDestroyFence(rendererPtr->getDevice()->getDevice(), syncInfo.fence, nullptr);
             }
 
             //clear memory fragments
@@ -304,7 +398,7 @@ namespace PaperRenderer
 
     Image::~Image()
     {
-        vkDestroyImage(rendererPtr->getDevice()->getDevice(), image, nullptr);
+        vmaDestroyImage(rendererPtr->getDevice()->getAllocator(), image, allocation);
     }
 
     VkImageView Image::getNewImageView(const Image& image, RenderEngine* renderer, VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format)
