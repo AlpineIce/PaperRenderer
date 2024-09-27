@@ -83,8 +83,11 @@ namespace PaperRenderer
         struct ShaderModel
         {
             AABB bounds;
+            uint64_t vertexAddress;
+            uint64_t indexAddress;
             uint32_t lodCount;
             uint32_t lodsOffset;
+            uint32_t vertexStride;
         };
 
         struct ShaderModelLOD

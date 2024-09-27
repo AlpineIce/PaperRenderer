@@ -99,8 +99,11 @@ namespace PaperRenderer
 
 		ShaderModel shaderModel = {};
 		shaderModel.bounds = aabb;
+		shaderModel.vertexAddress = vbo->getBufferDeviceAddress();
+		shaderModel.indexAddress = ibo->getBufferDeviceAddress();
 		shaderModel.lodCount = LODs.size();
 		shaderModel.lodsOffset = dynamicOffset;
+		shaderModel.vertexStride = vertexDescription.stride;
 
 		memcpy(newData.data(), &shaderModel, sizeof(ShaderModel));
 

@@ -48,11 +48,7 @@ namespace PaperRenderer
         //instances buffers and allocations
         struct InstanceDescription
         {
-            uint64_t vertexAddress;
-            uint64_t indexAddress;
             uint32_t modelDataOffset;
-            uint32_t vertexStride;
-            uint32_t indexStride;
         };
 
         std::unique_ptr<Buffer> instancesBuffer;

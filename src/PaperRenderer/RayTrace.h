@@ -19,8 +19,6 @@ namespace PaperRenderer
         std::unique_ptr<RTPipeline> pipeline;
         RTPipelineProperties pipelineProperties = {};
 
-        void buildPipeline(const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets, std::vector<VkPushConstantRange> pcRanges);
-
         class RenderEngine* rendererPtr;
         class AccelerationStructure* accelerationStructurePtr;
 
@@ -29,6 +27,8 @@ namespace PaperRenderer
             RenderEngine* renderer,
             AccelerationStructure* accelerationStructure,
             const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets,
+            const ShaderPair& raygenShaderPair,
+            const std::vector<std::vector<ShaderPair>>& shaderGroups,
             std::vector<VkPushConstantRange> pcRanges
         );
         ~RayTraceRender();

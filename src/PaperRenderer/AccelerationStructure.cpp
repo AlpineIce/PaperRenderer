@@ -649,11 +649,7 @@ namespace PaperRenderer
 
             //write description data
             InstanceDescription descriptionShaderData = {};
-            descriptionShaderData.vertexAddress = instance->getParentModelPtr()->getVBOAddress(); //LOD 0 (only LOD for now) is always at location 0 in the buffer
-            descriptionShaderData.indexAddress = instance->getParentModelPtr()->getIBOAddress(); //LOD 0 (only LOD for now) is always at location 0 in the buffer
             descriptionShaderData.modelDataOffset = instance->getParentModelPtr()->getShaderDataLocation(); //TODO MODEL DATA COMPACTION ERROR
-            descriptionShaderData.vertexStride = instance->getParentModelPtr()->getVertexDescription().stride;
-            descriptionShaderData.indexStride = sizeof(uint32_t); //ibo should always use 32 bit index buffers
 
             std::vector<char> descriptionData(sizeof(InstanceDescription));
             memcpy(descriptionData.data(), &descriptionShaderData, descriptionData.size());

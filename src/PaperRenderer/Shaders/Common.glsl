@@ -18,8 +18,11 @@ struct AABB
 struct Model
 {
     AABB bounds;
+    uint64_t vertexAddress;
+    uint64_t indexAddress;
     uint lodCount;
     uint lodsOffset;
+    uint vertexStride;
 };
 
 layout(scalar, buffer_reference) readonly buffer InputModel

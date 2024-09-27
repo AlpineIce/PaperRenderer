@@ -10,54 +10,25 @@ namespace PaperRenderer
         RenderEngine* renderer,
         AccelerationStructure* accelerationStructure,
         const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets,
+        const ShaderPair& raygenShaderPair,
+        const std::vector<std::vector<ShaderPair>>& shaderGroups,
         std::vector<VkPushConstantRange> pcRanges
     )
         :rendererPtr(renderer),
         accelerationStructurePtr(accelerationStructure)
     {
-        buildPipeline(descriptorSets, pcRanges);
-    }
-
-    RayTraceRender::~RayTraceRender()
-    {
-        pipeline.reset();
-    }
-
-    void RayTraceRender::buildPipeline(const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets, std::vector<VkPushConstantRange> pcRanges)
-    {
-        std::vector<std::vector<ShaderPair>> shaderGroups;
-
-        //rgen shader
-        ShaderPair rgenShader = {
-            .stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
-            .directory = "resources/shaders/RTRayGen.spv"
-        };
-        
-        //environment map miss
-        shaderGroups.push_back({ {
-            .stage = VK_SHADER_STAGE_MISS_BIT_KHR,
-            .directory = "resources/shaders/RTMiss.spv"
-        } });
-
-        //shadow miss
-        shaderGroups.push_back({ {
-            .stage = VK_SHADER_STAGE_MISS_BIT_KHR,
-            .directory = "resources/shaders/RTShadow.spv"
-        } });
-
-        //get materials TODO
-        shaderGroups.push_back({ { 
-            .stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
-            .directory = "resources/shaders/RTChit.spv"
-        } });
-
         RTPipelineBuildInfo pipelineBuildInfo = {
-            .rgenShader = rgenShader,
+            .rgenShader = raygenShaderPair,
             .shaderGroups = shaderGroups,
             .descriptors = descriptorSets,
             .pcRanges = pcRanges
         };
         pipeline = rendererPtr->getPipelineBuilder()->buildRTPipeline(pipelineBuildInfo, pipelineProperties);
+    }
+
+    RayTraceRender::~RayTraceRender()
+    {
+        pipeline.reset();
     }
 
     void RayTraceRender::render(const RayTraceRenderInfo& rtRenderInfo, const SynchronizationInfo& syncInfo)
