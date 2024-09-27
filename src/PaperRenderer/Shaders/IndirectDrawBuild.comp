@@ -24,10 +24,9 @@ struct RenderPassInstance
     uint modelInstanceIndex;
     uint LODsMaterialDataOffset;
     bool isVisible;
-    float padding;
 };
 
-layout(std430, set = 0, binding = 2) readonly buffer RenderPassInstances
+layout(scalar, set = 0, binding = 2) readonly buffer RenderPassInstances
 {
     RenderPassInstance datas[];
 } inputObjects;

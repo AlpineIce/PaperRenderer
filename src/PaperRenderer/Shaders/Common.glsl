@@ -61,8 +61,8 @@ layout(scalar, buffer_reference) readonly buffer ModelLODMeshGroups
 //model instance
 struct ModelInstance
 {
-    vec4 position; //w as padding
-    vec4 scale;
+    vec3 position;
+    vec3 scale;
     vec4 qRotation; //quaternion
     uint modelDataOffset;
 };
