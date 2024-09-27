@@ -143,7 +143,6 @@ namespace PaperRenderer
             glm::vec4 scale; 
             glm::quat qRotation;
             uint32_t modelDataOffset;
-            glm::vec3 padding;
         };
 
         ShaderModelInstance getShaderInstance() const;
@@ -153,7 +152,6 @@ namespace PaperRenderer
         {
             uint64_t blasReference;
             uint32_t modelInstanceIndex;
-            uint32_t padding;
         };
         
         //per render pass data

@@ -17,10 +17,9 @@ struct InputASInstance
 {
     uint64_t blasReference;
     uint modelInstanceIndex;
-    uint padding;
 };
 
-layout(std430, set = 0, binding = 2) readonly buffer InputASInstances
+layout(scalar, set = 0, binding = 2) readonly buffer InputASInstances
 {
     InputASInstance instances[];
 } inputASInstances;
@@ -35,7 +34,7 @@ struct AccelerationStructureInstance
     uint64_t accelerationStructureReference;
 };
 
-layout(std430, set = 0, binding = 3) writeonly buffer ASInstances
+layout(scalar, set = 0, binding = 3) writeonly buffer ASInstances
 {
     AccelerationStructureInstance objects[];
 } asInstances; 
