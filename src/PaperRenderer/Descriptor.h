@@ -72,6 +72,7 @@ namespace PaperRenderer
     public:
         DescriptorAllocator(class RenderEngine* renderer);
         ~DescriptorAllocator();
+        DescriptorAllocator(const DescriptorAllocator&) = delete;
 
         static void writeUniforms(class RenderEngine* renderer, VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo);
         static void bindSet(VkCommandBuffer cmdBuffer, const DescriptorBind& bindingInfo);

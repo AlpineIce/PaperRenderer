@@ -43,16 +43,22 @@ namespace PaperRenderer
 
         std::unique_ptr<Buffer> blasBuffer;
 
-        class Model const* parentModelPtr; //TODO ADD VBO AND IBO REFERENCES AND DONT DERIVE SAID DATA FROM MODEL
+        class Model const* parentModelPtr;
+        Buffer const* vboPtr = NULL;
+
         class RenderEngine* rendererPtr;
 
         friend class AccelerationStructureBuilder;
     public:
-        BLAS(RenderEngine* renderer);
+        //If vbo is null, BLAS will instead use those directly from the model. Model is needed
+        //for data describing different geometries
+        BLAS(RenderEngine* renderer, Model const* model, Buffer const* vbo);
         ~BLAS();
+        BLAS(const BLAS&) = delete;
 
         VkAccelerationStructureKHR getAccelerationStructure() const { return accelerationStructure; }
-        class Model const* getParentModelPtr() const { return parentModelPtr; }
+        VkDeviceAddress getVBOAddress() const { return vboPtr->getBufferDeviceAddress(); }
+        Model const* getParentModelPtr() const { return parentModelPtr; }
     };
 
     class TLAS
@@ -87,6 +93,7 @@ namespace PaperRenderer
     public:
         TLAS(RenderEngine* renderer);
         ~TLAS();
+        TLAS(const TLAS&) = delete;
 
         void addInstance(class ModelInstance* instance);
         void removeInstance(class ModelInstance* instance);
@@ -164,6 +171,7 @@ namespace PaperRenderer
     public:
         AccelerationStructureBuilder(RenderEngine* renderer);
         ~AccelerationStructureBuilder();
+        AccelerationStructureBuilder(const AccelerationStructureBuilder&) = delete;
         
         void queueBlasBuild(BLAS* blas, VkBuildAccelerationStructureFlagsKHR flags) { blasBuildQueue.emplace_back(blas, flags); }
         void queueBlasUpdate(BLAS* blas) { blasUpdateQueue.emplace_back(blas); }

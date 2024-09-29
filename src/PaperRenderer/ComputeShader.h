@@ -24,6 +24,7 @@ namespace PaperRenderer
     public:
         ComputeShader(class RenderEngine* renderer);
         virtual ~ComputeShader();
+        ComputeShader(const ComputeShader&) = delete;
 
         void bind(VkCommandBuffer cmdBuffer);
         void writeDescriptorSet(VkCommandBuffer cmdBuffer, uint32_t setNumber);

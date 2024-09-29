@@ -32,6 +32,7 @@ namespace PaperRenderer
             std::vector<VkPushConstantRange> pcRanges
         );
         ~RayTraceRender();
+        RayTraceRender(const RayTraceRender&) = delete;
 
         void render(const RayTraceRenderInfo& rtRenderInfo, const SynchronizationInfo& syncInfo);
     };

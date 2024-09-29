@@ -46,6 +46,7 @@ namespace PaperRenderer
     public:
         Device(class RenderEngine* renderer, std::string appName);
         ~Device();
+        Device(const Device&) = delete;
 
         void createDevice();
 

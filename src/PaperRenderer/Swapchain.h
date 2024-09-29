@@ -51,6 +51,7 @@ namespace PaperRenderer
     public:
         Swapchain(class RenderEngine* renderer, WindowState startingWindowState);
         ~Swapchain();
+        Swapchain(const Swapchain&) = delete;
 
         //returns the image acquire semaphore
         const VkSemaphore& acquireNextImage();

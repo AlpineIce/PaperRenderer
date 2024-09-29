@@ -86,6 +86,7 @@ namespace PaperRenderer
     public:
         Commands(class RenderEngine* renderer, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr);
         ~Commands();
+        Commands(const Commands&) = delete;
 
         static void freeCommandBuffers(class RenderEngine* renderer, std::vector<CommandBuffer>& commandBuffers);
         static void submitToQueue(const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers);

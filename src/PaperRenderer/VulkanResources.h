@@ -44,6 +44,7 @@ namespace PaperRenderer
     public:
         VulkanResource(class RenderEngine* renderer);
         virtual ~VulkanResource();
+        VulkanResource(const VulkanResource&) = delete;
 
         VkDeviceSize getSize() const { return size; }
     };
@@ -59,6 +60,7 @@ namespace PaperRenderer
     public:
         Buffer(class RenderEngine* renderer, const BufferInfo& bufferInfo);
         ~Buffer() override;
+        Buffer(const Buffer&) = delete;
 
         int writeToBuffer(const std::vector<BufferWrite>& writes) const; //returns 0 if successful, 1 if unsuccessful (probably because not host visible)
         int readFromBuffer(const std::vector<BufferWrite>& reads) const;
@@ -113,6 +115,7 @@ namespace PaperRenderer
     public:
         FragmentableBuffer(class RenderEngine* renderer, const BufferInfo& bufferInfo);
         ~FragmentableBuffer();
+        FragmentableBuffer(const FragmentableBuffer&) = delete;
 
         //Callback for when a compaction occurs. Extremely useful for re-referencing, with the function taking in a sorted std::vector<CompactionResult>
         void setCompactionCallback(std::function<void(std::vector<CompactionResult>)> compactionCallback) { this->compactionCallback = compactionCallback; }
@@ -164,6 +167,7 @@ namespace PaperRenderer
     public:
         Image(class RenderEngine* renderer, const ImageInfo& imageInfo);
         ~Image() override;
+        Image(const Image&) = delete;
 
         void setImageData(const Buffer& imageStagingBuffer);
 

@@ -33,6 +33,7 @@ namespace PaperRenderer
     public:
         Shader(class Device* device, std::string location);
         ~Shader();
+        Shader(const Shader&) = delete;
         
         VkShaderModule getModule() const { return program; }
     };
@@ -61,6 +62,7 @@ namespace PaperRenderer
     public:
         Pipeline(const PipelineCreationInfo& creationInfo);
         virtual ~Pipeline();
+        Pipeline(const Pipeline&) = delete;
         
         VkPipeline getPipeline() const { return pipeline; }
         const std::unordered_map<uint32_t, VkDescriptorSetLayout>& getDescriptorSetLayouts() const { return setLayouts; } //TODO USE AN ENUM FOR USABLE SET LAYOUT INDICES
@@ -87,6 +89,7 @@ namespace PaperRenderer
     public:
         ComputePipeline(const ComputePipelineCreationInfo& creationInfo);
         ~ComputePipeline() override;
+        ComputePipeline(const ComputePipeline&) = delete;
         
     };
 
@@ -156,6 +159,8 @@ namespace PaperRenderer
     public:
         RasterPipeline(const RasterPipelineCreationInfo& creationInfo, const RasterPipelineProperties& pipelineProperties);
         ~RasterPipeline() override;
+        RasterPipeline(const RasterPipeline&) = delete;
+
         
         const RasterPipelineProperties& getPipelineProperties() const { return pipelineProperties; }
 
@@ -206,7 +211,8 @@ namespace PaperRenderer
     public:
         RTPipeline(const RTPipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties);
         ~RTPipeline() override;
-        
+        RTPipeline(const RTPipeline&) = delete;
+
         const RTPipelineProperties& getPipelineProperties() const { return pipelineProperties; }
         const RTShaderBindingTableData& getShaderBindingTableData() const { return shaderBindingTableData; }
 
@@ -229,6 +235,7 @@ namespace PaperRenderer
     public:
         PipelineBuilder(RenderEngine* renderer);
         ~PipelineBuilder();
+        PipelineBuilder(const PipelineBuilder&) = delete;
 
         std::unique_ptr<ComputePipeline> buildComputePipeline(const ComputePipelineBuildInfo& info) const;
         std::unique_ptr<RasterPipeline> buildRasterPipeline(const RasterPipelineBuildInfo& info, const RasterPipelineProperties& pipelineProperties) const;

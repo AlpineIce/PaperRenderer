@@ -128,14 +128,20 @@ namespace PaperRenderer
 
     //----------BLAS DEFINITIONS----------//
 
-    BLAS::BLAS(RenderEngine* renderer)
-        :rendererPtr(renderer)
+    BLAS::BLAS(RenderEngine* renderer, Model const* model, Buffer const* vbo)
+        :rendererPtr(renderer),
+        parentModelPtr(model)
     {
+        if(!model) throw std::runtime_error("Model pointer cannot be null in BLAS creation");
+        if(vbo) vboPtr = vbo;
     }
 
     BLAS::~BLAS()
     {
-        vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), accelerationStructure, nullptr);
+        if(accelerationStructure)
+        {
+            vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), accelerationStructure, nullptr);
+        }
 
         blasBuffer.reset();
     }
@@ -150,8 +156,11 @@ namespace PaperRenderer
 
     TLAS::~TLAS()
     {
-        vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), accelerationStructure, nullptr);
-
+        if(accelerationStructure)
+        {
+            vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), accelerationStructure, nullptr);
+        }
+        
         tlasBuffer.reset();
         instancesBuffer.reset();
 
@@ -277,7 +286,7 @@ namespace PaperRenderer
     void TLAS::addInstance(ModelInstance *instance)
     {
         //add reference
-        instance->accelerationStructureSelfReferences[this].selfIndex = accelerationStructureInstances.size();
+        instance->accelerationStructureSelfReferences[this] = accelerationStructureInstances.size();
         accelerationStructureInstances.push_back(instance);
 
         //queue data transfer
@@ -289,12 +298,12 @@ namespace PaperRenderer
         //remove reference
         if(accelerationStructureInstances.size() > 1)
         {
-            uint32_t& selfReference = instance->accelerationStructureSelfReferences.at(this).selfIndex;
+            uint32_t& selfReference = instance->accelerationStructureSelfReferences.at(this);
             accelerationStructureInstances.at(selfReference) = accelerationStructureInstances.back();
-            accelerationStructureInstances.at(selfReference)->accelerationStructureSelfReferences.at(this).selfIndex = selfReference;
+            accelerationStructureInstances.at(selfReference)->accelerationStructureSelfReferences.at(this) = selfReference;
 
             //queue data transfer
-            toUpdateInstances.push_front(accelerationStructureInstances.at(instance->accelerationStructureSelfReferences.at(this).selfIndex));
+            toUpdateInstances.push_front(accelerationStructureInstances.at(instance->accelerationStructureSelfReferences.at(this)));
             
             accelerationStructureInstances.pop_back();
         }
@@ -356,7 +365,7 @@ namespace PaperRenderer
             trianglesGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
             trianglesGeometry.pNext = NULL;
             trianglesGeometry.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-            trianglesGeometry.vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = blasOp.blas->getParentModelPtr()->getVBOAddress()};
+            trianglesGeometry.vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = blasOp.blas->getVBOAddress()};
             trianglesGeometry.maxVertex = vertexCount;
             trianglesGeometry.vertexStride = blasOp.blas->getParentModelPtr()->getVertexDescription().stride;
             trianglesGeometry.indexType = VK_INDEX_TYPE_UINT32;

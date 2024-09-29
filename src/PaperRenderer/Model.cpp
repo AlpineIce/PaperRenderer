@@ -200,7 +200,7 @@ namespace PaperRenderer
 
 	//----------MODEL INSTANCE DEFINITIONS----------//
 
-    ModelInstance::ModelInstance(RenderEngine *renderer, Model const* parentModel)
+    ModelInstance::ModelInstance(RenderEngine *renderer, Model const* parentModel, bool uniqueGeometry)
         : rendererPtr(renderer),
           modelPtr(parentModel)
     {

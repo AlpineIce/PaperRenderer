@@ -35,6 +35,7 @@ namespace PaperRenderer
     public:
         Material(class RenderEngine* renderer, std::string materialName);
         virtual ~Material();
+        Material(const Material&) = delete;
 
         virtual void bind(VkCommandBuffer cmdBuffer, class Camera* camera); //used per pipeline bind and material instance; camera is optional
         
@@ -54,6 +55,7 @@ namespace PaperRenderer
     public:
         MaterialInstance(class RenderEngine* renderer, Material const* baseMaterial);
         virtual ~MaterialInstance();
+        MaterialInstance(const MaterialInstance&) = delete;
         
         virtual void bind(VkCommandBuffer cmdBuffer);
 

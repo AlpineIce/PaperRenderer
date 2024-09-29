@@ -48,6 +48,7 @@ namespace PaperRenderer
     public:
         Camera(const CameraCreateInfo& creationInfo);
         ~Camera();
+        Camera(const Camera&) = delete;
 
         void setClipSpace(float near, float far);
         void updateCameraProjection(); //updates projection to match window extent

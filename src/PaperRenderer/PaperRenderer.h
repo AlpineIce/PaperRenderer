@@ -128,6 +128,7 @@ namespace PaperRenderer
     public:
         RenderEngine(RendererCreationStruct creationInfo);
         ~RenderEngine();
+        RenderEngine(const RenderEngine&) = delete;
 
         //returns the image acquire semaphore from the swapchain
         FrameBeginSyncInfo beginFrame(SynchronizationInfo syncInfo);

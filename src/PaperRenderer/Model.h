@@ -35,8 +35,10 @@ namespace PaperRenderer
         std::vector<VkVertexInputAttributeDescription> vertexAttributes;
         VkVertexInputBindingDescription vertexDescription;
         uint32_t vertexPositionOffset;
-        
         std::vector<ModelLODInfo> LODs;
+        //True by default, will create a static, compacted BLAS that can be shared across all instances.
+        //Should be true for inanimate geometry
+        bool createBLAS = true;
     };
 
     //----------MODEL INFORMATION----------//
@@ -92,6 +94,7 @@ namespace PaperRenderer
         AABB aabb;
 
         //BLAS info
+        std::unique_ptr<class BLAS> defaultBLAS;
 
         //shader data
         struct ShaderModel
@@ -134,14 +137,16 @@ namespace PaperRenderer
     public:
         Model(RenderEngine* renderer, const ModelCreateInfo& creationInfo);
         ~Model();
+        Model(const Model&) = delete;
 
         void bindBuffers(const VkCommandBuffer& cmdBuffer) const;
 
-        VkDeviceAddress getVBOAddress() const { return vbo->getBufferDeviceAddress(); }
-        VkDeviceAddress getIBOAddress() const { return ibo->getBufferDeviceAddress(); }
         const std::vector<VkVertexInputAttributeDescription>& getVertexAttributes() const { return vertexAttributes; }
         const VkVertexInputBindingDescription& getVertexDescription() const { return vertexDescription; }
         const uint32_t& getVertexPositionOffset() const { return vertexPositionOffset; }
+        VkDeviceAddress getVBOAddress() const { return vbo->getBufferDeviceAddress(); }
+        VkDeviceAddress getIBOAddress() const { return ibo->getBufferDeviceAddress(); }
+        BLAS const* getBlasPtr() const { return defaultBLAS ? defaultBLAS.get() : NULL; }
         const AABB& getAABB() const { return aabb; }
         const std::vector<LOD>& getLODs() const { return LODs; }
         const std::vector<char>& getShaderData() const { return shaderData; }
@@ -162,14 +167,13 @@ namespace PaperRenderer
             uint32_t modelDataOffset;
         };
 
-        ShaderModelInstance getShaderInstance() const;
-
-        //per acceleration structure data
         struct AccelerationStructureInstance
         {
             uint64_t blasReference;
             uint32_t modelInstanceIndex;
         };
+
+        ShaderModelInstance getShaderInstance() const;
         
         //per render pass data
         struct RenderPassInstance
@@ -198,8 +202,10 @@ namespace PaperRenderer
         void setRenderPassInstanceData(class RenderPass const* renderPass);
         const std::vector<char>& getRenderPassInstanceData(class RenderPass const* renderPass) const { return renderPassSelfReferences.at(renderPass).renderPassInstanceData; };
 
+        //renderer self index
         uint32_t rendererSelfIndex = UINT32_MAX;
 
+        //render pass reference data
         struct RenderPassData
         {
             std::vector<char> renderPassInstanceData;
@@ -209,13 +215,16 @@ namespace PaperRenderer
         };
         std::unordered_map<class RenderPass const*, RenderPassData> renderPassSelfReferences;
 
-        struct AccelerationStructureData
-        {
-            uint64_t blasAddress;
-            uint32_t selfIndex;
-        };
-        std::unordered_map<class TLAS const*, AccelerationStructureData> accelerationStructureSelfReferences;
+        //acceleration structure reference data
+        std::unordered_map<class TLAS const*, uint32_t> accelerationStructureSelfReferences;
 
+        //unique instance acceleration structure and VBO (only used if uniqueGeometry is set to true on instance creation)
+        struct UniqueGeometryData
+        {
+            std::unique_ptr<Buffer> uniqueVBO;
+            std::unique_ptr<class BLAS> blas;
+        } uniqueGeometryData;
+        
         ModelTransformation transform = {};
 
         class RenderEngine* rendererPtr;
@@ -229,8 +238,10 @@ namespace PaperRenderer
         friend class CommonMeshGroup;
         
     public:
-        ModelInstance(RenderEngine* renderer, Model const* parentModel);
+        //uniqueGeometry should only be set to true if the instance is animate
+        ModelInstance(RenderEngine* renderer, Model const* parentModel, bool uniqueGeometry);
         ~ModelInstance();
+        ModelInstance(const ModelInstance&) = delete;
 
         void setTransformation(const ModelTransformation& newTransformation);
         //void setVisibility(class RenderPass* renderPass, bool newVisibility); //renderPass can be NULL if setting the visibility for all is desired

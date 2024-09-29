@@ -66,6 +66,7 @@ namespace PaperRenderer
     public:
         CommonMeshGroup(class RenderEngine* renderer, class RenderPass const* renderPass);
         ~CommonMeshGroup();
+        CommonMeshGroup(const CommonMeshGroup&) = delete;
 
         static std::vector<class ModelInstance*> verifyBuffersSize(RenderEngine* renderer);
 

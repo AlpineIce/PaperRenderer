@@ -33,6 +33,7 @@ namespace PaperRenderer
     public:
         RasterPreprocessPipeline(RenderEngine* renderer, std::string fileDir);
         ~RasterPreprocessPipeline() override;
+        RasterPreprocessPipeline(const RasterPreprocessPipeline&) = delete;
 
         void submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass);
     };
@@ -86,6 +87,7 @@ namespace PaperRenderer
     public:
         RenderPass(RenderEngine* renderer, Camera* camera, MaterialInstance* defaultMaterialInstance);
         ~RenderPass();
+        RenderPass(const RenderPass&) = delete;
 
         void queueInstanceTransfers();
         void render(VkCommandBuffer cmdBuffer, const RenderPassInfo& renderPassInfo);
