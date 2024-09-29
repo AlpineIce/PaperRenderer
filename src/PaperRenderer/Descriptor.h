@@ -30,7 +30,7 @@ namespace PaperRenderer
 
     struct AccelerationStructureDescriptorWrites
     {
-        std::vector<class AccelerationStructure const*> accelerationStructures;
+        std::vector<class TLAS const*> accelerationStructures;
         uint32_t binding;
     };
 

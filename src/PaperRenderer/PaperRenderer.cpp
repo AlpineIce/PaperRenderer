@@ -143,10 +143,13 @@ namespace PaperRenderer
         pipelineBuilder(this),
         rasterPreprocessPipeline(this, creationInfo.shadersDir),
         tlasInstanceBuildPipeline(this, creationInfo.shadersDir),
+        asBuilder(this),
         stagingBuffer(this)
     {
         rebuildModelDataBuffer();
         rebuildInstancesbuffer();
+
+        asWaitSemaphore = Commands::getSemaphore(this);
 
         //finish up
         vkDeviceWaitIdle(device.getDevice());
@@ -156,6 +159,8 @@ namespace PaperRenderer
     RenderEngine::~RenderEngine()
     {
         vkDeviceWaitIdle(device.getDevice());
+
+        vkDestroySemaphore(device.getDevice(), asWaitSemaphore, nullptr);
     
         //free cmd buffers
         Commands::freeCommandBuffers(this, usedCmdBuffers);
@@ -385,7 +390,7 @@ namespace PaperRenderer
         toUpdateModels.clear();
     }
 
-    const VkSemaphore& RenderEngine::beginFrame(SynchronizationInfo syncInfo)
+    FrameBeginSyncInfo RenderEngine::beginFrame(SynchronizationInfo syncInfo)
     {
         //queue data transfers
         queueModelsAndInstancesTransfers();
@@ -405,16 +410,34 @@ namespace PaperRenderer
             renderPass->queueInstanceTransfers();
         }
         //stage transfers for acceleration structures
-        for(AccelerationStructure* accelerationStructure : accelerationStructures)
+        for(TLAS* as : tlAccelerationStructures)
         {
-            accelerationStructure->queueInstanceTransfers();
+            as->queueInstanceTransfers();
+            asBuilder.queueTlasUpdate(as);
         }
 
         //write all staged transfers
+        syncInfo.binarySignalPairs.push_back({ asWaitSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT });
         stagingBuffer.submitQueuedTransfers(syncInfo);
 
+        //destroy old acceleration structure data
+        asBuilder.destroyOldData();
+
+        //set all acceleration structure data
+        asBuilder.setBuildData();
+
+        const TimelineSemaphorePair asSignalPair = { asSignalSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, asSemaphoreValue + 1 };
+        SynchronizationInfo asSyncInfo = {};
+        asSyncInfo.queueType = TRANSFER;
+        asSyncInfo.binaryWaitPairs = { { asWaitSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT } };
+        asSyncInfo.timelineSignalPairs = { asSignalPair };
+        asSyncInfo.fence = VK_NULL_HANDLE;
+
+        //build acceleration structures
+        asBuilder.submitQueuedStructureOps(asSyncInfo);
+
         //return image acquire semaphore
-        return imageAcquireSemaphore;
+        return { imageAcquireSemaphore, asSignalPair };
     }
 
     void RenderEngine::endFrame(const std::vector<VkSemaphore>& waitSemaphores)

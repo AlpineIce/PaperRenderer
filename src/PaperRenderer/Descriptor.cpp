@@ -151,9 +151,9 @@ namespace PaperRenderer
             {
                 //get TLAS references
                 tlasReferences.at(asIndex).reserve(write.accelerationStructures.size());
-                for(AccelerationStructure const* accelerationStructure : write.accelerationStructures)
+                for(TLAS const* accelerationStructure : write.accelerationStructures)
                 {
-                    tlasReferences.at(asIndex).push_back(accelerationStructure->getTLAS());
+                    tlasReferences.at(asIndex).push_back(accelerationStructure->getAccelerationStructure());
                 }
 
                 //descriptor write

@@ -58,6 +58,12 @@ namespace PaperRenderer
         void submitQueuedTransfers(SynchronizationInfo syncInfo); //Submits all queued transfers and clears the queue. Does not need to be explicitly synced with last transfer
     };
 
+    struct FrameBeginSyncInfo
+    {
+        VkSemaphore imageSemaphore;
+        TimelineSemaphorePair asSignaledSemaphore; //value corresponds to the signaled value, which is the same value that should be waited on
+    };
+
     //Render engine object. Contains the entire state of the renderer and some important buffers
     class RenderEngine
     {
@@ -68,6 +74,7 @@ namespace PaperRenderer
         PipelineBuilder pipelineBuilder;
         RasterPreprocessPipeline rasterPreprocessPipeline;
         TLASInstanceBuildPipeline tlasInstanceBuildPipeline;
+        AccelerationStructureBuilder asBuilder;
         EngineStagingBuffer stagingBuffer;
 
         std::string shadersDir;
@@ -79,9 +86,12 @@ namespace PaperRenderer
         std::deque<ModelInstance*> toUpdateModelInstances; //queued instance references that need to have their data in GPU buffers updated
         std::vector<Model*> renderingModels;
         std::deque<Model*> toUpdateModels; //queued model references that need to have their data in GPU buffers updated
+        VkSemaphore asWaitSemaphore;
+        VkSemaphore asSignalSemaphore;
+        uint64_t asSemaphoreValue = 0;
 
         //render passes and acceleration structures
-        std::list<AccelerationStructure*> accelerationStructures;
+        std::list<TLAS*> tlAccelerationStructures;
         std::list<RenderPass*> renderPasses;
 
         //----------BUFFERS----------//
@@ -109,7 +119,8 @@ namespace PaperRenderer
         friend ModelInstance;
         friend RenderPass;
         friend RasterPreprocessPipeline;
-        friend AccelerationStructure;
+        friend TLAS;
+        friend AccelerationStructureBuilder;
         friend TLASInstanceBuildPipeline;
 
         uint32_t bufferIndex = 0;
@@ -119,7 +130,7 @@ namespace PaperRenderer
         ~RenderEngine();
 
         //returns the image acquire semaphore from the swapchain
-        const VkSemaphore& beginFrame(SynchronizationInfo syncInfo);
+        FrameBeginSyncInfo beginFrame(SynchronizationInfo syncInfo);
         void endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
 
         void recycleCommandBuffer(CommandBuffer& commandBuffer);

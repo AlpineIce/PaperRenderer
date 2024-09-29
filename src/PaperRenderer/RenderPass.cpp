@@ -200,12 +200,16 @@ namespace PaperRenderer
             instancesCopyRegion.dstOffset = 0;
             instancesCopyRegion.size = std::min(renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance), instancesBuffer->getSize());
 
-            SynchronizationInfo syncInfo = {};
-            syncInfo.queueType = TRANSFER;
-            syncInfo.fence = Commands::getUnsignaledFence(rendererPtr);
-            newInstancesBuffer->copyFromBufferRanges(*instancesBuffer, { instancesCopyRegion }, syncInfo);
-            vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
-            vkDestroyFence(rendererPtr->getDevice()->getDevice(), syncInfo.fence, nullptr);
+            if(instancesCopyRegion.size)
+            {
+                SynchronizationInfo syncInfo = {};
+                syncInfo.queueType = TRANSFER;
+                syncInfo.fence = Commands::getUnsignaledFence(rendererPtr);
+                newInstancesBuffer->copyFromBufferRanges(*instancesBuffer, { instancesCopyRegion }, syncInfo);
+                vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
+                vkDestroyFence(rendererPtr->getDevice()->getDevice(), syncInfo.fence, nullptr);
+            }
+            
         }
 
         //replace old buffer
@@ -531,9 +535,9 @@ namespace PaperRenderer
 
                 //get meshes using same material
                 std::vector<LODMesh const*> similarMeshes;
-                for(uint32_t meshIndex = 0; meshIndex < instance->getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex).size(); meshIndex++)
+                for(uint32_t meshIndex = 0; meshIndex < instance->getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes.size(); meshIndex++)
                 {
-                    similarMeshes.push_back(&instance->getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex));
+                    similarMeshes.push_back(&instance->getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes.at(meshIndex));
                 }
 
                 //check if mesh group class is created
@@ -546,7 +550,7 @@ namespace PaperRenderer
                 //add references
                 renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance]->addInstanceMeshes(instance, similarMeshes);
 
-                instance->renderPassSelfReferences[this].meshGroupReferences[&instance->getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex)] = 
+                instance->renderPassSelfReferences[this].meshGroupReferences[&instance->getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes] = 
                     renderTree.at((Material*)materialInstance->getBaseMaterialPtr()).instances.at(materialInstance).get();
             }
         }

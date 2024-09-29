@@ -19,9 +19,15 @@ namespace PaperRenderer
         uint32_t materialIndex;
     };
 
+    struct MeshGroupInfo
+    {
+        std::vector<MeshInfo> meshInfo;
+        bool opaque = true; //set to false if geometry will invoke any hit shaders in ray tracing
+    };
+
     struct ModelLODInfo
     {
-        std::unordered_map<uint32_t, std::vector<MeshInfo>> lodData;
+        std::unordered_map<uint32_t, MeshGroupInfo> lodData; //groups of meshes with a shared common material
     };
 
     struct ModelCreateInfo
@@ -40,12 +46,18 @@ namespace PaperRenderer
         uint32_t vboOffset;
         uint32_t vertexCount;
         uint32_t iboOffset;
-        uint32_t indexCount;        
+        uint32_t indexCount;
+    };
+
+    struct LODMeshGroup
+    {
+        std::vector<LODMesh> meshes;
+        bool invokeAnyHit;
     };
 
     struct LOD //acts more like an individual model
     {
-        std::vector<std::vector<LODMesh>> meshMaterialData; //material index, meshes in material slot
+        std::vector<LODMeshGroup> meshMaterialData; //material index, meshes in material slot
     };
 
     struct AABB
@@ -78,6 +90,8 @@ namespace PaperRenderer
         std::unique_ptr<Buffer> vbo;
         std::unique_ptr<Buffer> ibo;
         AABB aabb;
+
+        //BLAS info
 
         //shader data
         struct ShaderModel
@@ -142,8 +156,8 @@ namespace PaperRenderer
         //per instance data
         struct ShaderModelInstance
         {
-            glm::vec4 position;
-            glm::vec4 scale; 
+            glm::vec3 position;
+            glm::vec3 scale; 
             glm::quat qRotation;
             uint32_t modelDataOffset;
         };
@@ -163,7 +177,6 @@ namespace PaperRenderer
             uint32_t modelInstanceIndex;
             uint32_t LODsMaterialDataOffset;
             bool isVisible;
-            float padding;
         };
 
         struct LODMaterialData
@@ -201,7 +214,7 @@ namespace PaperRenderer
             uint64_t blasAddress;
             uint32_t selfIndex;
         };
-        std::unordered_map<class AccelerationStructure const*, AccelerationStructureData> accelerationStructureSelfReferences;
+        std::unordered_map<class TLAS const*, AccelerationStructureData> accelerationStructureSelfReferences;
 
         ModelTransformation transform = {};
 
@@ -211,7 +224,7 @@ namespace PaperRenderer
         friend class RenderEngine;
         friend class RenderPass;
         friend class RasterPreprocessPipeline;
-        friend class AccelerationStructure;
+        friend class TLAS;
         friend class TLASInstanceBuildPipeline;
         friend class CommonMeshGroup;
         

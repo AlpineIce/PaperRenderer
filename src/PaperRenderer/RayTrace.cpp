@@ -8,7 +8,7 @@ namespace PaperRenderer
 {
     RayTraceRender::RayTraceRender(
         RenderEngine* renderer,
-        AccelerationStructure* accelerationStructure,
+        TLAS* accelerationStructure,
         const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets,
         const ShaderPair& raygenShaderPair,
         const std::vector<std::vector<ShaderPair>>& shaderGroups,

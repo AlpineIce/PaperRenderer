@@ -34,10 +34,11 @@ namespace PaperRenderer
 		for(const ModelLODInfo& lod : creationInfo.LODs)
 		{
 			LOD returnLOD;
-			for(const auto& [matIndex, meshes] : lod.lodData)
+			for(const auto& [matIndex, meshGroup] : lod.lodData)
 			{
-				returnLOD.meshMaterialData.resize(lod.lodData.size());
-				for(const MeshInfo& mesh : meshes)
+				LODMeshGroup LODMeshGroup;
+				LODMeshGroup.invokeAnyHit = !meshGroup.opaque;
+				for(const MeshInfo& mesh : meshGroup.meshInfo)
 				{
 					LODMesh returnMesh;
 					returnMesh.vboOffset = dynamicVertexOffset;
@@ -50,7 +51,7 @@ namespace PaperRenderer
 
 					dynamicVertexOffset += returnMesh.vertexCount;
 
-					returnLOD.meshMaterialData.at(matIndex).push_back(returnMesh);
+					LODMeshGroup.meshes.push_back(returnMesh);
 
 					//AABB processing
 					uint32_t vertexCount = creationVerticesData.size() / vertexDescription.stride;
@@ -66,6 +67,7 @@ namespace PaperRenderer
 						aabb.negZ = std::min(vertexPosition.z, aabb.negZ);
 					}
 				}
+				returnLOD.meshMaterialData.push_back(LODMeshGroup);
 			}
 			LODs.push_back(returnLOD);
 		}
@@ -78,6 +80,12 @@ namespace PaperRenderer
 		//set shader data and add to renderer
 		setShaderData();
 		rendererPtr->addModelData(this);
+
+		//create a BLAS if ray tracing is supported
+		if(rendererPtr->getDevice()->getRTSupport())
+		{
+			
+		}
 	}
 
 	Model::~Model()
@@ -126,10 +134,10 @@ namespace PaperRenderer
 			for(uint32_t matIndex = 0; matIndex < LODs.at(lodIndex).meshMaterialData.size(); matIndex++)
 			{
 				ShaderModelLODMeshGroup materialMeshGroup = {};
-				materialMeshGroup.meshCount = LODs.at(lodIndex).meshMaterialData.at(matIndex).size();
+				materialMeshGroup.meshCount = LODs.at(lodIndex).meshMaterialData.at(matIndex).meshes.size();
 				materialMeshGroup.meshesOffset = dynamicOffset;
-				materialMeshGroup.iboOffset = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(0).iboOffset;
-				materialMeshGroup.vboOffset = LODs.at(lodIndex).meshMaterialData.at(matIndex).at(0).vboOffset;
+				materialMeshGroup.iboOffset = LODs.at(lodIndex).meshMaterialData.at(matIndex).meshes.at(0).iboOffset;
+				materialMeshGroup.vboOffset = LODs.at(lodIndex).meshMaterialData.at(matIndex).meshes.at(0).vboOffset;
 
 				memcpy(newData.data() + modelLOD.meshGroupsOffset + sizeof(ShaderModelLODMeshGroup) * matIndex, &materialMeshGroup, sizeof(ShaderModelLODMeshGroup));
 			}
@@ -237,17 +245,17 @@ namespace PaperRenderer
 				memcpy(newData.data() + lodMaterialData.meshGroupsOffset + sizeof(MaterialMeshGroup) * matIndex, &materialMeshGroup, sizeof(MaterialMeshGroup));
 
 				//LOD mesh group meshes data
-				dynamicOffset += sizeof(IndirectDrawData) * modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).size();
+				dynamicOffset += sizeof(IndirectDrawData) * modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes.size();
 				newData.resize(dynamicOffset);
 
-				for(uint32_t meshIndex = 0; meshIndex < modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).size(); meshIndex++)
+				for(uint32_t meshIndex = 0; meshIndex < modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes.size(); meshIndex++)
 				{
-					LODMesh const* lodMeshPtr = &modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).at(meshIndex);
+					LODMesh const* lodMeshPtr = &modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes.at(meshIndex);
 					IndirectDrawData indirectDrawData = {};
 					indirectDrawData.instanceCountIndex = 
-						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getMeshesData().at(lodMeshPtr).drawCommandIndex;
+						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes)->getMeshesData().at(lodMeshPtr).drawCommandIndex;
 					indirectDrawData.matricesStartIndex = 
-						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex))->getMeshesData().at(lodMeshPtr).matricesStartIndex;
+						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes)->getMeshesData().at(lodMeshPtr).matricesStartIndex;
 				
 					memcpy(newData.data() + materialMeshGroup.indirectDrawDatasOffset + sizeof(IndirectDrawData) * meshIndex, &indirectDrawData, sizeof(IndirectDrawData));
 				}
@@ -260,9 +268,9 @@ namespace PaperRenderer
     ModelInstance::ShaderModelInstance ModelInstance::getShaderInstance() const
     {
 		ShaderModelInstance shaderModelInstance = {};
-		shaderModelInstance.position = glm::vec4(transform.position, 1.0);
+		shaderModelInstance.position = transform.position;
 		shaderModelInstance.qRotation = transform.rotation;
-		shaderModelInstance.scale = glm::vec4(transform.scale, 1.0f);
+		shaderModelInstance.scale = transform.scale;
 		shaderModelInstance.modelDataOffset = modelPtr->shaderDataLocation;
 
 		return shaderModelInstance;
