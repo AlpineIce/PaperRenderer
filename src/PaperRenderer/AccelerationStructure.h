@@ -60,6 +60,7 @@ namespace PaperRenderer
     {
     private:
         VkAccelerationStructureKHR accelerationStructure = VK_NULL_HANDLE;
+        VkBuildAccelerationStructureFlagsKHR enabledFlags = 0;
 
         std::unique_ptr<Buffer> tlasBuffer;
         std::unique_ptr<Buffer> instancesBuffer;
@@ -157,8 +158,9 @@ namespace PaperRenderer
         struct BuildData
         {
             std::vector<BlasBuildData> blasDatas;
+            uint32_t numBlasCompactions = 0;
             std::vector<TlasBuildData> tlasDatas;
-            uint32_t numCompactions = 0;
+            uint32_t numTlasCompactions = 0;
         } buildData;
 
         //scratch size

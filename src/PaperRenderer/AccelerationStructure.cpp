@@ -438,7 +438,8 @@ namespace PaperRenderer
     AccelerationStructureBuilder::TlasBuildData AccelerationStructureBuilder::getTlasData(const TlasOp& tlasOp) const
     {
         TlasBuildData returnData = {
-            .tlas = *tlasOp.tlas
+            .tlas = *tlasOp.tlas,
+            .compact = tlasOp.flags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR ? true : false
         };
 
         //check buffer sizes
@@ -462,14 +463,16 @@ namespace PaperRenderer
         returnData.geometry->geometry = std::move(geometry);
 
         //size requirements
-        VkAccelerationStructureBuildGeometryInfoKHR buildGeoInfo = {};
-        buildGeoInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
-        buildGeoInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
-        buildGeoInfo.flags = tlasOp.flags;
-        buildGeoInfo.mode = tlasOp.mode;
-        buildGeoInfo.srcAccelerationStructure = VK_NULL_HANDLE;
-        buildGeoInfo.geometryCount = 1;
-        buildGeoInfo.pGeometries = returnData.geometry.get();
+        returnData.buildGeoInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+        returnData.buildGeoInfo.pNext = NULL;
+        returnData.buildGeoInfo.flags = tlasOp.flags;
+        returnData.buildGeoInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+        returnData.buildGeoInfo.mode = tlasOp.mode;
+        returnData.buildGeoInfo.srcAccelerationStructure = tlasOp.mode == VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR ? tlasOp.tlas->accelerationStructure : VK_NULL_HANDLE;
+        returnData.buildGeoInfo.dstAccelerationStructure = tlasOp.tlas->accelerationStructure; //probably overwritten by code after
+        returnData.buildGeoInfo.geometryCount = 1;
+        returnData.buildGeoInfo.pGeometries = returnData.geometry.get();
+        returnData.buildGeoInfo.ppGeometries = NULL;
 
         const uint32_t primitiveCount = tlasOp.tlas->accelerationStructureInstances.size();
 
@@ -479,12 +482,17 @@ namespace PaperRenderer
         vkGetAccelerationStructureBuildSizesKHR(
             rendererPtr->getDevice()->getDevice(),
             VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
-            &buildGeoInfo,
+            &returnData.buildGeoInfo,
             &primitiveCount,
             &returnData.buildSizeInfo);
 
-        //update buffer if needed
-        if(!tlasOp.tlas->tlasBuffer || tlasOp.tlas->tlasBuffer->getSize() < returnData.buildSizeInfo.accelerationStructureSize)
+        //destroy buffer if compaction is requested since final size will be unknown
+        if(returnData.compact)
+        {
+            tlasOp.tlas->tlasBuffer.reset();
+        }
+        //otherwise update buffer if needed
+        else if(!tlasOp.tlas->tlasBuffer || tlasOp.tlas->tlasBuffer->getSize() < returnData.buildSizeInfo.accelerationStructureSize)
         {
             tlasOp.tlas->tlasBuffer.reset();
 
@@ -495,7 +503,8 @@ namespace PaperRenderer
             tlasOp.tlas->tlasBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
         }
 
-        returnData.buildGeoInfo = std::move(buildGeoInfo);
+        //set tlas flags
+        tlasOp.tlas->enabledFlags = tlasOp.flags;
 
         return returnData;
     }
@@ -531,12 +540,13 @@ namespace PaperRenderer
         for(const BlasOp& op : blasQueue)
         {
             buildData.blasDatas.emplace_back(getBlasData(op));
-            if(buildData.blasDatas.rbegin()->compact) buildData.numCompactions++;
+            if(buildData.blasDatas.rbegin()->compact) buildData.numBlasCompactions++;
         }
         buildData.tlasDatas.reserve(tlasQueue.size());
         for(const TlasOp& op : tlasQueue)
         {
             buildData.tlasDatas.emplace_back(getTlasData(op));
+            if(buildData.tlasDatas.rbegin()->compact) buildData.numTlasCompactions++;
         }
     }
 
@@ -571,13 +581,13 @@ namespace PaperRenderer
         VkQueryPool queryPool = VK_NULL_HANDLE;
         uint32_t queryIndex = 0;
 
-        if(buildData.numCompactions)
+        if(buildData.numBlasCompactions)
         {
             VkQueryPoolCreateInfo queryPoolInfo = {};
             queryPoolInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
             queryPoolInfo.pNext = NULL;
             queryPoolInfo.flags = 0;
-            queryPoolInfo.queryCount = buildData.numCompactions;
+            queryPoolInfo.queryCount = buildData.numBlasCompactions;
             queryPoolInfo.queryType  = VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR;
             
             vkCreateQueryPool(rendererPtr->getDevice()->getDevice(), &queryPoolInfo, nullptr, &queryPool);
@@ -736,13 +746,13 @@ namespace PaperRenderer
             vkBeginCommandBuffer(cmdBuffer, &cmdBufferInfo);
 
             //get query results and perform compaction
-            std::vector<VkDeviceSize> compactionResults(buildData.numCompactions);
+            std::vector<VkDeviceSize> compactionResults(buildData.numBlasCompactions);
             vkGetQueryPoolResults(
                 rendererPtr->getDevice()->getDevice(),
                 queryPool,
                 0,
-                buildData.numCompactions,
-                buildData.numCompactions * sizeof(VkDeviceSize),
+                buildData.numBlasCompactions,
+                buildData.numBlasCompactions * sizeof(VkDeviceSize),
                 compactionResults.data(),
                 sizeof(VkDeviceSize),
                 VK_QUERY_RESULT_WAIT_BIT
@@ -838,6 +848,31 @@ namespace PaperRenderer
             scratchBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
         }
 
+        //query pool for compaction if needed
+        VkQueryPool queryPool = VK_NULL_HANDLE;
+        uint32_t queryIndex = 0;
+
+        if(buildData.numTlasCompactions)
+        {
+            VkQueryPoolCreateInfo queryPoolInfo = {};
+            queryPoolInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+            queryPoolInfo.pNext = NULL;
+            queryPoolInfo.flags = 0;
+            queryPoolInfo.queryCount = buildData.numTlasCompactions;
+            queryPoolInfo.queryType  = VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR;
+            
+            vkCreateQueryPool(rendererPtr->getDevice()->getDevice(), &queryPoolInfo, nullptr, &queryPool);
+            vkResetQueryPool(rendererPtr->getDevice()->getDevice(), queryPool, 0, queryPoolInfo.queryCount);
+        }
+
+        //temporary buffers used when compaction is enabled
+        struct PreCompactBuffer
+        {
+            std::unique_ptr<Buffer> tempBuffer;
+            TLAS& tlas;
+        };
+        std::queue<PreCompactBuffer> preCompactBuffers;
+
         //start new command buffer
         VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr, syncInfo.queueType);
 
@@ -920,6 +955,104 @@ namespace PaperRenderer
         Commands::submitToQueue(syncInfo, { cmdBuffer });
 
         rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
+
+        //----------TLAS COMPACTION----------//
+
+        if(queryPool)
+        {
+            //start new command buffer
+            cmdBuffer = Commands::getCommandBuffer(rendererPtr, COMPUTE);
+
+            cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            cmdBufferInfo.pNext = NULL;
+            cmdBufferInfo.pInheritanceInfo = NULL;
+            cmdBufferInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+            vkBeginCommandBuffer(cmdBuffer, &cmdBufferInfo);
+
+            //get query results and perform compaction
+            std::vector<VkDeviceSize> compactionResults(buildData.numTlasCompactions);
+            vkGetQueryPoolResults(
+                rendererPtr->getDevice()->getDevice(),
+                queryPool,
+                0,
+                buildData.numTlasCompactions,
+                buildData.numTlasCompactions * sizeof(VkDeviceSize),
+                compactionResults.data(),
+                sizeof(VkDeviceSize),
+                VK_QUERY_RESULT_WAIT_BIT
+            );
+
+            //set new buffer and acceleration structure
+            uint32_t index = 0;
+            while(!preCompactBuffers.empty())
+            {
+                //store old in local variables
+                PreCompactBuffer& tempBuffer = preCompactBuffers.front();
+
+                //get compacted size
+                const VkDeviceSize& newSize = compactionResults.at(index);
+
+                //create new buffer
+                BufferInfo bufferInfo = {};
+                bufferInfo.allocationFlags = 0;
+                bufferInfo.size = newSize;
+                bufferInfo.usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
+                std::unique_ptr<Buffer> newBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
+
+                //create new acceleration structure
+                VkAccelerationStructureCreateInfoKHR accelStructureInfo = {};
+                accelStructureInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+                accelStructureInfo.pNext = NULL;
+                accelStructureInfo.createFlags = 0;
+                accelStructureInfo.buffer = newBuffer->getBuffer();
+                accelStructureInfo.offset = 0;
+                accelStructureInfo.size = newSize;
+                accelStructureInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+
+                VkAccelerationStructureKHR oldStructure = tempBuffer.tlas.accelerationStructure;
+
+                //overwrite tlas' as handle
+                vkCreateAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), &accelStructureInfo, nullptr, &tempBuffer.tlas.accelerationStructure);
+
+                //copy
+                VkCopyAccelerationStructureInfoKHR copyInfo = {};
+                copyInfo.sType = VK_STRUCTURE_TYPE_COPY_ACCELERATION_STRUCTURE_INFO_KHR;
+                copyInfo.pNext = NULL;
+                copyInfo.mode = VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR;
+                copyInfo.src = oldStructure;
+                copyInfo.dst = tempBuffer.tlas.accelerationStructure;
+
+                vkCmdCopyAccelerationStructureKHR(cmdBuffer, &copyInfo);
+
+                //queue destruction of old
+                destructionQueue.push({oldStructure, std::move(tempBuffer.tempBuffer)});
+
+                //set new buffer
+                tempBuffer.tlas.tlasBuffer = std::move(newBuffer);
+
+                //remove from queue
+                preCompactBuffers.pop();
+                index++;
+            }
+
+            //end cmd buffer
+            vkEndCommandBuffer(cmdBuffer);
+
+            //submit
+            SynchronizationInfo compactionSyncInfo = {};
+            compactionSyncInfo.queueType = COMPUTE;
+            compactionSyncInfo.binaryWaitPairs = { { asBuildSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR } };
+            compactionSyncInfo.binarySignalPairs = syncInfo.binarySignalPairs;
+            compactionSyncInfo.binaryWaitPairs = syncInfo.binaryWaitPairs;
+            compactionSyncInfo.fence = syncInfo.fence;
+
+            Commands::submitToQueue(compactionSyncInfo, { cmdBuffer });
+
+            rendererPtr->recycleCommandBuffer({ cmdBuffer, COMPUTE });
+
+            vkDestroyQueryPool(rendererPtr->getDevice()->getDevice(), queryPool, nullptr);
+        }
 
         //clear deque
         tlasQueue.clear();
