@@ -58,6 +58,7 @@ namespace PaperRenderer
             {
                 vkFreeCommandBuffers(renderer->getDevice()->getDevice(), commandPools.at(type), buffers.size(), buffers.data());
             }
+            commandBuffers.clear();
         }
         else
         {

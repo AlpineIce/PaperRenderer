@@ -81,10 +81,16 @@ namespace PaperRenderer
 		setShaderData();
 		rendererPtr->addModelData(this);
 
-		//create a BLAS if ray tracing is supported
+		//create BLAS
 		if(rendererPtr->getDevice()->getRTSupport())
 		{
-			
+			defaultBLAS = std::make_unique<BLAS>(rendererPtr, this, vbo.get());
+			BlasOp op = {
+				.blas = defaultBLAS.get(),
+				.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
+				.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR
+			};
+			rendererPtr->asBuilder.queueBlas(op);
 		}
 	}
 
@@ -146,7 +152,7 @@ namespace PaperRenderer
 		shaderData = newData;
     }
 
-    std::unique_ptr<Buffer> Model::createDeviceLocalBuffer(VkDeviceSize size, void *data, VkBufferUsageFlags2KHR usageFlags)
+    std::unique_ptr<Buffer> Model::createDeviceLocalBuffer(VkDeviceSize size, void *data, VkBufferUsageFlags2KHR usageFlags) const
     {
 		//create staging buffer
 		BufferInfo stagingBufferInfo = {};
@@ -166,7 +172,7 @@ namespace PaperRenderer
 		BufferInfo bufferInfo = {};
 		bufferInfo.allocationFlags = 0;
 		bufferInfo.size = size;
-		bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | usageFlags;
+		bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | usageFlags;
 		std::unique_ptr<Buffer> buffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
 
 		//copy
@@ -201,10 +207,53 @@ namespace PaperRenderer
 	//----------MODEL INSTANCE DEFINITIONS----------//
 
     ModelInstance::ModelInstance(RenderEngine *renderer, Model const* parentModel, bool uniqueGeometry)
-        : rendererPtr(renderer),
-          modelPtr(parentModel)
+        :rendererPtr(renderer),
+        modelPtr(parentModel)
     {
 		rendererPtr->addObject(this);
+		uniqueGeometryData.isUsed = uniqueGeometry;
+		
+		//create unique VBO and BLAS if requested
+		if(uniqueGeometry)
+		{
+			BufferInfo bufferInfo = {};
+			bufferInfo.allocationFlags = 0;
+			bufferInfo.size = modelPtr->vbo->getSize();
+			bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+				VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+			uniqueGeometryData.uniqueVBO  = std::make_unique<Buffer>(rendererPtr, bufferInfo);
+
+			//copy
+			VkBufferCopy copyRegion;
+			copyRegion.dstOffset = 0;
+			copyRegion.srcOffset = 0;
+			copyRegion.size = modelPtr->vbo->getSize();
+
+			SynchronizationInfo synchronizationInfo = {};
+			synchronizationInfo.queueType = QueueType::TRANSFER;
+			synchronizationInfo.fence = Commands::getUnsignaledFence(rendererPtr);
+
+			PaperRenderer::CommandBuffer cmdBuffer = uniqueGeometryData.uniqueVBO->copyFromBufferRanges(*modelPtr->vbo, { copyRegion }, synchronizationInfo);
+
+			//wait for fence and destroy (potential for efficiency improvements here since this is technically brute force synchronization)
+			vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &synchronizationInfo.fence, VK_TRUE, UINT64_MAX);
+			vkDestroyFence(rendererPtr->getDevice()->getDevice(), synchronizationInfo.fence, nullptr);
+
+			std::vector<CommandBuffer> cmdBuffers = { cmdBuffer };
+			PaperRenderer::Commands::freeCommandBuffers(rendererPtr, cmdBuffers);
+
+			//create BLAS
+			if(rendererPtr->getDevice()->getRTSupport())
+			{
+				uniqueGeometryData.blas = std::make_unique<BLAS>(rendererPtr, modelPtr, uniqueGeometryData.uniqueVBO.get());
+				BlasOp op = {
+					.blas = uniqueGeometryData.blas.get(),
+					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
+					.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR
+				};
+				rendererPtr->asBuilder.queueBlas(op);
+			}
+		}
     }
 
     ModelInstance::~ModelInstance()
@@ -281,6 +330,22 @@ namespace PaperRenderer
 
 		this->transform = newTransformation;
 		rendererPtr->toUpdateModelInstances.push_front(this);
+    }
+
+    BLAS const* ModelInstance::getBLAS() const
+    {
+		if(uniqueGeometryData.blas)
+		{
+			return uniqueGeometryData.blas.get();
+		}
+		else if(modelPtr->getBlasPtr())
+		{
+			return modelPtr->getBlasPtr();
+		}
+		else
+		{
+			return NULL;
+		}
     }
 
     /*bool ModelInstance::getVisibility(RenderPass *renderPass) const

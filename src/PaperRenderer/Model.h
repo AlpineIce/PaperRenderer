@@ -129,7 +129,7 @@ namespace PaperRenderer
 
         class RenderEngine* rendererPtr;
 
-        std::unique_ptr<Buffer> createDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags2KHR usageFlags);
+        std::unique_ptr<Buffer> createDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags2KHR usageFlags) const;
 
         friend class RenderEngine;
         friend class ModelInstance;
@@ -221,6 +221,7 @@ namespace PaperRenderer
         //unique instance acceleration structure and VBO (only used if uniqueGeometry is set to true on instance creation)
         struct UniqueGeometryData
         {
+            bool isUsed = false;
             std::unique_ptr<Buffer> uniqueVBO;
             std::unique_ptr<class BLAS> blas;
         } uniqueGeometryData;
@@ -235,6 +236,7 @@ namespace PaperRenderer
         friend class RasterPreprocessPipeline;
         friend class TLAS;
         friend class TLASInstanceBuildPipeline;
+        friend class AccelerationStructureBuilder;
         friend class CommonMeshGroup;
         
     public:
@@ -247,6 +249,8 @@ namespace PaperRenderer
         //void setVisibility(class RenderPass* renderPass, bool newVisibility); //renderPass can be NULL if setting the visibility for all is desired
         
         Model const* getParentModelPtr() const { return modelPtr; }
+        Buffer const* getUniqueVBO() const { return uniqueGeometryData.isUsed ? uniqueGeometryData.uniqueVBO.get() : NULL; }
+        class BLAS const* getBLAS() const; //Returns unique BLAS if created, else model BLAS. Returns null if either
         const ModelTransformation& getTransformation() const { return transform; };
         //bool getVisibility(class RenderPass* renderPass) const;
     };

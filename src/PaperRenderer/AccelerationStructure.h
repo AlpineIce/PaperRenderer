@@ -29,12 +29,6 @@ namespace PaperRenderer
 
     //----------ACCELERATION STRUCTURE DECLARATIONS----------//
 
-    enum BlasUpdateMode
-    {
-        UPDATE, //faster, but less optimal ray tracing performance
-        REBUILD //slower, but more optimal ray tracing performance
-    };
-
     class BLAS
     {
     private:
@@ -57,6 +51,7 @@ namespace PaperRenderer
         BLAS(const BLAS&) = delete;
 
         VkAccelerationStructureKHR getAccelerationStructure() const { return accelerationStructure; }
+        VkDeviceAddress getAccelerationStructureAddress() const { return blasBuffer ? blasBuffer->getBufferDeviceAddress() : 0; }
         VkDeviceAddress getVBOAddress() const { return vboPtr->getBufferDeviceAddress(); }
         Model const* getParentModelPtr() const { return parentModelPtr; }
     };
@@ -82,7 +77,7 @@ namespace PaperRenderer
             uint32_t modelDataOffset;
         };
 
-        void rebuildInstancesBuffer();
+        void verifyInstancesBuffer();
         void queueInstanceTransfers();
 
         class RenderEngine* rendererPtr;
@@ -99,9 +94,26 @@ namespace PaperRenderer
         void removeInstance(class ModelInstance* instance);
 
         VkAccelerationStructureKHR getAccelerationStructure() const { return accelerationStructure; }
+        VkDeviceAddress getAccelerationStructureAddress() const { return tlasBuffer->getBufferDeviceAddress(); }
         Buffer const* getInstancesBuffer() const { return instancesBuffer.get(); }
         const VkDeviceSize getInstanceDescriptionsOffset() const { return instanceDescriptionsOffset; }
         const VkDeviceSize getInstanceDescriptionsRange() const { return accelerationStructureInstances.size() * sizeof(InstanceDescription); }
+    };
+
+    //BLAS operation
+    struct BlasOp
+    {
+        BLAS* blas = NULL;
+        VkBuildAccelerationStructureModeKHR mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+        VkBuildAccelerationStructureFlagsKHR flags = 0;
+    };
+
+    //TLAS operation
+    struct TlasOp
+    {
+        TLAS* tlas = NULL;
+        VkBuildAccelerationStructureModeKHR mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+        VkBuildAccelerationStructureFlagsKHR flags = 0;
     };
 
     class AccelerationStructureBuilder
@@ -109,16 +121,12 @@ namespace PaperRenderer
     private:
         std::unique_ptr<Buffer> scratchBuffer;
 
-        //acceleration structure update queues
-        struct BlasBuildOp
-        {
-            BLAS* blas;
-            VkBuildAccelerationStructureFlagsKHR flags;
-        };
-        std::deque<BlasBuildOp> blasBuildQueue;
-        std::deque<BLAS*> blasUpdateQueue;
-        std::deque<TLAS*> tlasBuildQueue;
-        VkSemaphore asBuildSemaphore;
+        //acceleration structure queues
+        std::deque<BlasOp> blasQueue;
+        std::deque<TlasOp> tlasQueue;
+
+        //build semaphore
+        VkSemaphore asBuildSemaphore = VK_NULL_HANDLE;
         
         //blas data
         struct BlasBuildData
@@ -131,7 +139,7 @@ namespace PaperRenderer
             VkDeviceSize scratchDataOffset = 0;
             bool compact = false;
         };
-        BlasBuildData getBlasData(const BlasBuildOp& blasOp, VkBuildAccelerationStructureModeKHR mode) const;
+        BlasBuildData getBlasData(const BlasOp& blasOp) const;
 
         //tlas datas
         struct TlasBuildData
@@ -141,23 +149,20 @@ namespace PaperRenderer
             VkAccelerationStructureBuildGeometryInfoKHR buildGeoInfo = {};
             VkAccelerationStructureBuildSizesInfoKHR buildSizeInfo = {};
             VkDeviceSize scratchDataOffset = 0;
+            bool compact = false;
         };
-        TlasBuildData getTlasData(TLAS& tlas) const;
+        TlasBuildData getTlasData(const TlasOp& tlasOp) const;
 
         //all build data
         struct BuildData
         {
-            std::vector<BlasBuildData> blasUpdateDatas;
-            std::vector<BlasBuildData> blasBuildDatas;
-            std::vector<TlasBuildData> tlasBuildDatas;
+            std::vector<BlasBuildData> blasDatas;
+            std::vector<TlasBuildData> tlasDatas;
             uint32_t numCompactions = 0;
         } buildData;
 
         //scratch size
-        VkDeviceSize getScratchSize(
-            std::vector<BlasBuildData>& updateDatas,
-            std::vector<BlasBuildData>& buildDatas,
-            std::vector<TlasBuildData>& tlasDatas) const;
+        VkDeviceSize getScratchSize(std::vector<BlasBuildData>& blasDatas, std::vector<TlasBuildData>& tlasDatas) const;
         
         //for keeping structures to derrive compaction from in scope
         struct OldStructureData
@@ -173,12 +178,12 @@ namespace PaperRenderer
         ~AccelerationStructureBuilder();
         AccelerationStructureBuilder(const AccelerationStructureBuilder&) = delete;
         
-        void queueBlasBuild(BLAS* blas, VkBuildAccelerationStructureFlagsKHR flags) { blasBuildQueue.emplace_back(blas, flags); }
-        void queueBlasUpdate(BLAS* blas) { blasUpdateQueue.emplace_back(blas); }
-        void queueTlasUpdate(TLAS* tlas) { tlasBuildQueue.emplace_back(tlas); }
+        void queueBlas(const BlasOp& blasOp) { blasQueue.emplace_back(blasOp); }
+        void queueTlas(const TlasOp& tlasOp) { tlasQueue.emplace_back(tlasOp); }
         void setBuildData();
         void destroyOldData();
 
-        void submitQueuedStructureOps(const SynchronizationInfo& syncInfo);
+        void submitQueuedBlasOps(const SynchronizationInfo& syncInfo); //may block thread if compaction is used for any threads
+        void submitQueuedTlasOps(const SynchronizationInfo& syncInfo);
     };
 }

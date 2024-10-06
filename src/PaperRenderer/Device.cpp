@@ -107,6 +107,7 @@ namespace PaperRenderer
             bool hasAccelStructure = false;
             bool hasRTPipeline = false;
             bool hasRayQuery = false;
+            bool hasMaintFeatures = false;
 
             //check extensions
             for(VkExtensionProperties properties : extensions)
@@ -121,10 +122,11 @@ namespace PaperRenderer
                 hasAccelStructure = hasAccelStructure || std::string(properties.extensionName).find(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) != std::string::npos;
                 hasRTPipeline = hasRTPipeline || std::string(properties.extensionName).find(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) != std::string::npos;
                 hasRayQuery = hasRayQuery || std::string(properties.extensionName).find(VK_KHR_RAY_QUERY_EXTENSION_NAME) != std::string::npos;
+                hasMaintFeatures = hasMaintFeatures || std::string(properties.extensionName).find(VK_KHR_RAY_TRACING_MAINTENANCE_1_EXTENSION_NAME) != std::string::npos;
             }
 
             bool hasRequiredRasterExtensions = hasSwapchain && hasDynamicRendering && hasSync2;
-            bool hasRequiredRTExtensions = hasDeferredOps && hasAccelStructure && hasRTPipeline && hasRayQuery;
+            bool hasRequiredRTExtensions = hasDeferredOps && hasAccelStructure && hasRTPipeline && hasRayQuery && hasMaintFeatures;
             if(hasRequiredRasterExtensions) //only needs raster extensions to run
             {
                 rtSupport = hasRequiredRTExtensions; //enable rt if all required extensions are satisfied
@@ -303,7 +305,8 @@ namespace PaperRenderer
                 VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
                 VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
                 VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
-                VK_KHR_RAY_QUERY_EXTENSION_NAME
+                VK_KHR_RAY_QUERY_EXTENSION_NAME,
+                VK_KHR_RAY_TRACING_MAINTENANCE_1_EXTENSION_NAME
             });
         }
 
@@ -322,12 +325,17 @@ namespace PaperRenderer
         rayQueryFeatures.pNext = &RTfeatures;
         rayQueryFeatures.rayQuery = VK_TRUE;
 
+        VkPhysicalDeviceRayTracingMaintenance1FeaturesKHR rtMaintFeatures = {};
+        rtMaintFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_MAINTENANCE_1_FEATURES_KHR;
+        rtMaintFeatures.pNext = &rayQueryFeatures;
+        rtMaintFeatures.rayTracingMaintenance1 = VK_TRUE;
+
         VkPhysicalDeviceShaderDrawParametersFeatures drawParamFeatures = {}; //tbh i dont even remember why i have this in here
         drawParamFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
         drawParamFeatures.pNext = NULL;
         drawParamFeatures.shaderDrawParameters = VK_TRUE;
 
-        if(rtSupport) drawParamFeatures.pNext = &rayQueryFeatures;
+        if(rtSupport) drawParamFeatures.pNext = &rtMaintFeatures;
 
         VkPhysicalDeviceTimelineSemaphoreFeatures timelineSemaphoreFeatures = {};
         timelineSemaphoreFeatures.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;

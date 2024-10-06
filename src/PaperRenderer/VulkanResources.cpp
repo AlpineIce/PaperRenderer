@@ -96,7 +96,7 @@ namespace PaperRenderer
         return 0;
     }
 
-    CommandBuffer Buffer::copyFromBufferRanges(Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
+    CommandBuffer Buffer::copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
     {
         VkCommandBuffer transferBuffer = Commands::getCommandBuffer(rendererPtr, QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
 

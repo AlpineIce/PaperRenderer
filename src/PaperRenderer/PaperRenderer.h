@@ -56,12 +56,7 @@ namespace PaperRenderer
         
         void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char>& data); //do not submit more than 1 transfer with the same destination! undefined behavior!
         void submitQueuedTransfers(SynchronizationInfo syncInfo); //Submits all queued transfers and clears the queue. Does not need to be explicitly synced with last transfer
-    };
-
-    struct FrameBeginSyncInfo
-    {
-        VkSemaphore imageSemaphore;
-        TimelineSemaphorePair asSignaledSemaphore; //value corresponds to the signaled value, which is the same value that should be waited on
+        TimelineSemaphorePair getTransferSemaphore() const { return { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValue }; }
     };
 
     //Render engine object. Contains the entire state of the renderer and some important buffers
@@ -86,9 +81,7 @@ namespace PaperRenderer
         std::deque<ModelInstance*> toUpdateModelInstances; //queued instance references that need to have their data in GPU buffers updated
         std::vector<Model*> renderingModels;
         std::deque<Model*> toUpdateModels; //queued model references that need to have their data in GPU buffers updated
-        VkSemaphore asWaitSemaphore;
-        VkSemaphore asSignalSemaphore;
-        uint64_t asSemaphoreValue = 0;
+        VkSemaphore asSemaphore;
 
         //render passes and acceleration structures
         std::list<TLAS*> tlAccelerationStructures;
@@ -131,7 +124,7 @@ namespace PaperRenderer
         RenderEngine(const RenderEngine&) = delete;
 
         //returns the image acquire semaphore from the swapchain
-        FrameBeginSyncInfo beginFrame(SynchronizationInfo syncInfo);
+        const VkSemaphore& beginFrame(const SynchronizationInfo& transferSyncInfo, const SynchronizationInfo& asSyncInfo);
         void endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
 
         void recycleCommandBuffer(CommandBuffer& commandBuffer);
