@@ -34,7 +34,7 @@ struct AccelerationStructureInstance
     uint64_t accelerationStructureReference;
 };
 
-layout(scalar, set = 0, binding = 3) writeonly buffer ASInstances
+layout(std430, set = 0, binding = 3) writeonly buffer ASInstances
 {
     AccelerationStructureInstance objects[];
 } asInstances; 
