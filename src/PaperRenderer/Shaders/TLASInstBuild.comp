@@ -17,6 +17,9 @@ struct InputASInstance
 {
     uint64_t blasReference;
     uint modelInstanceIndex;
+    uint mask;
+    uint recordOffset;
+    uint flags;
 };
 
 layout(scalar, set = 0, binding = 2) readonly buffer InputASInstances
@@ -39,8 +42,6 @@ layout(std430, set = 0, binding = 3) writeonly buffer ASInstances
     AccelerationStructureInstance objects[];
 } asInstances; 
 
-const uint VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR = 0x01000000;
-
 AccelerationStructureInstance buildASInstance(InputASInstance inputASInstance, ModelInstance modelInstance, uint customIndex)
 {
     const mat4 modelMatrix = getModelMatrix(modelInstance);
@@ -53,17 +54,18 @@ AccelerationStructureInstance buildASInstance(InputASInstance inputASInstance, M
     instTransform[1][3] = modelMatrix[3][1];
     instTransform[2][3] = modelMatrix[3][2];
 
+    //bitmask for combining bits
+    const uint bitmask = 0xFF000000;
+
     //custom index and mask
     uint instanceCustomIndex = customIndex;    // value to merge in non-masked bits
-    uint mask = 0xAA000000;    // value to merge in masked bits
-    uint bitmask0 = 0xFF000000; // 1 where bits from mask should be selected; 0 where from instanceCustomIndex.
-    uint instanceCustomIndexAndMask = instanceCustomIndex ^ ((instanceCustomIndex ^ mask) & bitmask0);
+    uint mask = inputASInstance.mask;    // value to merge in masked bits
+    uint instanceCustomIndexAndMask = instanceCustomIndex ^ ((instanceCustomIndex ^ mask) & bitmask);
 
     //binding table record offset and flags
-    uint instanceShaderBindingTableRecordOffset = 0;    // value to merge in non-masked bits
-    uint flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;    // value to merge in masked bits
-    uint bitmask1 = 0xFF000000; // 1 where bits from flags should be selected; 0 where from instanceShaderBindingTableRecordOffset.
-    uint instanceShaderBindingTableRecordOffsetAndFlags = instanceShaderBindingTableRecordOffset ^ ((instanceShaderBindingTableRecordOffset ^ flags) & bitmask1);
+    uint instanceShaderBindingTableRecordOffset = inputASInstance.recordOffset;    // value to merge in non-masked bits
+    uint flags = inputASInstance.flags;    // value to merge in masked bits
+    uint instanceShaderBindingTableRecordOffsetAndFlags = instanceShaderBindingTableRecordOffset ^ ((instanceShaderBindingTableRecordOffset ^ flags) & bitmask);
 
     AccelerationStructureInstance structureInstance;
     structureInstance.transform = instTransform;
