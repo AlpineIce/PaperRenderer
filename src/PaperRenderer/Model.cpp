@@ -91,7 +91,7 @@ namespace PaperRenderer
 				.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 				.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR
 			};
-			rendererPtr->asBuilder.queueBlas(op);
+			rendererPtr->asBuilder.queueAs(op);
 		}
 	}
 
@@ -253,7 +253,7 @@ namespace PaperRenderer
 					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 					.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR
 				};
-				rendererPtr->asBuilder.queueBlas(op);
+				rendererPtr->asBuilder.queueAs(op);
 			}
 		}
     }

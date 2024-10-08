@@ -416,7 +416,7 @@ namespace PaperRenderer
                 .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
                 .flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
             };
-            asBuilder.queueTlas(op);
+            asBuilder.queueAs(op);
         }
 
         //set all acceleration structure data

@@ -122,9 +122,9 @@ namespace PaperRenderer
     private:
         std::unique_ptr<Buffer> scratchBuffer;
 
-        //acceleration structure queues
-        std::deque<AccelerationStructureOp> blasQueue;
-        std::deque<AccelerationStructureOp> tlasQueue;
+        //acceleration structure operation queue
+        std::deque<AccelerationStructureOp> asQueue;
+
 
         //build semaphore
         VkSemaphore asBuildSemaphore = VK_NULL_HANDLE;
@@ -169,8 +169,7 @@ namespace PaperRenderer
         ~AccelerationStructureBuilder();
         AccelerationStructureBuilder(const AccelerationStructureBuilder&) = delete;
         
-        void queueBlas(const AccelerationStructureOp& blasOp) { blasQueue.emplace_back(blasOp); }
-        void queueTlas(const AccelerationStructureOp& tlasOp) { tlasQueue.emplace_back(tlasOp); }
+        void queueAs(const AccelerationStructureOp& op) { asQueue.emplace_back(op); }
         void setBuildData();
         void destroyOldData();
 

@@ -507,17 +507,29 @@ namespace PaperRenderer
         buildData = {};
 
         //get all build data
-        buildData.blasDatas.reserve(blasQueue.size());
-        for(const AccelerationStructureOp& op : blasQueue)
+        for(const AccelerationStructureOp& op : asQueue)
         {
-            buildData.blasDatas.emplace_back(getAsData(op));
-            if(buildData.blasDatas.rbegin()->compact) buildData.numBlasCompactions++;
-        }
-        buildData.tlasDatas.reserve(tlasQueue.size());
-        for(const AccelerationStructureOp& op : tlasQueue)
-        {
-            buildData.tlasDatas.emplace_back(getAsData(op));
-            if(buildData.tlasDatas.rbegin()->compact) buildData.numTlasCompactions++;
+            //switch statement for compaction counter
+            switch(op.type)
+            {
+            case VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR:
+                //get build data
+                buildData.blasDatas.emplace_back(getAsData(op));
+                if(buildData.blasDatas.rbegin()->compact) buildData.numBlasCompactions++;
+                break;
+
+            case VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR:
+                //get build data
+                buildData.tlasDatas.emplace_back(getAsData(op));
+                if(buildData.tlasDatas.rbegin()->compact) buildData.numTlasCompactions++;
+                break;
+
+            default:
+                throw std::runtime_error("Ambiguous acceleration structure type tried to be built. Please specify build type");
+                break;
+            }
+
+            asQueue.pop_front();
         }
     }
 
@@ -800,8 +812,26 @@ namespace PaperRenderer
             vkDestroyQueryPool(rendererPtr->getDevice()->getDevice(), queryPool, nullptr);
         }
 
-        //clear deque
-        blasQueue.clear();
+        //clear values (idk of a modern C++ way of doing this in one line)
+        buildData.blasDatas.clear();
+        /*auto dataIter = buildData.blasDatas.begin();
+        while(dataIter != buildData.blasDatas.end() && buildData.blasDatas.size() && toRemoveDatas.size())
+        {
+            const AsBuildData& toRemove = toRemoveDatas.front();
+
+            if(dataIter->as == toRemove.as)
+            {
+                auto thisIter = dataIter;
+                dataIter++;
+
+                buildData.asDatas.erase(thisIter);
+                toRemoveDatas.pop_front();
+            }
+            else
+            {
+                dataIter++;
+            }
+        }*/
     }
 
     void AccelerationStructureBuilder::submitQueuedTlasOps(const SynchronizationInfo &syncInfo)
@@ -840,7 +870,7 @@ namespace PaperRenderer
         struct PreCompactBuffer
         {
             std::unique_ptr<Buffer> tempBuffer;
-            TLAS& tlas;
+            AS* as;
         };
         std::queue<PreCompactBuffer> preCompactBuffers;
 
@@ -981,10 +1011,10 @@ namespace PaperRenderer
                 accelStructureInfo.size = newSize;
                 accelStructureInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
 
-                VkAccelerationStructureKHR oldStructure = tempBuffer.tlas.accelerationStructure;
+                VkAccelerationStructureKHR oldStructure = tempBuffer.as->accelerationStructure;
 
                 //overwrite tlas' as handle
-                vkCreateAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), &accelStructureInfo, nullptr, &tempBuffer.tlas.accelerationStructure);
+                vkCreateAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), &accelStructureInfo, nullptr, &tempBuffer.as->accelerationStructure);
 
                 //copy
                 VkCopyAccelerationStructureInfoKHR copyInfo = {};
@@ -992,7 +1022,7 @@ namespace PaperRenderer
                 copyInfo.pNext = NULL;
                 copyInfo.mode = VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR;
                 copyInfo.src = oldStructure;
-                copyInfo.dst = tempBuffer.tlas.accelerationStructure;
+                copyInfo.dst = tempBuffer.as->accelerationStructure;
 
                 vkCmdCopyAccelerationStructureKHR(cmdBuffer, &copyInfo);
 
@@ -1000,7 +1030,7 @@ namespace PaperRenderer
                 destructionQueue.push({oldStructure, std::move(tempBuffer.tempBuffer)});
 
                 //set new buffer
-                tempBuffer.tlas.asBuffer = std::move(newBuffer);
+                tempBuffer.as->asBuffer = std::move(newBuffer);
 
                 //remove from queue
                 preCompactBuffers.pop();
@@ -1026,6 +1056,6 @@ namespace PaperRenderer
         }
 
         //clear deque
-        tlasQueue.clear();
+        buildData.tlasDatas.clear();
     }
 }
