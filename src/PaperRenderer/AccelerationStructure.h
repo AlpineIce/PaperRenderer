@@ -173,7 +173,6 @@ namespace PaperRenderer
         void setBuildData();
         void destroyOldData();
 
-        void submitQueuedBlasOps(const SynchronizationInfo& syncInfo); //may block thread if compaction is used for any threads
-        void submitQueuedTlasOps(const SynchronizationInfo& syncInfo);
+        void submitQueuedOps(const SynchronizationInfo& syncInfo, VkAccelerationStructureTypeKHR type); //may block thread if compaction is used for any threads
     };
 }

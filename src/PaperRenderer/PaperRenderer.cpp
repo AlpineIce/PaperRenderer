@@ -428,7 +428,7 @@ namespace PaperRenderer
         blasSyncInfo.binaryWaitPairs = asSyncInfo.binaryWaitPairs;
         blasSyncInfo.timelineWaitPairs = asSyncInfo.timelineWaitPairs;
         blasSyncInfo.binarySignalPairs = { { asSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR} };
-        asBuilder.submitQueuedBlasOps(blasSyncInfo);
+        asBuilder.submitQueuedOps(blasSyncInfo, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
 
         //stage transfers for render passes
         for(RenderPass* renderPass : renderPasses)
@@ -449,7 +449,7 @@ namespace PaperRenderer
         tlasSyncInfo.binarySignalPairs = asSyncInfo.binarySignalPairs;
         tlasSyncInfo.timelineSignalPairs = asSyncInfo.timelineSignalPairs;
         tlasSyncInfo.fence = asSyncInfo.fence;
-        asBuilder.submitQueuedTlasOps(tlasSyncInfo);
+        asBuilder.submitQueuedOps(tlasSyncInfo, VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
 
         //write all staged transfers
         stagingBuffer.submitQueuedTransfers(transferSyncInfo);

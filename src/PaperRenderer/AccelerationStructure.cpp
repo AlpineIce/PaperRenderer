@@ -545,7 +545,7 @@ namespace PaperRenderer
         }
     }
 
-    void AccelerationStructureBuilder::submitQueuedBlasOps(const SynchronizationInfo &syncInfo)
+    void AccelerationStructureBuilder::submitQueuedOps(const SynchronizationInfo& syncInfo, VkAccelerationStructureTypeKHR type)
     {
         //rebuild scratch buffer if needed
         const VkDeviceSize requiredScratchSize = getScratchSize(buildData.blasDatas, buildData.tlasDatas);
@@ -560,17 +560,34 @@ namespace PaperRenderer
             scratchBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
         }
 
+        //switch statement for type
+        uint32_t numCompactions = 0;
+        switch(type)
+        {
+        case VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR:
+            numCompactions = buildData.numBlasCompactions;
+            break;
+
+        case VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR:
+            numCompactions = buildData.numTlasCompactions;
+            break;
+
+        default:
+            throw std::runtime_error("Ambiguous acceleration structure type tried to be built. Please specify build type");
+            break;
+        }
+
         //query pool for compaction if needed
         VkQueryPool queryPool = VK_NULL_HANDLE;
         uint32_t queryIndex = 0;
 
-        if(buildData.numBlasCompactions)
+        if(numCompactions)
         {
             VkQueryPoolCreateInfo queryPoolInfo = {};
             queryPoolInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
             queryPoolInfo.pNext = NULL;
             queryPoolInfo.flags = 0;
-            queryPoolInfo.queryCount = buildData.numBlasCompactions;
+            queryPoolInfo.queryCount = numCompactions;
             queryPoolInfo.queryType  = VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR;
             
             vkCreateQueryPool(rendererPtr->getDevice()->getDevice(), &queryPoolInfo, nullptr, &queryPool);
@@ -596,9 +613,41 @@ namespace PaperRenderer
 
         vkBeginCommandBuffer(cmdBuffer, &cmdBufferInfo);
 
-        //blas builds and updates
-        for(AsBuildData& data : buildData.blasDatas)
+        //builds and updates
+        std::vector<AsBuildData>& buildDataRef = (type & VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR ? buildData.blasDatas : buildData.tlasDatas);
+        for(AsBuildData& data : buildDataRef)
         {
+            //build TLAS instances if type is used
+            if(type == VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR)
+            {
+                //build TLAS instance data
+                rendererPtr->tlasInstanceBuildPipeline.submit(cmdBuffer, *((TLAS*)data.as));
+
+                //TLAS instance data memory barrier
+                VkBufferMemoryBarrier2 tlasInstanceMemBarrier = {
+                    .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                    .pNext = NULL,
+                    .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                    .srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
+                    .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                    .dstAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .buffer = ((TLAS*)data.as)->instancesBuffer->getBuffer(),
+                    .offset = 0,
+                    .size = VK_WHOLE_SIZE
+                };
+
+                VkDependencyInfo tlasInstanceDependencyInfo = {};
+                tlasInstanceDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+                tlasInstanceDependencyInfo.pNext = NULL;
+                tlasInstanceDependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+                tlasInstanceDependencyInfo.bufferMemoryBarrierCount = 1;
+                tlasInstanceDependencyInfo.pBufferMemoryBarriers = &tlasInstanceMemBarrier;
+
+                vkCmdPipelineBarrier2(cmdBuffer, &tlasInstanceDependencyInfo);
+            }
+
             //destroy old structure if being built and is valid
             if(data.as->accelerationStructure && data.buildGeoInfo.mode == VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR)
             {
@@ -607,7 +656,7 @@ namespace PaperRenderer
 
             //create a temporary buffer if needed
             VkBuffer buffer = VK_NULL_HANDLE;
-            if(data.as->enabledFlags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR)
+            if(data.compact)
             { 
                 BufferInfo tempBufferInfo = {};
                 tempBufferInfo.allocationFlags = 0;
@@ -633,7 +682,7 @@ namespace PaperRenderer
             accelStructureInfo.buffer = buffer;
             accelStructureInfo.offset = 0;
             accelStructureInfo.size = data.buildSizeInfo.accelerationStructureSize;
-            accelStructureInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+            accelStructureInfo.type = type;
             
             vkCreateAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), &accelStructureInfo, nullptr, &data.as->accelerationStructure);
 
@@ -650,8 +699,8 @@ namespace PaperRenderer
             //build command
             vkCmdBuildAccelerationStructuresKHR(cmdBuffer, 1, &data.buildGeoInfo, buildRangesPtrArray.data());
 
-            //compaction if flag used
-            if(data.as->enabledFlags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR)
+            //write compaction data if enabled
+            if(data.compact)
             {
                 //memory barrier
                 VkBufferMemoryBarrier2 compactionMemBarrier = {
@@ -714,7 +763,7 @@ namespace PaperRenderer
 
         rendererPtr->recycleCommandBuffer({ cmdBuffer, COMPUTE });
 
-        //----------BLAS COMPACTION----------//
+        //----------AS COMPACTION----------//
 
         if(queryPool)
         {
@@ -729,13 +778,13 @@ namespace PaperRenderer
             vkBeginCommandBuffer(cmdBuffer, &cmdBufferInfo);
 
             //get query results and perform compaction
-            std::vector<VkDeviceSize> compactionResults(buildData.numBlasCompactions);
+            std::vector<VkDeviceSize> compactionResults(numCompactions);
             vkGetQueryPoolResults(
                 rendererPtr->getDevice()->getDevice(),
                 queryPool,
                 0,
-                buildData.numBlasCompactions,
-                buildData.numBlasCompactions * sizeof(VkDeviceSize),
+                numCompactions,
+                numCompactions * sizeof(VkDeviceSize),
                 compactionResults.data(),
                 sizeof(VkDeviceSize),
                 VK_QUERY_RESULT_WAIT_BIT
@@ -766,7 +815,7 @@ namespace PaperRenderer
                 accelStructureInfo.buffer = newBuffer->getBuffer();
                 accelStructureInfo.offset = 0;
                 accelStructureInfo.size = newSize;
-                accelStructureInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+                accelStructureInfo.type = type;
 
                 VkAccelerationStructureKHR oldStructure = tempBuffer.as->accelerationStructure;
 
@@ -812,250 +861,6 @@ namespace PaperRenderer
             vkDestroyQueryPool(rendererPtr->getDevice()->getDevice(), queryPool, nullptr);
         }
 
-        //clear values (idk of a modern C++ way of doing this in one line)
-        buildData.blasDatas.clear();
-        /*auto dataIter = buildData.blasDatas.begin();
-        while(dataIter != buildData.blasDatas.end() && buildData.blasDatas.size() && toRemoveDatas.size())
-        {
-            const AsBuildData& toRemove = toRemoveDatas.front();
-
-            if(dataIter->as == toRemove.as)
-            {
-                auto thisIter = dataIter;
-                dataIter++;
-
-                buildData.asDatas.erase(thisIter);
-                toRemoveDatas.pop_front();
-            }
-            else
-            {
-                dataIter++;
-            }
-        }*/
-    }
-
-    void AccelerationStructureBuilder::submitQueuedTlasOps(const SynchronizationInfo &syncInfo)
-    {
-        //rebuild scratch buffer if needed
-        const VkDeviceSize requiredScratchSize = getScratchSize(buildData.blasDatas, buildData.tlasDatas);
-        if(!scratchBuffer || scratchBuffer->getSize() < requiredScratchSize)
-        {
-            scratchBuffer.reset();
-
-            BufferInfo bufferInfo = {};
-            bufferInfo.allocationFlags = 0;
-            bufferInfo.size = requiredScratchSize;
-            bufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
-            scratchBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
-        }
-
-        //query pool for compaction if needed
-        VkQueryPool queryPool = VK_NULL_HANDLE;
-        uint32_t queryIndex = 0;
-
-        if(buildData.numTlasCompactions)
-        {
-            VkQueryPoolCreateInfo queryPoolInfo = {};
-            queryPoolInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
-            queryPoolInfo.pNext = NULL;
-            queryPoolInfo.flags = 0;
-            queryPoolInfo.queryCount = buildData.numTlasCompactions;
-            queryPoolInfo.queryType  = VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR;
-            
-            vkCreateQueryPool(rendererPtr->getDevice()->getDevice(), &queryPoolInfo, nullptr, &queryPool);
-            vkResetQueryPool(rendererPtr->getDevice()->getDevice(), queryPool, 0, queryPoolInfo.queryCount);
-        }
-
-        //temporary buffers used when compaction is enabled
-        struct PreCompactBuffer
-        {
-            std::unique_ptr<Buffer> tempBuffer;
-            AS* as;
-        };
-        std::queue<PreCompactBuffer> preCompactBuffers;
-
-        //start new command buffer
-        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr, syncInfo.queueType);
-
-        VkCommandBufferBeginInfo cmdBufferInfo = {};
-        cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        cmdBufferInfo.pNext = NULL;
-        cmdBufferInfo.pInheritanceInfo = NULL;
-        cmdBufferInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-        vkBeginCommandBuffer(cmdBuffer, &cmdBufferInfo);
-
-        //tlas builds
-        for(AsBuildData& data : buildData.tlasDatas)
-        {
-            //build TLAS instance data
-            rendererPtr->tlasInstanceBuildPipeline.submit(cmdBuffer, *((TLAS*)data.as));
-
-            //TLAS instance data memory barrier
-            VkBufferMemoryBarrier2 tlasInstanceMemBarrier = {
-                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                .pNext = NULL,
-                .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                .srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
-                .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
-                .dstAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .buffer = ((TLAS*)data.as)->instancesBuffer->getBuffer(),
-                .offset = 0,
-                .size = VK_WHOLE_SIZE
-            };
-
-            VkDependencyInfo tlasInstanceDependencyInfo = {};
-            tlasInstanceDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-            tlasInstanceDependencyInfo.pNext = NULL;
-            tlasInstanceDependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-            tlasInstanceDependencyInfo.bufferMemoryBarrierCount = 1;
-            tlasInstanceDependencyInfo.pBufferMemoryBarriers = &tlasInstanceMemBarrier;
-
-            vkCmdPipelineBarrier2(cmdBuffer, &tlasInstanceDependencyInfo);
-
-            //destroy old (if exists)
-            if(data.as->accelerationStructure)
-            {
-                vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), data.as->accelerationStructure, nullptr);
-            }
-
-            //set scratch offset
-            data.buildGeoInfo.scratchData.deviceAddress = scratchBuffer->getBufferDeviceAddress() + data.scratchDataOffset;
-
-            //create acceleration structure
-            VkAccelerationStructureCreateInfoKHR accelStructureInfo = {};
-            accelStructureInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
-            accelStructureInfo.pNext = NULL;
-            accelStructureInfo.createFlags = 0;
-            accelStructureInfo.buffer = data.as->asBuffer->getBuffer();
-            accelStructureInfo.offset = 0;
-            accelStructureInfo.size = data.buildSizeInfo.accelerationStructureSize;
-            accelStructureInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
-
-            vkCreateAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), &accelStructureInfo, nullptr, &data.as->accelerationStructure);
-            
-            //set dst structure
-            data.buildGeoInfo.dstAccelerationStructure = data.as->accelerationStructure;
-
-            //build command
-            VkAccelerationStructureBuildRangeInfoKHR buildRange;
-            buildRange.primitiveCount = ((TLAS*)data.as)->accelerationStructureInstances.size();
-            buildRange.primitiveOffset = 0;
-            buildRange.firstVertex = 0;
-            buildRange.transformOffset = 0;
-            std::vector<VkAccelerationStructureBuildRangeInfoKHR const*> buildRangesPtrArray = { &buildRange };
-
-            vkCmdBuildAccelerationStructuresKHR(cmdBuffer, 1, &data.buildGeoInfo, buildRangesPtrArray.data());
-        }
-
-        //end command buffer and submit
-        vkEndCommandBuffer(cmdBuffer);
-
-        Commands::submitToQueue(syncInfo, { cmdBuffer });
-
-        rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
-
-        //----------TLAS COMPACTION----------//
-
-        if(queryPool)
-        {
-            //start new command buffer
-            cmdBuffer = Commands::getCommandBuffer(rendererPtr, COMPUTE);
-
-            cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-            cmdBufferInfo.pNext = NULL;
-            cmdBufferInfo.pInheritanceInfo = NULL;
-            cmdBufferInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-            vkBeginCommandBuffer(cmdBuffer, &cmdBufferInfo);
-
-            //get query results and perform compaction
-            std::vector<VkDeviceSize> compactionResults(buildData.numTlasCompactions);
-            vkGetQueryPoolResults(
-                rendererPtr->getDevice()->getDevice(),
-                queryPool,
-                0,
-                buildData.numTlasCompactions,
-                buildData.numTlasCompactions * sizeof(VkDeviceSize),
-                compactionResults.data(),
-                sizeof(VkDeviceSize),
-                VK_QUERY_RESULT_WAIT_BIT
-            );
-
-            //set new buffer and acceleration structure
-            uint32_t index = 0;
-            while(!preCompactBuffers.empty())
-            {
-                //store old in local variables
-                PreCompactBuffer& tempBuffer = preCompactBuffers.front();
-
-                //get compacted size
-                const VkDeviceSize& newSize = compactionResults.at(index);
-
-                //create new buffer
-                BufferInfo bufferInfo = {};
-                bufferInfo.allocationFlags = 0;
-                bufferInfo.size = newSize;
-                bufferInfo.usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
-                std::unique_ptr<Buffer> newBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
-
-                //create new acceleration structure
-                VkAccelerationStructureCreateInfoKHR accelStructureInfo = {};
-                accelStructureInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
-                accelStructureInfo.pNext = NULL;
-                accelStructureInfo.createFlags = 0;
-                accelStructureInfo.buffer = newBuffer->getBuffer();
-                accelStructureInfo.offset = 0;
-                accelStructureInfo.size = newSize;
-                accelStructureInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
-
-                VkAccelerationStructureKHR oldStructure = tempBuffer.as->accelerationStructure;
-
-                //overwrite tlas' as handle
-                vkCreateAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), &accelStructureInfo, nullptr, &tempBuffer.as->accelerationStructure);
-
-                //copy
-                VkCopyAccelerationStructureInfoKHR copyInfo = {};
-                copyInfo.sType = VK_STRUCTURE_TYPE_COPY_ACCELERATION_STRUCTURE_INFO_KHR;
-                copyInfo.pNext = NULL;
-                copyInfo.mode = VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR;
-                copyInfo.src = oldStructure;
-                copyInfo.dst = tempBuffer.as->accelerationStructure;
-
-                vkCmdCopyAccelerationStructureKHR(cmdBuffer, &copyInfo);
-
-                //queue destruction of old
-                destructionQueue.push({oldStructure, std::move(tempBuffer.tempBuffer)});
-
-                //set new buffer
-                tempBuffer.as->asBuffer = std::move(newBuffer);
-
-                //remove from queue
-                preCompactBuffers.pop();
-                index++;
-            }
-
-            //end cmd buffer
-            vkEndCommandBuffer(cmdBuffer);
-
-            //submit
-            SynchronizationInfo compactionSyncInfo = {};
-            compactionSyncInfo.queueType = COMPUTE;
-            compactionSyncInfo.binaryWaitPairs = { { asBuildSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR } };
-            compactionSyncInfo.binarySignalPairs = syncInfo.binarySignalPairs;
-            compactionSyncInfo.binaryWaitPairs = syncInfo.binaryWaitPairs;
-            compactionSyncInfo.fence = syncInfo.fence;
-
-            Commands::submitToQueue(compactionSyncInfo, { cmdBuffer });
-
-            rendererPtr->recycleCommandBuffer({ cmdBuffer, COMPUTE });
-
-            vkDestroyQueryPool(rendererPtr->getDevice()->getDevice(), queryPool, nullptr);
-        }
-
-        //clear deque
-        buildData.tlasDatas.clear();
+        buildDataRef.clear();
     }
 }
