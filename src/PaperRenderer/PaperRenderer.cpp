@@ -149,8 +149,6 @@ namespace PaperRenderer
         rebuildModelDataBuffer();
         rebuildInstancesbuffer();
 
-        asSemaphore = Commands::getSemaphore(this);
-
         //finish up
         vkDeviceWaitIdle(device.getDevice());
         std::cout << "Renderer initialization complete" << std::endl;
@@ -159,8 +157,6 @@ namespace PaperRenderer
     RenderEngine::~RenderEngine()
     {
         vkDeviceWaitIdle(device.getDevice());
-
-        vkDestroySemaphore(device.getDevice(), asSemaphore, nullptr);
     
         //free cmd buffers
         Commands::freeCommandBuffers(this, usedCmdBuffers);
@@ -422,14 +418,6 @@ namespace PaperRenderer
         //set all acceleration structure data
         asBuilder.setBuildData();
 
-        //build queued BLAS'
-        SynchronizationInfo blasSyncInfo = {};
-        blasSyncInfo.queueType = asSyncInfo.queueType;
-        blasSyncInfo.binaryWaitPairs = asSyncInfo.binaryWaitPairs;
-        blasSyncInfo.timelineWaitPairs = asSyncInfo.timelineWaitPairs;
-        blasSyncInfo.binarySignalPairs = { { asSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR} };
-        asBuilder.submitQueuedOps(blasSyncInfo, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
-
         //stage transfers for render passes
         for(RenderPass* renderPass : renderPasses)
         {
@@ -442,17 +430,24 @@ namespace PaperRenderer
             as->queueInstanceTransfers();
         }
 
+        //write all staged transfers
+        stagingBuffer.submitQueuedTransfers(transferSyncInfo);
+
+        //build queued BLAS'
+        SynchronizationInfo blasSyncInfo = {};
+        blasSyncInfo.queueType = asSyncInfo.queueType;
+        blasSyncInfo.binaryWaitPairs = asSyncInfo.binaryWaitPairs;
+        blasSyncInfo.timelineWaitPairs = asSyncInfo.timelineWaitPairs;
+        asBuilder.submitQueuedOps(blasSyncInfo, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
+
         //build queued TLAS'
         SynchronizationInfo tlasSyncInfo = {};
         tlasSyncInfo.queueType = asSyncInfo.queueType;
-        tlasSyncInfo.binaryWaitPairs = { { asSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR} };
+        tlasSyncInfo.timelineWaitPairs = { stagingBuffer.getTransferSemaphore() };
         tlasSyncInfo.binarySignalPairs = asSyncInfo.binarySignalPairs;
         tlasSyncInfo.timelineSignalPairs = asSyncInfo.timelineSignalPairs;
         tlasSyncInfo.fence = asSyncInfo.fence;
         asBuilder.submitQueuedOps(tlasSyncInfo, VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
-
-        //write all staged transfers
-        stagingBuffer.submitQueuedTransfers(transferSyncInfo);
 
         //return image acquire semaphore
         return imageAcquireSemaphore;
