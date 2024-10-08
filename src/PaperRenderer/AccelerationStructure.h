@@ -29,20 +29,36 @@ namespace PaperRenderer
 
     //----------ACCELERATION STRUCTURE DECLARATIONS----------//
 
-    class BLAS
+    //acceleration structure base class
+    class AS
     {
     private:
         VkAccelerationStructureKHR accelerationStructure = VK_NULL_HANDLE;
         VkBuildAccelerationStructureFlagsKHR enabledFlags = 0;
 
-        std::unique_ptr<Buffer> blasBuffer;
+        std::unique_ptr<Buffer> asBuffer;
 
+        friend class AccelerationStructureBuilder;
+
+    protected:
+        class RenderEngine* rendererPtr;
+
+    public:
+        AS(RenderEngine* renderer);
+        ~AS();
+        AS(const AS&) = delete;
+
+        VkAccelerationStructureKHR getAccelerationStructure() const { return accelerationStructure; }
+        VkDeviceAddress getAccelerationStructureAddress() const { return asBuffer ? asBuffer->getBufferDeviceAddress() : 0; }
+    };
+
+    //Bottom level acceleration structure
+    class BLAS : public AS
+    {
+    private:
         class Model const* parentModelPtr;
         Buffer const* vboPtr = NULL;
 
-        class RenderEngine* rendererPtr;
-
-        friend class AccelerationStructureBuilder;
     public:
         //If vbo is null, BLAS will instead use those directly from the model. Model is needed
         //for data describing different geometries
@@ -50,19 +66,14 @@ namespace PaperRenderer
         ~BLAS();
         BLAS(const BLAS&) = delete;
 
-        VkAccelerationStructureKHR getAccelerationStructure() const { return accelerationStructure; }
-        VkDeviceAddress getAccelerationStructureAddress() const { return blasBuffer ? blasBuffer->getBufferDeviceAddress() : 0; }
         VkDeviceAddress getVBOAddress() const { return vboPtr->getBufferDeviceAddress(); }
         Model const* getParentModelPtr() const { return parentModelPtr; }
     };
 
-    class TLAS
+    //top level acceleration structure
+    class TLAS : public AS
     {
     private:
-        VkAccelerationStructureKHR accelerationStructure = VK_NULL_HANDLE;
-        VkBuildAccelerationStructureFlagsKHR enabledFlags = 0;
-
-        std::unique_ptr<Buffer> tlasBuffer;
         std::unique_ptr<Buffer> instancesBuffer;
 
         VkDeviceSize instanceDescriptionsOffset = 0;
@@ -81,8 +92,6 @@ namespace PaperRenderer
         void verifyInstancesBuffer();
         void queueInstanceTransfers();
 
-        class RenderEngine* rendererPtr;
-
         friend RenderEngine;
         friend class AccelerationStructureBuilder;
         friend TLASInstanceBuildPipeline;
@@ -94,8 +103,6 @@ namespace PaperRenderer
         void addInstance(class ModelInstance* instance);
         void removeInstance(class ModelInstance* instance);
 
-        VkAccelerationStructureKHR getAccelerationStructure() const { return accelerationStructure; }
-        VkDeviceAddress getAccelerationStructureAddress() const { return tlasBuffer->getBufferDeviceAddress(); }
         Buffer const* getInstancesBuffer() const { return instancesBuffer.get(); }
         const VkDeviceSize getInstanceDescriptionsOffset() const { return instanceDescriptionsOffset; }
         const VkDeviceSize getInstanceDescriptionsRange() const { return accelerationStructureInstances.size() * sizeof(InstanceDescription); }

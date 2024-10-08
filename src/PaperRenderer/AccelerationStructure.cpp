@@ -126,10 +126,26 @@ namespace PaperRenderer
         dispatch(cmdBuffer);
     }
 
+    //----------AS BASE CLASS DEFINITIONS----------//
+
+    AS::AS(RenderEngine *renderer)
+        :rendererPtr(renderer)
+    {
+    }
+
+    AS::~AS()
+    {
+        if(accelerationStructure)
+        {
+            vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), accelerationStructure, nullptr);
+        }
+        asBuffer.reset();
+    }
+
     //----------BLAS DEFINITIONS----------//
 
     BLAS::BLAS(RenderEngine* renderer, Model const* model, Buffer const* vbo)
-        :rendererPtr(renderer),
+        :AS(renderer),
         parentModelPtr(model)
     {
         if(!model) throw std::runtime_error("Model pointer cannot be null in BLAS creation");
@@ -138,32 +154,19 @@ namespace PaperRenderer
 
     BLAS::~BLAS()
     {
-        if(accelerationStructure)
-        {
-            vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), accelerationStructure, nullptr);
-        }
-
-        blasBuffer.reset();
     }
 
     //----------TLAS DEFINITIONS----------//
     
     TLAS::TLAS(RenderEngine* renderer)
-        :rendererPtr(renderer)
+        :AS(renderer)
     {
         rendererPtr->tlAccelerationStructures.push_back(this);
     }
 
     TLAS::~TLAS()
     {
-        if(accelerationStructure)
-        {
-            vkDestroyAccelerationStructureKHR(rendererPtr->getDevice()->getDevice(), accelerationStructure, nullptr);
-        }
-        
-        tlasBuffer.reset();
         instancesBuffer.reset();
-
         rendererPtr->tlAccelerationStructures.remove(this);
     }
 
@@ -415,18 +418,18 @@ namespace PaperRenderer
         //destroy buffer if compaction is requested since final size will be unknown
         if(returnData.compact)
         {
-            blasOp.blas->blasBuffer.reset();
+            blasOp.blas->asBuffer.reset();
         }
         //otherwise update buffer if needed
-        else if(!blasOp.blas->blasBuffer || blasOp.blas->blasBuffer->getSize() < returnData.buildSizeInfo.accelerationStructureSize)
+        else if(!blasOp.blas->asBuffer || blasOp.blas->asBuffer->getSize() < returnData.buildSizeInfo.accelerationStructureSize)
         {
-            blasOp.blas->blasBuffer.reset();
+            blasOp.blas->asBuffer.reset();
 
             BufferInfo bufferInfo = {};
             bufferInfo.allocationFlags = 0;
             bufferInfo.size = returnData.buildSizeInfo.accelerationStructureSize;
             bufferInfo.usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
-            blasOp.blas->blasBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
+            blasOp.blas->asBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
         }
 
         //set blas flags
@@ -489,18 +492,18 @@ namespace PaperRenderer
         //destroy buffer if compaction is requested since final size will be unknown
         if(returnData.compact)
         {
-            tlasOp.tlas->tlasBuffer.reset();
+            tlasOp.tlas->asBuffer.reset();
         }
         //otherwise update buffer if needed
-        else if(!tlasOp.tlas->tlasBuffer || tlasOp.tlas->tlasBuffer->getSize() < returnData.buildSizeInfo.accelerationStructureSize)
+        else if(!tlasOp.tlas->asBuffer || tlasOp.tlas->asBuffer->getSize() < returnData.buildSizeInfo.accelerationStructureSize)
         {
-            tlasOp.tlas->tlasBuffer.reset();
+            tlasOp.tlas->asBuffer.reset();
 
             BufferInfo bufferInfo = {};
             bufferInfo.allocationFlags = 0;
             bufferInfo.size = returnData.buildSizeInfo.accelerationStructureSize;
             bufferInfo.usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
-            tlasOp.tlas->tlasBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
+            tlasOp.tlas->asBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
         }
 
         //set tlas flags
@@ -636,7 +639,7 @@ namespace PaperRenderer
             }
             else
             {
-                buffer = data.blas.blasBuffer->getBuffer();
+                buffer = data.blas.asBuffer->getBuffer();
             }
 
             //set scratch buffer address + offset
@@ -804,7 +807,7 @@ namespace PaperRenderer
                 destructionQueue.push({oldStructure, std::move(tempBuffer.tempBuffer)});
 
                 //set new buffer
-                tempBuffer.blas.blasBuffer = std::move(newBuffer);
+                tempBuffer.blas.asBuffer = std::move(newBuffer);
 
                 //remove from queue
                 preCompactBuffers.pop();
@@ -928,7 +931,7 @@ namespace PaperRenderer
             accelStructureInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
             accelStructureInfo.pNext = NULL;
             accelStructureInfo.createFlags = 0;
-            accelStructureInfo.buffer = data.tlas.tlasBuffer->getBuffer();
+            accelStructureInfo.buffer = data.tlas.asBuffer->getBuffer();
             accelStructureInfo.offset = 0;
             accelStructureInfo.size = data.buildSizeInfo.accelerationStructureSize;
             accelStructureInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
@@ -1029,7 +1032,7 @@ namespace PaperRenderer
                 destructionQueue.push({oldStructure, std::move(tempBuffer.tempBuffer)});
 
                 //set new buffer
-                tempBuffer.tlas.tlasBuffer = std::move(newBuffer);
+                tempBuffer.tlas.asBuffer = std::move(newBuffer);
 
                 //remove from queue
                 preCompactBuffers.pop();
