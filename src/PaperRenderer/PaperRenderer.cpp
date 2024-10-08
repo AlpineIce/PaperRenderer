@@ -410,8 +410,9 @@ namespace PaperRenderer
         //queue TLAS'
         for(TLAS* as : tlAccelerationStructures)
         {
-            TlasOp op = {
-                .tlas = as,
+            AccelerationStructureOp op = {
+                .accelerationStructure = as,
+                .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
                 .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
                 .flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
             };

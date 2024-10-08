@@ -85,8 +85,9 @@ namespace PaperRenderer
 		if(rendererPtr->getDevice()->getRTSupport())
 		{
 			defaultBLAS = std::make_unique<BLAS>(rendererPtr, this, vbo.get());
-			BlasOp op = {
-				.blas = defaultBLAS.get(),
+			AccelerationStructureOp op = {
+				.accelerationStructure = defaultBLAS.get(),
+                .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
 				.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 				.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR
 			};
@@ -246,8 +247,9 @@ namespace PaperRenderer
 			if(rendererPtr->getDevice()->getRTSupport())
 			{
 				uniqueGeometryData.blas = std::make_unique<BLAS>(rendererPtr, modelPtr, uniqueGeometryData.uniqueVBO.get());
-				BlasOp op = {
-					.blas = uniqueGeometryData.blas.get(),
+				AccelerationStructureOp op = {
+					.accelerationStructure = uniqueGeometryData.blas.get(),
+					.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
 					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 					.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR
 				};

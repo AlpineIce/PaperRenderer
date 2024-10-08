@@ -108,18 +108,11 @@ namespace PaperRenderer
         const VkDeviceSize getInstanceDescriptionsRange() const { return accelerationStructureInstances.size() * sizeof(InstanceDescription); }
     };
 
-    //BLAS operation
-    struct BlasOp
+    //AS operation
+    struct AccelerationStructureOp
     {
-        BLAS* blas = NULL;
-        VkBuildAccelerationStructureModeKHR mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
-        VkBuildAccelerationStructureFlagsKHR flags = 0;
-    };
-
-    //TLAS operation
-    struct TlasOp
-    {
-        TLAS* tlas = NULL;
+        AS* accelerationStructure;
+        VkAccelerationStructureTypeKHR type = VK_ACCELERATION_STRUCTURE_TYPE_MAX_ENUM_KHR; //MUST BE DEFINED AS TOP OR BOTTOM LEVEL
         VkBuildAccelerationStructureModeKHR mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
         VkBuildAccelerationStructureFlagsKHR flags = 0;
     };
@@ -130,48 +123,37 @@ namespace PaperRenderer
         std::unique_ptr<Buffer> scratchBuffer;
 
         //acceleration structure queues
-        std::deque<BlasOp> blasQueue;
-        std::deque<TlasOp> tlasQueue;
+        std::deque<AccelerationStructureOp> blasQueue;
+        std::deque<AccelerationStructureOp> tlasQueue;
 
         //build semaphore
         VkSemaphore asBuildSemaphore = VK_NULL_HANDLE;
         
-        //blas data
-        struct BlasBuildData
+        //acceleration structure build data
+        struct AsBuildData
         {
-            BLAS& blas;
+            AS* as;
             std::vector<VkAccelerationStructureGeometryKHR> geometries;
             std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRangeInfos;
             VkAccelerationStructureBuildGeometryInfoKHR buildGeoInfo = {};
             VkAccelerationStructureBuildSizesInfoKHR buildSizeInfo = {};
             VkDeviceSize scratchDataOffset = 0;
+            VkAccelerationStructureTypeKHR type = VK_ACCELERATION_STRUCTURE_TYPE_MAX_ENUM_KHR;
             bool compact = false;
         };
-        BlasBuildData getBlasData(const BlasOp& blasOp) const;
-
-        //tlas datas
-        struct TlasBuildData
-        {
-            TLAS& tlas;
-            std::unique_ptr<VkAccelerationStructureGeometryKHR> geometry; //unique ptr because bruh dangling pointer moment with vulkan
-            VkAccelerationStructureBuildGeometryInfoKHR buildGeoInfo = {};
-            VkAccelerationStructureBuildSizesInfoKHR buildSizeInfo = {};
-            VkDeviceSize scratchDataOffset = 0;
-            bool compact = false;
-        };
-        TlasBuildData getTlasData(const TlasOp& tlasOp) const;
+        AsBuildData getAsData(const AccelerationStructureOp& op) const;
 
         //all build data
         struct BuildData
         {
-            std::vector<BlasBuildData> blasDatas;
+            std::vector<AsBuildData> blasDatas;
             uint32_t numBlasCompactions = 0;
-            std::vector<TlasBuildData> tlasDatas;
+            std::vector<AsBuildData> tlasDatas;
             uint32_t numTlasCompactions = 0;
         } buildData;
 
         //scratch size
-        VkDeviceSize getScratchSize(std::vector<BlasBuildData>& blasDatas, std::vector<TlasBuildData>& tlasDatas) const;
+        VkDeviceSize getScratchSize(std::vector<AsBuildData>& blasDatas, std::vector<AsBuildData>& tlasDatas) const;
         
         //for keeping structures to derrive compaction from in scope
         struct OldStructureData
@@ -187,8 +169,8 @@ namespace PaperRenderer
         ~AccelerationStructureBuilder();
         AccelerationStructureBuilder(const AccelerationStructureBuilder&) = delete;
         
-        void queueBlas(const BlasOp& blasOp) { blasQueue.emplace_back(blasOp); }
-        void queueTlas(const TlasOp& tlasOp) { tlasQueue.emplace_back(tlasOp); }
+        void queueBlas(const AccelerationStructureOp& blasOp) { blasQueue.emplace_back(blasOp); }
+        void queueTlas(const AccelerationStructureOp& tlasOp) { tlasQueue.emplace_back(tlasOp); }
         void setBuildData();
         void destroyOldData();
 
