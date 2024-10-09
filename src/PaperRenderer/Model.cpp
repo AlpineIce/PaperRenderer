@@ -9,7 +9,7 @@ namespace PaperRenderer
 {
 	//----------MODEL DEFINITIONS----------//
 
-    Model::Model(RenderEngine *renderer, const ModelCreateInfo &creationInfo)
+    Model::Model(RenderEngine* renderer, const ModelCreateInfo& creationInfo)
         :rendererPtr(renderer)
     {
 		//temporary variables for creating the singular vertex and index buffer
@@ -82,7 +82,7 @@ namespace PaperRenderer
 		rendererPtr->addModelData(this);
 
 		//create BLAS
-		if(rendererPtr->getDevice()->getRTSupport())
+		if(creationInfo.createBLAS && rendererPtr->getDevice()->getRTSupport())
 		{
 			defaultBLAS = std::make_unique<BLAS>(rendererPtr, this, vbo.get());
 			AccelerationStructureOp op = {
@@ -215,7 +215,7 @@ namespace PaperRenderer
 		uniqueGeometryData.isUsed = uniqueGeometry;
 		
 		//create unique VBO and BLAS if requested
-		if(uniqueGeometry)
+		if((uniqueGeometry || !parentModel->defaultBLAS) && rendererPtr->getDevice()->getRTSupport())
 		{
 			BufferInfo bufferInfo = {};
 			bufferInfo.allocationFlags = 0;
@@ -251,7 +251,8 @@ namespace PaperRenderer
 					.accelerationStructure = uniqueGeometryData.blas.get(),
 					.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
 					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
-					.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR
+					//if geometry is unique then allow update, otherwise geometry isn't unique, but a parent copy doesnt exist; assume static
+					.flags = uniqueGeometry ? VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR : VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR
 				};
 				rendererPtr->asBuilder.queueAs(op);
 			}

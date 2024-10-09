@@ -36,9 +36,7 @@ namespace PaperRenderer
         VkVertexInputBindingDescription vertexDescription;
         uint32_t vertexPositionOffset;
         std::vector<ModelLODInfo> LODs;
-        //True by default, will create a static, compacted BLAS that can be shared across all instances.
-        //Should be true for inanimate geometry
-        bool createBLAS = true;
+        bool createBLAS = true; //create a default BLAS
     };
 
     //----------MODEL INFORMATION----------//
