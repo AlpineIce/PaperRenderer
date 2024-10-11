@@ -6,16 +6,11 @@
 
 namespace PaperRenderer
 {
-    std::unique_ptr<Buffer> CommonMeshGroup::modelMatricesBuffer;
-    std::unique_ptr<Buffer> CommonMeshGroup::drawCommandsBuffer;
-    std::list<CommonMeshGroup*> CommonMeshGroup::commonMeshGroups;
-    bool CommonMeshGroup::rebuild = false;
-
     CommonMeshGroup::CommonMeshGroup(RenderEngine* renderer, RenderPass const* renderPass)
         :rendererPtr(renderer),
         renderPassPtr(renderPass)
     {
-        commonMeshGroups.push_back(this);
+
     }
 
     CommonMeshGroup::~CommonMeshGroup()
@@ -25,61 +20,49 @@ namespace PaperRenderer
             removeInstanceMeshes(instance);
         }
 
-        commonMeshGroups.remove(this);
-
-        if(!commonMeshGroups.size())
-        {
-            modelMatricesBuffer.reset();
-            drawCommandsBuffer.reset();
-        }
+        modelMatricesBuffer.reset();
+        drawCommandsBuffer.reset();
     }
 
-    std::vector<ModelInstance*> CommonMeshGroup::verifyBuffersSize(RenderEngine* renderer)
+    std::vector<ModelInstance*> CommonMeshGroup::verifyBufferSize()
     {
         std::vector<ModelInstance *> returnInstances;
         if(rebuild)
         {
-            returnInstances = rebuildBuffers(renderer);
+            returnInstances = rebuildBuffer();
         }
         
         rebuild = false;
         return returnInstances;
     }
 
-    std::vector<ModelInstance*> CommonMeshGroup::rebuildBuffers(RenderEngine* renderer)
+    std::vector<ModelInstance*> CommonMeshGroup::rebuildBuffer()
     {
         //get new size
-        BufferSizeRequirements bufferSizeRequirements = {};
-        for(const auto& commonMeshGroup : commonMeshGroups)
-        {
-            BufferSizeRequirements sizeRequirements = commonMeshGroup->getBuffersRequirements(bufferSizeRequirements);
-            bufferSizeRequirements += sizeRequirements;
-        }
+        BufferSizeRequirements bufferSizeRequirements = getBuffersRequirements(bufferSizeRequirements);
 
         //rebuild buffers
         BufferInfo matricesBufferInfo = {};
         matricesBufferInfo.allocationFlags = 0;
         matricesBufferInfo.size = bufferSizeRequirements.matricesCount * sizeof(ShaderOutputObject);
         matricesBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
-        modelMatricesBuffer = std::make_unique<Buffer>(renderer, matricesBufferInfo);
+        modelMatricesBuffer = std::make_unique<Buffer>(rendererPtr, matricesBufferInfo);
 
         BufferInfo drawCommandsBufferInfo = {};
         drawCommandsBufferInfo.allocationFlags = 0;
         drawCommandsBufferInfo.size = bufferSizeRequirements.drawCommandCount * sizeof(VkDrawIndexedIndirectCommand);
         drawCommandsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR;
-        drawCommandsBuffer = std::make_unique<Buffer>(renderer, drawCommandsBufferInfo);
+        drawCommandsBuffer = std::make_unique<Buffer>(rendererPtr, drawCommandsBufferInfo);
 
         //staging buffer to add draw commands
         BufferInfo stagingBufferInfo = {};
         stagingBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
         stagingBufferInfo.size = bufferSizeRequirements.drawCommandCount * sizeof(VkDrawIndexedIndirectCommand);
         stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        Buffer stagingBuffer(renderer, stagingBufferInfo);
+        Buffer stagingBuffer(rendererPtr, stagingBufferInfo);
 
-        for(const auto& commonMeshGroup : commonMeshGroups)
-        {
-            commonMeshGroup->setDrawCommandData(stagingBuffer);
-        }
+        //set draw commands
+        setDrawCommandData(stagingBuffer);
 
         //copy staging data
         VkBufferCopy drawCommandsRegion = {};
@@ -89,18 +72,15 @@ namespace PaperRenderer
 
         SynchronizationInfo syncInfo = {};
         syncInfo.queueType = TRANSFER;
-        syncInfo.fence = Commands::getUnsignaledFence(renderer);
+        syncInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
 
         drawCommandsBuffer->copyFromBufferRanges(stagingBuffer, { drawCommandsRegion }, syncInfo);
 
         //get instances to update
         std::vector<ModelInstance*> modifiedInstances;
-        for(const auto& commonMeshGroup : commonMeshGroups)
+        for(auto& [instance, meshes] : instanceMeshes)
         {
-            for(auto& [instance, meshes] : commonMeshGroup->instanceMeshes)
-            {
-                modifiedInstances.push_back(instance);
-            }
+            modifiedInstances.push_back(instance);
         }
 
         //remove duplicates
@@ -109,8 +89,8 @@ namespace PaperRenderer
         modifiedInstances.erase(uniqueIndices, modifiedInstances.end());
 
         //wait for transfer operation
-        vkWaitForFences(renderer->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
-        vkDestroyFence(renderer->getDevice()->getDevice(), syncInfo.fence, nullptr);
+        vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
+        vkDestroyFence(rendererPtr->getDevice()->getDevice(), syncInfo.fence, nullptr);
 
         return modifiedInstances;
     }
@@ -157,6 +137,7 @@ namespace PaperRenderer
             write.offset = sizeof(VkDrawIndexedIndirectCommand) * meshInstancesData.drawCommandIndex;
             write.size = sizeof(VkDrawIndexedIndirectCommand);
             write.data = &command;
+
             stagingBuffer.writeToBuffer({ write });
         }
     }

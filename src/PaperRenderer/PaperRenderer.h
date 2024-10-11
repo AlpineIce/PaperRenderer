@@ -115,7 +115,6 @@ namespace PaperRenderer
         friend AccelerationStructureBuilder;
         friend TLASInstanceBuildPipeline;
 
-        uint32_t bufferIndex = 0;
         uint64_t frameNumber = 0;
     public:
         RenderEngine(RendererCreationStruct creationInfo);
@@ -129,7 +128,7 @@ namespace PaperRenderer
         void recycleCommandBuffer(CommandBuffer& commandBuffer);
         void recycleCommandBuffer(CommandBuffer&& commandBuffer);
 
-        uint32_t getBufferIndex() const { return bufferIndex; }
+        uint32_t getBufferIndex() const { return frameNumber % 2; }
         uint64_t getFramesRenderedCount() const { return frameNumber; }
         Device* getDevice() { return &device; }
         RasterPreprocessPipeline* getRasterPreprocessPipeline() { return &rasterPreprocessPipeline; }

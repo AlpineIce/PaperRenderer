@@ -19,7 +19,7 @@ namespace PaperRenderer
     EngineStagingBuffer::EngineStagingBuffer(RenderEngine *renderer)
         :rendererPtr(renderer)
     {
-        transferSemaphore = Commands::getTimelineSemaphore(rendererPtr, finalSemaphoreValue);
+        transferSemaphore = rendererPtr->getDevice()->getCommandsPtr()->getTimelineSemaphore(finalSemaphoreValue);
     }
 
     EngineStagingBuffer::~EngineStagingBuffer()
@@ -108,7 +108,7 @@ namespace PaperRenderer
         }
 
         //start command buffer
-        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr, syncInfo.queueType);
+        VkCommandBuffer cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(syncInfo.queueType);
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -126,7 +126,7 @@ namespace PaperRenderer
         vkEndCommandBuffer(cmdBuffer);
 
         //submit
-        Commands::submitToQueue(syncInfo, { cmdBuffer });
+        rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(syncInfo, { cmdBuffer });
 
         rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
 
@@ -159,7 +159,7 @@ namespace PaperRenderer
         vkDeviceWaitIdle(device.getDevice());
     
         //free cmd buffers
-        Commands::freeCommandBuffers(this, usedCmdBuffers);
+        device.getCommandsPtr()->freeCommandBuffers(usedCmdBuffers);
         usedCmdBuffers.clear();
 
         modelDataBuffer.reset();
@@ -194,7 +194,7 @@ namespace PaperRenderer
             copyRegion.size = newWriteSize;
 
             SynchronizationInfo syncInfo = {};
-            syncInfo.fence = Commands::getUnsignaledFence(this);
+            syncInfo.fence = device.getCommandsPtr()->getUnsignaledFence();
             newBuffer->getBuffer()->copyFromBufferRanges(*instancesDataBuffer, { copyRegion }, syncInfo);
             vkWaitForFences(device.getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
             vkDestroyFence(device.getDevice(), syncInfo.fence, nullptr);
@@ -248,7 +248,7 @@ namespace PaperRenderer
 
             SynchronizationInfo syncInfo = {};
             syncInfo.queueType = TRANSFER;
-            syncInfo.fence = Commands::getUnsignaledFence(this);
+            syncInfo.fence = device.getCommandsPtr()->getUnsignaledFence();
             newBuffer->copyFromBufferRanges(*instancesDataBuffer, { copyRegion }, syncInfo);
             vkWaitForFences(device.getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
             vkDestroyFence(device.getDevice(), syncInfo.fence, nullptr);
@@ -389,7 +389,7 @@ namespace PaperRenderer
     const VkSemaphore& RenderEngine::beginFrame(const SynchronizationInfo& transferSyncInfo, const SynchronizationInfo& asSyncInfo)
     {
         //free command buffers and reset descriptor pool
-        Commands::freeCommandBuffers(this, usedCmdBuffers);
+        device.getCommandsPtr()->freeCommandBuffers(usedCmdBuffers);
         usedCmdBuffers.clear();
         descriptors.refreshPools();
 
@@ -457,9 +457,6 @@ namespace PaperRenderer
     {
         //presentation
         swapchain.presentImage(waitSemaphores);
-
-        if(bufferIndex == 0) bufferIndex = 1;
-        else bufferIndex = 0;
 
         glfwPollEvents();
     }

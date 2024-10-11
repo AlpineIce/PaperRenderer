@@ -87,7 +87,7 @@ namespace PaperRenderer
         imageSemaphores.resize(capabilities.minImageCount);
         for(uint32_t i = 0; i < capabilities.minImageCount; i++)
         {
-            imageSemaphores.at(i) = PaperRenderer::Commands::getSemaphore(rendererPtr);
+            imageSemaphores.at(i) = rendererPtr->getDevice()->getCommandsPtr()->getSemaphore();
         }
     }
 

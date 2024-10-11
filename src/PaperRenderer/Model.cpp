@@ -184,7 +184,7 @@ namespace PaperRenderer
 
 		SynchronizationInfo synchronizationInfo = {};
 		synchronizationInfo.queueType = QueueType::TRANSFER;
-		synchronizationInfo.fence = Commands::getUnsignaledFence(rendererPtr);
+		synchronizationInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
 
 		PaperRenderer::CommandBuffer cmdBuffer = buffer->copyFromBufferRanges(vboStaging, { copyRegion }, synchronizationInfo);
 
@@ -193,7 +193,7 @@ namespace PaperRenderer
 		vkDestroyFence(rendererPtr->getDevice()->getDevice(), synchronizationInfo.fence, nullptr);
 
 		std::vector<CommandBuffer> cmdBuffers = { cmdBuffer };
-		PaperRenderer::Commands::freeCommandBuffers(rendererPtr, cmdBuffers);
+		rendererPtr->getDevice()->getCommandsPtr()->freeCommandBuffers(cmdBuffers);
 
 		return buffer;
     }
@@ -232,7 +232,7 @@ namespace PaperRenderer
 
 			SynchronizationInfo synchronizationInfo = {};
 			synchronizationInfo.queueType = QueueType::TRANSFER;
-			synchronizationInfo.fence = Commands::getUnsignaledFence(rendererPtr);
+			synchronizationInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
 
 			PaperRenderer::CommandBuffer cmdBuffer = uniqueGeometryData.uniqueVBO->copyFromBufferRanges(*modelPtr->vbo, { copyRegion }, synchronizationInfo);
 
@@ -241,7 +241,7 @@ namespace PaperRenderer
 			vkDestroyFence(rendererPtr->getDevice()->getDevice(), synchronizationInfo.fence, nullptr);
 
 			std::vector<CommandBuffer> cmdBuffers = { cmdBuffer };
-			PaperRenderer::Commands::freeCommandBuffers(rendererPtr, cmdBuffers);
+			rendererPtr->getDevice()->getCommandsPtr()->freeCommandBuffers(cmdBuffers);
 
 			//create BLAS
 			if(rendererPtr->getDevice()->getRTSupport())

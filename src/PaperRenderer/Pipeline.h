@@ -201,12 +201,9 @@ namespace PaperRenderer
         VkDeferredOperationKHR deferredOperation = VK_NULL_HANDLE;
         RTShaderBindingTableData shaderBindingTableData = {};
         std::vector<char> sbtRawData;
-        static std::list<RTPipeline*> rtPipelines;
+        std::unique_ptr<Buffer> sbtBuffer;
 
-        //SBT allocation and buffer
-        static std::unique_ptr<Buffer> sbtBuffer;
-
-        static void rebuildSBTBuffer(RenderEngine* renderer);
+        void rebuildSBTBuffer(RenderEngine* renderer);
 
     public:
         RTPipeline(const RTPipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties);

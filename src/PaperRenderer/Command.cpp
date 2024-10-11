@@ -9,18 +9,14 @@ namespace PaperRenderer
 {
     //----------CMD BUFFER ALLOCATOR DEFINITIONS----------//
 
-    bool Commands::isInit = false;
-    std::unordered_map<QueueType, QueuesInFamily>* Commands::queuesPtr;
-    std::unordered_map<QueueType, VkCommandPool> Commands::commandPools;
-
     Commands::Commands(RenderEngine* renderer, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr)
-        :rendererPtr(renderer)
+        :rendererPtr(renderer),
+        queuesPtr(queuesPtr),
+        maxThreadCount(std::thread::hardware_concurrency())
     {
         VkSurfaceCapabilitiesKHR capabilities;
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(rendererPtr->getDevice()->getGPU(), rendererPtr->getDevice()->getSurface(), &capabilities);
 
-        this->queuesPtr = queuesPtr;
-        isInit = true;
         createCommandPools();
     }
 
@@ -45,25 +41,18 @@ namespace PaperRenderer
         }
     }
 
-    void Commands::freeCommandBuffers(RenderEngine* renderer, std::vector<CommandBuffer>& commandBuffers)
+    void Commands::freeCommandBuffers(std::vector<CommandBuffer>& commandBuffers)
     {
-        if(isInit)
+        std::unordered_map<QueueType, std::vector<VkCommandBuffer>> sortedCommandBuffers;
+        for(CommandBuffer& cmdBuffer : commandBuffers)
         {
-            std::unordered_map<QueueType, std::vector<VkCommandBuffer>> sortedCommandBuffers;
-            for(CommandBuffer& cmdBuffer : commandBuffers)
-            {
-                sortedCommandBuffers[cmdBuffer.type].push_back(cmdBuffer.buffer);
-            }
-            for(const auto& [type, buffers] : sortedCommandBuffers)
-            {
-                vkFreeCommandBuffers(renderer->getDevice()->getDevice(), commandPools.at(type), buffers.size(), buffers.data());
-            }
-            commandBuffers.clear();
+            sortedCommandBuffers[cmdBuffer.type].push_back(cmdBuffer.buffer);
         }
-        else
+        for(const auto& [type, buffers] : sortedCommandBuffers)
         {
-            throw std::runtime_error("Commands pools not yet initialized");
+            vkFreeCommandBuffers(rendererPtr->getDevice()->getDevice(), commandPools.at(type), buffers.size(), buffers.data());
         }
+        commandBuffers.clear();
     }
 
     void Commands::submitToQueue(const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers)
@@ -187,7 +176,7 @@ namespace PaperRenderer
         lockedQueue->threadLock.unlock();
     }
 
-    VkSemaphore Commands::getSemaphore(RenderEngine* renderer)
+    VkSemaphore Commands::getSemaphore()
     {
         VkSemaphore semaphore;
 
@@ -196,12 +185,12 @@ namespace PaperRenderer
         semaphoreInfo.pNext = NULL;
         semaphoreInfo.flags = 0;
 
-        vkCreateSemaphore(renderer->getDevice()->getDevice(), &semaphoreInfo, nullptr, &semaphore);
+        vkCreateSemaphore(rendererPtr->getDevice()->getDevice(), &semaphoreInfo, nullptr, &semaphore);
 
         return semaphore;
     }
 
-    VkSemaphore Commands::getTimelineSemaphore(RenderEngine* renderer, uint64_t initialValue)
+    VkSemaphore Commands::getTimelineSemaphore(uint64_t initialValue)
     {
         VkSemaphore semaphore;
 
@@ -216,12 +205,12 @@ namespace PaperRenderer
         semaphoreInfo.pNext = &semaphoreTypeInfo;
         semaphoreInfo.flags = 0;
 
-        vkCreateSemaphore(renderer->getDevice()->getDevice(), &semaphoreInfo, nullptr, &semaphore);
+        vkCreateSemaphore(rendererPtr->getDevice()->getDevice(), &semaphoreInfo, nullptr, &semaphore);
 
         return semaphore;
     }
 
-    VkFence Commands::getSignaledFence(RenderEngine* renderer)
+    VkFence Commands::getSignaledFence()
     {
         VkFence fence;
         VkFenceCreateInfo fenceInfo = {};
@@ -229,12 +218,12 @@ namespace PaperRenderer
         fenceInfo.pNext = NULL;
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-        vkCreateFence(renderer->getDevice()->getDevice(), &fenceInfo, nullptr, &fence);
+        vkCreateFence(rendererPtr->getDevice()->getDevice(), &fenceInfo, nullptr, &fence);
 
         return fence;
     }
 
-    VkFence Commands::getUnsignaledFence(RenderEngine* renderer)
+    VkFence Commands::getUnsignaledFence()
     {
         VkFence fence;
         VkFenceCreateInfo fenceInfo = {};
@@ -242,32 +231,23 @@ namespace PaperRenderer
         fenceInfo.pNext = NULL;
         fenceInfo.flags = 0;
 
-        vkCreateFence(renderer->getDevice()->getDevice(), &fenceInfo, nullptr, &fence);
+        vkCreateFence(rendererPtr->getDevice()->getDevice(), &fenceInfo, nullptr, &fence);
 
         return fence;
     }
 
-    VkCommandBuffer Commands::getCommandBuffer(RenderEngine* renderer, QueueType type)
+    VkCommandBuffer Commands::getCommandBuffer(QueueType type)
     {
-        if(isInit)
-        {
-            VkCommandBufferAllocateInfo bufferInfo = {};
-            bufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-            bufferInfo.pNext = NULL;
-            bufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-            bufferInfo.commandBufferCount = 1;
-            bufferInfo.commandPool = commandPools.at(type);
+        VkCommandBufferAllocateInfo bufferInfo = {};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        bufferInfo.pNext = NULL;
+        bufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        bufferInfo.commandBufferCount = 1;
+        bufferInfo.commandPool = commandPools.at(type);
 
-            VkCommandBuffer returnBuffer;
-            VkResult result = vkAllocateCommandBuffers(renderer->getDevice()->getDevice(), &bufferInfo, &returnBuffer);
-            
-            return returnBuffer;
-        }
-        else
-        {
-            throw std::runtime_error("Command pools not yet initialized");
-
-            return VK_NULL_HANDLE;
-        }
+        VkCommandBuffer returnBuffer;
+        VkResult result = vkAllocateCommandBuffers(rendererPtr->getDevice()->getDevice(), &bufferInfo, &returnBuffer);
+        
+        return returnBuffer;
     }
 }

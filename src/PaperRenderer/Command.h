@@ -74,27 +74,27 @@ namespace PaperRenderer
     class Commands
     {
     private:
-        class RenderEngine* rendererPtr;
 
-        static std::unordered_map<QueueType, QueuesInFamily>* queuesPtr;
-        static std::unordered_map<QueueType, VkCommandPool> commandPools;
+        std::unordered_map<QueueType, QueuesInFamily>* queuesPtr;
+        std::unordered_map<QueueType, VkCommandPool> commandPools;
+        const uint32_t maxThreadCount;
 
         void createCommandPools();
 
-        static bool isInit;
+        class RenderEngine* rendererPtr;
         
     public:
         Commands(class RenderEngine* renderer, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr);
         ~Commands();
         Commands(const Commands&) = delete;
 
-        static void freeCommandBuffers(class RenderEngine* renderer, std::vector<CommandBuffer>& commandBuffers);
-        static void submitToQueue(const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers);
+        void freeCommandBuffers(std::vector<CommandBuffer>& commandBuffers);
+        void submitToQueue(const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers);
 
-        static VkSemaphore getSemaphore(class RenderEngine* renderer);
-        static VkSemaphore getTimelineSemaphore(class RenderEngine* renderer, uint64_t initialValue);
-        static VkFence getSignaledFence(class RenderEngine* renderer);
-        static VkFence getUnsignaledFence(class RenderEngine* renderer);
-        static VkCommandBuffer getCommandBuffer(class RenderEngine* renderer, QueueType type);
+        VkSemaphore getSemaphore();
+        VkSemaphore getTimelineSemaphore(uint64_t initialValue);
+        VkFence getSignaledFence();
+        VkFence getUnsignaledFence();
+        VkCommandBuffer getCommandBuffer(QueueType type);
     };
 }

@@ -98,7 +98,7 @@ namespace PaperRenderer
 
     CommandBuffer Buffer::copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
     {
-        VkCommandBuffer transferBuffer = Commands::getCommandBuffer(rendererPtr, QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
+        VkCommandBuffer transferBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -113,7 +113,7 @@ namespace PaperRenderer
             transferBuffer
         };
 
-        Commands::submitToQueue(synchronizationInfo, commandBuffers);
+        rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(synchronizationInfo, commandBuffers);
         
         return { transferBuffer, TRANSFER };
     }
@@ -217,7 +217,7 @@ namespace PaperRenderer
             if(!buffer->isWritable())
             {
                 //start command buffer
-                cmdBuffer = Commands::getCommandBuffer(rendererPtr, TRANSFER);
+                cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(TRANSFER);
 
                 VkCommandBufferBeginInfo beginInfo = {};
                 beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -327,8 +327,8 @@ namespace PaperRenderer
                 //submit
                 SynchronizationInfo syncInfo = {};
                 syncInfo.queueType = TRANSFER;
-                syncInfo.fence = Commands::getUnsignaledFence(rendererPtr);
-                Commands::submitToQueue(syncInfo, { cmdBuffer });
+                syncInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
+                rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(syncInfo, { cmdBuffer });
 
                 rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
 
@@ -428,8 +428,8 @@ namespace PaperRenderer
     void Image::setImageData(const Buffer &imageStagingBuffer)
     {
         //get synchronization stuff
-        VkSemaphore copySemaphore = Commands::getSemaphore(rendererPtr);
-        VkFence blitFence = Commands::getUnsignaledFence(rendererPtr);
+        VkSemaphore copySemaphore = rendererPtr->getDevice()->getCommandsPtr()->getSemaphore();
+        VkFence blitFence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
 
         //copy staging buffer into image
         SynchronizationInfo copySynchronizationInfo = {
@@ -459,7 +459,7 @@ namespace PaperRenderer
         vkDestroyFence(rendererPtr->getDevice()->getDevice(), blitSynchronization.fence, nullptr);
 
         //destroy old command buffers
-        Commands::freeCommandBuffers(rendererPtr, creationBuffers);
+        rendererPtr->getDevice()->getCommandsPtr()->freeCommandBuffers(creationBuffers);
         creationBuffers.clear();
     }
 
@@ -503,7 +503,7 @@ namespace PaperRenderer
 
     CommandBuffer Image::copyBufferToImage(VkBuffer src, VkImage dst, const SynchronizationInfo& synchronizationInfo)
     {
-        VkCommandBuffer transferBuffer = Commands::getCommandBuffer(rendererPtr, QueueType::TRANSFER);
+        VkCommandBuffer transferBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(QueueType::TRANSFER);
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -567,7 +567,7 @@ namespace PaperRenderer
 
         vkEndCommandBuffer(transferBuffer);
 
-        Commands::submitToQueue(synchronizationInfo, { transferBuffer });
+        rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(synchronizationInfo, { transferBuffer });
 
         return { transferBuffer, TRANSFER };
     }
@@ -575,7 +575,7 @@ namespace PaperRenderer
     CommandBuffer Image::generateMipmaps(const SynchronizationInfo& synchronizationInfo)
     {
         //command buffer
-        VkCommandBuffer blitBuffer = Commands::getCommandBuffer(rendererPtr, QueueType::GRAPHICS);
+        VkCommandBuffer blitBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(QueueType::GRAPHICS);
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -760,7 +760,7 @@ namespace PaperRenderer
         
         vkEndCommandBuffer(blitBuffer);
 
-        Commands::submitToQueue(synchronizationInfo, { blitBuffer });
+        rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(synchronizationInfo, { blitBuffer });
 
         return { blitBuffer, synchronizationInfo.queueType };
     }

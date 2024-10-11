@@ -220,10 +220,10 @@ namespace PaperRenderer
 
                 SynchronizationInfo syncInfo = {};
                 syncInfo.queueType = TRANSFER;
-                syncInfo.fence = Commands::getUnsignaledFence(rendererPtr);
+                syncInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
 
                 //start command buffer
-                VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr, syncInfo.queueType);
+                VkCommandBuffer cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(syncInfo.queueType);
 
                 VkCommandBufferBeginInfo beginInfo = {};
                 beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -235,7 +235,7 @@ namespace PaperRenderer
                 vkEndCommandBuffer(cmdBuffer);
 
                 //submit
-                Commands::submitToQueue(syncInfo, { cmdBuffer });
+                rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(syncInfo, { cmdBuffer });
 
                 rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
 
@@ -331,7 +331,7 @@ namespace PaperRenderer
     AccelerationStructureBuilder::AccelerationStructureBuilder(RenderEngine *renderer)
         :rendererPtr(renderer)
     {
-        asBuildSemaphore = Commands::getSemaphore(rendererPtr);
+        asBuildSemaphore = rendererPtr->getDevice()->getCommandsPtr()->getTimelineSemaphore(finalSemaphoreValue);
     }
 
     AccelerationStructureBuilder::~AccelerationStructureBuilder()
@@ -603,7 +603,7 @@ namespace PaperRenderer
         std::queue<PreCompactBuffer> preCompactBuffers;
 
         //start command buffer
-        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr, COMPUTE);
+        VkCommandBuffer cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(COMPUTE);
 
         VkCommandBufferBeginInfo cmdBufferInfo = {};
         cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -750,7 +750,8 @@ namespace PaperRenderer
 
         if(queryPool)
         {
-            buildSyncInfo.binarySignalPairs = { { asBuildSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR } };
+            buildSyncInfo.timelineSignalPairs = { { asBuildSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue + 1 } };
+            finalSemaphoreValue++;
         }
         else
         {
@@ -759,7 +760,7 @@ namespace PaperRenderer
             buildSyncInfo.fence = syncInfo.fence;
         }
 
-        Commands::submitToQueue(buildSyncInfo, { cmdBuffer });
+        rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(buildSyncInfo, { cmdBuffer });
 
         rendererPtr->recycleCommandBuffer({ cmdBuffer, COMPUTE });
 
@@ -768,7 +769,7 @@ namespace PaperRenderer
         if(queryPool)
         {
             //start new command buffer
-            cmdBuffer = Commands::getCommandBuffer(rendererPtr, COMPUTE);
+            cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(COMPUTE);
 
             cmdBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             cmdBufferInfo.pNext = NULL;
@@ -849,12 +850,12 @@ namespace PaperRenderer
             //submit
             SynchronizationInfo compactionSyncInfo = {};
             compactionSyncInfo.queueType = COMPUTE;
-            compactionSyncInfo.binaryWaitPairs = { { asBuildSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR } };
+            compactionSyncInfo.timelineWaitPairs = { { asBuildSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue} };
             compactionSyncInfo.binarySignalPairs = syncInfo.binarySignalPairs;
             compactionSyncInfo.binaryWaitPairs = syncInfo.binaryWaitPairs;
             compactionSyncInfo.fence = syncInfo.fence;
 
-            Commands::submitToQueue(compactionSyncInfo, { cmdBuffer });
+            rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(compactionSyncInfo, { cmdBuffer });
 
             rendererPtr->recycleCommandBuffer({ cmdBuffer, COMPUTE });
 

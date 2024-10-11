@@ -234,9 +234,6 @@ namespace PaperRenderer
 
     //----------RT PIPELINE DEFINITIONS----------//
 
-    std::list<RTPipeline*> RTPipeline::rtPipelines;
-    std::unique_ptr<Buffer> RTPipeline::sbtBuffer;
-
     RTPipeline::RTPipeline(const RTPipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties)
         :Pipeline(creationInfo),
         pipelineProperties(pipelineProperties)
@@ -351,9 +348,6 @@ namespace PaperRenderer
             throw std::runtime_error("Failed to create a ray tracing pipeline");
         }
 
-        //add reference
-        rtPipelines.push_back(this);
-
         //wait for deferred operation 
         while(!isBuilt()) {}
 
@@ -414,76 +408,31 @@ namespace PaperRenderer
 
     RTPipeline::~RTPipeline()
     {
-        rtPipelines.remove(this);
-        if(rtPipelines.size())
-        {
-            rebuildSBTBuffer(rendererPtr);
-        }
-        else
-        {
-            sbtBuffer.reset();
-        }
-       
     }
 
     void RTPipeline::rebuildSBTBuffer(RenderEngine* renderer)
     {
-        //get size and data
-        VkDeviceSize newSize = 0;
-        std::vector<char> allRawData;
-        for(RTPipeline* pipeline : rtPipelines)
-        {
-            newSize += pipeline->sbtRawData.size();
-            allRawData.insert(allRawData.end(), pipeline->sbtRawData.begin(), pipeline->sbtRawData.end());
-        }
-
         //create buffers
         BufferInfo deviceBufferInfo = {};
         deviceBufferInfo.allocationFlags = 0;
-        deviceBufferInfo.size = newSize;
+        deviceBufferInfo.size = sbtRawData.size();
         deviceBufferInfo.usageFlags = VK_BUFFER_USAGE_2_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR;
         sbtBuffer = std::make_unique<Buffer>(renderer, deviceBufferInfo);
-        
-        BufferInfo stagingBufferInfo = {};
-        stagingBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-        stagingBufferInfo.size = newSize;
-        stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        Buffer stagingBuffer(renderer, stagingBufferInfo);
 
-        //copy data
-        BufferWrite writeInfo = {};
-        writeInfo.data = allRawData.data();
-        writeInfo.size = allRawData.size();
-        writeInfo.offset = 0;
-        stagingBuffer.writeToBuffer({ writeInfo });
-
-        VkBufferCopy copyRegion = {};
-        copyRegion.dstOffset = 0;
-        copyRegion.srcOffset = 0;
-        copyRegion.size = allRawData.size();
-
-        SynchronizationInfo syncInfo = {};
-        syncInfo.queueType = QueueType::TRANSFER;
-        syncInfo.fence = Commands::getUnsignaledFence(renderer);
-
-        renderer->recycleCommandBuffer(sbtBuffer->copyFromBufferRanges(stagingBuffer, { copyRegion }, syncInfo));
+        //queue data transfer
+        rendererPtr->getEngineStagingBuffer()->queueDataTransfers(*sbtBuffer, 0, sbtRawData);
 
         //set SBT addresses
         VkDeviceAddress dynamicOffset = sbtBuffer->getBufferDeviceAddress();
-        for(RTPipeline* pipeline : rtPipelines)
-        {
-            pipeline->shaderBindingTableData.raygenShaderBindingTable.deviceAddress = dynamicOffset;
-            dynamicOffset += pipeline->shaderBindingTableData.raygenShaderBindingTable.size;
-            pipeline->shaderBindingTableData.missShaderBindingTable.deviceAddress = dynamicOffset;
-            dynamicOffset += pipeline->shaderBindingTableData.missShaderBindingTable.size;
-            pipeline->shaderBindingTableData.hitShaderBindingTable.deviceAddress = dynamicOffset;
-            dynamicOffset += pipeline->shaderBindingTableData.hitShaderBindingTable.size;
-            pipeline->shaderBindingTableData.callableShaderBindingTable.deviceAddress = dynamicOffset;
-            dynamicOffset += pipeline->shaderBindingTableData.callableShaderBindingTable.size;
-        }
 
-        vkWaitForFences(renderer->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
-        vkDestroyFence(renderer->getDevice()->getDevice(), syncInfo.fence, nullptr);
+        shaderBindingTableData.raygenShaderBindingTable.deviceAddress = dynamicOffset;
+        dynamicOffset += shaderBindingTableData.raygenShaderBindingTable.size;
+        shaderBindingTableData.missShaderBindingTable.deviceAddress = dynamicOffset;
+        dynamicOffset += shaderBindingTableData.missShaderBindingTable.size;
+        shaderBindingTableData.hitShaderBindingTable.deviceAddress = dynamicOffset;
+        dynamicOffset += shaderBindingTableData.hitShaderBindingTable.size;
+        shaderBindingTableData.callableShaderBindingTable.deviceAddress = dynamicOffset;
+        dynamicOffset += shaderBindingTableData.callableShaderBindingTable.size;
     }
 
     bool RTPipeline::isBuilt()

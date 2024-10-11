@@ -40,7 +40,7 @@ namespace PaperRenderer
         commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         commandInfo.pInheritanceInfo = NULL;
 
-        VkCommandBuffer cmdBuffer = Commands::getCommandBuffer(rendererPtr, QueueType::COMPUTE);
+        VkCommandBuffer cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(QueueType::COMPUTE);
         vkBeginCommandBuffer(cmdBuffer, &commandInfo);
 
         //bind RT pipeline
@@ -90,7 +90,7 @@ namespace PaperRenderer
         vkEndCommandBuffer(cmdBuffer);
         
         //submit
-        Commands::submitToQueue(syncInfo, { cmdBuffer });
+        rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(syncInfo, { cmdBuffer });
 
         CommandBuffer commandBuffer = { cmdBuffer, syncInfo.queueType };
         rendererPtr->recycleCommandBuffer(commandBuffer);

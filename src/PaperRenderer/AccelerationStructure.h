@@ -128,6 +128,7 @@ namespace PaperRenderer
 
         //build semaphore
         VkSemaphore asBuildSemaphore = VK_NULL_HANDLE;
+        uint64_t finalSemaphoreValue = 0;
         
         //acceleration structure build data
         struct AsBuildData

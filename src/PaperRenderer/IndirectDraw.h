@@ -33,9 +33,8 @@ namespace PaperRenderer
         };
 
         //buffers and allocation
-        static std::unique_ptr<Buffer> modelMatricesBuffer;
-        static std::unique_ptr<Buffer> drawCommandsBuffer;
-        static std::list<CommonMeshGroup*> commonMeshGroups;
+        std::unique_ptr<Buffer> modelMatricesBuffer;
+        std::unique_ptr<Buffer> drawCommandsBuffer;
 
         struct BufferSizeRequirements
         {
@@ -51,8 +50,8 @@ namespace PaperRenderer
 
         uint32_t drawCommandCount = 0;
         float instanceCountOverhead = 1.3;
-        static std::vector<class ModelInstance*> rebuildBuffers(class RenderEngine* renderer);
-        static bool rebuild;
+        std::vector<class ModelInstance*> rebuildBuffer();
+        bool rebuild;
         BufferSizeRequirements getBuffersRequirements(const BufferSizeRequirements currentSizes);
         void setDrawCommandData(const Buffer& stagingBuffer) const;
 
@@ -68,7 +67,7 @@ namespace PaperRenderer
         ~CommonMeshGroup();
         CommonMeshGroup(const CommonMeshGroup&) = delete;
 
-        static std::vector<class ModelInstance*> verifyBuffersSize(RenderEngine* renderer);
+        std::vector<class ModelInstance*> verifyBufferSize();
 
         void addInstanceMeshes(class ModelInstance* instance, const std::vector<struct LODMesh const*>& instanceMeshesData);
         void removeInstanceMeshes(class ModelInstance* instance);
@@ -76,8 +75,8 @@ namespace PaperRenderer
         void draw(const VkCommandBuffer& cmdBuffer, const class RasterPipeline& pipeline);
         void clearDrawCommand(const VkCommandBuffer& cmdBuffer);
 
-        static Buffer const* getModelMatricesBuffer() { return modelMatricesBuffer.get(); }
-        static Buffer const* getDrawCommandsBuffer() { return drawCommandsBuffer.get(); }
+        Buffer const* getModelMatricesBuffer() { return modelMatricesBuffer.get(); }
+        Buffer const* getDrawCommandsBuffer() { return drawCommandsBuffer.get(); }
         const std::unordered_map<struct LODMesh const*, MeshInstancesData>& getMeshesData() const { return meshesData; }
     };
 }

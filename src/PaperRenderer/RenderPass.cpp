@@ -67,6 +67,8 @@ namespace PaperRenderer
 
     void RasterPreprocessPipeline::submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass)
     {
+        throw std::runtime_error("todo fix binding 3 and 4 for raster");
+
         UBOInputData uboInputData = {};
         uboInputData.camPos = glm::vec4(renderPass.cameraPtr->getTranslation().position, 1.0f);
         uboInputData.projection = renderPass.cameraPtr->getProjection();
@@ -118,7 +120,7 @@ namespace PaperRenderer
 
         //set0 - binding 3: instance counts
         VkDescriptorBufferInfo bufferWrite3Info = {};
-        bufferWrite3Info.buffer = CommonMeshGroup::getDrawCommandsBuffer()->getBuffer();
+        //bufferWrite3Info.buffer = CommonMeshGroup::getDrawCommandsBuffer()->getBuffer();
         bufferWrite3Info.offset = 0;
         bufferWrite3Info.range = VK_WHOLE_SIZE;
 
@@ -129,7 +131,7 @@ namespace PaperRenderer
 
         //set0 - binding 4: output objects
         VkDescriptorBufferInfo bufferWrite4Info = {};
-        bufferWrite4Info.buffer = CommonMeshGroup::getModelMatricesBuffer()->getBuffer();
+        //bufferWrite4Info.buffer = CommonMeshGroup::getModelMatricesBuffer()->getBuffer();
         bufferWrite4Info.offset = 0;
         bufferWrite4Info.range = VK_WHOLE_SIZE;
 
@@ -204,7 +206,7 @@ namespace PaperRenderer
             {
                 SynchronizationInfo syncInfo = {};
                 syncInfo.queueType = TRANSFER;
-                syncInfo.fence = Commands::getUnsignaledFence(rendererPtr);
+                syncInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
                 newInstancesBuffer->copyFromBufferRanges(*instancesBuffer, { instancesCopyRegion }, syncInfo);
                 vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
                 vkDestroyFence(rendererPtr->getDevice()->getDevice(), syncInfo.fence, nullptr);
@@ -249,7 +251,7 @@ namespace PaperRenderer
 
             SynchronizationInfo syncInfo = {};
             syncInfo.queueType = TRANSFER;
-            syncInfo.fence = Commands::getUnsignaledFence(rendererPtr);
+            syncInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
             newInstancesDataBuffer->getBuffer()->copyFromBufferRanges(*instancesDataBuffer->getBuffer(), { materialDataCopyRegion }, syncInfo);
 
             vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
@@ -263,7 +265,16 @@ namespace PaperRenderer
     void RenderPass::queueInstanceTransfers()
     {
         //verify mesh group buffers
-        handleCommonMeshGroupResize(CommonMeshGroup::verifyBuffersSize(rendererPtr));
+        for(const auto& [material, materialInstanceNode] : renderTree) //material
+        {
+            for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
+            {
+                if(meshGroups)
+                {
+                    meshGroups->verifyBufferSize();
+                }
+            }
+        }
 
         //check buffer sizes
         if(instancesBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderPassInstances.size() ||
@@ -360,29 +371,6 @@ namespace PaperRenderer
 
     void RenderPass::clearDrawCounts(VkCommandBuffer cmdBuffer)
     {
-        //memory barrier
-        VkBufferMemoryBarrier2 preClearMemBarrier = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .pNext = NULL,
-            .srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-            .srcAccessMask = VK_ACCESS_2_NONE,
-            .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-            .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = CommonMeshGroup::getDrawCommandsBuffer()->getBuffer(),
-            .offset = 0,
-            .size = VK_WHOLE_SIZE
-        };
-
-        VkDependencyInfo preClearDependency = {};
-        preClearDependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-        preClearDependency.pNext = NULL;
-        preClearDependency.bufferMemoryBarrierCount = 1;
-        preClearDependency.pBufferMemoryBarriers = &preClearMemBarrier;
-
-        vkCmdPipelineBarrier2(cmdBuffer, &preClearDependency);
-
         //clear draw counts
         for(const auto& [material, materialInstanceNode] : renderTree) //material
         {
@@ -390,33 +378,34 @@ namespace PaperRenderer
             {
                 if(meshGroups)
                 {
+                    //memory barrier
+                    VkBufferMemoryBarrier2 preClearMemBarrier = {
+                        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                        .pNext = NULL,
+                        .srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+                        .srcAccessMask = VK_ACCESS_2_NONE,
+                        .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                        .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .buffer = meshGroups->getDrawCommandsBuffer()->getBuffer(),
+                        .offset = 0,
+                        .size = VK_WHOLE_SIZE
+                    };
+
+                    VkDependencyInfo preClearDependency = {};
+                    preClearDependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+                    preClearDependency.pNext = NULL;
+                    preClearDependency.bufferMemoryBarrierCount = 1;
+                    preClearDependency.pBufferMemoryBarriers = &preClearMemBarrier;
+
+                    vkCmdPipelineBarrier2(cmdBuffer, &preClearDependency);
+
+                    //clear
                     meshGroups->clearDrawCommand(cmdBuffer);
                 }
             }
         }
-
-        //memory barrier
-        VkBufferMemoryBarrier2 postClearMemBarrier = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .pNext = NULL,
-            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-            .dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = CommonMeshGroup::getDrawCommandsBuffer()->getBuffer(),
-            .offset = 0,
-            .size = VK_WHOLE_SIZE
-        };
-
-        VkDependencyInfo postClearDependency = {};
-        postClearDependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-        postClearDependency.pNext = NULL;
-        postClearDependency.bufferMemoryBarrierCount = 1;
-        postClearDependency.pBufferMemoryBarriers = &postClearMemBarrier;
-
-        vkCmdPipelineBarrier2(cmdBuffer, &postClearDependency);
     }
 
     void RenderPass::render(VkCommandBuffer cmdBuffer, const RenderPassInfo& renderPassInfo)
