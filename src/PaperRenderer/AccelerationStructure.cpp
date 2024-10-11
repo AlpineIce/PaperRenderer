@@ -60,7 +60,7 @@ namespace PaperRenderer
     void TLASInstanceBuildPipeline::submit(VkCommandBuffer cmdBuffer, const TLAS& tlas)
     {
         UBOInputData uboInputData = {};
-        uboInputData.objectCount = tlas.accelerationStructureInstances.size();
+        uboInputData.objectCount = tlas.nextUpdateSize;
 
         BufferWrite write = {};
         write.data = &uboInputData;
@@ -95,7 +95,7 @@ namespace PaperRenderer
         VkDescriptorBufferInfo bufferWrite2Info = {};
         bufferWrite2Info.buffer = tlas.instancesBuffer->getBuffer();
         bufferWrite2Info.offset = 0;
-        bufferWrite2Info.range = tlas.accelerationStructureInstances.size() * sizeof(ModelInstance::AccelerationStructureInstance);
+        bufferWrite2Info.range = tlas.nextUpdateSize * sizeof(ModelInstance::AccelerationStructureInstance);
 
         BuffersDescriptorWrites bufferWrite2 = {};
         bufferWrite2.binding = 2;
@@ -122,7 +122,7 @@ namespace PaperRenderer
         writeDescriptorSet(cmdBuffer, 0);
 
         //dispatch
-        workGroupSizes.x = ((tlas.accelerationStructureInstances.size()) / 256) + 1;
+        workGroupSizes.x = (tlas.nextUpdateSize / 128) + 1;
         dispatch(cmdBuffer);
     }
 
@@ -255,7 +255,11 @@ namespace PaperRenderer
         auto sortedInstances = std::unique(toUpdateInstances.begin(), toUpdateInstances.end());
         toUpdateInstances.erase(sortedInstances, toUpdateInstances.end());
 
+        //set next update size
+        nextUpdateSize = toUpdateInstances.size();
+
         //queue instance data
+        uint32_t instanceIndex = 0;
         for(ModelInstance* instance : toUpdateInstances)
         {
             //skip if instance is NULL
@@ -264,6 +268,7 @@ namespace PaperRenderer
             //write instance data
             ModelInstance::AccelerationStructureInstance instanceShaderData = {};
             instanceShaderData.blasReference = instance->getBLAS()->getAccelerationStructureAddress();
+            instanceShaderData.selfIndex = instance->rendererSelfIndex;
             instanceShaderData.modelInstanceIndex = instance->rendererSelfIndex;
 
             std::vector<char> instanceData(sizeof(ModelInstance::AccelerationStructureInstance));
@@ -277,11 +282,12 @@ namespace PaperRenderer
             memcpy(descriptionData.data(), &descriptionShaderData, descriptionData.size());
             
             //queue data transfers
-            rendererPtr->getEngineStagingBuffer()->queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::AccelerationStructureInstance) * instance->rendererSelfIndex, instanceData);
+            rendererPtr->getEngineStagingBuffer()->queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::AccelerationStructureInstance) * instanceIndex, instanceData);
             rendererPtr->getEngineStagingBuffer()->queueDataTransfers(*instancesBuffer, instanceDescriptionsOffset + sizeof(InstanceDescription) * instance->rendererSelfIndex, descriptionData);
 
-            //remove from deque
             toUpdateInstances.pop_front();
+
+            instanceIndex++;
         }
     }
 
@@ -617,11 +623,11 @@ namespace PaperRenderer
         std::vector<AsBuildData>& buildDataRef = (type & VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR ? buildData.blasDatas : buildData.tlasDatas);
         for(AsBuildData& data : buildDataRef)
         {
-            //build TLAS instances if type is used
-            if(type == VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR)
+            //build TLAS instances if type is used and needed 
+            if((type == VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR) && ((TLAS*)data.as)->nextUpdateSize)
             {
-                //build TLAS instance data
                 rendererPtr->tlasInstanceBuildPipeline.submit(cmdBuffer, *((TLAS*)data.as));
+                //((TLAS*)data.as)->toUpdateInstances.clear();
 
                 //TLAS instance data memory barrier
                 VkBufferMemoryBarrier2 tlasInstanceMemBarrier = {
@@ -634,8 +640,8 @@ namespace PaperRenderer
                     .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                     .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                     .buffer = ((TLAS*)data.as)->instancesBuffer->getBuffer(),
-                    .offset = 0,
-                    .size = VK_WHOLE_SIZE
+                    .offset = ((TLAS*)data.as)->tlInstancesOffset,
+                    .size = ((TLAS*)data.as)->instancesBuffer->getSize() - ((TLAS*)data.as)->tlInstancesOffset
                 };
 
                 VkDependencyInfo tlasInstanceDependencyInfo = {};

@@ -78,6 +78,7 @@ namespace PaperRenderer
 
         VkDeviceSize instanceDescriptionsOffset = 0;
         VkDeviceSize tlInstancesOffset = 0;
+        uint32_t nextUpdateSize = 0;
 
         const float instancesOverhead = 1.5;
 

@@ -2,7 +2,7 @@
 #extension GL_GOOGLE_include_directive : require
 #include "Common.glsl"
 
-layout (local_size_x = 256) in;
+layout (local_size_x = 128) in;
 
 //----------UNIFORM INPUT DATA----------//
 
@@ -16,6 +16,7 @@ layout(std430, set = 0, binding = 0) uniform InputData
 struct InputASInstance
 {
     uint64_t blasReference;
+    uint selfIndex;
     uint modelInstanceIndex;
     uint mask;
     uint recordOffset;
@@ -42,7 +43,7 @@ layout(std430, set = 0, binding = 3) writeonly buffer ASInstances
     AccelerationStructureInstance objects[];
 } asInstances; 
 
-AccelerationStructureInstance buildASInstance(InputASInstance inputASInstance, ModelInstance modelInstance, uint customIndex)
+AccelerationStructureInstance buildASInstance(InputASInstance inputASInstance, ModelInstance modelInstance)
 {
     const mat4 modelMatrix = getModelMatrix(modelInstance);
 
@@ -58,7 +59,7 @@ AccelerationStructureInstance buildASInstance(InputASInstance inputASInstance, M
     const uint bitmask = 0xFF000000;
 
     //custom index and mask
-    uint instanceCustomIndex = customIndex;    // value to merge in non-masked bits
+    uint instanceCustomIndex = inputASInstance.selfIndex;    // value to merge in non-masked bits
     uint mask = inputASInstance.mask;    // value to merge in masked bits
     uint instanceCustomIndexAndMask = instanceCustomIndex ^ ((instanceCustomIndex ^ mask) & bitmask);
 
@@ -85,6 +86,6 @@ void main()
     }
     const InputASInstance inputASInstance = inputASInstances.instances[gID];
     const ModelInstance modelInstance = inputInstances.modelInstances[inputASInstance.modelInstanceIndex];
-
-    asInstances.objects[gID] = buildASInstance(inputASInstance, modelInstance, gID);
+    
+    asInstances.objects[inputASInstance.modelInstanceIndex] = buildASInstance(inputASInstance, modelInstance);
 }
