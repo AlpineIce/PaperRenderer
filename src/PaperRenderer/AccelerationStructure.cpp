@@ -624,34 +624,41 @@ namespace PaperRenderer
         for(AsBuildData& data : buildDataRef)
         {
             //build TLAS instances if type is used and needed 
-            if((type == VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR) && ((TLAS*)data.as)->nextUpdateSize)
+            if((type == VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR))
             {
-                rendererPtr->tlasInstanceBuildPipeline.submit(cmdBuffer, *((TLAS*)data.as));
-                //((TLAS*)data.as)->toUpdateInstances.clear();
+                //only rebuild/update a TLAS if any instances were updated
+                if(((TLAS*)data.as)->nextUpdateSize)
+                {
+                    rendererPtr->tlasInstanceBuildPipeline.submit(cmdBuffer, *((TLAS*)data.as));
 
-                //TLAS instance data memory barrier
-                VkBufferMemoryBarrier2 tlasInstanceMemBarrier = {
-                    .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                    .pNext = NULL,
-                    .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                    .srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
-                    .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
-                    .dstAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
-                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                    .buffer = ((TLAS*)data.as)->instancesBuffer->getBuffer(),
-                    .offset = ((TLAS*)data.as)->tlInstancesOffset,
-                    .size = ((TLAS*)data.as)->instancesBuffer->getSize() - ((TLAS*)data.as)->tlInstancesOffset
-                };
+                    //TLAS instance data memory barrier
+                    VkBufferMemoryBarrier2 tlasInstanceMemBarrier = {
+                        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                        .pNext = NULL,
+                        .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                        .srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
+                        .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                        .dstAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .buffer = ((TLAS*)data.as)->instancesBuffer->getBuffer(),
+                        .offset = ((TLAS*)data.as)->tlInstancesOffset,
+                        .size = ((TLAS*)data.as)->instancesBuffer->getSize() - ((TLAS*)data.as)->tlInstancesOffset
+                    };
 
-                VkDependencyInfo tlasInstanceDependencyInfo = {};
-                tlasInstanceDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-                tlasInstanceDependencyInfo.pNext = NULL;
-                tlasInstanceDependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-                tlasInstanceDependencyInfo.bufferMemoryBarrierCount = 1;
-                tlasInstanceDependencyInfo.pBufferMemoryBarriers = &tlasInstanceMemBarrier;
+                    VkDependencyInfo tlasInstanceDependencyInfo = {};
+                    tlasInstanceDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+                    tlasInstanceDependencyInfo.pNext = NULL;
+                    tlasInstanceDependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+                    tlasInstanceDependencyInfo.bufferMemoryBarrierCount = 1;
+                    tlasInstanceDependencyInfo.pBufferMemoryBarriers = &tlasInstanceMemBarrier;
 
-                vkCmdPipelineBarrier2(cmdBuffer, &tlasInstanceDependencyInfo);
+                    vkCmdPipelineBarrier2(cmdBuffer, &tlasInstanceDependencyInfo);
+                }
+                else
+                {
+                    continue;
+                }
             }
 
             //destroy old structure if being built and is valid
