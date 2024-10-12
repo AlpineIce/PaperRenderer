@@ -142,43 +142,47 @@ namespace PaperRenderer
             }
         }
 
-        tlasReferences.resize(descriptorWritesInfo.accelerationStructureWrites.size());
+        tlasReferences.reserve(descriptorWritesInfo.accelerationStructureWrites.size());
         tlasWriteInfos.reserve(descriptorWritesInfo.accelerationStructureWrites.size());
-        uint32_t asIndex = 0;
         for(const AccelerationStructureDescriptorWrites& write : descriptorWritesInfo.accelerationStructureWrites)
         {
             if(write.accelerationStructures.size())
             {
                 //get TLAS references
-                tlasReferences.at(asIndex).reserve(write.accelerationStructures.size());
+                tlasReferences.emplace_back();
+                tlasReferences.rbegin()->reserve(write.accelerationStructures.size());
                 for(TLAS const* accelerationStructure : write.accelerationStructures)
                 {
-                    tlasReferences.at(asIndex).push_back(accelerationStructure->getAccelerationStructure());
+                    if(accelerationStructure->getAccelerationStructure())
+                    {
+                        tlasReferences.rbegin()->push_back(accelerationStructure->getAccelerationStructure());
+                    }
                 }
 
                 //descriptor write
-                tlasWriteInfos.push_back({
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
-                    .pNext = NULL,
-                    .accelerationStructureCount = (uint32_t)tlasReferences.at(asIndex).size(),
-                    .pAccelerationStructures = tlasReferences.at(asIndex).data()
-                });
+                if(tlasReferences.rbegin()->size())
+                {
+                    tlasWriteInfos.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
+                        .pNext = NULL,
+                        .accelerationStructureCount = (uint32_t)tlasReferences.rbegin()->size(),
+                        .pAccelerationStructures = tlasReferences.rbegin()->data()
+                    });
 
-                VkWriteDescriptorSet writeInfo = {};
-                writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                writeInfo.pNext = &tlasWriteInfos.at(asIndex);
-                writeInfo.dstSet = set;
-                writeInfo.dstBinding = write.binding;
-                writeInfo.dstArrayElement = 0;
-                writeInfo.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-                writeInfo.descriptorCount = descriptorWritesInfo.accelerationStructureWrites.size();
-                writeInfo.pBufferInfo = NULL;
-                writeInfo.pImageInfo = NULL;
-                writeInfo.pTexelBufferView = NULL;
+                    VkWriteDescriptorSet writeInfo = {};
+                    writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                    writeInfo.pNext = &(*tlasWriteInfos.rbegin());
+                    writeInfo.dstSet = set;
+                    writeInfo.dstBinding = write.binding;
+                    writeInfo.dstArrayElement = 0;
+                    writeInfo.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+                    writeInfo.descriptorCount = tlasReferences.size();
+                    writeInfo.pBufferInfo = NULL;
+                    writeInfo.pImageInfo = NULL;
+                    writeInfo.pTexelBufferView = NULL;
 
-                descriptorWrites.push_back(writeInfo);
-
-                asIndex++;
+                    descriptorWrites.push_back(writeInfo);
+                }
             }
         }
         

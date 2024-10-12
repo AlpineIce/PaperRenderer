@@ -255,15 +255,23 @@ namespace PaperRenderer
         auto sortedInstances = std::unique(toUpdateInstances.begin(), toUpdateInstances.end());
         toUpdateInstances.erase(sortedInstances, toUpdateInstances.end());
 
-        //set next update size
-        nextUpdateSize = toUpdateInstances.size();
+        //set next update size to 0
+        nextUpdateSize = 0;
 
         //queue instance data
         uint32_t instanceIndex = 0;
         for(ModelInstance* instance : toUpdateInstances)
         {
-            //skip if instance is NULL
-            if(!instance || !instance->getBLAS()->getAccelerationStructureAddress()) continue;
+            //skip if instance is NULL or has invalid BLAS
+            if(!instance || !instance->getBLAS()->getAccelerationStructureAddress())
+            {
+                continue;
+            }
+            else
+            {
+                //increment update size if not NULL and has valid BLAS
+                nextUpdateSize++;
+            }
 
             //write instance data
             ModelInstance::AccelerationStructureInstance instanceShaderData = {};
@@ -289,6 +297,7 @@ namespace PaperRenderer
 
             instanceIndex++;
         }
+        int a = 0;
     }
 
     void TLAS::addInstance(ModelInstance *instance)
@@ -624,7 +633,7 @@ namespace PaperRenderer
         for(AsBuildData& data : buildDataRef)
         {
             //build TLAS instances if type is used and needed 
-            if((type == VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR))
+            if(type == VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR)
             {
                 //only rebuild/update a TLAS if any instances were updated
                 if(((TLAS*)data.as)->nextUpdateSize)

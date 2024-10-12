@@ -32,6 +32,8 @@ namespace PaperRenderer
 
         class RenderEngine* rendererPtr;
 
+        //TODO IMPLEMENT A CHIT SHADER AND HAVE RT PIPELINE RETURN THE SBT OFFSET WHEN ADDED TO IT.
+
     public:
         Material(class RenderEngine* renderer, std::string materialName);
         virtual ~Material();
