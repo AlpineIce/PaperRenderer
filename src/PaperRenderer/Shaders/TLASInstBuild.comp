@@ -17,6 +17,7 @@ struct InputASInstance
 {
     uint64_t blasReference;
     uint selfIndex;
+    uint customIndex;
     uint modelInstanceIndex;
     uint mask;
     uint recordOffset;
@@ -59,7 +60,7 @@ AccelerationStructureInstance buildASInstance(InputASInstance inputASInstance, M
     const uint bitmask = 0xFF000000;
 
     //custom index and mask
-    uint instanceCustomIndex = inputASInstance.selfIndex;    // value to merge in non-masked bits
+    uint instanceCustomIndex = inputASInstance.customIndex;    // value to merge in non-masked bits
     uint mask = inputASInstance.mask;    // value to merge in masked bits
     uint instanceCustomIndexAndMask = instanceCustomIndex ^ ((instanceCustomIndex ^ mask) & bitmask);
 

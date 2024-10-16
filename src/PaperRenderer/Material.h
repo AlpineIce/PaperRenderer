@@ -6,7 +6,8 @@
 
 namespace PaperRenderer
 {
-    //material base
+    //----------RASTER MATERIAL ABSTRACTIONS----------//
+
     class Material
     {
     private:
@@ -62,5 +63,24 @@ namespace PaperRenderer
         virtual void bind(VkCommandBuffer cmdBuffer);
 
         Material const* getBaseMaterialPtr() const { return baseMaterial; }
+    };
+
+    //----------RT MATERIAL ABSTRACTIONS----------//
+
+    class RTMaterial
+    {
+    private:
+        const ShaderPair chitShader;
+        const ShaderPair ahitShader; //optional
+        const ShaderPair intShader; //optional
+
+        class RenderEngine* rendererPtr;
+
+    public:
+        //closest hit shader is required, but any hit and intersection shaders are optional
+        RTMaterial(class RenderEngine* renderer, const ShaderPair& chitShader, ShaderPair const* ahitShader, ShaderPair const* intShader);
+        ~RTMaterial();
+
+        const ShaderPair& getClosestHitShader();
     };
 }

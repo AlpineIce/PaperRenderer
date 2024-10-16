@@ -330,9 +330,12 @@ namespace PaperRenderer
 
     void ModelInstance::setTransformation(const ModelTransformation &newTransformation)
     {
-
 		this->transform = newTransformation;
 		rendererPtr->toUpdateModelInstances.push_front(this);
+		for(auto& [tlas, index] : accelerationStructureSelfReferences)
+		{
+			((TLAS*)tlas)->toUpdateInstances.push_front(this);
+		}
     }
 
     BLAS const* ModelInstance::getBLAS() const

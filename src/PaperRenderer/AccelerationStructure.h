@@ -94,6 +94,7 @@ namespace PaperRenderer
         void queueInstanceTransfers();
 
         friend RenderEngine;
+        friend class ModelInstance;
         friend class AccelerationStructureBuilder;
         friend TLASInstanceBuildPipeline;
     public:
