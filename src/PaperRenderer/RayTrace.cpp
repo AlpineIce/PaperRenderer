@@ -10,16 +10,16 @@ namespace PaperRenderer
         RenderEngine* renderer,
         TLAS* accelerationStructure,
         const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets,
-        const ShaderPair& raygenShaderPair,
-        const std::vector<std::vector<ShaderPair>>& shaderGroups,
+        const std::vector<class RTMaterial*>& materials,
+        const std::unordered_map<VkShaderStageFlagBits, const std::unique_ptr<Shader>&>& generalShaders,
         std::vector<VkPushConstantRange> pcRanges
     )
         :rendererPtr(renderer),
         accelerationStructurePtr(accelerationStructure)
     {
         RTPipelineBuildInfo pipelineBuildInfo = {
-            .rgenShader = raygenShaderPair,
-            .shaderGroups = shaderGroups,
+            .materials = materials,
+            .generalShaders = generalShaders,
             .descriptors = descriptorSets,
             .pcRanges = pcRanges
         };

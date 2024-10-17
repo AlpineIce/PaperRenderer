@@ -92,4 +92,27 @@ namespace PaperRenderer
             DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
         }
     }
+
+    //----------RT MATERIAL DEFINITIONS----------//
+
+    PaperRenderer::RTMaterial::RTMaterial(RenderEngine* renderer, const ShaderHitGroup& hitGroup)
+        :rendererPtr(renderer)
+    {
+        //chit is guaranteed to be valid
+        shaderHitGroup.emplace(std::make_pair(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, std::make_unique<Shader>(rendererPtr->getDevice(), hitGroup.chitShaderDir)));
+
+        //ahit and int are optional
+        if(hitGroup.ahitShaderDir.size())
+        {
+            shaderHitGroup.emplace(std::make_pair(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, std::make_unique<Shader>(rendererPtr->getDevice(), hitGroup.ahitShaderDir)));
+        }
+        if(hitGroup.intShaderDir.size())
+        {
+            shaderHitGroup.emplace(std::make_pair(VK_SHADER_STAGE_INTERSECTION_BIT_KHR, std::make_unique<Shader>(rendererPtr->getDevice(), hitGroup.intShaderDir)));
+        }
+    }
+
+    PaperRenderer::RTMaterial::~RTMaterial()
+    {
+    }
 }

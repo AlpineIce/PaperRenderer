@@ -67,20 +67,26 @@ namespace PaperRenderer
 
     //----------RT MATERIAL ABSTRACTIONS----------//
 
+    struct ShaderHitGroup
+    {
+        std::string chitShaderDir; //optional if int shader is valid, leave empty and shader will be ignored
+        std::string ahitShaderDir; //optional, leave empty and shader will be ignored
+        std::string intShaderDir; //optional if chit shader is valid, leave empty and shader will be ignored
+    };
+
     class RTMaterial
     {
     private:
-        const ShaderPair chitShader;
-        const ShaderPair ahitShader; //optional
-        const ShaderPair intShader; //optional
+        std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaderHitGroup;
+        std::unordered_map<RTPipeline const*, uint32_t> sbtOffsets;
 
         class RenderEngine* rendererPtr;
 
     public:
         //closest hit shader is required, but any hit and intersection shaders are optional
-        RTMaterial(class RenderEngine* renderer, const ShaderPair& chitShader, ShaderPair const* ahitShader, ShaderPair const* intShader);
+        RTMaterial(class RenderEngine* renderer, const ShaderHitGroup& hitGroup);
         ~RTMaterial();
 
-        const ShaderPair& getClosestHitShader();
+        const std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>>& getShaderHitGroup() const { return shaderHitGroup; }
     };
 }

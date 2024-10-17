@@ -11,7 +11,7 @@ namespace PaperRenderer
 
     struct ShaderPair
     {
-        VkShaderStageFlagBits stage;
+        VkShaderStageFlagBits stage = VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
         std::string directory;
     };
 
@@ -169,14 +169,14 @@ namespace PaperRenderer
     //ray tracing pipeline
     struct RTPipelineCreationInfo : public PipelineCreationInfo
     {
-        std::shared_ptr<Shader> rgenShader;
-        std::vector<std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>>> shaderGroups;
+        const std::vector<class RTMaterial*>& materials;
+        const std::unordered_map<VkShaderStageFlagBits, const std::unique_ptr<Shader>&>& generalShaders; //must include at least one raygen shader
     };
 
     struct RTPipelineBuildInfo
     {
-        const ShaderPair& rgenShader;
-        const std::vector<std::vector<ShaderPair>>& shaderGroups;
+        const std::vector<class RTMaterial*>& materials;
+        const std::unordered_map<VkShaderStageFlagBits, const std::unique_ptr<Shader>&>& generalShaders; //must include at least one raygen shader
         const std::unordered_map<uint32_t, DescriptorSet>& descriptors;
         const std::vector<VkPushConstantRange>& pcRanges;
     };
@@ -185,6 +185,14 @@ namespace PaperRenderer
     {
         uint32_t MAX_RT_RECURSION_DEPTH = 1;
     };
+    
+    struct RTShaderBindingTableOffsets
+    {
+        std::unordered_map<class RTMaterial*, uint32_t> materialShaderGroupOffsets; //aka hit group offsets
+        std::unordered_map<Shader const*, uint32_t> raygenShaderOffsets;
+        std::unordered_map<Shader const*, uint32_t> missShaderOffsets;
+        std::unordered_map<Shader const*, uint32_t> callableShaderOffsets;
+    };
 
     struct RTShaderBindingTableData
     {
@@ -192,6 +200,7 @@ namespace PaperRenderer
         VkStridedDeviceAddressRegionKHR missShaderBindingTable = {};
         VkStridedDeviceAddressRegionKHR hitShaderBindingTable = {};
         VkStridedDeviceAddressRegionKHR callableShaderBindingTable = {};
+        RTShaderBindingTableOffsets shaderBindingTableOffsets = {};
     };
 
     class RTPipeline : public Pipeline
