@@ -78,7 +78,7 @@ namespace PaperRenderer
     {
     private:
         std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaderHitGroup;
-        std::unordered_map<RTPipeline const*, uint32_t> sbtOffsets;
+        //std::unordered_map<RTPipeline const*, uint32_t> sbtOffsets;
 
         class RenderEngine* rendererPtr;
 

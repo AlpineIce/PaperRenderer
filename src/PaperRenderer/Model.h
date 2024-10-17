@@ -2,7 +2,6 @@
 #include "Device.h"
 #include "VulkanResources.h"
 
-#include <filesystem>
 #include <unordered_map>
 #include <list>
 
@@ -208,7 +207,7 @@ namespace PaperRenderer
         //renderer self index
         uint32_t rendererSelfIndex = UINT32_MAX;
 
-        //render pass reference data
+        //RenderPass reference data
         struct RenderPassData
         {
             std::vector<char> renderPassInstanceData;
@@ -218,8 +217,12 @@ namespace PaperRenderer
         };
         std::unordered_map<class RenderPass const*, RenderPassData> renderPassSelfReferences;
 
+        //RayTraceRender reference data
+        std::unordered_map<class RayTraceRender const*, class RTMaterial const*> rtRenderSelfReferences;
+
         //acceleration structure reference data
         std::unordered_map<class TLAS const*, uint32_t> accelerationStructureSelfReferences;
+
 
         //unique instance acceleration structure and VBO (only used if uniqueGeometry is set to true on instance creation)
         struct UniqueGeometryData
@@ -236,6 +239,7 @@ namespace PaperRenderer
 
         friend class RenderEngine;
         friend class RenderPass;
+        friend class RayTraceRender;
         friend class RasterPreprocessPipeline;
         friend class TLAS;
         friend class TLASInstanceBuildPipeline;

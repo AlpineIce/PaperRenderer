@@ -48,6 +48,13 @@ namespace PaperRenderer
         VkDeviceSize queueSize = 0;
         uint64_t finalSemaphoreValue = 0;
 
+        struct DstCopy
+        {
+            const Buffer& dstBuffer;
+            VkBufferCopy copyInfo;
+        };
+        std::vector<DstCopy> getDataTransfers();
+
         class RenderEngine* rendererPtr;
 
     public:
@@ -56,6 +63,7 @@ namespace PaperRenderer
         
         void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char>& data); //do not submit more than 1 transfer with the same destination! undefined behavior!
         void submitQueuedTransfers(SynchronizationInfo syncInfo); //Submits all queued transfers and clears the queue. Does not need to be explicitly synced with last transfer
+        void submitQueuedTransfers(VkCommandBuffer cmdBuffer); //submits all queued transfers and clears queue, but takes command buffer as parameter
         TimelineSemaphorePair getTransferSemaphore() const { return { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValue }; }
     };
 
@@ -82,8 +90,7 @@ namespace PaperRenderer
         std::vector<Model*> renderingModels;
         std::deque<Model*> toUpdateModels; //queued model references that need to have their data in GPU buffers updated
 
-        //render passes and acceleration structures
-        std::list<TLAS*> tlAccelerationStructures;
+        //render passes
         std::list<RenderPass*> renderPasses;
 
         //----------BUFFERS----------//
@@ -110,6 +117,7 @@ namespace PaperRenderer
         friend Model;
         friend ModelInstance;
         friend RenderPass;
+        friend RayTraceRender;
         friend RasterPreprocessPipeline;
         friend TLAS;
         friend AccelerationStructureBuilder;

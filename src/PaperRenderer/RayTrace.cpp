@@ -10,20 +10,13 @@ namespace PaperRenderer
         RenderEngine* renderer,
         TLAS* accelerationStructure,
         const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets,
-        const std::vector<class RTMaterial*>& materials,
-        const std::unordered_map<VkShaderStageFlagBits, const std::unique_ptr<Shader>&>& generalShaders,
-        std::vector<VkPushConstantRange> pcRanges
+        const std::vector<VkPushConstantRange>& pcRanges
     )
-        :rendererPtr(renderer),
-        accelerationStructurePtr(accelerationStructure)
+        :descriptorSets(descriptorSets),
+        pcRanges(pcRanges),
+        rendererPtr(renderer),
+        tlas(accelerationStructure)
     {
-        RTPipelineBuildInfo pipelineBuildInfo = {
-            .materials = materials,
-            .generalShaders = generalShaders,
-            .descriptors = descriptorSets,
-            .pcRanges = pcRanges
-        };
-        pipeline = rendererPtr->getPipelineBuilder()->buildRTPipeline(pipelineBuildInfo, pipelineProperties);
     }
 
     RayTraceRender::~RayTraceRender()
@@ -31,7 +24,7 @@ namespace PaperRenderer
         pipeline.reset();
     }
 
-    void RayTraceRender::render(const RayTraceRenderInfo& rtRenderInfo, const SynchronizationInfo& syncInfo)
+    void RayTraceRender::render(const RayTraceRenderInfo& rtRenderInfo, SynchronizationInfo syncInfo)
     {
         //command buffer
         VkCommandBufferBeginInfo commandInfo;
@@ -40,10 +33,45 @@ namespace PaperRenderer
         commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         commandInfo.pInheritanceInfo = NULL;
 
-        VkCommandBuffer cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(QueueType::COMPUTE);
+        VkCommandBuffer cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(QueueType::TRANSFER);
+
+        //update TLAS instances
+        vkBeginCommandBuffer(cmdBuffer, &commandInfo);
+        tlas->queueInstanceTransfers(cmdBuffer, this);
+        vkEndCommandBuffer(cmdBuffer);
+
+        //submit and recycle (transfer timeline semaphore is implicitly signaled)
+        SynchronizationInfo transferSyncInfo = {};
+        transferSyncInfo.queueType = TRANSFER;
+        transferSyncInfo.binaryWaitPairs = syncInfo.binaryWaitPairs;
+        transferSyncInfo.timelineWaitPairs = syncInfo.timelineWaitPairs;
+
+        rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(transferSyncInfo, { cmdBuffer });
+        rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
+
+        //build TLAS (build timeline semaphore is implicitly signaled)
+        rendererPtr->asBuilder.queueAs({
+            .accelerationStructure = tlas,
+            .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+            .mode = rtRenderInfo.tlasBuildMode,
+            .flags = rtRenderInfo.tlasBuildFlags
+        });
+        rendererPtr->asBuilder.setBuildData();
+
+        SynchronizationInfo tlasBuildSyncInfo = {};
+        tlasBuildSyncInfo.queueType = COMPUTE;
+        tlasBuildSyncInfo.timelineWaitPairs = { rendererPtr->getEngineStagingBuffer()->getTransferSemaphore() };
+        rendererPtr->asBuilder.submitQueuedOps(tlasBuildSyncInfo, VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
+
+        //new command buffer for ray tracing
+        cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(syncInfo.queueType);
         vkBeginCommandBuffer(cmdBuffer, &commandInfo);
 
         //bind RT pipeline
+        if(queuePipelineBuild)
+        {
+            rebuildPipeline();
+        }
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline->getPipeline());
 
         //descriptor writes
@@ -90,9 +118,75 @@ namespace PaperRenderer
         vkEndCommandBuffer(cmdBuffer);
         
         //submit
+        syncInfo.timelineWaitPairs.push_back(rendererPtr->asBuilder.getBuildSemaphore());
         rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(syncInfo, { cmdBuffer });
 
         CommandBuffer commandBuffer = { cmdBuffer, syncInfo.queueType };
         rendererPtr->recycleCommandBuffer(commandBuffer);
+    }
+
+    void RayTraceRender::rebuildPipeline()
+    {
+        //add up materials
+        std::vector<RTMaterial*> materials;
+        materials.reserve(materialReferences.size());
+        for(const auto& [material, count] : materialReferences)
+        {
+            materials.push_back((RTMaterial*)material);
+        }
+
+        //add up general shaders
+        std::vector<ShaderDescription> generalShaders{std::begin(generalShaders), std::end(generalShaders)};
+        
+        //rebuild pipeline
+        RTPipelineBuildInfo pipelineBuildInfo = {
+            .materials = materials,
+            .generalShaders = generalShaders,
+            .descriptors = descriptorSets,
+            .pcRanges = pcRanges
+        };
+        pipeline = rendererPtr->getPipelineBuilder()->buildRTPipeline(pipelineBuildInfo, pipelineProperties);
+    }
+
+    void RayTraceRender::addInstance(ModelInstance *instance, RTMaterial const* material)
+    {
+        //add reference
+        instance->rtRenderSelfReferences[this] = material;
+
+        //increment material reference counter and rebuild pipeline if needed
+        if(!materialReferences.count(instance->rtRenderSelfReferences.at(this)))
+        {
+            queuePipelineBuild = true;
+        }
+        materialReferences[instance->rtRenderSelfReferences.at(this)]++;
+    }
+    
+    void RayTraceRender::removeInstance(ModelInstance *instance)
+    {
+        if(instance->rtRenderSelfReferences.count(this))
+        {
+            //decrement material reference and check size to see if material entry should be deleted
+            materialReferences.at(instance->rtRenderSelfReferences.at(this))--;
+            if(!materialReferences.at(instance->rtRenderSelfReferences.at(this)))
+            {
+                materialReferences.erase(instance->rtRenderSelfReferences.at(this));
+                queuePipelineBuild = true;
+            }
+
+            instance->rtRenderSelfReferences.erase(this);
+        }
+    }
+
+    void RayTraceRender::addGeneralShaders(const std::vector<ShaderDescription>& shaders)
+    {
+        generalShaders.insert(generalShaders.end(), shaders.begin(), shaders.end());
+        queuePipelineBuild = true;
+    }
+
+    void RayTraceRender::removeGeneralShader(const ShaderDescription &shader)
+    {
+        auto compareOp = [&](const ShaderDescription& listShader) { return listShader.shader == shader.shader ? false : true; };
+        generalShaders.remove_if(compareOp);
+        queuePipelineBuild = true;
     }
 }

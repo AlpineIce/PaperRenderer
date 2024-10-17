@@ -248,20 +248,25 @@ namespace PaperRenderer
         uint32_t raygenCount = 0;
         uint32_t missCount = 0;
         uint32_t callableCount = 0;
-        for(const auto& [stage, shader] : creationInfo.generalShaders)
+        for(const ShaderDescription& shader : creationInfo.generalShaders)
         {
-            switch(stage)
+            if(!shader.shader)
+            {
+                continue;
+            }
+            
+            switch(shader.stage)
             {
             case VK_SHADER_STAGE_RAYGEN_BIT_KHR:
-                shaderBindingTableData.shaderBindingTableOffsets.raygenShaderOffsets.emplace(shader.get(), raygenCount);
+                shaderBindingTableData.shaderBindingTableOffsets.raygenShaderOffsets.emplace(shader.shader, raygenCount);
                 raygenCount++;
                 break;
             case VK_SHADER_STAGE_MISS_BIT_KHR:
-                shaderBindingTableData.shaderBindingTableOffsets.missShaderOffsets.emplace(shader.get(), missCount);
+                shaderBindingTableData.shaderBindingTableOffsets.missShaderOffsets.emplace(shader.shader, missCount);
                 missCount++;
                 break;
             case VK_SHADER_STAGE_CALLABLE_BIT_KHR:
-                shaderBindingTableData.shaderBindingTableOffsets.callableShaderOffsets.emplace(shader.get(), callableCount);
+                shaderBindingTableData.shaderBindingTableOffsets.callableShaderOffsets.emplace(shader.shader, callableCount);
                 callableCount++;
                 break;
             default:
@@ -283,8 +288,8 @@ namespace PaperRenderer
             shaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             shaderStageInfo.pNext = NULL;
             shaderStageInfo.flags = 0;
-            shaderStageInfo.stage = stage;
-            shaderStageInfo.module = shader->getModule();
+            shaderStageInfo.stage = shader.stage;
+            shaderStageInfo.module = shader.shader->getModule();
             shaderStageInfo.pName = "main"; //use main() function in shaders
             shaderStageInfo.pSpecializationInfo = NULL;
             shaderStages.push_back(shaderStageInfo);
@@ -294,6 +299,11 @@ namespace PaperRenderer
         uint32_t hitCount = 0;
         for(RTMaterial* material : creationInfo.materials)
         {
+            if(!material)
+            {
+                continue;
+            }
+            
             //shader group
             VkRayTracingShaderGroupCreateInfoKHR shaderGroupInfo = {};
             shaderGroupInfo.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;

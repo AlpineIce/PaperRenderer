@@ -83,7 +83,6 @@ namespace PaperRenderer
         const float instancesOverhead = 1.5;
 
         std::vector<class ModelInstance*> accelerationStructureInstances;
-        std::deque<class ModelInstance*> toUpdateInstances;
 
         struct InstanceDescription
         {
@@ -91,11 +90,12 @@ namespace PaperRenderer
         };
 
         void verifyInstancesBuffer();
-        void queueInstanceTransfers();
+        void queueInstanceTransfers(VkCommandBuffer cmdBuffer, class RayTraceRender const* rtRender);
 
         friend RenderEngine;
         friend class ModelInstance;
         friend class AccelerationStructureBuilder;
+        friend class RayTraceRender;
         friend TLASInstanceBuildPipeline;
     public:
         TLAS(RenderEngine* renderer);
@@ -175,6 +175,8 @@ namespace PaperRenderer
         void queueAs(const AccelerationStructureOp& op) { asQueue.emplace_back(op); }
         void setBuildData();
         void destroyOldData();
+
+        TimelineSemaphorePair getBuildSemaphore() const { return { asBuildSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue }; }
 
         void submitQueuedOps(const SynchronizationInfo& syncInfo, VkAccelerationStructureTypeKHR type); //may block thread if compaction is used for any threads
     };

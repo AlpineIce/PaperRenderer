@@ -15,7 +15,7 @@
 namespace PaperRenderer
 {
     //----------STAGING BUFFER DEFINITIONS----------//
-    
+
     EngineStagingBuffer::EngineStagingBuffer(RenderEngine *renderer)
         :rendererPtr(renderer)
     {
@@ -38,7 +38,7 @@ namespace PaperRenderer
         queueSize += data.size();
     }
 
-    void EngineStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
+    std::vector<EngineStagingBuffer::DstCopy> EngineStagingBuffer::getDataTransfers()
     {
         //wait for transfer to complete
         VkSemaphoreWaitInfo waitInfo = {};
@@ -66,14 +66,8 @@ namespace PaperRenderer
 
         //modify semaphore values
         finalSemaphoreValue++;
-        syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValue });
 
         //fill in the staging buffer with queued transfers
-        struct DstCopy
-        {
-            const Buffer& dstBuffer;
-            VkBufferCopy copyInfo;
-        };
         VkDeviceSize dynamicSrcOffset = 0;
         std::vector<DstCopy> dstCopies;
         for(auto& [buffer, transfers] : transferQueues)
@@ -106,7 +100,13 @@ namespace PaperRenderer
             }
             transfers.clear();
         }
+        queueSize = 0;
 
+        return dstCopies;
+    }
+
+    void EngineStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
+    {
         //start command buffer
         VkCommandBuffer cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(syncInfo.queueType);
 
@@ -118,7 +118,7 @@ namespace PaperRenderer
         vkBeginCommandBuffer(cmdBuffer, &beginInfo);
 
         //copy to dst
-        for(const auto& copy : dstCopies)
+        for(const auto& copy : getDataTransfers())
         {
             vkCmdCopyBuffer(cmdBuffer, stagingBuffer->getBuffer(), copy.dstBuffer.getBuffer(), 1, &copy.copyInfo);
         }
@@ -126,11 +126,19 @@ namespace PaperRenderer
         vkEndCommandBuffer(cmdBuffer);
 
         //submit
+        syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValue });
         rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(syncInfo, { cmdBuffer });
 
         rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
+    }
 
-        queueSize = 0;
+    void EngineStagingBuffer::submitQueuedTransfers(VkCommandBuffer cmdBuffer)
+    {
+        //copy to dst
+        for(const auto& copy : getDataTransfers())
+        {
+            vkCmdCopyBuffer(cmdBuffer, stagingBuffer->getBuffer(), copy.dstBuffer.getBuffer(), 1, &copy.copyInfo);
+        }
     }
 
     //----------RENDER ENGINE DEFINITIONS----------//
@@ -244,7 +252,7 @@ namespace PaperRenderer
             VkBufferCopy copyRegion = {};
             copyRegion.srcOffset = 0;
             copyRegion.dstOffset = 0;
-            copyRegion.size = std::min(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance), instancesDataBuffer->getSize());
+            copyRegion.size = std::min(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance), (size_t)instancesDataBuffer->getSize());
 
             SynchronizationInfo syncInfo = {};
             syncInfo.queueType = TRANSFER;
@@ -403,18 +411,6 @@ namespace PaperRenderer
         //destroy old acceleration structure data
         asBuilder.destroyOldData();
 
-        //queue TLAS'
-        for(TLAS* as : tlAccelerationStructures)
-        {
-            AccelerationStructureOp op = {
-                .accelerationStructure = as,
-                .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-                .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
-                .flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
-            };
-            asBuilder.queueAs(op);
-        }
-
         //set all acceleration structure data
         asBuilder.setBuildData();
 
@@ -422,12 +418,6 @@ namespace PaperRenderer
         for(RenderPass* renderPass : renderPasses)
         {
             renderPass->queueInstanceTransfers();
-        }
-
-        //stage transfers for acceleration structures
-        for(TLAS* as : tlAccelerationStructures)
-        {
-            as->queueInstanceTransfers();
         }
 
         //write all staged transfers

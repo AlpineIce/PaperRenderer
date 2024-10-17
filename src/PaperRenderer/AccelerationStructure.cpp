@@ -1,5 +1,7 @@
 #include "AccelerationStructure.h"
 #include "PaperRenderer.h"
+#include "Material.h"
+#include "RayTrace.h"
 
 #include <algorithm>
 
@@ -161,13 +163,11 @@ namespace PaperRenderer
     TLAS::TLAS(RenderEngine* renderer)
         :AS(renderer)
     {
-        rendererPtr->tlAccelerationStructures.push_back(this);
     }
 
     TLAS::~TLAS()
     {
         instancesBuffer.reset();
-        rendererPtr->tlAccelerationStructures.remove(this);
     }
 
     void TLAS::verifyInstancesBuffer()
@@ -248,19 +248,14 @@ namespace PaperRenderer
         }
     }
 
-    void TLAS::queueInstanceTransfers()
+    void TLAS::queueInstanceTransfers(VkCommandBuffer cmdBuffer, RayTraceRender const* rtRender)
     {
-        //sort instances; remove duplicates
-        std::sort(toUpdateInstances.begin(), toUpdateInstances.end());
-        auto sortedInstances = std::unique(toUpdateInstances.begin(), toUpdateInstances.end());
-        toUpdateInstances.erase(sortedInstances, toUpdateInstances.end());
-
         //set next update size to 0
         nextUpdateSize = 0;
 
         //queue instance data
         uint32_t instanceIndex = 0;
-        for(ModelInstance* instance : toUpdateInstances)
+        for(ModelInstance* instance : accelerationStructureInstances)
         {
             //skip if instance is NULL or has invalid BLAS
             if(!instance || !instance->getBLAS()->getAccelerationStructureAddress())
@@ -273,11 +268,17 @@ namespace PaperRenderer
                 nextUpdateSize++;
             }
 
+            //get sbt offset
+            uint32_t sbtOffset = 
+                rtRender->getPipeline().getShaderBindingTableData().shaderBindingTableOffsets.
+                materialShaderGroupOffsets.at(instance->rtRenderSelfReferences.at(rtRender));
+
             //write instance data
             ModelInstance::AccelerationStructureInstance instanceShaderData = {};
             instanceShaderData.blasReference = instance->getBLAS()->getAccelerationStructureAddress();
             instanceShaderData.selfIndex = instance->rendererSelfIndex;
             instanceShaderData.modelInstanceIndex = instance->rendererSelfIndex;
+            instanceShaderData.recordOffset = sbtOffset; //TODO
 
             std::vector<char> instanceData(sizeof(ModelInstance::AccelerationStructureInstance));
             memcpy(instanceData.data(), &instanceShaderData, instanceData.size());
@@ -293,11 +294,35 @@ namespace PaperRenderer
             rendererPtr->getEngineStagingBuffer()->queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::AccelerationStructureInstance) * instanceIndex, instanceData);
             rendererPtr->getEngineStagingBuffer()->queueDataTransfers(*instancesBuffer, instanceDescriptionsOffset + sizeof(InstanceDescription) * instance->rendererSelfIndex, descriptionData);
 
-            toUpdateInstances.pop_front();
-
             instanceIndex++;
         }
-        int a = 0;
+
+        //record transfers
+        rendererPtr->getEngineStagingBuffer()->submitQueuedTransfers(cmdBuffer);
+
+        //insert memory barrier
+        VkBufferMemoryBarrier2 transferMemBarrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+            .pNext = NULL,
+            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = instancesBuffer->getBuffer(),
+            .offset = tlInstancesOffset,
+            .size = instancesBuffer->getSize() - tlInstancesOffset
+        };
+
+        VkDependencyInfo transferMemDependency = {};
+        transferMemDependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        transferMemDependency.pNext = NULL;
+        transferMemDependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        transferMemDependency.bufferMemoryBarrierCount = 1;
+        transferMemDependency.pBufferMemoryBarriers = &transferMemBarrier;
+
+        vkCmdPipelineBarrier2(cmdBuffer, &transferMemDependency);
     }
 
     void TLAS::addInstance(ModelInstance *instance)
@@ -305,9 +330,6 @@ namespace PaperRenderer
         //add reference
         instance->accelerationStructureSelfReferences[this] = accelerationStructureInstances.size();
         accelerationStructureInstances.push_back(instance);
-
-        //queue data transfer
-        toUpdateInstances.push_front(instance);
     }
     
     void TLAS::removeInstance(ModelInstance *instance)
@@ -318,9 +340,6 @@ namespace PaperRenderer
             uint32_t& selfReference = instance->accelerationStructureSelfReferences.at(this);
             accelerationStructureInstances.at(selfReference) = accelerationStructureInstances.back();
             accelerationStructureInstances.at(selfReference)->accelerationStructureSelfReferences.at(this) = selfReference;
-
-            //queue data transfer
-            toUpdateInstances.push_front(accelerationStructureInstances.at(instance->accelerationStructureSelfReferences.at(this)));
             
             accelerationStructureInstances.pop_back();
         }
@@ -329,15 +348,7 @@ namespace PaperRenderer
             accelerationStructureInstances.clear();
         }
 
-        //null out any instances that may be queued
-        for(ModelInstance*& thisInstance : toUpdateInstances)
-        {
-            if(thisInstance == instance)
-            {
-                thisInstance = NULL;
-            }
-        }
-
+        //remove reference
         instance->accelerationStructureSelfReferences.erase(this);
     }
 
@@ -431,7 +442,7 @@ namespace PaperRenderer
             VkAccelerationStructureGeometryKHR structureGeometry = {};
             structureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
             structureGeometry.pNext = NULL;
-            structureGeometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR; //TODO TRANSPARENCY
+            structureGeometry.flags = VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
             structureGeometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
             structureGeometry.geometry.instances = geoInstances;
 
@@ -770,17 +781,15 @@ namespace PaperRenderer
         buildSyncInfo.timelineWaitPairs = syncInfo.timelineWaitPairs;
         buildSyncInfo.fence = VK_NULL_HANDLE;
 
-        if(queryPool)
-        {
-            buildSyncInfo.timelineSignalPairs = { { asBuildSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue + 1 } };
-            finalSemaphoreValue++;
-        }
-        else
+        if(!queryPool)
         {
             buildSyncInfo.binarySignalPairs = syncInfo.binarySignalPairs;
             buildSyncInfo.timelineSignalPairs = syncInfo.timelineSignalPairs;
             buildSyncInfo.fence = syncInfo.fence;
         }
+
+        buildSyncInfo.timelineSignalPairs.push_back({ asBuildSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue + 1 });
+        finalSemaphoreValue++;
 
         rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(buildSyncInfo, { cmdBuffer });
 
@@ -872,15 +881,16 @@ namespace PaperRenderer
             //submit
             SynchronizationInfo compactionSyncInfo = {};
             compactionSyncInfo.queueType = COMPUTE;
-            compactionSyncInfo.timelineWaitPairs = { { asBuildSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue} };
+            compactionSyncInfo.timelineWaitPairs = { { asBuildSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue } };
             compactionSyncInfo.binarySignalPairs = syncInfo.binarySignalPairs;
-            compactionSyncInfo.binaryWaitPairs = syncInfo.binaryWaitPairs;
+            compactionSyncInfo.timelineSignalPairs = syncInfo.timelineSignalPairs;
             compactionSyncInfo.fence = syncInfo.fence;
 
+            compactionSyncInfo.timelineSignalPairs.push_back({ asBuildSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue + 1 });
+            finalSemaphoreValue++;
+
             rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(compactionSyncInfo, { cmdBuffer });
-
             rendererPtr->recycleCommandBuffer({ cmdBuffer, COMPUTE });
-
             vkDestroyQueryPool(rendererPtr->getDevice()->getDevice(), queryPool, nullptr);
         }
 
