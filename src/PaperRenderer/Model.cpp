@@ -186,14 +186,11 @@ namespace PaperRenderer
 		synchronizationInfo.queueType = QueueType::TRANSFER;
 		synchronizationInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
 
-		PaperRenderer::CommandBuffer cmdBuffer = buffer->copyFromBufferRanges(vboStaging, { copyRegion }, synchronizationInfo);
+		buffer->copyFromBufferRanges(vboStaging, { copyRegion }, synchronizationInfo);
 
 		//wait for fence and destroy (potential for efficiency improvements here since this is technically brute force synchronization)
 		vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &synchronizationInfo.fence, VK_TRUE, UINT64_MAX);
 		vkDestroyFence(rendererPtr->getDevice()->getDevice(), synchronizationInfo.fence, nullptr);
-
-		std::vector<CommandBuffer> cmdBuffers = { cmdBuffer };
-		rendererPtr->getDevice()->getCommandsPtr()->freeCommandBuffers(cmdBuffers);
 
 		return buffer;
     }
@@ -234,14 +231,11 @@ namespace PaperRenderer
 			synchronizationInfo.queueType = QueueType::TRANSFER;
 			synchronizationInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
 
-			PaperRenderer::CommandBuffer cmdBuffer = uniqueGeometryData.uniqueVBO->copyFromBufferRanges(*modelPtr->vbo, { copyRegion }, synchronizationInfo);
+			uniqueGeometryData.uniqueVBO->copyFromBufferRanges(*modelPtr->vbo, { copyRegion }, synchronizationInfo);
 
 			//wait for fence and destroy (potential for efficiency improvements here since this is technically brute force synchronization)
 			vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &synchronizationInfo.fence, VK_TRUE, UINT64_MAX);
 			vkDestroyFence(rendererPtr->getDevice()->getDevice(), synchronizationInfo.fence, nullptr);
-
-			std::vector<CommandBuffer> cmdBuffers = { cmdBuffer };
-			rendererPtr->getDevice()->getCommandsPtr()->freeCommandBuffers(cmdBuffers);
 
 			//create BLAS
 			if(rendererPtr->getDevice()->getRTSupport())

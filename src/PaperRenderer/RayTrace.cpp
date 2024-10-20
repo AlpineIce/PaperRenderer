@@ -17,6 +17,31 @@ namespace PaperRenderer
         rendererPtr(renderer),
         tlas(accelerationStructure)
     {
+        if(descriptorSets.count(0) && (descriptorSets.at(0).descriptorBindings.count(0) || descriptorSets.at(0).descriptorBindings.count(1)))
+        {
+            throw std::runtime_error("Descriptor set 0 bindings 0 and 1 are reserved and cannot be set for RT shaders");
+        }
+
+        VkShaderStageFlags stages = 
+            VK_SHADER_STAGE_RAYGEN_BIT_KHR |
+            VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR |
+            VK_SHADER_STAGE_ANY_HIT_BIT_KHR |
+            VK_SHADER_STAGE_MISS_BIT_KHR |
+            VK_SHADER_STAGE_CALLABLE_BIT_KHR |
+            VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
+
+        this->descriptorSets[0].descriptorBindings[0] = {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+            .descriptorCount = 1,
+            .stageFlags = stages
+        };
+        this->descriptorSets[0].descriptorBindings[1] = {
+            .binding = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = stages
+        };
     }
 
     RayTraceRender::~RayTraceRender()
@@ -24,30 +49,16 @@ namespace PaperRenderer
         pipeline.reset();
     }
 
-    void RayTraceRender::render(const RayTraceRenderInfo& rtRenderInfo, SynchronizationInfo syncInfo)
+    void RayTraceRender::render(RayTraceRenderInfo rtRenderInfo, SynchronizationInfo syncInfo)
     {
-        //command buffer
-        VkCommandBufferBeginInfo commandInfo;
-        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        commandInfo.pNext = NULL;
-        commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        commandInfo.pInheritanceInfo = NULL;
-
-        VkCommandBuffer cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(QueueType::TRANSFER);
+        //update RT pipeline if needed
+        if(queuePipelineBuild)
+        {
+            rebuildPipeline();
+        }
 
         //update TLAS instances
-        vkBeginCommandBuffer(cmdBuffer, &commandInfo);
-        tlas->queueInstanceTransfers(cmdBuffer, this);
-        vkEndCommandBuffer(cmdBuffer);
-
-        //submit and recycle (transfer timeline semaphore is implicitly signaled)
-        SynchronizationInfo transferSyncInfo = {};
-        transferSyncInfo.queueType = TRANSFER;
-        transferSyncInfo.binaryWaitPairs = syncInfo.binaryWaitPairs;
-        transferSyncInfo.timelineWaitPairs = syncInfo.timelineWaitPairs;
-
-        rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(transferSyncInfo, { cmdBuffer });
-        rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
+        tlas->queueInstanceTransfers(this);
 
         //build TLAS (build timeline semaphore is implicitly signaled)
         rendererPtr->asBuilder.queueAs({
@@ -60,21 +71,45 @@ namespace PaperRenderer
 
         SynchronizationInfo tlasBuildSyncInfo = {};
         tlasBuildSyncInfo.queueType = COMPUTE;
-        tlasBuildSyncInfo.timelineWaitPairs = { rendererPtr->getEngineStagingBuffer()->getTransferSemaphore() };
+        tlasBuildSyncInfo.binaryWaitPairs = syncInfo.binaryWaitPairs;
+        tlasBuildSyncInfo.timelineWaitPairs = syncInfo.timelineWaitPairs;
+        tlasBuildSyncInfo.timelineWaitPairs.push_back({ rendererPtr->getEngineStagingBuffer()->getTransferSemaphore() });
         rendererPtr->asBuilder.submitQueuedOps(tlasBuildSyncInfo, VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
 
-        //new command buffer for ray tracing
-        cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(syncInfo.queueType);
+        //command buffer
+        VkCommandBufferBeginInfo commandInfo;
+        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        commandInfo.pNext = NULL;
+        commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        commandInfo.pInheritanceInfo = NULL;
+
+        VkCommandBuffer cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(syncInfo.queueType);
+
         vkBeginCommandBuffer(cmdBuffer, &commandInfo);
 
-        //bind RT pipeline
-        if(queuePipelineBuild)
-        {
-            rebuildPipeline();
-        }
+        //bind pipeline
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline->getPipeline());
 
-        //descriptor writes
+        //write acceleration structure
+        PaperRenderer::AccelerationStructureDescriptorWrites accelStructureWrites = {};
+        accelStructureWrites.accelerationStructures = { tlas };
+        accelStructureWrites.binding = 0;
+        
+        //write instance descriptions
+        VkDescriptorBufferInfo instanceDescriptionWriteInfo = {};
+        instanceDescriptionWriteInfo.buffer = tlas->getInstancesBuffer()->getBuffer();
+        instanceDescriptionWriteInfo.offset = tlas->getInstanceDescriptionsOffset();
+        instanceDescriptionWriteInfo.range = tlas->getInstanceDescriptionsRange();
+
+        PaperRenderer::BuffersDescriptorWrites instanceDescriptionWrite = {};
+        instanceDescriptionWrite.binding = 1;
+        instanceDescriptionWrite.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        instanceDescriptionWrite.infos = { instanceDescriptionWriteInfo };
+
+        //append
+        rtRenderInfo.rtDescriptorWrites.accelerationStructureWrites.push_back(accelStructureWrites);
+        rtRenderInfo.rtDescriptorWrites.bufferWrites.push_back(instanceDescriptionWrite);
+
         if(rtRenderInfo.rtDescriptorWrites.bufferViewWrites.size() || rtRenderInfo.rtDescriptorWrites.bufferWrites.size() || 
             rtRenderInfo.rtDescriptorWrites.imageWrites.size() || rtRenderInfo.rtDescriptorWrites.accelerationStructureWrites.size())
         {
@@ -120,9 +155,6 @@ namespace PaperRenderer
         //submit
         syncInfo.timelineWaitPairs.push_back(rendererPtr->asBuilder.getBuildSemaphore());
         rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(syncInfo, { cmdBuffer });
-
-        CommandBuffer commandBuffer = { cmdBuffer, syncInfo.queueType };
-        rendererPtr->recycleCommandBuffer(commandBuffer);
     }
 
     void RayTraceRender::rebuildPipeline()
@@ -136,7 +168,7 @@ namespace PaperRenderer
         }
 
         //add up general shaders
-        std::vector<ShaderDescription> generalShaders{std::begin(generalShaders), std::end(generalShaders)};
+        std::vector<ShaderDescription> generalShaders{std::begin(this->generalShaders), std::end(this->generalShaders)};
         
         //rebuild pipeline
         RTPipelineBuildInfo pipelineBuildInfo = {

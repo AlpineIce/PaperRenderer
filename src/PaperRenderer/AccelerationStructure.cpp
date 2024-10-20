@@ -237,8 +237,6 @@ namespace PaperRenderer
                 //submit
                 rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(syncInfo, { cmdBuffer });
 
-                rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
-
                 vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
                 vkDestroyFence(rendererPtr->getDevice()->getDevice(), syncInfo.fence, nullptr);
             }
@@ -248,10 +246,13 @@ namespace PaperRenderer
         }
     }
 
-    void TLAS::queueInstanceTransfers(VkCommandBuffer cmdBuffer, RayTraceRender const* rtRender)
+    void TLAS::queueInstanceTransfers(RayTraceRender const* rtRender)
     {
         //set next update size to 0
         nextUpdateSize = 0;
+
+        //check buffer sizes
+        verifyInstancesBuffer();
 
         //queue instance data
         uint32_t instanceIndex = 0;
@@ -298,31 +299,9 @@ namespace PaperRenderer
         }
 
         //record transfers
-        rendererPtr->getEngineStagingBuffer()->submitQueuedTransfers(cmdBuffer);
-
-        //insert memory barrier
-        VkBufferMemoryBarrier2 transferMemBarrier = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .pNext = NULL,
-            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-            .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = instancesBuffer->getBuffer(),
-            .offset = tlInstancesOffset,
-            .size = instancesBuffer->getSize() - tlInstancesOffset
-        };
-
-        VkDependencyInfo transferMemDependency = {};
-        transferMemDependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-        transferMemDependency.pNext = NULL;
-        transferMemDependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-        transferMemDependency.bufferMemoryBarrierCount = 1;
-        transferMemDependency.pBufferMemoryBarriers = &transferMemBarrier;
-
-        vkCmdPipelineBarrier2(cmdBuffer, &transferMemDependency);
+        SynchronizationInfo syncInfo = {};
+        syncInfo.queueType = TRANSFER;
+        rendererPtr->getEngineStagingBuffer()->submitQueuedTransfers(syncInfo);
     }
 
     void TLAS::addInstance(ModelInstance *instance)
@@ -428,9 +407,6 @@ namespace PaperRenderer
         else if(op.type == VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR)
         {
             TLAS* tlas = (TLAS*)(op.accelerationStructure);
-
-            //check buffer sizes
-            tlas->verifyInstancesBuffer();
 
             //geometries
             VkAccelerationStructureGeometryInstancesDataKHR geoInstances = {};
@@ -793,8 +769,6 @@ namespace PaperRenderer
 
         rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(buildSyncInfo, { cmdBuffer });
 
-        rendererPtr->recycleCommandBuffer({ cmdBuffer, COMPUTE });
-
         //----------AS COMPACTION----------//
 
         if(queryPool)
@@ -890,7 +864,6 @@ namespace PaperRenderer
             finalSemaphoreValue++;
 
             rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(compactionSyncInfo, { cmdBuffer });
-            rendererPtr->recycleCommandBuffer({ cmdBuffer, COMPUTE });
             vkDestroyQueryPool(rendererPtr->getDevice()->getDevice(), queryPool, nullptr);
         }
 

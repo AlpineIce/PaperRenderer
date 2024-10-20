@@ -84,7 +84,6 @@ namespace PaperRenderer
         RendererState rendererState = {};
 
         //frame rendering stuff
-        std::vector<CommandBuffer> usedCmdBuffers;
         std::vector<ModelInstance*> renderingModelInstances;
         std::deque<ModelInstance*> toUpdateModelInstances; //queued instance references that need to have their data in GPU buffers updated
         std::vector<Model*> renderingModels;
@@ -132,9 +131,6 @@ namespace PaperRenderer
         //returns the image acquire semaphore from the swapchain
         const VkSemaphore& beginFrame(const SynchronizationInfo& transferSyncInfo, const SynchronizationInfo& asSyncInfo);
         void endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
-
-        void recycleCommandBuffer(CommandBuffer& commandBuffer);
-        void recycleCommandBuffer(CommandBuffer&& commandBuffer);
 
         uint32_t getBufferIndex() const { return frameNumber % 2; }
         uint64_t getFramesRenderedCount() const { return frameNumber; }

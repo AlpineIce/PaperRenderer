@@ -78,14 +78,14 @@ namespace PaperRenderer
     {
     private:
         std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaderHitGroup;
-        //std::unordered_map<RTPipeline const*, uint32_t> sbtOffsets;
 
         class RenderEngine* rendererPtr;
 
     public:
         //closest hit shader is required, but any hit and intersection shaders are optional
         RTMaterial(class RenderEngine* renderer, const ShaderHitGroup& hitGroup);
-        ~RTMaterial();
+        virtual ~RTMaterial();
+        RTMaterial(const RTMaterial&) = delete;
 
         const std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>>& getShaderHitGroup() const { return shaderHitGroup; }
     };

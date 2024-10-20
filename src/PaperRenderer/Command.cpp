@@ -22,37 +22,33 @@ namespace PaperRenderer
 
     Commands::~Commands()
     {
-        for(auto [type, pool] : commandPools)
+        for(auto& [type, pool] : commandPools)
         {
-            vkDestroyCommandPool(rendererPtr->getDevice()->getDevice(), pool, nullptr);
+            vkDestroyCommandPool(rendererPtr->getDevice()->getDevice(), pool.cmdPool, nullptr);
         }
     }
 
     void Commands::createCommandPools()
     {
-        for(const auto& [queueType, queues] : *queuesPtr)
+        for(auto& [queueType, queues] : *queuesPtr)
         {
             VkCommandPoolCreateInfo graphicsPoolInfo = {};
             graphicsPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
             graphicsPoolInfo.pNext = NULL;
             graphicsPoolInfo.flags = 0;
             graphicsPoolInfo.queueFamilyIndex = queues.queueFamilyIndex;
-            vkCreateCommandPool(rendererPtr->getDevice()->getDevice(), &graphicsPoolInfo, nullptr, &commandPools[queueType]);
+
+            vkCreateCommandPool(rendererPtr->getDevice()->getDevice(), &graphicsPoolInfo, nullptr, &commandPools[queueType].cmdPool);
         }
     }
 
-    void Commands::freeCommandBuffers(std::vector<CommandBuffer>& commandBuffers)
+    void Commands::resetCommandPools()
     {
-        std::unordered_map<QueueType, std::vector<VkCommandBuffer>> sortedCommandBuffers;
-        for(CommandBuffer& cmdBuffer : commandBuffers)
+        for(auto& [queueType, poolData] : commandPools)
         {
-            sortedCommandBuffers[cmdBuffer.type].push_back(cmdBuffer.buffer);
+            vkResetCommandPool(rendererPtr->getDevice()->getDevice(), poolData.cmdPool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
+            poolData.cmdBufferStackLocation = 0;
         }
-        for(const auto& [type, buffers] : sortedCommandBuffers)
-        {
-            vkFreeCommandBuffers(rendererPtr->getDevice()->getDevice(), commandPools.at(type), buffers.size(), buffers.data());
-        }
-        commandBuffers.clear();
     }
 
     void Commands::submitToQueue(const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers)
@@ -238,15 +234,30 @@ namespace PaperRenderer
 
     VkCommandBuffer Commands::getCommandBuffer(QueueType type)
     {
-        VkCommandBufferAllocateInfo bufferInfo = {};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        bufferInfo.pNext = NULL;
-        bufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        bufferInfo.commandBufferCount = 1;
-        bufferInfo.commandPool = commandPools.at(type);
+        uint32_t& stackLocation = commandPools.at(type).cmdBufferStackLocation;
 
-        VkCommandBuffer returnBuffer;
-        VkResult result = vkAllocateCommandBuffers(rendererPtr->getDevice()->getDevice(), &bufferInfo, &returnBuffer);
+        //allocate more command buffers if needed
+        if(!(stackLocation < commandPools.at(type).cmdBuffers.size()))
+        {
+            const uint32_t bufferCount = 64;
+            commandPools.at(type).cmdBuffers.resize(commandPools.at(type).cmdBuffers.size() + 64);
+
+            VkCommandBufferAllocateInfo bufferInfo = {};
+            bufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            bufferInfo.pNext = NULL;
+            bufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            bufferInfo.commandBufferCount = bufferCount;
+            bufferInfo.commandPool = commandPools.at(type).cmdPool;
+
+            VkResult result = vkAllocateCommandBuffers(rendererPtr->getDevice()->getDevice(), &bufferInfo,
+                &commandPools.at(type).cmdBuffers.at(stackLocation));
+        }
+
+        //get command buffer
+        const VkCommandBuffer& returnBuffer = commandPools.at(type).cmdBuffers.at(stackLocation);
+
+        //increment stack
+        stackLocation++;
         
         return returnBuffer;
     }

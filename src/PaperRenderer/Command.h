@@ -3,6 +3,7 @@
 
 #include <unordered_map>
 #include <vector>
+#include <deque>
 #include <mutex>
 
 namespace PaperRenderer
@@ -65,18 +66,17 @@ namespace PaperRenderer
         VkFence fence = VK_NULL_HANDLE;
     };
 
-    struct CommandBuffer
-    {
-        VkCommandBuffer buffer;
-        QueueType type;
-    };
-
     class Commands
     {
     private:
-
+        struct CommandPoolData
+        {
+            VkCommandPool cmdPool = VK_NULL_HANDLE;
+            std::deque<VkCommandBuffer> cmdBuffers;
+            uint32_t cmdBufferStackLocation = 0;
+        };
         std::unordered_map<QueueType, QueuesInFamily>* queuesPtr;
-        std::unordered_map<QueueType, VkCommandPool> commandPools;
+        std::unordered_map<QueueType, CommandPoolData> commandPools;
         const uint32_t maxThreadCount;
 
         void createCommandPools();
@@ -88,7 +88,7 @@ namespace PaperRenderer
         ~Commands();
         Commands(const Commands&) = delete;
 
-        void freeCommandBuffers(std::vector<CommandBuffer>& commandBuffers);
+        void resetCommandPools();
         void submitToQueue(const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers);
 
         VkSemaphore getSemaphore();

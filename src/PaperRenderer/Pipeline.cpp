@@ -297,6 +297,7 @@ namespace PaperRenderer
 
         //shader groups
         uint32_t hitCount = 0;
+        uint32_t hitGroupIndex = 0;
         for(RTMaterial* material : creationInfo.materials)
         {
             if(!material)
@@ -363,8 +364,10 @@ namespace PaperRenderer
             }
 
             //add offset location and push back shader group
-            shaderBindingTableData.shaderBindingTableOffsets.materialShaderGroupOffsets.emplace(material, rtShaderGroups.size());
+            shaderBindingTableData.shaderBindingTableOffsets.materialShaderGroupOffsets.emplace(material, hitGroupIndex);
             rtShaderGroups.push_back(shaderGroupInfo);
+
+            hitGroupIndex++;
         }
 
         VkRayTracingPipelineCreateInfoKHR pipelineCreateInfo = {};
@@ -408,7 +411,6 @@ namespace PaperRenderer
         shaderBindingTableData.hitShaderBindingTable.stride  = alignedSize;
         shaderBindingTableData.hitShaderBindingTable.size    = rendererPtr->getDevice()->getAlignment(hitCount * alignedSize, handleAlignment);
         
-
         //get shader handles
         std::vector<char> handleData(handleSize * handleCount);
         VkResult result2 = vkGetRayTracingShaderGroupHandlesKHR(rendererPtr->getDevice()->getDevice(), pipeline, 0, handleCount, handleData.size(), handleData.data());

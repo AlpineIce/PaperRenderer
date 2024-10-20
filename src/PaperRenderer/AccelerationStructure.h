@@ -90,7 +90,7 @@ namespace PaperRenderer
         };
 
         void verifyInstancesBuffer();
-        void queueInstanceTransfers(VkCommandBuffer cmdBuffer, class RayTraceRender const* rtRender);
+        void queueInstanceTransfers(class RayTraceRender const* rtRender);
 
         friend RenderEngine;
         friend class ModelInstance;

@@ -128,8 +128,6 @@ namespace PaperRenderer
         //submit
         syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValue });
         rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(syncInfo, { cmdBuffer });
-
-        rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
     }
 
     void EngineStagingBuffer::submitQueuedTransfers(VkCommandBuffer cmdBuffer)
@@ -167,9 +165,6 @@ namespace PaperRenderer
         vkDeviceWaitIdle(device.getDevice());
     
         //free cmd buffers
-        device.getCommandsPtr()->freeCommandBuffers(usedCmdBuffers);
-        usedCmdBuffers.clear();
-
         modelDataBuffer.reset();
         instancesDataBuffer.reset();
     }
@@ -396,9 +391,8 @@ namespace PaperRenderer
 
     const VkSemaphore& RenderEngine::beginFrame(const SynchronizationInfo& transferSyncInfo, const SynchronizationInfo& asSyncInfo)
     {
-        //free command buffers and reset descriptor pool
-        device.getCommandsPtr()->freeCommandBuffers(usedCmdBuffers);
-        usedCmdBuffers.clear();
+        //reset command and descriptor pools
+        device.getCommandsPtr()->resetCommandPools();
         descriptors.refreshPools();
 
         //acquire next image
@@ -449,22 +443,5 @@ namespace PaperRenderer
         swapchain.presentImage(waitSemaphores);
 
         glfwPollEvents();
-    }
-
-    void RenderEngine::recycleCommandBuffer(CommandBuffer& commandBuffer)
-    {
-        if(commandBuffer.buffer)
-        {
-            usedCmdBuffers.push_back(commandBuffer);
-            commandBuffer.buffer = VK_NULL_HANDLE;
-        }
-    }
-
-    void RenderEngine::recycleCommandBuffer(CommandBuffer&& commandBuffer)
-    {
-        if(commandBuffer.buffer)
-        {
-            usedCmdBuffers.push_back(commandBuffer);
-        }
     }
 }

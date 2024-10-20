@@ -96,7 +96,7 @@ namespace PaperRenderer
         return 0;
     }
 
-    CommandBuffer Buffer::copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
+    void Buffer::copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
     {
         VkCommandBuffer transferBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
 
@@ -109,13 +109,7 @@ namespace PaperRenderer
         vkCmdCopyBuffer(transferBuffer, src.getBuffer(), this->buffer, regions.size(), regions.data());
         vkEndCommandBuffer(transferBuffer);
 
-        std::vector<VkCommandBuffer> commandBuffers = {
-            transferBuffer
-        };
-
-        rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(synchronizationInfo, commandBuffers);
-        
-        return { transferBuffer, TRANSFER };
+        rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(synchronizationInfo, { transferBuffer });
     }
 
     VkDeviceAddress Buffer::getBufferDeviceAddress() const
@@ -330,8 +324,6 @@ namespace PaperRenderer
                 syncInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
                 rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(syncInfo, { cmdBuffer });
 
-                rendererPtr->recycleCommandBuffer({ cmdBuffer, syncInfo.queueType });
-
                 vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
                 vkDestroyFence(rendererPtr->getDevice()->getDevice(), syncInfo.fence, nullptr);
             }
@@ -440,7 +432,7 @@ namespace PaperRenderer
             .timelineSignalPairs = {},
             .fence = VK_NULL_HANDLE
         };
-        creationBuffers.push_back(copyBufferToImage(imageStagingBuffer.getBuffer(), image, copySynchronizationInfo));
+        copyBufferToImage(imageStagingBuffer.getBuffer(), image, copySynchronizationInfo);
 
         //generate mipmaps
         SynchronizationInfo blitSynchronization = {
@@ -457,10 +449,6 @@ namespace PaperRenderer
         vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &blitFence, VK_TRUE, UINT64_MAX);
         vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), copySemaphore, nullptr);
         vkDestroyFence(rendererPtr->getDevice()->getDevice(), blitSynchronization.fence, nullptr);
-
-        //destroy old command buffers
-        rendererPtr->getDevice()->getCommandsPtr()->freeCommandBuffers(creationBuffers);
-        creationBuffers.clear();
     }
 
     VkSampler Image::getNewSampler(const Image& image, RenderEngine* renderer)
@@ -501,7 +489,7 @@ namespace PaperRenderer
         return sampler;
     }
 
-    CommandBuffer Image::copyBufferToImage(VkBuffer src, VkImage dst, const SynchronizationInfo& synchronizationInfo)
+    void Image::copyBufferToImage(VkBuffer src, VkImage dst, const SynchronizationInfo& synchronizationInfo)
     {
         VkCommandBuffer transferBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(QueueType::TRANSFER);
 
@@ -568,11 +556,9 @@ namespace PaperRenderer
         vkEndCommandBuffer(transferBuffer);
 
         rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(synchronizationInfo, { transferBuffer });
-
-        return { transferBuffer, TRANSFER };
     }
     
-    CommandBuffer Image::generateMipmaps(const SynchronizationInfo& synchronizationInfo)
+    void Image::generateMipmaps(const SynchronizationInfo& synchronizationInfo)
     {
         //command buffer
         VkCommandBuffer blitBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(QueueType::GRAPHICS);
@@ -761,7 +747,5 @@ namespace PaperRenderer
         vkEndCommandBuffer(blitBuffer);
 
         rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(synchronizationInfo, { blitBuffer });
-
-        return { blitBuffer, synchronizationInfo.queueType };
     }
 }

@@ -20,7 +20,7 @@ namespace PaperRenderer
     private:
         std::unique_ptr<RTPipeline> pipeline;
         RTPipelineProperties pipelineProperties = {};
-        const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet> descriptorSets;
+        std::unordered_map<uint32_t, PaperRenderer::DescriptorSet> descriptorSets;
         const std::vector<VkPushConstantRange> pcRanges;
         bool queuePipelineBuild = true;
 
@@ -43,7 +43,7 @@ namespace PaperRenderer
         ~RayTraceRender();
         RayTraceRender(const RayTraceRender&) = delete;
 
-        void render(const RayTraceRenderInfo& rtRenderInfo, SynchronizationInfo syncInfo);
+        void render(RayTraceRenderInfo rtRenderInfo, SynchronizationInfo syncInfo);
 
         void addInstance(class ModelInstance* instance, class RTMaterial const* material);
         void removeInstance(class ModelInstance* instance);
