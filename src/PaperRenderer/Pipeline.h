@@ -32,12 +32,12 @@ namespace PaperRenderer
         VkShaderModule program;
         std::vector<uint32_t> compiledShader;
         
-        class Device* devicePtr;
+        class Device& device;
 
         std::vector<uint32_t> getShaderData(std::string location);
 
     public:
-        Shader(class Device* device, std::string location);
+        Shader(class Device& device, std::string location);
         ~Shader();
         Shader(const Shader&) = delete;
         
@@ -49,7 +49,7 @@ namespace PaperRenderer
     //Pipeline base class
     struct PipelineCreationInfo
     {
-        class RenderEngine* renderer;
+        class RenderEngine& renderer;
         VkPipelineCache cache;
         std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
         std::vector<VkPushConstantRange> pcRanges;
@@ -63,7 +63,7 @@ namespace PaperRenderer
         std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
         VkPipelineLayout pipelineLayout;
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
         
     public:
         Pipeline(const PipelineCreationInfo& creationInfo);
@@ -218,7 +218,7 @@ namespace PaperRenderer
         std::vector<char> sbtRawData;
         std::unique_ptr<Buffer> sbtBuffer;
 
-        void rebuildSBTBuffer(RenderEngine* renderer);
+        void rebuildSBTBuffer(RenderEngine& renderer);
 
     public:
         RTPipeline(const RTPipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties);
@@ -242,10 +242,10 @@ namespace PaperRenderer
         std::unordered_map<uint32_t, VkDescriptorSetLayout> createDescriptorLayouts(const std::unordered_map<uint32_t, DescriptorSet>& descriptorSets) const;
         VkPipelineLayout createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, std::vector<VkPushConstantRange> pcRanges) const;
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
 
     public:
-        PipelineBuilder(RenderEngine* renderer);
+        PipelineBuilder(RenderEngine& renderer);
         ~PipelineBuilder();
         PipelineBuilder(const PipelineBuilder&) = delete;
 

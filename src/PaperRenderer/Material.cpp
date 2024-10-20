@@ -6,8 +6,8 @@ namespace PaperRenderer
 {
     //----------MATERIAL DEFINITIONS----------//
 
-    Material::Material(class RenderEngine* renderer, std::string materialName)
-        :rendererPtr(renderer),
+    Material::Material(class RenderEngine& renderer, std::string materialName)
+        :renderer(renderer),
         matName(materialName),
         rasterInfo({
             .shaderInfo = shaderPairs,
@@ -33,7 +33,7 @@ namespace PaperRenderer
 
     void Material::buildRasterPipeline(RasterPipelineBuildInfo const* rasterInfo, const RasterPipelineProperties& rasterProperties)
     {
-        if(rasterInfo) this->rasterPipeline = rendererPtr->getPipelineBuilder()->buildRasterPipeline(*rasterInfo, rasterProperties);
+        if(rasterInfo) this->rasterPipeline = renderer.getPipelineBuilder().buildRasterPipeline(*rasterInfo, rasterProperties);
     }
 
     void Material::bind(VkCommandBuffer cmdBuffer, Camera* camera)
@@ -51,8 +51,8 @@ namespace PaperRenderer
         
         if(rasterDescriptorWrites.bufferViewWrites.size() || rasterDescriptorWrites.bufferWrites.size() || rasterDescriptorWrites.imageWrites.size())
         {
-            VkDescriptorSet materialDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(RASTER_MATERIAL));
-            DescriptorAllocator::writeUniforms(rendererPtr, materialDescriptorSet, rasterDescriptorWrites);
+            VkDescriptorSet materialDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(RASTER_MATERIAL));
+            DescriptorAllocator::writeUniforms(renderer, materialDescriptorSet, rasterDescriptorWrites);
 
             DescriptorBind bindingInfo = {};
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -66,8 +66,8 @@ namespace PaperRenderer
 
     //----------MATERIAL INSTANCE DEFINITIONS----------//
 
-    MaterialInstance::MaterialInstance(class RenderEngine* renderer, Material const *baseMaterial)
-        :rendererPtr(renderer),
+    MaterialInstance::MaterialInstance(class RenderEngine& renderer, Material const *baseMaterial)
+        :renderer(renderer),
         baseMaterial(baseMaterial)
     {
     }
@@ -80,8 +80,8 @@ namespace PaperRenderer
     {
         if(descriptorWrites.bufferViewWrites.size() || descriptorWrites.bufferWrites.size() || descriptorWrites.imageWrites.size())
         {
-            VkDescriptorSet instDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(baseMaterial->getRasterPipeline()->getDescriptorSetLayouts().at(RASTER_MATERIAL_INSTANCE));
-            DescriptorAllocator::writeUniforms(rendererPtr, instDescriptorSet, descriptorWrites);
+            VkDescriptorSet instDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(baseMaterial->getRasterPipeline()->getDescriptorSetLayouts().at(RASTER_MATERIAL_INSTANCE));
+            DescriptorAllocator::writeUniforms(renderer, instDescriptorSet, descriptorWrites);
 
             DescriptorBind bindingInfo = {};
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -95,20 +95,20 @@ namespace PaperRenderer
 
     //----------RT MATERIAL DEFINITIONS----------//
 
-    PaperRenderer::RTMaterial::RTMaterial(RenderEngine* renderer, const ShaderHitGroup& hitGroup)
-        :rendererPtr(renderer)
+    PaperRenderer::RTMaterial::RTMaterial(RenderEngine& renderer, const ShaderHitGroup& hitGroup)
+        :renderer(renderer)
     {
         //chit is guaranteed to be valid
-        shaderHitGroup.emplace(std::make_pair(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, std::make_unique<Shader>(rendererPtr->getDevice(), hitGroup.chitShaderDir)));
+        shaderHitGroup.emplace(std::make_pair(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, std::make_unique<Shader>(renderer.getDevice(), hitGroup.chitShaderDir)));
 
         //ahit and int are optional
         if(hitGroup.ahitShaderDir.size())
         {
-            shaderHitGroup.emplace(std::make_pair(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, std::make_unique<Shader>(rendererPtr->getDevice(), hitGroup.ahitShaderDir)));
+            shaderHitGroup.emplace(std::make_pair(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, std::make_unique<Shader>(renderer.getDevice(), hitGroup.ahitShaderDir)));
         }
         if(hitGroup.intShaderDir.size())
         {
-            shaderHitGroup.emplace(std::make_pair(VK_SHADER_STAGE_INTERSECTION_BIT_KHR, std::make_unique<Shader>(rendererPtr->getDevice(), hitGroup.intShaderDir)));
+            shaderHitGroup.emplace(std::make_pair(VK_SHADER_STAGE_INTERSECTION_BIT_KHR, std::make_unique<Shader>(renderer.getDevice(), hitGroup.intShaderDir)));
         }
     }
 

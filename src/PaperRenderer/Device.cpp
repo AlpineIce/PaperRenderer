@@ -6,8 +6,8 @@
 
 namespace PaperRenderer
 {
-    Device::Device(RenderEngine* renderer, std::string appName)
-        :rendererPtr(renderer)
+    Device::Device(RenderEngine& renderer, std::string appName)
+        :renderer(renderer)
     {
         //volk
         VkResult result = volkInitialize();
@@ -420,7 +420,7 @@ namespace PaperRenderer
         retrieveQueues(queuesCreationInfo);
 
         //command pools init
-        commands = std::make_unique<Commands>(rendererPtr, &queues);
+        commands = std::make_unique<Commands>(renderer, &queues);
     }
 
     QueueFamiliesIndices Device::getQueueFamiliesIndices() const

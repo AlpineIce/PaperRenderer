@@ -3,8 +3,8 @@
 
 namespace PaperRenderer
 {
-    ComputeShader::ComputeShader(RenderEngine* renderer)
-        :rendererPtr(renderer),
+    ComputeShader::ComputeShader(RenderEngine& renderer)
+        :renderer(renderer),
         pipelineBuildInfo({
             .shaderInfo = shader,
             .descriptors = descriptorSets,
@@ -20,7 +20,7 @@ namespace PaperRenderer
 
     void ComputeShader::buildPipeline()
     {
-        pipeline = rendererPtr->getPipelineBuilder()->buildComputePipeline(pipelineBuildInfo);
+        pipeline = renderer.getPipelineBuilder().buildComputePipeline(pipelineBuildInfo);
     }
 
     void ComputeShader::bind(VkCommandBuffer cmdBuffer)
@@ -34,8 +34,8 @@ namespace PaperRenderer
         {
             if(descriptorWrites.at(setNumber).bufferViewWrites.size() || descriptorWrites.at(setNumber).bufferWrites.size() || descriptorWrites.at(setNumber).imageWrites.size())
             {
-                VkDescriptorSet descriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(setNumber));
-                DescriptorAllocator::writeUniforms(rendererPtr, descriptorSet, descriptorWrites.at(setNumber));
+                VkDescriptorSet descriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(setNumber));
+                DescriptorAllocator::writeUniforms(renderer, descriptorSet, descriptorWrites.at(setNumber));
 
                 DescriptorBind bindingInfo = {};
                 bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_COMPUTE;

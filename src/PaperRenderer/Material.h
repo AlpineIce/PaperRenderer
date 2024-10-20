@@ -31,12 +31,12 @@ namespace PaperRenderer
 
         void buildRasterPipeline(RasterPipelineBuildInfo const* rasterInfo, const RasterPipelineProperties& rasterProperties);
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
 
         //TODO IMPLEMENT A CHIT SHADER AND HAVE RT PIPELINE RETURN THE SBT OFFSET WHEN ADDED TO IT.
 
     public:
-        Material(class RenderEngine* renderer, std::string materialName);
+        Material(class RenderEngine& renderer, std::string materialName);
         virtual ~Material();
         Material(const Material&) = delete;
 
@@ -53,10 +53,10 @@ namespace PaperRenderer
         Material const* baseMaterial = NULL;
         DescriptorWrites descriptorWrites = {};
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
 
     public:
-        MaterialInstance(class RenderEngine* renderer, Material const* baseMaterial);
+        MaterialInstance(class RenderEngine& renderer, Material const* baseMaterial);
         virtual ~MaterialInstance();
         MaterialInstance(const MaterialInstance&) = delete;
         
@@ -79,11 +79,11 @@ namespace PaperRenderer
     private:
         std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaderHitGroup;
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
 
     public:
         //closest hit shader is required, but any hit and intersection shaders are optional
-        RTMaterial(class RenderEngine* renderer, const ShaderHitGroup& hitGroup);
+        RTMaterial(class RenderEngine& renderer, const ShaderHitGroup& hitGroup);
         virtual ~RTMaterial();
         RTMaterial(const RTMaterial&) = delete;
 

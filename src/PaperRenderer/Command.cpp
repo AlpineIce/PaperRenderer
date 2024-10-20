@@ -9,13 +9,13 @@ namespace PaperRenderer
 {
     //----------CMD BUFFER ALLOCATOR DEFINITIONS----------//
 
-    Commands::Commands(RenderEngine* renderer, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr)
-        :rendererPtr(renderer),
+    Commands::Commands(RenderEngine& renderer, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr)
+        :renderer(renderer),
         queuesPtr(queuesPtr),
         maxThreadCount(std::thread::hardware_concurrency())
     {
         VkSurfaceCapabilitiesKHR capabilities;
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(rendererPtr->getDevice()->getGPU(), rendererPtr->getDevice()->getSurface(), &capabilities);
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &capabilities);
 
         createCommandPools();
     }
@@ -24,7 +24,7 @@ namespace PaperRenderer
     {
         for(auto& [type, pool] : commandPools)
         {
-            vkDestroyCommandPool(rendererPtr->getDevice()->getDevice(), pool.cmdPool, nullptr);
+            vkDestroyCommandPool(renderer.getDevice().getDevice(), pool.cmdPool, nullptr);
         }
     }
 
@@ -38,7 +38,7 @@ namespace PaperRenderer
             graphicsPoolInfo.flags = 0;
             graphicsPoolInfo.queueFamilyIndex = queues.queueFamilyIndex;
 
-            vkCreateCommandPool(rendererPtr->getDevice()->getDevice(), &graphicsPoolInfo, nullptr, &commandPools[queueType].cmdPool);
+            vkCreateCommandPool(renderer.getDevice().getDevice(), &graphicsPoolInfo, nullptr, &commandPools[queueType].cmdPool);
         }
     }
 
@@ -46,7 +46,7 @@ namespace PaperRenderer
     {
         for(auto& [queueType, poolData] : commandPools)
         {
-            vkResetCommandPool(rendererPtr->getDevice()->getDevice(), poolData.cmdPool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
+            vkResetCommandPool(renderer.getDevice().getDevice(), poolData.cmdPool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
             poolData.cmdBufferStackLocation = 0;
         }
     }
@@ -181,7 +181,7 @@ namespace PaperRenderer
         semaphoreInfo.pNext = NULL;
         semaphoreInfo.flags = 0;
 
-        vkCreateSemaphore(rendererPtr->getDevice()->getDevice(), &semaphoreInfo, nullptr, &semaphore);
+        vkCreateSemaphore(renderer.getDevice().getDevice(), &semaphoreInfo, nullptr, &semaphore);
 
         return semaphore;
     }
@@ -201,7 +201,7 @@ namespace PaperRenderer
         semaphoreInfo.pNext = &semaphoreTypeInfo;
         semaphoreInfo.flags = 0;
 
-        vkCreateSemaphore(rendererPtr->getDevice()->getDevice(), &semaphoreInfo, nullptr, &semaphore);
+        vkCreateSemaphore(renderer.getDevice().getDevice(), &semaphoreInfo, nullptr, &semaphore);
 
         return semaphore;
     }
@@ -214,7 +214,7 @@ namespace PaperRenderer
         fenceInfo.pNext = NULL;
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-        vkCreateFence(rendererPtr->getDevice()->getDevice(), &fenceInfo, nullptr, &fence);
+        vkCreateFence(renderer.getDevice().getDevice(), &fenceInfo, nullptr, &fence);
 
         return fence;
     }
@@ -227,7 +227,7 @@ namespace PaperRenderer
         fenceInfo.pNext = NULL;
         fenceInfo.flags = 0;
 
-        vkCreateFence(rendererPtr->getDevice()->getDevice(), &fenceInfo, nullptr, &fence);
+        vkCreateFence(renderer.getDevice().getDevice(), &fenceInfo, nullptr, &fence);
 
         return fence;
     }
@@ -249,7 +249,7 @@ namespace PaperRenderer
             bufferInfo.commandBufferCount = bufferCount;
             bufferInfo.commandPool = commandPools.at(type).cmdPool;
 
-            VkResult result = vkAllocateCommandBuffers(rendererPtr->getDevice()->getDevice(), &bufferInfo,
+            VkResult result = vkAllocateCommandBuffers(renderer.getDevice().getDevice(), &bufferInfo,
                 &commandPools.at(type).cmdBuffers.at(stackLocation));
         }
 

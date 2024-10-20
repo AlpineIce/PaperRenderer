@@ -6,8 +6,8 @@
 
 namespace PaperRenderer
 {
-    Swapchain::Swapchain(RenderEngine* renderer, WindowState startingWindowState)
-        :rendererPtr(renderer),
+    Swapchain::Swapchain(RenderEngine& renderer, WindowState startingWindowState)
+        :renderer(renderer),
         currentWindowState(startingWindowState)
     {
         //----------WINDOW CREATION----------//
@@ -45,19 +45,19 @@ namespace PaperRenderer
         }
 
         //surface and device creation
-        VkResult result = glfwCreateWindowSurface(rendererPtr->getDevice()->getInstance(), window, nullptr, (VkSurfaceKHR*)(&rendererPtr->getDevice()->getSurface()));
+        VkResult result = glfwCreateWindowSurface(renderer.getDevice().getInstance(), window, nullptr, (VkSurfaceKHR*)(&renderer.getDevice().getSurface()));
         if(result != VK_SUCCESS)
         {
             throw std::runtime_error("Window surface creation failed");
         }
-        rendererPtr->getDevice()->createDevice();
+        renderer.getDevice().createDevice();
 
         //----------PRESENT MODE----------//
 
         uint32_t presentModeCount;
-        vkGetPhysicalDeviceSurfacePresentModesKHR(rendererPtr->getDevice()->getGPU(), rendererPtr->getDevice()->getSurface(), &presentModeCount, nullptr);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &presentModeCount, nullptr);
         std::vector<VkPresentModeKHR> presentModes(presentModeCount);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(rendererPtr->getDevice()->getGPU(), rendererPtr->getDevice()->getSurface(), &presentModeCount, presentModes.data());
+        vkGetPhysicalDeviceSurfacePresentModesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &presentModeCount, presentModes.data());
 
         for(VkPresentModeKHR presentMode : presentModes)
         {
@@ -82,12 +82,12 @@ namespace PaperRenderer
 
         //sync
         VkSurfaceCapabilitiesKHR capabilities;
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(rendererPtr->getDevice()->getGPU(), rendererPtr->getDevice()->getSurface(), &capabilities);
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &capabilities);
 
         imageSemaphores.resize(capabilities.minImageCount);
         for(uint32_t i = 0; i < capabilities.minImageCount; i++)
         {
-            imageSemaphores.at(i) = rendererPtr->getDevice()->getCommandsPtr()->getSemaphore();
+            imageSemaphores.at(i) = renderer.getDevice().getCommands().getSemaphore();
         }
     }
 
@@ -96,17 +96,17 @@ namespace PaperRenderer
         //images
         for(VkImageView image : imageViews)
         {
-            vkDestroyImageView(rendererPtr->getDevice()->getDevice(), image, nullptr);
+            vkDestroyImageView(renderer.getDevice().getDevice(), image, nullptr);
         }
 
-        vkDestroySwapchainKHR(rendererPtr->getDevice()->getDevice(), swapchain, nullptr);
+        vkDestroySwapchainKHR(renderer.getDevice().getDevice(), swapchain, nullptr);
         for(VkSemaphore semaphore : imageSemaphores)
         {
-            vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), semaphore, nullptr);
+            vkDestroySemaphore(renderer.getDevice().getDevice(), semaphore, nullptr);
         }
 
         //glfw window and surface
-        vkDestroySurfaceKHR(rendererPtr->getDevice()->getInstance(), rendererPtr->getDevice()->getSurface(), nullptr);
+        vkDestroySurfaceKHR(renderer.getDevice().getInstance(), renderer.getDevice().getSurface(), nullptr);
         glfwDestroyWindow(window);
     }
 
@@ -124,7 +124,7 @@ namespace PaperRenderer
         
         //get available image
         VkResult imageAcquireResult = vkAcquireNextImageKHR(
-            rendererPtr->getDevice()->getDevice(),
+            renderer.getDevice().getDevice(),
             swapchain,
             UINT64_MAX,
             imageSemaphores.at(semaphoreIndex),
@@ -154,9 +154,9 @@ namespace PaperRenderer
         presentSubmitInfo.pResults = &returnResult;//&returnResult;
 
         //too lazy to properly fix this, it probably barely affects performance anyways
-        rendererPtr->getDevice()->getQueues().at(QueueType::PRESENT).queues.at(0)->threadLock.lock();
-        VkResult presentResult = vkQueuePresentKHR(rendererPtr->getDevice()->getQueues().at(QueueType::PRESENT).queues.at(0)->queue, &presentSubmitInfo);
-        rendererPtr->getDevice()->getQueues().at(QueueType::PRESENT).queues.at(0)->threadLock.unlock();
+        renderer.getDevice().getQueues().at(QueueType::PRESENT).queues.at(0)->threadLock.lock();
+        VkResult presentResult = vkQueuePresentKHR(renderer.getDevice().getQueues().at(QueueType::PRESENT).queues.at(0)->queue, &presentSubmitInfo);
+        renderer.getDevice().getQueues().at(QueueType::PRESENT).queues.at(0)->threadLock.unlock();
 
         if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) 
         {
@@ -177,9 +177,9 @@ namespace PaperRenderer
         //----------COLOR SPACE SELECTION----------//
 
         uint32_t formatCount;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(rendererPtr->getDevice()->getGPU(), rendererPtr->getDevice()->getSurface(), &formatCount, nullptr);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &formatCount, nullptr);
         std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(rendererPtr->getDevice()->getGPU(), rendererPtr->getDevice()->getSurface(), &formatCount, surfaceFormats.data());
+        vkGetPhysicalDeviceSurfaceFormatsKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &formatCount, surfaceFormats.data());
         
         this->swapchainImageFormat = VK_FORMAT_UNDEFINED;
 
@@ -241,7 +241,7 @@ namespace PaperRenderer
         //----------BUILD----------//
 
         VkSurfaceCapabilitiesKHR capabilities;
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(rendererPtr->getDevice()->getGPU(), rendererPtr->getDevice()->getSurface(), &capabilities);
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &capabilities);
         this->swapchainExtent.width = std::min(currentWindowState.resX, capabilities.maxImageExtent.width);
         this->swapchainExtent.height = std::min(currentWindowState.resY, capabilities.maxImageExtent.height);
 
@@ -249,7 +249,7 @@ namespace PaperRenderer
         swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
         swapchainInfo.pNext = NULL;
         swapchainInfo.flags =  0;
-        swapchainInfo.surface = rendererPtr->getDevice()->getSurface();
+        swapchainInfo.surface = renderer.getDevice().getSurface();
         swapchainInfo.minImageCount = std::max(capabilities.minImageCount, (uint32_t)2);
         swapchainInfo.imageFormat = this->swapchainImageFormat;
         swapchainInfo.imageColorSpace = this->imageColorSpace;
@@ -257,8 +257,8 @@ namespace PaperRenderer
         swapchainInfo.imageArrayLayers = 1;
         swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
-        uint32_t queueFamilies[] = {rendererPtr->getDevice()->getQueues().at(QueueType::GRAPHICS).queueFamilyIndex,
-                                    rendererPtr->getDevice()->getQueues().at(QueueType::PRESENT).queueFamilyIndex};
+        uint32_t queueFamilies[] = {renderer.getDevice().getQueues().at(QueueType::GRAPHICS).queueFamilyIndex,
+                                    renderer.getDevice().getQueues().at(QueueType::PRESENT).queueFamilyIndex};
         if(queueFamilies[0] == queueFamilies[1])
         {
             swapchainInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -277,7 +277,7 @@ namespace PaperRenderer
         swapchainInfo.clipped = VK_TRUE;
         swapchainInfo.oldSwapchain = swapchain;
         
-        VkResult result = vkCreateSwapchainKHR(rendererPtr->getDevice()->getDevice(), &swapchainInfo, nullptr, &swapchain);
+        VkResult result = vkCreateSwapchainKHR(renderer.getDevice().getDevice(), &swapchainInfo, nullptr, &swapchain);
         if(result != VK_SUCCESS) throw std::runtime_error("Swapchain creation/recreation failed");
         
         createImageViews();
@@ -286,9 +286,9 @@ namespace PaperRenderer
     void Swapchain::createImageViews()
     {
         uint32_t imageCount;
-        vkGetSwapchainImagesKHR(rendererPtr->getDevice()->getDevice(), swapchain, &imageCount, nullptr);
+        vkGetSwapchainImagesKHR(renderer.getDevice().getDevice(), swapchain, &imageCount, nullptr);
         swapchainImages.resize(imageCount);
-        vkGetSwapchainImagesKHR(rendererPtr->getDevice()->getDevice(), swapchain, &imageCount, swapchainImages.data());
+        vkGetSwapchainImagesKHR(renderer.getDevice().getDevice(), swapchain, &imageCount, swapchainImages.data());
 
         imageViews.resize(imageCount);
 
@@ -310,7 +310,7 @@ namespace PaperRenderer
                 .layerCount = 1
             };
 
-            VkResult result = vkCreateImageView(rendererPtr->getDevice()->getDevice(), &creationInfo, nullptr, &imageViews.at(i));
+            VkResult result = vkCreateImageView(renderer.getDevice().getDevice(), &creationInfo, nullptr, &imageViews.at(i));
             if(result != VK_SUCCESS) throw std::runtime_error("Failed to create image views");
         }
     }
@@ -324,19 +324,19 @@ namespace PaperRenderer
             glfwGetFramebufferSize(window, &width, &height);
         }
 
-        vkDeviceWaitIdle(rendererPtr->getDevice()->getDevice());
+        vkDeviceWaitIdle(renderer.getDevice().getDevice());
         
         //destruction
         for(VkImageView image : imageViews)
         {
-            vkDestroyImageView(rendererPtr->getDevice()->getDevice(), image, nullptr);
+            vkDestroyImageView(renderer.getDevice().getDevice(), image, nullptr);
         }
         imageViews.clear();
 
         //rebuild
         VkSwapchainKHR oldSwapchain = swapchain;
         buildSwapchain();
-        vkDestroySwapchainKHR(rendererPtr->getDevice()->getDevice(), oldSwapchain, nullptr);
+        vkDestroySwapchainKHR(renderer.getDevice().getDevice(), oldSwapchain, nullptr);
 
         if(swapchainRebuildCallback) swapchainRebuildCallback(swapchainExtent);
     }

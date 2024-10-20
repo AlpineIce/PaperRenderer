@@ -59,11 +59,11 @@ namespace PaperRenderer
         std::unordered_map<struct LODMesh const*, struct MeshInstancesData> meshesData;
         std::unordered_map<class ModelInstance*, std::vector<struct LODMesh const*>> instanceMeshes;
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
         class RenderPass const* renderPassPtr;
 
     public:
-        CommonMeshGroup(class RenderEngine* renderer, class RenderPass const* renderPass);
+        CommonMeshGroup(class RenderEngine& renderer, class RenderPass const* renderPass);
         ~CommonMeshGroup();
         CommonMeshGroup(const CommonMeshGroup&) = delete;
 

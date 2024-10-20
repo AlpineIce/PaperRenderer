@@ -124,7 +124,7 @@ namespace PaperRenderer
 
         void setShaderData();
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
 
         std::unique_ptr<Buffer> createDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags2KHR usageFlags) const;
 
@@ -132,7 +132,7 @@ namespace PaperRenderer
         friend class ModelInstance;
 
     public:
-        Model(RenderEngine* renderer, const ModelCreateInfo& creationInfo);
+        Model(RenderEngine& renderer, const ModelCreateInfo& creationInfo);
         ~Model();
         Model(const Model&) = delete;
 
@@ -234,7 +234,7 @@ namespace PaperRenderer
         
         ModelTransformation transform = {};
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
         Model const* modelPtr = NULL;
 
         friend class RenderEngine;
@@ -248,7 +248,7 @@ namespace PaperRenderer
         
     public:
         //uniqueGeometry should only be set to true if the instance is animate
-        ModelInstance(RenderEngine* renderer, Model const* parentModel, bool uniqueGeometry);
+        ModelInstance(RenderEngine& renderer, Model const* parentModel, bool uniqueGeometry);
         ~ModelInstance();
         ModelInstance(const ModelInstance&) = delete;
 

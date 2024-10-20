@@ -7,14 +7,14 @@
 namespace PaperRenderer
 {
     RayTraceRender::RayTraceRender(
-        RenderEngine* renderer,
+        RenderEngine& renderer,
         TLAS* accelerationStructure,
         const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets,
         const std::vector<VkPushConstantRange>& pcRanges
     )
         :descriptorSets(descriptorSets),
         pcRanges(pcRanges),
-        rendererPtr(renderer),
+        renderer(renderer),
         tlas(accelerationStructure)
     {
         if(descriptorSets.count(0) && (descriptorSets.at(0).descriptorBindings.count(0) || descriptorSets.at(0).descriptorBindings.count(1)))
@@ -55,26 +55,27 @@ namespace PaperRenderer
         if(queuePipelineBuild)
         {
             rebuildPipeline();
+            queuePipelineBuild = false;
         }
 
         //update TLAS instances
         tlas->queueInstanceTransfers(this);
 
         //build TLAS (build timeline semaphore is implicitly signaled)
-        rendererPtr->asBuilder.queueAs({
+        renderer.asBuilder.queueAs({
             .accelerationStructure = tlas,
             .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
             .mode = rtRenderInfo.tlasBuildMode,
             .flags = rtRenderInfo.tlasBuildFlags
         });
-        rendererPtr->asBuilder.setBuildData();
+        renderer.asBuilder.setBuildData();
 
         SynchronizationInfo tlasBuildSyncInfo = {};
         tlasBuildSyncInfo.queueType = COMPUTE;
         tlasBuildSyncInfo.binaryWaitPairs = syncInfo.binaryWaitPairs;
         tlasBuildSyncInfo.timelineWaitPairs = syncInfo.timelineWaitPairs;
-        tlasBuildSyncInfo.timelineWaitPairs.push_back({ rendererPtr->getEngineStagingBuffer()->getTransferSemaphore() });
-        rendererPtr->asBuilder.submitQueuedOps(tlasBuildSyncInfo, VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
+        tlasBuildSyncInfo.timelineWaitPairs.push_back({ renderer.getEngineStagingBuffer().getTransferSemaphore() });
+        renderer.asBuilder.submitQueuedOps(tlasBuildSyncInfo, VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
 
         //command buffer
         VkCommandBufferBeginInfo commandInfo;
@@ -83,7 +84,7 @@ namespace PaperRenderer
         commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         commandInfo.pInheritanceInfo = NULL;
 
-        VkCommandBuffer cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(syncInfo.queueType);
+        VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(syncInfo.queueType);
 
         vkBeginCommandBuffer(cmdBuffer, &commandInfo);
 
@@ -113,8 +114,8 @@ namespace PaperRenderer
         if(rtRenderInfo.rtDescriptorWrites.bufferViewWrites.size() || rtRenderInfo.rtDescriptorWrites.bufferWrites.size() || 
             rtRenderInfo.rtDescriptorWrites.imageWrites.size() || rtRenderInfo.rtDescriptorWrites.accelerationStructureWrites.size())
         {
-            VkDescriptorSet rtDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(0));
-            DescriptorAllocator::writeUniforms(rendererPtr, rtDescriptorSet, rtRenderInfo.rtDescriptorWrites);
+            VkDescriptorSet rtDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(0));
+            DescriptorAllocator::writeUniforms(renderer, rtDescriptorSet, rtRenderInfo.rtDescriptorWrites);
 
             DescriptorBind bindingInfo = {};
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
@@ -153,8 +154,8 @@ namespace PaperRenderer
         vkEndCommandBuffer(cmdBuffer);
         
         //submit
-        syncInfo.timelineWaitPairs.push_back(rendererPtr->asBuilder.getBuildSemaphore());
-        rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(syncInfo, { cmdBuffer });
+        syncInfo.timelineWaitPairs.push_back(renderer.asBuilder.getBuildSemaphore());
+        renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
     }
 
     void RayTraceRender::rebuildPipeline()
@@ -177,7 +178,7 @@ namespace PaperRenderer
             .descriptors = descriptorSets,
             .pcRanges = pcRanges
         };
-        pipeline = rendererPtr->getPipelineBuilder()->buildRTPipeline(pipelineBuildInfo, pipelineProperties);
+        pipeline = renderer.getPipelineBuilder().buildRTPipeline(pipelineBuildInfo, pipelineProperties);
     }
 
     void RayTraceRender::addInstance(ModelInstance *instance, RTMaterial const* material)

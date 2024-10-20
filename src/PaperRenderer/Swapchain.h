@@ -43,13 +43,13 @@ namespace PaperRenderer
         static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
         std::function<void(VkExtent2D newExtent)> swapchainRebuildCallback = NULL;
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
         
         void buildSwapchain();
         void createImageViews();
 
     public:
-        Swapchain(class RenderEngine* renderer, WindowState startingWindowState);
+        Swapchain(class RenderEngine& renderer, WindowState startingWindowState);
         ~Swapchain();
         Swapchain(const Swapchain&) = delete;
 

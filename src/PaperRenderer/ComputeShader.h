@@ -19,10 +19,10 @@ namespace PaperRenderer
 
         void buildPipeline();
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
 
     public:
-        ComputeShader(class RenderEngine* renderer);
+        ComputeShader(class RenderEngine& renderer);
         virtual ~ComputeShader();
         ComputeShader(const ComputeShader&) = delete;
 

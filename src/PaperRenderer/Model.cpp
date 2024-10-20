@@ -9,8 +9,8 @@ namespace PaperRenderer
 {
 	//----------MODEL DEFINITIONS----------//
 
-    Model::Model(RenderEngine* renderer, const ModelCreateInfo& creationInfo)
-        :rendererPtr(renderer)
+    Model::Model(RenderEngine& renderer, const ModelCreateInfo& creationInfo)
+        :renderer(renderer)
     {
 		//temporary variables for creating the singular vertex and index buffer
 		std::vector<char> creationVerticesData;
@@ -79,25 +79,25 @@ namespace PaperRenderer
 
 		//set shader data and add to renderer
 		setShaderData();
-		rendererPtr->addModelData(this);
+		renderer.addModelData(this);
 
 		//create BLAS
-		if(creationInfo.createBLAS && rendererPtr->getDevice()->getRTSupport())
+		if(creationInfo.createBLAS && renderer.getDevice().getRTSupport())
 		{
-			defaultBLAS = std::make_unique<BLAS>(rendererPtr, this, vbo.get());
+			defaultBLAS = std::make_unique<BLAS>(renderer, this, vbo.get());
 			AccelerationStructureOp op = {
 				.accelerationStructure = defaultBLAS.get(),
                 .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
 				.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 				.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR
 			};
-			rendererPtr->asBuilder.queueAs(op);
+			renderer.asBuilder.queueAs(op);
 		}
 	}
 
 	Model::~Model()
 	{
-		rendererPtr->removeModelData(this);
+		renderer.removeModelData(this);
 		
 		vbo.reset();
 		ibo.reset();
@@ -160,7 +160,7 @@ namespace PaperRenderer
 		stagingBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 		stagingBufferInfo.size = size;
 		stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-		Buffer vboStaging(rendererPtr, stagingBufferInfo);
+		Buffer vboStaging(renderer, stagingBufferInfo);
 
 		//fill staging data
 		BufferWrite write = {};
@@ -174,7 +174,7 @@ namespace PaperRenderer
 		bufferInfo.allocationFlags = 0;
 		bufferInfo.size = size;
 		bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | usageFlags;
-		std::unique_ptr<Buffer> buffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
+		std::unique_ptr<Buffer> buffer = std::make_unique<Buffer>(renderer, bufferInfo);
 
 		//copy
 		VkBufferCopy copyRegion;
@@ -184,13 +184,13 @@ namespace PaperRenderer
 
 		SynchronizationInfo synchronizationInfo = {};
 		synchronizationInfo.queueType = QueueType::TRANSFER;
-		synchronizationInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
+		synchronizationInfo.fence = renderer.getDevice().getCommands().getUnsignaledFence();
 
 		buffer->copyFromBufferRanges(vboStaging, { copyRegion }, synchronizationInfo);
 
 		//wait for fence and destroy (potential for efficiency improvements here since this is technically brute force synchronization)
-		vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &synchronizationInfo.fence, VK_TRUE, UINT64_MAX);
-		vkDestroyFence(rendererPtr->getDevice()->getDevice(), synchronizationInfo.fence, nullptr);
+		vkWaitForFences(renderer.getDevice().getDevice(), 1, &synchronizationInfo.fence, VK_TRUE, UINT64_MAX);
+		vkDestroyFence(renderer.getDevice().getDevice(), synchronizationInfo.fence, nullptr);
 
 		return buffer;
     }
@@ -204,22 +204,22 @@ namespace PaperRenderer
 
 	//----------MODEL INSTANCE DEFINITIONS----------//
 
-    ModelInstance::ModelInstance(RenderEngine *renderer, Model const* parentModel, bool uniqueGeometry)
-        :rendererPtr(renderer),
+    ModelInstance::ModelInstance(RenderEngine& renderer, Model const* parentModel, bool uniqueGeometry)
+        :renderer(renderer),
         modelPtr(parentModel)
     {
-		rendererPtr->addObject(this);
+		renderer.addObject(this);
 		uniqueGeometryData.isUsed = uniqueGeometry;
 		
 		//create unique VBO and BLAS if requested
-		if((uniqueGeometry || !parentModel->defaultBLAS) && rendererPtr->getDevice()->getRTSupport())
+		if((uniqueGeometry || !parentModel->defaultBLAS) && renderer.getDevice().getRTSupport())
 		{
 			BufferInfo bufferInfo = {};
 			bufferInfo.allocationFlags = 0;
 			bufferInfo.size = modelPtr->vbo->getSize();
 			bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
 				VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
-			uniqueGeometryData.uniqueVBO  = std::make_unique<Buffer>(rendererPtr, bufferInfo);
+			uniqueGeometryData.uniqueVBO  = std::make_unique<Buffer>(renderer, bufferInfo);
 
 			//copy
 			VkBufferCopy copyRegion;
@@ -229,18 +229,18 @@ namespace PaperRenderer
 
 			SynchronizationInfo synchronizationInfo = {};
 			synchronizationInfo.queueType = QueueType::TRANSFER;
-			synchronizationInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
+			synchronizationInfo.fence = renderer.getDevice().getCommands().getUnsignaledFence();
 
 			uniqueGeometryData.uniqueVBO->copyFromBufferRanges(*modelPtr->vbo, { copyRegion }, synchronizationInfo);
 
 			//wait for fence and destroy (potential for efficiency improvements here since this is technically brute force synchronization)
-			vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &synchronizationInfo.fence, VK_TRUE, UINT64_MAX);
-			vkDestroyFence(rendererPtr->getDevice()->getDevice(), synchronizationInfo.fence, nullptr);
+			vkWaitForFences(renderer.getDevice().getDevice(), 1, &synchronizationInfo.fence, VK_TRUE, UINT64_MAX);
+			vkDestroyFence(renderer.getDevice().getDevice(), synchronizationInfo.fence, nullptr);
 
 			//create BLAS
-			if(rendererPtr->getDevice()->getRTSupport())
+			if(renderer.getDevice().getRTSupport())
 			{
-				uniqueGeometryData.blas = std::make_unique<BLAS>(rendererPtr, modelPtr, uniqueGeometryData.uniqueVBO.get());
+				uniqueGeometryData.blas = std::make_unique<BLAS>(renderer, modelPtr, uniqueGeometryData.uniqueVBO.get());
 				AccelerationStructureOp op = {
 					.accelerationStructure = uniqueGeometryData.blas.get(),
 					.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
@@ -248,14 +248,14 @@ namespace PaperRenderer
 					//if geometry is unique then allow update, otherwise geometry isn't unique, but a parent copy doesnt exist; assume static
 					.flags = uniqueGeometry ? VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR : VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR
 				};
-				rendererPtr->asBuilder.queueAs(op);
+				renderer.asBuilder.queueAs(op);
 			}
 		}
     }
 
     ModelInstance::~ModelInstance()
     {
-		rendererPtr->removeObject(this);
+		renderer.removeObject(this);
     }
 
 	void ModelInstance::setRenderPassInstanceData(RenderPass const* renderPass)
@@ -325,7 +325,7 @@ namespace PaperRenderer
     void ModelInstance::setTransformation(const ModelTransformation &newTransformation)
     {
 		this->transform = newTransformation;
-		rendererPtr->toUpdateModelInstances.push_front(this);
+		renderer.toUpdateModelInstances.push_front(this);
     }
 
     BLAS const* ModelInstance::getBLAS() const

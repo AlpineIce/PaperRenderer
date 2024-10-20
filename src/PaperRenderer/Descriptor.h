@@ -65,16 +65,16 @@ namespace PaperRenderer
         std::vector<VkDescriptorPool> descriptorPools;
         VkDescriptorPool* currentPool = NULL;
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
 
         VkDescriptorPool allocateDescriptorPool();
 
     public:
-        DescriptorAllocator(class RenderEngine* renderer);
+        DescriptorAllocator(class RenderEngine& renderer);
         ~DescriptorAllocator();
         DescriptorAllocator(const DescriptorAllocator&) = delete;
 
-        static void writeUniforms(class RenderEngine* renderer, VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo);
+        static void writeUniforms(class RenderEngine& renderer, VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo);
         static void bindSet(VkCommandBuffer cmdBuffer, const DescriptorBind& bindingInfo);
 
         VkDescriptorSet allocateDescriptorSet(VkDescriptorSetLayout setLayout);

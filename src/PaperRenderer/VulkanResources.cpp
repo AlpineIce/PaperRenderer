@@ -8,8 +8,8 @@ namespace PaperRenderer
 {
     //----------RESOURCE BASE CLASS DEFINITIONS----------//
 
-    VulkanResource::VulkanResource(RenderEngine* renderer)
-        :rendererPtr(renderer)
+    VulkanResource::VulkanResource(RenderEngine& renderer)
+        :renderer(renderer)
     {
     }
 
@@ -19,7 +19,7 @@ namespace PaperRenderer
     
     //----------BUFFER DEFINITIONS----------//
 
-    Buffer::Buffer(RenderEngine* renderer, const BufferInfo& bufferInfo)
+    Buffer::Buffer(RenderEngine& renderer, const BufferInfo& bufferInfo)
         :VulkanResource(renderer)
     {
         VkBufferCreateInfo bufferCreateInfo = {};
@@ -30,7 +30,7 @@ namespace PaperRenderer
         bufferCreateInfo.usage = bufferInfo.usageFlags;
         bufferCreateInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
 
-        const QueueFamiliesIndices& deviceQueueFamilies = rendererPtr->getDevice()->getQueueFamiliesIndices();
+        const QueueFamiliesIndices& deviceQueueFamilies = renderer.getDevice().getQueueFamiliesIndices();
         std::vector<uint32_t> queueFamilyIndices;
         if(deviceQueueFamilies.graphicsFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.graphicsFamilyIndex);
         if(deviceQueueFamilies.computeFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.computeFamilyIndex);
@@ -50,14 +50,14 @@ namespace PaperRenderer
         allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
         VmaAllocationInfo allocInfo = {};
-        VkResult result = vmaCreateBuffer(rendererPtr->getDevice()->getAllocator(), &bufferCreateInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
+        VkResult result = vmaCreateBuffer(renderer.getDevice().getAllocator(), &bufferCreateInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
         if(result != VK_SUCCESS)
         {
             throw std::runtime_error("Buffer creation failed");
         }
 
         VkMemoryPropertyFlags memPropertyFlags;
-        vmaGetAllocationMemoryProperties(rendererPtr->getDevice()->getAllocator(), allocation, &memPropertyFlags);
+        vmaGetAllocationMemoryProperties(renderer.getDevice().getAllocator(), allocation, &memPropertyFlags);
         if(memPropertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) writable = true;
         
         size = bufferInfo.size;
@@ -65,7 +65,7 @@ namespace PaperRenderer
 
     Buffer::~Buffer()
     {
-        vmaDestroyBuffer(rendererPtr->getDevice()->getAllocator(), buffer, allocation);
+        vmaDestroyBuffer(renderer.getDevice().getAllocator(), buffer, allocation);
     }
 
     int Buffer::writeToBuffer(const std::vector<BufferWrite>& writes) const
@@ -75,7 +75,7 @@ namespace PaperRenderer
         {
             if(write.data && write.size)
             {
-                if(vmaCopyMemoryToAllocation(rendererPtr->getDevice()->getAllocator(), write.data, allocation, write.offset, write.size) != VK_SUCCESS) return 1;
+                if(vmaCopyMemoryToAllocation(renderer.getDevice().getAllocator(), write.data, allocation, write.offset, write.size) != VK_SUCCESS) return 1;
             }
         }
 
@@ -89,7 +89,7 @@ namespace PaperRenderer
         {
             if(read.data && read.size)
             {
-               if(vmaCopyAllocationToMemory(rendererPtr->getDevice()->getAllocator(), allocation, read.offset, read.data, read.size) != VK_SUCCESS) return 1;
+               if(vmaCopyAllocationToMemory(renderer.getDevice().getAllocator(), allocation, read.offset, read.data, read.size) != VK_SUCCESS) return 1;
             }
         }
 
@@ -98,7 +98,7 @@ namespace PaperRenderer
 
     void Buffer::copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
     {
-        VkCommandBuffer transferBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
+        VkCommandBuffer transferBuffer = renderer.getDevice().getCommands().getCommandBuffer(QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -109,7 +109,7 @@ namespace PaperRenderer
         vkCmdCopyBuffer(transferBuffer, src.getBuffer(), this->buffer, regions.size(), regions.data());
         vkEndCommandBuffer(transferBuffer);
 
-        rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(synchronizationInfo, { transferBuffer });
+        renderer.getDevice().getCommands().submitToQueue(synchronizationInfo, { transferBuffer });
     }
 
     VkDeviceAddress Buffer::getBufferDeviceAddress() const
@@ -121,7 +121,7 @@ namespace PaperRenderer
             deviceAddressInfo.pNext = NULL;
             deviceAddressInfo.buffer = buffer;
 
-            return vkGetBufferDeviceAddress(rendererPtr->getDevice()->getDevice(), &deviceAddressInfo);
+            return vkGetBufferDeviceAddress(renderer.getDevice().getDevice(), &deviceAddressInfo);
         }
         else
         {
@@ -131,10 +131,10 @@ namespace PaperRenderer
 
     //----------FRAGMENTABLE BUFFER DEFINITIONS----------//
 
-    FragmentableBuffer::FragmentableBuffer(RenderEngine* renderer, const BufferInfo &bufferInfo)
-        :rendererPtr(renderer)
+    FragmentableBuffer::FragmentableBuffer(RenderEngine& renderer, const BufferInfo &bufferInfo)
+        :renderer(renderer)
     {
-        buffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
+        buffer = std::make_unique<Buffer>(renderer, bufferInfo);
     }
 
     FragmentableBuffer::~FragmentableBuffer()
@@ -148,9 +148,9 @@ namespace PaperRenderer
     FragmentableBuffer::WriteResult FragmentableBuffer::newWrite(void* data, VkDeviceSize size, VkDeviceSize minAlignment, VkDeviceSize* returnLocation)
     {
         WriteResult result = SUCCESS;
-        desiredLocation += rendererPtr->getDevice()->getAlignment(size, minAlignment);
+        desiredLocation += renderer.getDevice().getAlignment(size, minAlignment);
 
-        if(stackLocation + rendererPtr->getDevice()->getAlignment(size, minAlignment) > buffer->getSize())
+        if(stackLocation + renderer.getDevice().getAlignment(size, minAlignment) > buffer->getSize())
         {
             //if compaction gives back no results then there's no more available memory
             if(!compact().size() || stackLocation + size > buffer->getSize())
@@ -171,13 +171,13 @@ namespace PaperRenderer
         {
             BufferWrite write = {};
             write.data = data;
-            write.offset = rendererPtr->getDevice()->getAlignment(stackLocation, minAlignment);
+            write.offset = renderer.getDevice().getAlignment(stackLocation, minAlignment);
             write.size = size;
             
             buffer->writeToBuffer({ write });
         }
 
-        if(returnLocation) *returnLocation = rendererPtr->getDevice()->getAlignment(stackLocation, minAlignment);
+        if(returnLocation) *returnLocation = renderer.getDevice().getAlignment(stackLocation, minAlignment);
 
         if(result == SUCCESS)
         {
@@ -211,7 +211,7 @@ namespace PaperRenderer
             if(!buffer->isWritable())
             {
                 //start command buffer
-                cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(TRANSFER);
+                cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(TRANSFER);
 
                 VkCommandBufferBeginInfo beginInfo = {};
                 beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -321,11 +321,11 @@ namespace PaperRenderer
                 //submit
                 SynchronizationInfo syncInfo = {};
                 syncInfo.queueType = TRANSFER;
-                syncInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
-                rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(syncInfo, { cmdBuffer });
+                syncInfo.fence = renderer.getDevice().getCommands().getUnsignaledFence();
+                renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
 
-                vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
-                vkDestroyFence(rendererPtr->getDevice()->getDevice(), syncInfo.fence, nullptr);
+                vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
+                vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
             }
 
             //clear memory fragments
@@ -340,7 +340,7 @@ namespace PaperRenderer
 
     //----------IMAGE DEFINITIONS----------//
 
-    Image::Image(RenderEngine* renderer, const ImageInfo& imageInfo)
+    Image::Image(RenderEngine& renderer, const ImageInfo& imageInfo)
         :VulkanResource(renderer),
         imageInfo(imageInfo)
     {
@@ -380,7 +380,7 @@ namespace PaperRenderer
         allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
         VmaAllocationInfo allocInfo = {};
-        if(vmaCreateImage(rendererPtr->getDevice()->getAllocator(), &imageCreateInfo, &allocCreateInfo, &image, &allocation, &allocInfo) != VK_SUCCESS)
+        if(vmaCreateImage(renderer.getDevice().getAllocator(), &imageCreateInfo, &allocCreateInfo, &image, &allocation, &allocInfo) != VK_SUCCESS)
         {
             throw std::runtime_error("Buffer creation failed");
         }
@@ -390,10 +390,10 @@ namespace PaperRenderer
 
     Image::~Image()
     {
-        vmaDestroyImage(rendererPtr->getDevice()->getAllocator(), image, allocation);
+        vmaDestroyImage(renderer.getDevice().getAllocator(), image, allocation);
     }
 
-    VkImageView Image::getNewImageView(const Image& image, RenderEngine* renderer, VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format)
+    VkImageView Image::getNewImageView(const Image& image, RenderEngine& renderer, VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format)
     {
         VkImageSubresourceRange subresource = {};
         subresource.aspectMask = aspectMask;
@@ -412,7 +412,7 @@ namespace PaperRenderer
         viewInfo.subresourceRange = subresource;
 
         VkImageView view;
-        VkResult result = vkCreateImageView(renderer->getDevice()->getDevice(), &viewInfo, nullptr, &view);
+        VkResult result = vkCreateImageView(renderer.getDevice().getDevice(), &viewInfo, nullptr, &view);
 
         return view;
     }
@@ -420,8 +420,8 @@ namespace PaperRenderer
     void Image::setImageData(const Buffer &imageStagingBuffer)
     {
         //get synchronization stuff
-        VkSemaphore copySemaphore = rendererPtr->getDevice()->getCommandsPtr()->getSemaphore();
-        VkFence blitFence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
+        VkSemaphore copySemaphore = renderer.getDevice().getCommands().getSemaphore();
+        VkFence blitFence = renderer.getDevice().getCommands().getUnsignaledFence();
 
         //copy staging buffer into image
         SynchronizationInfo copySynchronizationInfo = {
@@ -446,22 +446,22 @@ namespace PaperRenderer
         generateMipmaps(blitSynchronization);
         
         //destroy synchronization stuff
-        vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &blitFence, VK_TRUE, UINT64_MAX);
-        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), copySemaphore, nullptr);
-        vkDestroyFence(rendererPtr->getDevice()->getDevice(), blitSynchronization.fence, nullptr);
+        vkWaitForFences(renderer.getDevice().getDevice(), 1, &blitFence, VK_TRUE, UINT64_MAX);
+        vkDestroySemaphore(renderer.getDevice().getDevice(), copySemaphore, nullptr);
+        vkDestroyFence(renderer.getDevice().getDevice(), blitSynchronization.fence, nullptr);
     }
 
-    VkSampler Image::getNewSampler(const Image& image, RenderEngine* renderer)
+    VkSampler Image::getNewSampler(const Image& image, RenderEngine& renderer)
     {
         VkPhysicalDeviceFeatures2 features = {};
         features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
         features.pNext = NULL;
-        vkGetPhysicalDeviceFeatures2(renderer->getDevice()->getGPU(), &features);
+        vkGetPhysicalDeviceFeatures2(renderer.getDevice().getGPU(), &features);
 
         VkPhysicalDeviceProperties2 properties = {};
         properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
         properties.pNext = NULL;
-        vkGetPhysicalDeviceProperties2(renderer->getDevice()->getGPU(), &properties);
+        vkGetPhysicalDeviceProperties2(renderer.getDevice().getGPU(), &properties);
 
         VkSamplerCreateInfo samplerInfo = {};
         samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -484,14 +484,14 @@ namespace PaperRenderer
         samplerInfo.unnormalizedCoordinates = VK_FALSE;
 
         VkSampler sampler;
-        VkResult result = vkCreateSampler(renderer->getDevice()->getDevice(), &samplerInfo, nullptr, &sampler);
+        VkResult result = vkCreateSampler(renderer.getDevice().getDevice(), &samplerInfo, nullptr, &sampler);
 
         return sampler;
     }
 
     void Image::copyBufferToImage(VkBuffer src, VkImage dst, const SynchronizationInfo& synchronizationInfo)
     {
-        VkCommandBuffer transferBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(QueueType::TRANSFER);
+        VkCommandBuffer transferBuffer = renderer.getDevice().getCommands().getCommandBuffer(QueueType::TRANSFER);
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -555,13 +555,13 @@ namespace PaperRenderer
 
         vkEndCommandBuffer(transferBuffer);
 
-        rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(synchronizationInfo, { transferBuffer });
+        renderer.getDevice().getCommands().submitToQueue(synchronizationInfo, { transferBuffer });
     }
     
     void Image::generateMipmaps(const SynchronizationInfo& synchronizationInfo)
     {
         //command buffer
-        VkCommandBuffer blitBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(QueueType::GRAPHICS);
+        VkCommandBuffer blitBuffer = renderer.getDevice().getCommands().getCommandBuffer(QueueType::GRAPHICS);
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -746,6 +746,6 @@ namespace PaperRenderer
         
         vkEndCommandBuffer(blitBuffer);
 
-        rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(synchronizationInfo, { blitBuffer });
+        renderer.getDevice().getCommands().submitToQueue(synchronizationInfo, { blitBuffer });
     }
 }

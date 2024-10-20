@@ -38,11 +38,11 @@ namespace PaperRenderer
     protected:
         VkDeviceSize size = 0;
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
         VmaAllocation allocation = VK_NULL_HANDLE;
 
     public:
-        VulkanResource(class RenderEngine* renderer);
+        VulkanResource(class RenderEngine& renderer);
         virtual ~VulkanResource();
         VulkanResource(const VulkanResource&) = delete;
 
@@ -58,7 +58,7 @@ namespace PaperRenderer
         bool writable = false;
         
     public:
-        Buffer(class RenderEngine* renderer, const BufferInfo& bufferInfo);
+        Buffer(class RenderEngine& renderer, const BufferInfo& bufferInfo);
         ~Buffer() override;
         Buffer(const Buffer&) = delete;
 
@@ -109,11 +109,11 @@ namespace PaperRenderer
 
         std::function<void(std::vector<CompactionResult>)> compactionCallback = NULL;
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
         VmaAllocation allocation;
 
     public:
-        FragmentableBuffer(class RenderEngine* renderer, const BufferInfo& bufferInfo);
+        FragmentableBuffer(class RenderEngine& renderer, const BufferInfo& bufferInfo);
         ~FragmentableBuffer();
         FragmentableBuffer(const FragmentableBuffer&) = delete;
 
@@ -133,7 +133,7 @@ namespace PaperRenderer
 
         std::vector<CompactionResult> compact(); //inkoves on demand compaction; useful for when recreating an allocation to get the actual current size requirement. results are sorted
 
-        Buffer* getBuffer() { return buffer.get(); }
+        Buffer& getBuffer() { return *buffer; }
         const VkDeviceSize& getStackLocation() const { return stackLocation; } //returns the location relative to the start of the buffer (always 0) of where unwritten data is
         const VkDeviceSize& getDesiredLocation() const { return desiredLocation; } //useful if write failed to give a the stackLocation + (size of last write)
     };
@@ -164,14 +164,14 @@ namespace PaperRenderer
         void generateMipmaps(const SynchronizationInfo& synchronizationInfo);
 
     public:
-        Image(class RenderEngine* renderer, const ImageInfo& imageInfo);
+        Image(class RenderEngine& renderer, const ImageInfo& imageInfo);
         ~Image() override;
         Image(const Image&) = delete;
 
         void setImageData(const Buffer& imageStagingBuffer);
 
-        static VkImageView getNewImageView(const Image& image, class RenderEngine* renderer, VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format);
-        static VkSampler getNewSampler(const Image& image, class RenderEngine* renderer);
+        static VkImageView getNewImageView(const Image& image, class RenderEngine& renderer, VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format);
+        static VkSampler getNewSampler(const Image& image, class RenderEngine& renderer);
 
         const VkImage& getImage() const { return image; }
         const VkExtent3D getExtent() const { return imageInfo.extent; }

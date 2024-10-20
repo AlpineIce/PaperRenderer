@@ -16,16 +16,16 @@ namespace PaperRenderer
 {
     //----------STAGING BUFFER DEFINITIONS----------//
 
-    EngineStagingBuffer::EngineStagingBuffer(RenderEngine *renderer)
-        :rendererPtr(renderer)
+    EngineStagingBuffer::EngineStagingBuffer(RenderEngine& renderer)
+        :renderer(renderer)
     {
-        transferSemaphore = rendererPtr->getDevice()->getCommandsPtr()->getTimelineSemaphore(finalSemaphoreValue);
+        transferSemaphore = renderer.getDevice().getCommands().getTimelineSemaphore(finalSemaphoreValue);
     }
 
     EngineStagingBuffer::~EngineStagingBuffer()
     {
         stagingBuffer.reset();
-        vkDestroySemaphore(rendererPtr->getDevice()->getDevice(), transferSemaphore, nullptr);
+        vkDestroySemaphore(renderer.getDevice().getDevice(), transferSemaphore, nullptr);
     }
 
     void EngineStagingBuffer::queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char> &data)
@@ -49,7 +49,7 @@ namespace PaperRenderer
         waitInfo.pSemaphores = &transferSemaphore;
         waitInfo.pValues = &finalSemaphoreValue;
 
-        vkWaitSemaphores(rendererPtr->getDevice()->getDevice(), &waitInfo, UINT64_MAX);
+        vkWaitSemaphores(renderer.getDevice().getDevice(), &waitInfo, UINT64_MAX);
 
         //rebuild buffer if needed
         VkDeviceSize availableSize = stagingBuffer ? stagingBuffer->getSize() : 0;
@@ -59,7 +59,7 @@ namespace PaperRenderer
             bufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
             bufferInfo.size = queueSize * bufferOverhead;
             bufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-            stagingBuffer = std::make_unique<Buffer>(rendererPtr, bufferInfo);
+            stagingBuffer = std::make_unique<Buffer>(renderer, bufferInfo);
 
             availableSize = bufferInfo.size;
         }
@@ -108,7 +108,7 @@ namespace PaperRenderer
     void EngineStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
     {
         //start command buffer
-        VkCommandBuffer cmdBuffer = rendererPtr->getDevice()->getCommandsPtr()->getCommandBuffer(syncInfo.queueType);
+        VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(syncInfo.queueType);
 
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -127,7 +127,7 @@ namespace PaperRenderer
 
         //submit
         syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValue });
-        rendererPtr->getDevice()->getCommandsPtr()->submitToQueue(syncInfo, { cmdBuffer });
+        renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
     }
 
     void EngineStagingBuffer::submitQueuedTransfers(VkCommandBuffer cmdBuffer)
@@ -143,14 +143,14 @@ namespace PaperRenderer
 
     RenderEngine::RenderEngine(RendererCreationStruct creationInfo)
         :shadersDir(creationInfo.shadersDir),
-        device(this, creationInfo.windowState.windowName),
-        swapchain(this, creationInfo.windowState),
-        descriptors(this),
-        pipelineBuilder(this),
-        rasterPreprocessPipeline(this, creationInfo.shadersDir),
-        tlasInstanceBuildPipeline(this, creationInfo.shadersDir),
-        asBuilder(this),
-        stagingBuffer(this)
+        device(*this, creationInfo.windowState.windowName),
+        swapchain(*this, creationInfo.windowState),
+        descriptors(*this),
+        pipelineBuilder(*this),
+        rasterPreprocessPipeline(*this, creationInfo.shadersDir),
+        tlasInstanceBuildPipeline(*this, creationInfo.shadersDir),
+        asBuilder(*this),
+        stagingBuffer(*this)
     {
         rebuildModelDataBuffer();
         rebuildInstancesbuffer();
@@ -185,7 +185,7 @@ namespace PaperRenderer
         modelsBufferInfo.allocationFlags = 0;
         modelsBufferInfo.size = newModelDataSize * modelsDataOverhead;
         modelsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
-        std::unique_ptr<FragmentableBuffer> newBuffer = std::make_unique<FragmentableBuffer>(this, modelsBufferInfo);
+        std::unique_ptr<FragmentableBuffer> newBuffer = std::make_unique<FragmentableBuffer>(*this, modelsBufferInfo);
         newBuffer->setCompactionCallback([this](std::vector<CompactionResult> results){ handleModelDataCompaction(results); });
 
         //copy old data into new if old buffer existed
@@ -197,8 +197,8 @@ namespace PaperRenderer
             copyRegion.size = newWriteSize;
 
             SynchronizationInfo syncInfo = {};
-            syncInfo.fence = device.getCommandsPtr()->getUnsignaledFence();
-            newBuffer->getBuffer()->copyFromBufferRanges(*instancesDataBuffer, { copyRegion }, syncInfo);
+            syncInfo.fence = device.getCommands().getUnsignaledFence();
+            newBuffer->getBuffer().copyFromBufferRanges(*instancesDataBuffer, { copyRegion }, syncInfo);
             vkWaitForFences(device.getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
             vkDestroyFence(device.getDevice(), syncInfo.fence, nullptr);
 
@@ -239,7 +239,7 @@ namespace PaperRenderer
         bufferInfo.allocationFlags = 0;
         bufferInfo.size = std::max((VkDeviceSize)(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance) * instancesDataOverhead), (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
         bufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
-        std::unique_ptr<Buffer> newBuffer = std::make_unique<Buffer>(this, bufferInfo);
+        std::unique_ptr<Buffer> newBuffer = std::make_unique<Buffer>(*this, bufferInfo);
 
         //copy old data into new if old existed
         if(instancesDataBuffer)
@@ -251,7 +251,7 @@ namespace PaperRenderer
 
             SynchronizationInfo syncInfo = {};
             syncInfo.queueType = TRANSFER;
-            syncInfo.fence = device.getCommandsPtr()->getUnsignaledFence();
+            syncInfo.fence = device.getCommands().getUnsignaledFence();
             newBuffer->copyFromBufferRanges(*instancesDataBuffer, { copyRegion }, syncInfo);
             vkWaitForFences(device.getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
             vkDestroyFence(device.getDevice(), syncInfo.fence, nullptr);
@@ -381,7 +381,7 @@ namespace PaperRenderer
         //queue model data
         for(Model* model : toUpdateModels)
         {
-            stagingBuffer.queueDataTransfers(*modelDataBuffer->getBuffer(), model->shaderDataLocation, model->getShaderData());
+            stagingBuffer.queueDataTransfers(modelDataBuffer->getBuffer(), model->shaderDataLocation, model->getShaderData());
         }
 
         //clear deques
@@ -392,7 +392,7 @@ namespace PaperRenderer
     const VkSemaphore& RenderEngine::beginFrame(const SynchronizationInfo& transferSyncInfo, const SynchronizationInfo& asSyncInfo)
     {
         //reset command and descriptor pools
-        device.getCommandsPtr()->resetCommandPools();
+        device.getCommands().resetCommandPools();
         descriptors.refreshPools();
 
         //acquire next image

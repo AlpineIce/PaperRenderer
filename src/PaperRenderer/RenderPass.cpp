@@ -8,16 +8,16 @@ namespace PaperRenderer
 {
     //----------PREPROCESS PIPELINES DEFINITIONS----------//
 
-    RasterPreprocessPipeline::RasterPreprocessPipeline(RenderEngine* renderer, std::string fileDir)
+    RasterPreprocessPipeline::RasterPreprocessPipeline(RenderEngine& renderer, std::string fileDir)
         :ComputeShader(renderer),
-        rendererPtr(renderer)
+        renderer(renderer)
     {
         //preprocess uniform buffer
         BufferInfo preprocessBufferInfo = {};
         preprocessBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
         preprocessBufferInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
         preprocessBufferInfo.size = sizeof(UBOInputData);
-        uniformBuffer = std::make_unique<Buffer>(rendererPtr, preprocessBufferInfo);
+        uniformBuffer = std::make_unique<Buffer>(renderer, preprocessBufferInfo);
         
         //pipeline info
         shader = { VK_SHADER_STAGE_COMPUTE_BIT, fileDir + fileName };
@@ -73,8 +73,8 @@ namespace PaperRenderer
         uboInputData.camPos = glm::vec4(renderPass.cameraPtr->getTranslation().position, 1.0f);
         uboInputData.projection = renderPass.cameraPtr->getProjection();
         uboInputData.view = renderPass.cameraPtr->getViewMatrix();
-        uboInputData.materialDataPtr = renderPass.instancesDataBuffer->getBuffer()->getBufferDeviceAddress();
-        uboInputData.modelDataPtr = rendererPtr->modelDataBuffer->getBuffer()->getBufferDeviceAddress();
+        uboInputData.materialDataPtr = renderPass.instancesDataBuffer->getBuffer().getBufferDeviceAddress();
+        uboInputData.modelDataPtr = renderer.modelDataBuffer->getBuffer().getBufferDeviceAddress();
         uboInputData.objectCount = renderPass.renderPassInstances.size();
         uboInputData.doCulling = true;
 
@@ -98,9 +98,9 @@ namespace PaperRenderer
 
         //set0 - binding 1: model instances
         VkDescriptorBufferInfo bufferWrite1Info = {};
-        bufferWrite1Info.buffer = rendererPtr->instancesDataBuffer->getBuffer();
+        bufferWrite1Info.buffer = renderer.instancesDataBuffer->getBuffer();
         bufferWrite1Info.offset = 0;
-        bufferWrite1Info.range = rendererPtr->renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance);
+        bufferWrite1Info.range = renderer.renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance);
 
         BuffersDescriptorWrites bufferWrite1 = {};
         bufferWrite1.binding = 1;
@@ -156,15 +156,15 @@ namespace PaperRenderer
 
     //----------RENDER PASS DEFINITIONS----------//
 
-    RenderPass::RenderPass(RenderEngine* renderer, Camera* camera, MaterialInstance* defaultMaterialInstance)
-        :rendererPtr(renderer),
+    RenderPass::RenderPass(RenderEngine& renderer, Camera* camera, MaterialInstance* defaultMaterialInstance)
+        :renderer(renderer),
         cameraPtr(camera),
         defaultMaterialInstancePtr(defaultMaterialInstance)
     {
         rebuildMaterialDataBuffer();
         rebuildInstancesBuffer();
 
-        rendererPtr->renderPasses.push_back(this);
+        renderer.renderPasses.push_back(this);
     }
 
     RenderPass::~RenderPass()
@@ -180,7 +180,7 @@ namespace PaperRenderer
             }
         }
 
-        rendererPtr->renderPasses.remove(this);
+        renderer.renderPasses.remove(this);
     }
 
     void RenderPass::rebuildInstancesBuffer()
@@ -192,7 +192,7 @@ namespace PaperRenderer
         instancesBufferInfo.allocationFlags = 0;
         instancesBufferInfo.size = newInstancesBufferSize;
         instancesBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
-        std::unique_ptr<Buffer> newInstancesBuffer = std::make_unique<Buffer>(rendererPtr, instancesBufferInfo);
+        std::unique_ptr<Buffer> newInstancesBuffer = std::make_unique<Buffer>(renderer, instancesBufferInfo);
 
         //copy old data into new if old existed
         if(instancesBuffer)
@@ -206,10 +206,10 @@ namespace PaperRenderer
             {
                 SynchronizationInfo syncInfo = {};
                 syncInfo.queueType = TRANSFER;
-                syncInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
+                syncInfo.fence = renderer.getDevice().getCommands().getUnsignaledFence();
                 newInstancesBuffer->copyFromBufferRanges(*instancesBuffer, { instancesCopyRegion }, syncInfo);
-                vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
-                vkDestroyFence(rendererPtr->getDevice()->getDevice(), syncInfo.fence, nullptr);
+                vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
+                vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
             }
             
         }
@@ -235,7 +235,7 @@ namespace PaperRenderer
         instancesMaterialDataBufferInfo.allocationFlags = 0;
         instancesMaterialDataBufferInfo.size = newMaterialDataBufferSize * instancesOverhead;
         instancesMaterialDataBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
-        std::unique_ptr<FragmentableBuffer> newInstancesDataBuffer = std::make_unique<FragmentableBuffer>(rendererPtr, instancesMaterialDataBufferInfo);
+        std::unique_ptr<FragmentableBuffer> newInstancesDataBuffer = std::make_unique<FragmentableBuffer>(renderer, instancesMaterialDataBufferInfo);
         newInstancesDataBuffer->setCompactionCallback([this](std::vector<CompactionResult> results){ handleMaterialDataCompaction(results); });
 
         //copy old data into new if old existed
@@ -251,11 +251,11 @@ namespace PaperRenderer
 
             SynchronizationInfo syncInfo = {};
             syncInfo.queueType = TRANSFER;
-            syncInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
-            newInstancesDataBuffer->getBuffer()->copyFromBufferRanges(*instancesDataBuffer->getBuffer(), { materialDataCopyRegion }, syncInfo);
+            syncInfo.fence = renderer.getDevice().getCommands().getUnsignaledFence();
+            newInstancesDataBuffer->getBuffer().copyFromBufferRanges(instancesDataBuffer->getBuffer(), { materialDataCopyRegion }, syncInfo);
 
-            vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
-            vkDestroyFence(rendererPtr->getDevice()->getDevice(), syncInfo.fence, nullptr);
+            vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
+            vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
         }
         
         //replace old buffer
@@ -318,7 +318,7 @@ namespace PaperRenderer
 
             //queue material data write
             const std::vector<char>& materialData = instance->getRenderPassInstanceData(this);
-            rendererPtr->getEngineStagingBuffer()->queueDataTransfers(*instancesDataBuffer->getBuffer(), instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset, materialData);
+            renderer.getEngineStagingBuffer().queueDataTransfers(instancesDataBuffer->getBuffer(), instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset, materialData);
 
             //write instance data
             ModelInstance::RenderPassInstance instanceShaderData = {};
@@ -330,7 +330,7 @@ namespace PaperRenderer
             memcpy(instanceData.data(), &instanceShaderData, instanceData.size());
             
             //queue data transfer
-            rendererPtr->getEngineStagingBuffer()->queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::AccelerationStructureInstance) * instance->rendererSelfIndex, instanceData);
+            renderer.getEngineStagingBuffer().queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::AccelerationStructureInstance) * instance->rendererSelfIndex, instanceData);
         }
 
         //clear deques
@@ -427,7 +427,7 @@ namespace PaperRenderer
             //----------PRE-PROCESS----------//
 
             //compute shader
-            rendererPtr->getRasterPreprocessPipeline()->submit(cmdBuffer, *this);
+            renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this);
 
             //memory barrier
             VkMemoryBarrier2 preprocessMemBarrier = {};
@@ -469,7 +469,7 @@ namespace PaperRenderer
             vkCmdSetScissorWithCount(cmdBuffer, renderPassInfo.scissors.size(), renderPassInfo.scissors.data());
 
             //MSAA samples
-            vkCmdSetRasterizationSamplesEXT(cmdBuffer, rendererPtr->getRendererState()->msaaSamples);
+            vkCmdSetRasterizationSamplesEXT(cmdBuffer, renderer.getRendererState().msaaSamples);
 
             //compare op
             vkCmdSetDepthCompareOp(cmdBuffer, renderPassInfo.depthCompareOp);
@@ -533,7 +533,7 @@ namespace PaperRenderer
                 if(!renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances.count(materialInstance))
                 {
                     renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance] = 
-                        std::make_unique<CommonMeshGroup>(rendererPtr, this);
+                        std::make_unique<CommonMeshGroup>(renderer, this);
                 }
 
                 //add references

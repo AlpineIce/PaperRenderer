@@ -18,10 +18,10 @@ namespace PaperRenderer
             uint32_t objectCount;
         };
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
 
     public:
-        TLASInstanceBuildPipeline(RenderEngine* renderer, std::string fileDir);
+        TLASInstanceBuildPipeline(RenderEngine& renderer, std::string fileDir);
         ~TLASInstanceBuildPipeline() override;
 
         void submit(VkCommandBuffer cmdBuffer, const TLAS& tlas);
@@ -41,10 +41,10 @@ namespace PaperRenderer
         friend class AccelerationStructureBuilder;
 
     protected:
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
 
     public:
-        AS(RenderEngine* renderer);
+        AS(RenderEngine& renderer);
         ~AS();
         AS(const AS&) = delete;
 
@@ -62,7 +62,7 @@ namespace PaperRenderer
     public:
         //If vbo is null, BLAS will instead use those directly from the model. Model is needed
         //for data describing different geometries
-        BLAS(RenderEngine* renderer, Model const* model, Buffer const* vbo);
+        BLAS(RenderEngine& renderer, Model const* model, Buffer const* vbo);
         ~BLAS();
         BLAS(const BLAS&) = delete;
 
@@ -98,7 +98,7 @@ namespace PaperRenderer
         friend class RayTraceRender;
         friend TLASInstanceBuildPipeline;
     public:
-        TLAS(RenderEngine* renderer);
+        TLAS(RenderEngine& renderer);
         ~TLAS();
         TLAS(const TLAS&) = delete;
 
@@ -166,9 +166,9 @@ namespace PaperRenderer
         };
         std::queue<OldStructureData> destructionQueue;
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
     public:
-        AccelerationStructureBuilder(RenderEngine* renderer);
+        AccelerationStructureBuilder(RenderEngine& renderer);
         ~AccelerationStructureBuilder();
         AccelerationStructureBuilder(const AccelerationStructureBuilder&) = delete;
         

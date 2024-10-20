@@ -55,10 +55,10 @@ namespace PaperRenderer
         };
         std::vector<DstCopy> getDataTransfers();
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
 
     public:
-        EngineStagingBuffer(RenderEngine* renderer);
+        EngineStagingBuffer(RenderEngine& renderer);
         ~EngineStagingBuffer();
         
         void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char>& data); //do not submit more than 1 transfer with the same destination! undefined behavior!
@@ -134,15 +134,15 @@ namespace PaperRenderer
 
         uint32_t getBufferIndex() const { return frameNumber % 2; }
         uint64_t getFramesRenderedCount() const { return frameNumber; }
-        Device* getDevice() { return &device; }
-        RasterPreprocessPipeline* getRasterPreprocessPipeline() { return &rasterPreprocessPipeline; }
-        DescriptorAllocator* getDescriptorAllocator() { return &descriptors; }
-        PipelineBuilder* getPipelineBuilder() { return &pipelineBuilder; }
-        RendererState* getRendererState() { return &rendererState; }
-        Swapchain* getSwapchain() { return &swapchain; }
-        EngineStagingBuffer* getEngineStagingBuffer() { return &stagingBuffer; }
+        Device& getDevice() { return device; }
+        RasterPreprocessPipeline& getRasterPreprocessPipeline() { return rasterPreprocessPipeline; }
+        DescriptorAllocator& getDescriptorAllocator() { return descriptors; }
+        PipelineBuilder& getPipelineBuilder() { return pipelineBuilder; }
+        RendererState& getRendererState() { return rendererState; }
+        Swapchain& getSwapchain() { return swapchain; }
+        EngineStagingBuffer& getEngineStagingBuffer() { return stagingBuffer; }
         const std::vector<Model*>& getModelReferences() const { return renderingModels; }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
-        Buffer* getModelDataBuffer() const { return modelDataBuffer->getBuffer(); }
+        Buffer& getModelDataBuffer() const { return modelDataBuffer->getBuffer(); }
     };
 }

@@ -34,7 +34,7 @@ namespace PaperRenderer
         VkSurfaceKHR surface = VK_NULL_HANDLE;
         bool rtSupport = false;
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
 
         void createContext(std::string appName);
         void findGPU();
@@ -45,7 +45,7 @@ namespace PaperRenderer
         void retrieveQueues(std::unordered_map<uint32_t, VkDeviceQueueCreateInfo>& queuecreationInfo);
         
     public:
-        Device(class RenderEngine* renderer, std::string appName);
+        Device(class RenderEngine& renderer, std::string appName);
         ~Device();
         Device(const Device&) = delete;
 
@@ -63,7 +63,7 @@ namespace PaperRenderer
         const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& getRTproperties() const { return rtPipelineProperties; }
         const VkPhysicalDeviceAccelerationStructurePropertiesKHR& getASproperties() const { return asProperties; }
         const std::unordered_map<QueueType, QueuesInFamily>& getQueues() const { return queues; }
-        Commands* getCommandsPtr() { return commands.get(); }
+        Commands& getCommands() { return *commands; }
         QueueFamiliesIndices getQueueFamiliesIndices() const;
     };
 }

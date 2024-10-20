@@ -3,8 +3,8 @@
 
 namespace PaperRenderer
 {
-    DescriptorAllocator::DescriptorAllocator(RenderEngine* renderer)
-        :rendererPtr(renderer)
+    DescriptorAllocator::DescriptorAllocator(RenderEngine& renderer)
+        :renderer(renderer)
     {
     }
     
@@ -12,7 +12,7 @@ namespace PaperRenderer
     {   
         for(VkDescriptorPool& pool : descriptorPools)
         {
-            vkDestroyDescriptorPool(rendererPtr->getDevice()->getDevice(), pool, nullptr);
+            vkDestroyDescriptorPool(renderer.getDevice().getDevice(), pool, nullptr);
         }
     }
 
@@ -44,7 +44,7 @@ namespace PaperRenderer
         poolInfo.pPoolSizes = poolSizes.data();
 
         VkDescriptorPool returnPool;
-        VkResult result = vkCreateDescriptorPool(rendererPtr->getDevice()->getDevice(), &poolInfo, nullptr, &returnPool);
+        VkResult result = vkCreateDescriptorPool(renderer.getDevice().getDevice(), &poolInfo, nullptr, &returnPool);
         if(result != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to create descriptor pool");
@@ -64,21 +64,21 @@ namespace PaperRenderer
         allocInfo.descriptorSetCount = 1;
         allocInfo.pSetLayouts = &setLayout;
 
-        VkResult result = vkAllocateDescriptorSets(rendererPtr->getDevice()->getDevice(), &allocInfo, &returnSet);
+        VkResult result = vkAllocateDescriptorSets(renderer.getDevice().getDevice(), &allocInfo, &returnSet);
 
         if(result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL)
         {
             descriptorPools.push_back(allocateDescriptorPool());
             currentPool = &(descriptorPools.back());
 
-            result = vkAllocateDescriptorSets(rendererPtr->getDevice()->getDevice(), &allocInfo, &returnSet);
+            result = vkAllocateDescriptorSets(renderer.getDevice().getDevice(), &allocInfo, &returnSet);
             if(result != VK_SUCCESS) throw std::runtime_error("Descriptor allocator failed");
         }
 
         return returnSet;
     }
 
-    void DescriptorAllocator::writeUniforms(RenderEngine* renderer, VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo)
+    void DescriptorAllocator::writeUniforms(RenderEngine& renderer, VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo)
     {
         //4 different writes for 4 different types
         std::vector<VkWriteDescriptorSet> descriptorWrites;
@@ -188,7 +188,7 @@ namespace PaperRenderer
         
         if(descriptorWrites.size()) //valid usage per spec, encouraging runtime safety
         {
-            vkUpdateDescriptorSets(renderer->getDevice()->getDevice(), descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
+            vkUpdateDescriptorSets(renderer.getDevice().getDevice(), descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
         }
     }
 
@@ -209,7 +209,7 @@ namespace PaperRenderer
     {
         for(VkDescriptorPool& pool : descriptorPools)
         {
-            vkDestroyDescriptorPool(rendererPtr->getDevice()->getDevice(), pool, nullptr);
+            vkDestroyDescriptorPool(renderer.getDevice().getDevice(), pool, nullptr);
         }
         descriptorPools.resize(0);
         descriptorPools.push_back(allocateDescriptorPool());

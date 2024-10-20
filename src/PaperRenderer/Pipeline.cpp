@@ -6,8 +6,8 @@ namespace PaperRenderer
 {
     //----------SHADER DEFINITIONS----------//
 
-    Shader::Shader(Device *device, std::string location)
-        :devicePtr(device)
+    Shader::Shader(Device& device, std::string location)
+        :device(device)
     {
         compiledShader = getShaderData(location);
 
@@ -18,7 +18,7 @@ namespace PaperRenderer
         creationInfo.codeSize = compiledShader.size();
         creationInfo.pCode = compiledShader.data();
 
-        VkResult result = vkCreateShaderModule(devicePtr->getDevice(), &creationInfo, nullptr, &program);
+        VkResult result = vkCreateShaderModule(device.getDevice(), &creationInfo, nullptr, &program);
         if(result != VK_SUCCESS)
         {
             throw std::runtime_error("Creation of shader at location " + location + " failed.");
@@ -27,7 +27,7 @@ namespace PaperRenderer
 
     Shader::~Shader()
     {
-        vkDestroyShaderModule(devicePtr->getDevice(), program, nullptr);
+        vkDestroyShaderModule(device.getDevice(), program, nullptr);
     }
 
     std::vector<uint32_t> Shader::getShaderData(std::string location)
@@ -60,7 +60,7 @@ namespace PaperRenderer
     //----------PIPELINE DEFINITIONS---------//
 
     Pipeline::Pipeline(const PipelineCreationInfo& creationInfo)
-        :rendererPtr(creationInfo.renderer),
+        :renderer(creationInfo.renderer),
         pipelineLayout(creationInfo.pipelineLayout),
         setLayouts(creationInfo.setLayouts)
     {
@@ -70,10 +70,10 @@ namespace PaperRenderer
     {
         for(auto& [setNum, set] : setLayouts)
         {
-            vkDestroyDescriptorSetLayout(rendererPtr->getDevice()->getDevice(), set, nullptr);
+            vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), set, nullptr);
         }
-        vkDestroyPipeline(rendererPtr->getDevice()->getDevice(), pipeline, nullptr);
-        vkDestroyPipelineLayout(rendererPtr->getDevice()->getDevice(), pipelineLayout, nullptr);
+        vkDestroyPipeline(renderer.getDevice().getDevice(), pipeline, nullptr);
+        vkDestroyPipelineLayout(renderer.getDevice().getDevice(), pipelineLayout, nullptr);
     }
 
     //----------COMPUTE PIPELINE DEFINITIONS---------//
@@ -97,7 +97,7 @@ namespace PaperRenderer
         pipelineInfo.stage = stageInfo;
         pipelineInfo.layout = pipelineLayout;
         
-        VkResult result = vkCreateComputePipelines(rendererPtr->getDevice()->getDevice(), creationInfo.cache, 1, &pipelineInfo, nullptr, &pipeline);
+        VkResult result = vkCreateComputePipelines(renderer.getDevice().getDevice(), creationInfo.cache, 1, &pipelineInfo, nullptr, &pipeline);
         if(result != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to create compute pipeline");
@@ -221,7 +221,7 @@ namespace PaperRenderer
         pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
         pipelineCreateInfo.basePipelineIndex = -1;
         
-        VkResult result = vkCreateGraphicsPipelines(rendererPtr->getDevice()->getDevice(), creationInfo.cache, 1, &pipelineCreateInfo, nullptr, &pipeline);
+        VkResult result = vkCreateGraphicsPipelines(renderer.getDevice().getDevice(), creationInfo.cache, 1, &pipelineCreateInfo, nullptr, &pipeline);
         if(result != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to create a graphics pipeline");
@@ -386,8 +386,8 @@ namespace PaperRenderer
         pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
         pipelineCreateInfo.basePipelineIndex = -1;
 
-        vkCreateDeferredOperationKHR(rendererPtr->getDevice()->getDevice(), nullptr, &deferredOperation);
-        VkResult result = vkCreateRayTracingPipelinesKHR(rendererPtr->getDevice()->getDevice(), deferredOperation, creationInfo.cache, 1, &pipelineCreateInfo, nullptr, &pipeline);
+        vkCreateDeferredOperationKHR(renderer.getDevice().getDevice(), nullptr, &deferredOperation);
+        VkResult result = vkCreateRayTracingPipelinesKHR(renderer.getDevice().getDevice(), deferredOperation, creationInfo.cache, 1, &pipelineCreateInfo, nullptr, &pipeline);
         if(result != VK_SUCCESS && result != VK_OPERATION_DEFERRED_KHR && result != VK_OPERATION_NOT_DEFERRED_KHR)
         {
             throw std::runtime_error("Failed to create a ray tracing pipeline");
@@ -398,22 +398,22 @@ namespace PaperRenderer
 
         //setup shader binding table
         const uint32_t handleCount = rtShaderGroups.size();
-        const uint32_t handleSize  = rendererPtr->getDevice()->getRTproperties().shaderGroupHandleSize;
-        const uint32_t handleAlignment = rendererPtr->getDevice()->getRTproperties().shaderGroupBaseAlignment;
-        const uint32_t alignedSize = rendererPtr->getDevice()->getAlignment(handleSize, handleAlignment);
+        const uint32_t handleSize  = renderer.getDevice().getRTproperties().shaderGroupHandleSize;
+        const uint32_t handleAlignment = renderer.getDevice().getRTproperties().shaderGroupBaseAlignment;
+        const uint32_t alignedSize = renderer.getDevice().getAlignment(handleSize, handleAlignment);
         
         shaderBindingTableData.raygenShaderBindingTable.stride = alignedSize;
-        shaderBindingTableData.raygenShaderBindingTable.size   = rendererPtr->getDevice()->getAlignment(raygenCount * alignedSize, handleAlignment);
+        shaderBindingTableData.raygenShaderBindingTable.size   = renderer.getDevice().getAlignment(raygenCount * alignedSize, handleAlignment);
         shaderBindingTableData.missShaderBindingTable.stride = alignedSize;
-        shaderBindingTableData.missShaderBindingTable.size   = rendererPtr->getDevice()->getAlignment(missCount * alignedSize, handleAlignment);
+        shaderBindingTableData.missShaderBindingTable.size   = renderer.getDevice().getAlignment(missCount * alignedSize, handleAlignment);
         shaderBindingTableData.callableShaderBindingTable.stride  = alignedSize;
-        shaderBindingTableData.callableShaderBindingTable.size    = rendererPtr->getDevice()->getAlignment(callableCount * alignedSize, handleAlignment);
+        shaderBindingTableData.callableShaderBindingTable.size    = renderer.getDevice().getAlignment(callableCount * alignedSize, handleAlignment);
         shaderBindingTableData.hitShaderBindingTable.stride  = alignedSize;
-        shaderBindingTableData.hitShaderBindingTable.size    = rendererPtr->getDevice()->getAlignment(hitCount * alignedSize, handleAlignment);
+        shaderBindingTableData.hitShaderBindingTable.size    = renderer.getDevice().getAlignment(hitCount * alignedSize, handleAlignment);
         
         //get shader handles
         std::vector<char> handleData(handleSize * handleCount);
-        VkResult result2 = vkGetRayTracingShaderGroupHandlesKHR(rendererPtr->getDevice()->getDevice(), pipeline, 0, handleCount, handleData.size(), handleData.data());
+        VkResult result2 = vkGetRayTracingShaderGroupHandlesKHR(renderer.getDevice().getDevice(), pipeline, 0, handleCount, handleData.size(), handleData.data());
         if(result2 != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to get RT shader group handles");
@@ -448,14 +448,14 @@ namespace PaperRenderer
         }
         
         //set SBT data
-        rebuildSBTBuffer(rendererPtr);
+        rebuildSBTBuffer(renderer);
     }
 
     RTPipeline::~RTPipeline()
     {
     }
 
-    void RTPipeline::rebuildSBTBuffer(RenderEngine* renderer)
+    void RTPipeline::rebuildSBTBuffer(RenderEngine& renderer)
     {
         //create buffers
         BufferInfo deviceBufferInfo = {};
@@ -465,7 +465,7 @@ namespace PaperRenderer
         sbtBuffer = std::make_unique<Buffer>(renderer, deviceBufferInfo);
 
         //queue data transfer
-        rendererPtr->getEngineStagingBuffer()->queueDataTransfers(*sbtBuffer, 0, sbtRawData);
+        renderer.getEngineStagingBuffer().queueDataTransfers(*sbtBuffer, 0, sbtRawData);
 
         //set SBT addresses
         VkDeviceAddress dynamicOffset = sbtBuffer->getBufferDeviceAddress();
@@ -482,15 +482,15 @@ namespace PaperRenderer
 
     bool RTPipeline::isBuilt()
     {
-        VkResult result = vkDeferredOperationJoinKHR(rendererPtr->getDevice()->getDevice(), deferredOperation);
+        VkResult result = vkDeferredOperationJoinKHR(renderer.getDevice().getDevice(), deferredOperation);
         if(result == VK_SUCCESS || result == VK_THREAD_DONE_KHR)
         {
-            VkResult result2 = vkGetDeferredOperationResultKHR(rendererPtr->getDevice()->getDevice(), deferredOperation);
+            VkResult result2 = vkGetDeferredOperationResultKHR(renderer.getDevice().getDevice(), deferredOperation);
             if(result2 != VK_SUCCESS)
             {
                 throw std::runtime_error("Failed to create a ray tracing pipeline");
             }
-            vkDestroyDeferredOperationKHR(rendererPtr->getDevice()->getDevice(), deferredOperation, nullptr);
+            vkDestroyDeferredOperationKHR(renderer.getDevice().getDevice(), deferredOperation, nullptr);
 
             return true;
         }
@@ -506,8 +506,8 @@ namespace PaperRenderer
 
     //----------PIPELINE BUILDER DEFINITIONS----------//
 
-    PipelineBuilder::PipelineBuilder(RenderEngine* renderer)
-        :rendererPtr(renderer)
+    PipelineBuilder::PipelineBuilder(RenderEngine& renderer)
+        :renderer(renderer)
     {
         VkPipelineCacheCreateInfo creationInfo;
         creationInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
@@ -515,19 +515,19 @@ namespace PaperRenderer
         creationInfo.flags = 0;
         creationInfo.initialDataSize = 0;
         creationInfo.pInitialData = NULL;
-        vkCreatePipelineCache(rendererPtr->getDevice()->getDevice(), &creationInfo, nullptr, &cache);
+        vkCreatePipelineCache(renderer.getDevice().getDevice(), &creationInfo, nullptr, &cache);
     }
 
     PipelineBuilder::~PipelineBuilder()
     {
-        vkDestroyPipelineCache(rendererPtr->getDevice()->getDevice(), cache, nullptr);
+        vkDestroyPipelineCache(renderer.getDevice().getDevice(), cache, nullptr);
     }
 
     std::shared_ptr<Shader> PipelineBuilder::createShader(const ShaderPair& pair) const
     {
         std::string shaderFile = pair.directory;
 
-        return std::make_shared<Shader>(rendererPtr->getDevice(), shaderFile);
+        return std::make_shared<Shader>(renderer.getDevice(), shaderFile);
     }
 
     std::unordered_map<uint32_t, VkDescriptorSetLayout> PipelineBuilder::createDescriptorLayouts(const std::unordered_map<uint32_t, DescriptorSet> &descriptorSets) const
@@ -549,7 +549,7 @@ namespace PaperRenderer
             descriptorLayoutInfo.pBindings = vBindings.data();
             
             VkDescriptorSetLayout setLayout;
-            VkResult result = vkCreateDescriptorSetLayout(rendererPtr->getDevice()->getDevice(), &descriptorLayoutInfo, nullptr, &setLayout);
+            VkResult result = vkCreateDescriptorSetLayout(renderer.getDevice().getDevice(), &descriptorLayoutInfo, nullptr, &setLayout);
             if(result != VK_SUCCESS) throw std::runtime_error("Failed to create descriptor set layout");
 
             setLayouts[setNum] = setLayout;
@@ -576,7 +576,7 @@ namespace PaperRenderer
         layoutInfo.pPushConstantRanges = pcRanges.data();
 
         VkPipelineLayout returnLayout;
-        VkResult result = vkCreatePipelineLayout(rendererPtr->getDevice()->getDevice(), &layoutInfo, nullptr, &returnLayout);
+        VkResult result = vkCreatePipelineLayout(renderer.getDevice().getDevice(), &layoutInfo, nullptr, &returnLayout);
         if(result != VK_SUCCESS) throw std::runtime_error("Pipeline layout creation failed");
 
         return returnLayout;
@@ -585,7 +585,7 @@ namespace PaperRenderer
     std::unique_ptr<ComputePipeline> PipelineBuilder::buildComputePipeline(const ComputePipelineBuildInfo& info) const
     {
         ComputePipelineCreationInfo pipelineInfo = {{
-                .renderer = rendererPtr,
+                .renderer = renderer,
                 .cache = cache,
                 .setLayouts = createDescriptorLayouts(info.descriptors),
                 .pcRanges = info.pcRanges,
@@ -601,7 +601,7 @@ namespace PaperRenderer
     std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const RasterPipelineBuildInfo& info, const RasterPipelineProperties& pipelineProperties) const
     {
         RasterPipelineCreationInfo pipelineInfo = {{
-            .renderer = rendererPtr,
+            .renderer = renderer,
             .cache = cache,
             .setLayouts = createDescriptorLayouts(info.descriptors),
             .pcRanges = info.pcRanges,
@@ -620,7 +620,7 @@ namespace PaperRenderer
     std::unique_ptr<RTPipeline> PipelineBuilder::buildRTPipeline(const RTPipelineBuildInfo& info, const RTPipelineProperties& pipelineProperties) const
     {
         RTPipelineCreationInfo pipelineInfo = { {
-                .renderer = rendererPtr,
+                .renderer = renderer,
                 .cache = cache,
                 .setLayouts = createDescriptorLayouts(info.descriptors),
                 .pcRanges = info.pcRanges,

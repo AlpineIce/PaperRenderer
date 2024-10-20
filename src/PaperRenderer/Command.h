@@ -81,10 +81,10 @@ namespace PaperRenderer
 
         void createCommandPools();
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
         
     public:
-        Commands(class RenderEngine* renderer, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr);
+        Commands(class RenderEngine& renderer, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr);
         ~Commands();
         Commands(const Commands&) = delete;
 

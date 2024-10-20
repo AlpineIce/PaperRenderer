@@ -28,10 +28,10 @@ namespace PaperRenderer
             bool doCulling = true;
         };
 
-        class RenderEngine* rendererPtr;
+        class RenderEngine& renderer;
 
     public:
-        RasterPreprocessPipeline(RenderEngine* renderer, std::string fileDir);
+        RasterPreprocessPipeline(RenderEngine& renderer, std::string fileDir);
         ~RasterPreprocessPipeline() override;
         RasterPreprocessPipeline(const RasterPreprocessPipeline&) = delete;
 
@@ -78,14 +78,14 @@ namespace PaperRenderer
         void handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances);
         void clearDrawCounts(VkCommandBuffer cmdBuffer);
 
-        RenderEngine* rendererPtr;
+        RenderEngine& renderer;
         Camera* cameraPtr;
         MaterialInstance* defaultMaterialInstancePtr;
 
         friend RasterPreprocessPipeline;
         
     public:
-        RenderPass(RenderEngine* renderer, Camera* camera, MaterialInstance* defaultMaterialInstance);
+        RenderPass(RenderEngine& renderer, Camera* camera, MaterialInstance* defaultMaterialInstance);
         ~RenderPass();
         RenderPass(const RenderPass&) = delete;
 

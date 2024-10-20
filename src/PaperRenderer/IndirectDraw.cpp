@@ -6,8 +6,8 @@
 
 namespace PaperRenderer
 {
-    CommonMeshGroup::CommonMeshGroup(RenderEngine* renderer, RenderPass const* renderPass)
-        :rendererPtr(renderer),
+    CommonMeshGroup::CommonMeshGroup(RenderEngine& renderer, RenderPass const* renderPass)
+        :renderer(renderer),
         renderPassPtr(renderPass)
     {
 
@@ -46,20 +46,20 @@ namespace PaperRenderer
         matricesBufferInfo.allocationFlags = 0;
         matricesBufferInfo.size = bufferSizeRequirements.matricesCount * sizeof(ShaderOutputObject);
         matricesBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
-        modelMatricesBuffer = std::make_unique<Buffer>(rendererPtr, matricesBufferInfo);
+        modelMatricesBuffer = std::make_unique<Buffer>(renderer, matricesBufferInfo);
 
         BufferInfo drawCommandsBufferInfo = {};
         drawCommandsBufferInfo.allocationFlags = 0;
         drawCommandsBufferInfo.size = bufferSizeRequirements.drawCommandCount * sizeof(VkDrawIndexedIndirectCommand);
         drawCommandsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR;
-        drawCommandsBuffer = std::make_unique<Buffer>(rendererPtr, drawCommandsBufferInfo);
+        drawCommandsBuffer = std::make_unique<Buffer>(renderer, drawCommandsBufferInfo);
 
         //staging buffer to add draw commands
         BufferInfo stagingBufferInfo = {};
         stagingBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
         stagingBufferInfo.size = bufferSizeRequirements.drawCommandCount * sizeof(VkDrawIndexedIndirectCommand);
         stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        Buffer stagingBuffer(rendererPtr, stagingBufferInfo);
+        Buffer stagingBuffer(renderer, stagingBufferInfo);
 
         //set draw commands
         setDrawCommandData(stagingBuffer);
@@ -72,7 +72,7 @@ namespace PaperRenderer
 
         SynchronizationInfo syncInfo = {};
         syncInfo.queueType = TRANSFER;
-        syncInfo.fence = rendererPtr->getDevice()->getCommandsPtr()->getUnsignaledFence();
+        syncInfo.fence = renderer.getDevice().getCommands().getUnsignaledFence();
 
         drawCommandsBuffer->copyFromBufferRanges(stagingBuffer, { drawCommandsRegion }, syncInfo);
 
@@ -89,8 +89,8 @@ namespace PaperRenderer
         modifiedInstances.erase(uniqueIndices, modifiedInstances.end());
 
         //wait for transfer operation
-        vkWaitForFences(rendererPtr->getDevice()->getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
-        vkDestroyFence(rendererPtr->getDevice()->getDevice(), syncInfo.fence, nullptr);
+        vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
+        vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
 
         return modifiedInstances;
     }
@@ -193,7 +193,7 @@ namespace PaperRenderer
             if(!meshData.parentModelPtr) continue; //null safety
 
             //get new descriptor set
-            VkDescriptorSet objDescriptorSet = rendererPtr->getDescriptorAllocator()->allocateDescriptorSet(pipeline.getDescriptorSetLayouts().at(DescriptorScopes::RASTER_OBJECT));
+            VkDescriptorSet objDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(pipeline.getDescriptorSetLayouts().at(DescriptorScopes::RASTER_OBJECT));
             
             //write uniforms
             VkDescriptorBufferInfo descriptorInfo = {};
@@ -208,7 +208,7 @@ namespace PaperRenderer
 
             DescriptorWrites descriptorWritesInfo = {};
             descriptorWritesInfo.bufferWrites = { write };
-            DescriptorAllocator::writeUniforms(rendererPtr, objDescriptorSet, descriptorWritesInfo);
+            DescriptorAllocator::writeUniforms(renderer, objDescriptorSet, descriptorWritesInfo);
 
             //bind set
             DescriptorBind bindingInfo = {};
