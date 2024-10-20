@@ -358,10 +358,10 @@ namespace PaperRenderer
         //geometry type
         if(op.type == VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR)
         {
-            BLAS* blas = (BLAS*)(op.accelerationStructure);
+            BLAS& blas = (BLAS&)(op.accelerationStructure);
 
             //get per material group geometry data
-            for(const LODMeshGroup& meshGroup : blas->getParentModelPtr()->getLODs().at(0).meshMaterialData) //use LOD 0 for BLAS
+            for(const LODMeshGroup& meshGroup : blas.getParentModelPtr()->getLODs().at(0).meshMaterialData) //use LOD 0 for BLAS
             {
                 VkDeviceSize vertexCount = 0;
                 VkDeviceSize indexCount = 0;
@@ -379,11 +379,11 @@ namespace PaperRenderer
                 trianglesGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
                 trianglesGeometry.pNext = NULL;
                 trianglesGeometry.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-                trianglesGeometry.vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = blas->getVBOAddress()};
+                trianglesGeometry.vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = blas.getVBOAddress()};
                 trianglesGeometry.maxVertex = vertexCount;
-                trianglesGeometry.vertexStride = blas->getParentModelPtr()->getVertexDescription().stride;
+                trianglesGeometry.vertexStride = blas.getParentModelPtr()->getVertexDescription().stride;
                 trianglesGeometry.indexType = VK_INDEX_TYPE_UINT32;
-                trianglesGeometry.indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = blas->getParentModelPtr()->getIBOAddress()};
+                trianglesGeometry.indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = blas.getParentModelPtr()->getIBOAddress()};
 
                 //geometries
                 VkAccelerationStructureGeometryKHR structureGeometry = {};
@@ -406,14 +406,14 @@ namespace PaperRenderer
         }
         else if(op.type == VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR)
         {
-            TLAS* tlas = (TLAS*)(op.accelerationStructure);
+            TLAS& tlas = (TLAS&)(op.accelerationStructure);
 
             //geometries
             VkAccelerationStructureGeometryInstancesDataKHR geoInstances = {};
             geoInstances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
             geoInstances.pNext = NULL;
             geoInstances.arrayOfPointers = VK_FALSE;
-            geoInstances.data = VkDeviceOrHostAddressConstKHR{ .deviceAddress = tlas->instancesBuffer->getBufferDeviceAddress() + tlas->tlInstancesOffset };
+            geoInstances.data = VkDeviceOrHostAddressConstKHR{ .deviceAddress = tlas.instancesBuffer->getBufferDeviceAddress() + tlas.tlInstancesOffset };
 
             VkAccelerationStructureGeometryKHR structureGeometry = {};
             structureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
@@ -423,14 +423,14 @@ namespace PaperRenderer
             structureGeometry.geometry.instances = geoInstances;
 
             VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo;
-            buildRangeInfo.primitiveCount = tlas->accelerationStructureInstances.size();
+            buildRangeInfo.primitiveCount = tlas.accelerationStructureInstances.size();
             buildRangeInfo.primitiveOffset = 0;
             buildRangeInfo.firstVertex = 0;
             buildRangeInfo.transformOffset = 0;
 
             returnData.geometries.emplace_back(structureGeometry);
             returnData.buildRangeInfos.emplace_back(buildRangeInfo);
-            primitiveCounts.emplace_back(tlas->accelerationStructureInstances.size());
+            primitiveCounts.emplace_back(tlas.accelerationStructureInstances.size());
         }
         else
         {
@@ -443,8 +443,8 @@ namespace PaperRenderer
         returnData.buildGeoInfo.flags = op.flags;
         returnData.buildGeoInfo.type = op.type;
         returnData.buildGeoInfo.mode = op.mode;
-        returnData.buildGeoInfo.srcAccelerationStructure = returnData.compact ? op.accelerationStructure->accelerationStructure : VK_NULL_HANDLE;
-        returnData.buildGeoInfo.dstAccelerationStructure = op.accelerationStructure->accelerationStructure; //probably overwritten by code after
+        returnData.buildGeoInfo.srcAccelerationStructure = returnData.compact ? op.accelerationStructure.accelerationStructure : VK_NULL_HANDLE;
+        returnData.buildGeoInfo.dstAccelerationStructure = op.accelerationStructure.accelerationStructure; //probably overwritten by code after
         returnData.buildGeoInfo.geometryCount = returnData.geometries.size();
         returnData.buildGeoInfo.pGeometries = returnData.geometries.data();
         returnData.buildGeoInfo.ppGeometries = NULL;
@@ -462,22 +462,22 @@ namespace PaperRenderer
         //destroy buffer if compaction is requested since final size will be unknown
         if(returnData.compact)
         {
-            op.accelerationStructure->asBuffer.reset();
+            op.accelerationStructure.asBuffer.reset();
         }
         //otherwise update buffer if needed
-        else if(!op.accelerationStructure->asBuffer || op.accelerationStructure->asBuffer->getSize() < returnData.buildSizeInfo.accelerationStructureSize)
+        else if(!op.accelerationStructure.asBuffer || op.accelerationStructure.asBuffer->getSize() < returnData.buildSizeInfo.accelerationStructureSize)
         {
-            op.accelerationStructure->asBuffer.reset();
+            op.accelerationStructure.asBuffer.reset();
 
             BufferInfo bufferInfo = {};
             bufferInfo.allocationFlags = 0;
             bufferInfo.size = returnData.buildSizeInfo.accelerationStructureSize;
             bufferInfo.usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
-            op.accelerationStructure->asBuffer = std::make_unique<Buffer>(renderer, bufferInfo);
+            op.accelerationStructure.asBuffer = std::make_unique<Buffer>(renderer, bufferInfo);
         }
 
         //set blas flags
-        op.accelerationStructure->enabledFlags = op.flags;
+        op.accelerationStructure.enabledFlags = op.flags;
 
         return returnData;
     }
@@ -600,7 +600,7 @@ namespace PaperRenderer
         struct PreCompactBuffer
         {
             std::unique_ptr<Buffer> tempBuffer;
-            AS* as;
+            AS& as;
         };
         std::queue<PreCompactBuffer> preCompactBuffers;
 
@@ -623,9 +623,9 @@ namespace PaperRenderer
             if(type == VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR)
             {
                 //only rebuild/update a TLAS if any instances were updated
-                if(((TLAS*)data.as)->nextUpdateSize)
+                if(((TLAS&)data.as).nextUpdateSize)
                 {
-                    renderer.tlasInstanceBuildPipeline.submit(cmdBuffer, *((TLAS*)data.as));
+                    renderer.tlasInstanceBuildPipeline.submit(cmdBuffer, (TLAS&)data.as);
 
                     //TLAS instance data memory barrier
                     VkBufferMemoryBarrier2 tlasInstanceMemBarrier = {
@@ -637,9 +637,9 @@ namespace PaperRenderer
                         .dstAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
                         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                        .buffer = ((TLAS*)data.as)->instancesBuffer->getBuffer(),
-                        .offset = ((TLAS*)data.as)->tlInstancesOffset,
-                        .size = ((TLAS*)data.as)->instancesBuffer->getSize() - ((TLAS*)data.as)->tlInstancesOffset
+                        .buffer = ((TLAS&)data.as).instancesBuffer->getBuffer(),
+                        .offset = ((TLAS&)data.as).tlInstancesOffset,
+                        .size = ((TLAS&)data.as).instancesBuffer->getSize() - ((TLAS&)data.as).tlInstancesOffset
                     };
 
                     VkDependencyInfo tlasInstanceDependencyInfo = {};
@@ -658,9 +658,9 @@ namespace PaperRenderer
             }
 
             //destroy old structure if being built and is valid
-            if(data.as->accelerationStructure && data.buildGeoInfo.mode == VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR)
+            if(data.as.accelerationStructure && data.buildGeoInfo.mode == VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR)
             {
-                vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), data.as->accelerationStructure, nullptr);
+                vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), data.as.accelerationStructure, nullptr);
             }
 
             //create a temporary buffer if needed
@@ -677,7 +677,7 @@ namespace PaperRenderer
             }
             else
             {
-                buffer = data.as->asBuffer->getBuffer();
+                buffer = data.as.asBuffer->getBuffer();
             }
 
             //set scratch buffer address + offset
@@ -693,10 +693,10 @@ namespace PaperRenderer
             accelStructureInfo.size = data.buildSizeInfo.accelerationStructureSize;
             accelStructureInfo.type = type;
             
-            vkCreateAccelerationStructureKHR(renderer.getDevice().getDevice(), &accelStructureInfo, nullptr, &data.as->accelerationStructure);
+            vkCreateAccelerationStructureKHR(renderer.getDevice().getDevice(), &accelStructureInfo, nullptr, &data.as.accelerationStructure);
 
             //set dst structure
-            data.buildGeoInfo.dstAccelerationStructure = data.as->accelerationStructure;
+            data.buildGeoInfo.dstAccelerationStructure = data.as.accelerationStructure;
 
             //convert format of build ranges
             std::vector<VkAccelerationStructureBuildRangeInfoKHR const*> buildRangesPtrArray;
@@ -739,7 +739,7 @@ namespace PaperRenderer
                 vkCmdWriteAccelerationStructuresPropertiesKHR(
                     cmdBuffer,
                     1,
-                    &data.as->accelerationStructure,
+                    &data.as.accelerationStructure,
                     VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
                     queryPool,
                     queryIndex
@@ -823,10 +823,10 @@ namespace PaperRenderer
                 accelStructureInfo.size = newSize;
                 accelStructureInfo.type = type;
 
-                VkAccelerationStructureKHR oldStructure = tempBuffer.as->accelerationStructure;
+                VkAccelerationStructureKHR oldStructure = tempBuffer.as.accelerationStructure;
 
                 //overwrite blas' as handle
-                vkCreateAccelerationStructureKHR(renderer.getDevice().getDevice(), &accelStructureInfo, nullptr, &tempBuffer.as->accelerationStructure);
+                vkCreateAccelerationStructureKHR(renderer.getDevice().getDevice(), &accelStructureInfo, nullptr, &tempBuffer.as.accelerationStructure);
 
                 //copy
                 VkCopyAccelerationStructureInfoKHR copyInfo = {};
@@ -834,7 +834,7 @@ namespace PaperRenderer
                 copyInfo.pNext = NULL;
                 copyInfo.mode = VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR;
                 copyInfo.src = oldStructure;
-                copyInfo.dst = tempBuffer.as->accelerationStructure;
+                copyInfo.dst = tempBuffer.as.accelerationStructure;
 
                 vkCmdCopyAccelerationStructureKHR(cmdBuffer, &copyInfo);
 
@@ -842,7 +842,7 @@ namespace PaperRenderer
                 destructionQueue.push({oldStructure, std::move(tempBuffer.tempBuffer)});
 
                 //set new buffer
-                tempBuffer.as->asBuffer = std::move(newBuffer);
+                tempBuffer.as.asBuffer = std::move(newBuffer);
 
                 //remove from queue
                 preCompactBuffers.pop();

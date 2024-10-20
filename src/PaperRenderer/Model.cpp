@@ -86,7 +86,7 @@ namespace PaperRenderer
 		{
 			defaultBLAS = std::make_unique<BLAS>(renderer, this, vbo.get());
 			AccelerationStructureOp op = {
-				.accelerationStructure = defaultBLAS.get(),
+				.accelerationStructure = *defaultBLAS.get(),
                 .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
 				.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 				.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR
@@ -242,7 +242,7 @@ namespace PaperRenderer
 			{
 				uniqueGeometryData.blas = std::make_unique<BLAS>(renderer, modelPtr, uniqueGeometryData.uniqueVBO.get());
 				AccelerationStructureOp op = {
-					.accelerationStructure = uniqueGeometryData.blas.get(),
+					.accelerationStructure = *uniqueGeometryData.blas.get(),
 					.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
 					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 					//if geometry is unique then allow update, otherwise geometry isn't unique, but a parent copy doesnt exist; assume static

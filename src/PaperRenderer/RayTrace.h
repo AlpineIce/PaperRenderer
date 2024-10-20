@@ -31,12 +31,12 @@ namespace PaperRenderer
         void rebuildPipeline();
         
         class RenderEngine& renderer;
-        TLAS* tlas;
+        TLAS& tlas;
 
     public:
         RayTraceRender(
             RenderEngine& renderer,
-            TLAS* accelerationStructure,
+            TLAS& accelerationStructure,
             const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets,
             const std::vector<VkPushConstantRange>& pcRanges
         );

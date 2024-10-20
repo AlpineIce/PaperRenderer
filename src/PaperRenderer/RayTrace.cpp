@@ -8,7 +8,7 @@ namespace PaperRenderer
 {
     RayTraceRender::RayTraceRender(
         RenderEngine& renderer,
-        TLAS* accelerationStructure,
+        TLAS& accelerationStructure,
         const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets,
         const std::vector<VkPushConstantRange>& pcRanges
     )
@@ -59,7 +59,7 @@ namespace PaperRenderer
         }
 
         //update TLAS instances
-        tlas->queueInstanceTransfers(this);
+        tlas.queueInstanceTransfers(this);
 
         //build TLAS (build timeline semaphore is implicitly signaled)
         renderer.asBuilder.queueAs({
@@ -93,14 +93,14 @@ namespace PaperRenderer
 
         //write acceleration structure
         PaperRenderer::AccelerationStructureDescriptorWrites accelStructureWrites = {};
-        accelStructureWrites.accelerationStructures = { tlas };
+        accelStructureWrites.accelerationStructures = { &tlas };
         accelStructureWrites.binding = 0;
         
         //write instance descriptions
         VkDescriptorBufferInfo instanceDescriptionWriteInfo = {};
-        instanceDescriptionWriteInfo.buffer = tlas->getInstancesBuffer()->getBuffer();
-        instanceDescriptionWriteInfo.offset = tlas->getInstanceDescriptionsOffset();
-        instanceDescriptionWriteInfo.range = tlas->getInstanceDescriptionsRange();
+        instanceDescriptionWriteInfo.buffer = tlas.getInstancesBuffer().getBuffer();
+        instanceDescriptionWriteInfo.offset = tlas.getInstanceDescriptionsOffset();
+        instanceDescriptionWriteInfo.range = tlas.getInstanceDescriptionsRange();
 
         PaperRenderer::BuffersDescriptorWrites instanceDescriptionWrite = {};
         instanceDescriptionWrite.binding = 1;

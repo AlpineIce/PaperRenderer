@@ -105,7 +105,7 @@ namespace PaperRenderer
         void addInstance(class ModelInstance* instance);
         void removeInstance(class ModelInstance* instance);
 
-        Buffer const* getInstancesBuffer() const { return instancesBuffer.get(); }
+        const Buffer& getInstancesBuffer() const { return *instancesBuffer; }
         const VkDeviceSize getInstanceDescriptionsOffset() const { return instanceDescriptionsOffset; }
         const VkDeviceSize getInstanceDescriptionsRange() const { return accelerationStructureInstances.size() * sizeof(InstanceDescription); }
     };
@@ -113,7 +113,7 @@ namespace PaperRenderer
     //AS operation
     struct AccelerationStructureOp
     {
-        AS* accelerationStructure;
+        AS& accelerationStructure;
         VkAccelerationStructureTypeKHR type = VK_ACCELERATION_STRUCTURE_TYPE_MAX_ENUM_KHR; //MUST BE DEFINED AS TOP OR BOTTOM LEVEL
         VkBuildAccelerationStructureModeKHR mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
         VkBuildAccelerationStructureFlagsKHR flags = 0;
@@ -135,7 +135,7 @@ namespace PaperRenderer
         //acceleration structure build data
         struct AsBuildData
         {
-            AS* as;
+            AS& as;
             std::vector<VkAccelerationStructureGeometryKHR> geometries;
             std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRangeInfos;
             VkAccelerationStructureBuildGeometryInfoKHR buildGeoInfo = {};
