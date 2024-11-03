@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <algorithm>
+#include <unordered_map>
 
 namespace PaperRenderer
 {
@@ -67,8 +68,6 @@ namespace PaperRenderer
 
     void RasterPreprocessPipeline::submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass)
     {
-        throw std::runtime_error("todo fix binding 3 and 4 for raster");
-
         UBOInputData uboInputData = {};
         uboInputData.camPos = glm::vec4(renderPass.cameraPtr->getTranslation().position, 1.0f);
         uboInputData.projection = renderPass.cameraPtr->getProjection();
@@ -118,34 +117,12 @@ namespace PaperRenderer
         bufferWrite2.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         bufferWrite2.infos = { bufferWrite2Info };
 
-        //set0 - binding 3: instance counts
-        VkDescriptorBufferInfo bufferWrite3Info = {};
-        //bufferWrite3Info.buffer = CommonMeshGroup::getDrawCommandsBuffer()->getBuffer();
-        bufferWrite3Info.offset = 0;
-        bufferWrite3Info.range = VK_WHOLE_SIZE;
-
-        BuffersDescriptorWrites bufferWrite3 = {};
-        bufferWrite3.binding = 3;
-        bufferWrite3.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        bufferWrite3.infos = { bufferWrite3Info };
-
-        //set0 - binding 4: output objects
-        VkDescriptorBufferInfo bufferWrite4Info = {};
-        //bufferWrite4Info.buffer = CommonMeshGroup::getModelMatricesBuffer()->getBuffer();
-        bufferWrite4Info.offset = 0;
-        bufferWrite4Info.range = VK_WHOLE_SIZE;
-
-        BuffersDescriptorWrites bufferWrite4 = {};
-        bufferWrite4.binding = 4;
-        bufferWrite4.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        bufferWrite4.infos = { bufferWrite4Info };
-
         //----------DISPATCH COMMANDS----------//
 
         bind(cmdBuffer);
 
         DescriptorWrites descriptorWritesInfo = {};
-        descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2, bufferWrite3, bufferWrite4 };
+        descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2 };
         descriptorWrites[0] = descriptorWritesInfo;
         writeDescriptorSet(cmdBuffer, 0);
 
@@ -211,7 +188,6 @@ namespace PaperRenderer
                 vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
                 vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
             }
-            
         }
 
         //replace old buffer
@@ -271,7 +247,8 @@ namespace PaperRenderer
             {
                 if(meshGroups)
                 {
-                    meshGroups->verifyBufferSize();
+                    const std::vector<ModelInstance*> meshGroupUpdatedInstances = meshGroups->verifyBufferSize();
+                    toUpdateInstances.insert(toUpdateInstances.end(), meshGroupUpdatedInstances.begin(), meshGroupUpdatedInstances.end());
                 }
             }
         }
@@ -294,6 +271,7 @@ namespace PaperRenderer
             //skip if instance is NULL
             if(!instance) continue;
 
+            instance->setRenderPassInstanceData(this);
             const std::vector<char>& materialData = instance->getRenderPassInstanceData(this);
             FragmentableBuffer::WriteResult writeResult = instancesDataBuffer->newWrite(NULL, materialData.size(), 8, &(instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset));
             if(writeResult == FragmentableBuffer::OUT_OF_MEMORY)
@@ -330,7 +308,7 @@ namespace PaperRenderer
             memcpy(instanceData.data(), &instanceShaderData, instanceData.size());
             
             //queue data transfer
-            renderer.getEngineStagingBuffer().queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::AccelerationStructureInstance) * instance->rendererSelfIndex, instanceData);
+            renderer.getEngineStagingBuffer().queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::RenderPassInstance) * instance->renderPassSelfReferences.at(this).selfIndex, instanceData);
         }
 
         //clear deques
@@ -374,35 +352,12 @@ namespace PaperRenderer
         //clear draw counts
         for(const auto& [material, materialInstanceNode] : renderTree) //material
         {
-            for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
+            for(const auto& [materialInstance, meshGroup] : materialInstanceNode.instances) //material instances
             {
-                if(meshGroups)
+                if(meshGroup)
                 {
-                    //memory barrier
-                    VkBufferMemoryBarrier2 preClearMemBarrier = {
-                        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                        .pNext = NULL,
-                        .srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-                        .srcAccessMask = VK_ACCESS_2_NONE,
-                        .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                        .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                        .buffer = meshGroups->getDrawCommandsBuffer()->getBuffer(),
-                        .offset = 0,
-                        .size = VK_WHOLE_SIZE
-                    };
-
-                    VkDependencyInfo preClearDependency = {};
-                    preClearDependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-                    preClearDependency.pNext = NULL;
-                    preClearDependency.bufferMemoryBarrierCount = 1;
-                    preClearDependency.pBufferMemoryBarriers = &preClearMemBarrier;
-
-                    vkCmdPipelineBarrier2(cmdBuffer, &preClearDependency);
-
                     //clear
-                    meshGroups->clearDrawCommand(cmdBuffer);
+                    meshGroup->clearDrawCommand(cmdBuffer);
                 }
             }
         }
@@ -412,9 +367,6 @@ namespace PaperRenderer
     {
         if(renderPassInstances.size())
         {
-            //perform data transfers
-            queueInstanceTransfers();
-
             //pre-render barriers
             if(renderPassInfo.preRenderBarriers)
             {
@@ -501,7 +453,7 @@ namespace PaperRenderer
         }
     }
 
-    void RenderPass::addInstance(ModelInstance *instance, std::vector<std::unordered_map<uint32_t, MaterialInstance *>> materials)
+    void RenderPass::addInstance(ModelInstance* instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials)
     {
         //material data
         materials.resize(instance->getParentModelPtr()->getLODs().size());
@@ -548,14 +500,11 @@ namespace PaperRenderer
         instance->renderPassSelfReferences.at(this).selfIndex = renderPassInstances.size();
         renderPassInstances.push_back(instance);
 
-        //set material data
-        instance->setRenderPassInstanceData(this);
-
         //add instance to queue
         toUpdateInstances.push_front(instance);
     }
 
-    void RenderPass::removeInstance(ModelInstance *instance)
+    void RenderPass::removeInstance(ModelInstance* instance)
     {
         for(auto& [mesh, reference] : instance->renderPassSelfReferences.at(this).meshGroupReferences)
         {

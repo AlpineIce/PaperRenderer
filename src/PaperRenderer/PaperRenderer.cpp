@@ -402,12 +402,6 @@ namespace PaperRenderer
         //queue data transfers
         queueModelsAndInstancesTransfers();
 
-        //destroy old acceleration structure data
-        asBuilder.destroyOldData();
-
-        //set all acceleration structure data
-        asBuilder.setBuildData();
-
         //stage transfers for render passes
         for(RenderPass* renderPass : renderPasses)
         {
@@ -416,6 +410,12 @@ namespace PaperRenderer
 
         //write all staged transfers
         stagingBuffer.submitQueuedTransfers(transferSyncInfo);
+
+        //destroy old acceleration structure data
+        asBuilder.destroyOldData();
+
+        //set blas data
+        asBuilder.setBuildData();
 
         //build queued BLAS'
         SynchronizationInfo blasSyncInfo = {};

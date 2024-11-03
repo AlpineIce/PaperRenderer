@@ -297,11 +297,15 @@ namespace PaperRenderer
 				for(uint32_t meshIndex = 0; meshIndex < modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes.size(); meshIndex++)
 				{
 					LODMesh const* lodMeshPtr = &modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes.at(meshIndex);
+					CommonMeshGroup const* meshGroupPtr = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes);
 					IndirectDrawData indirectDrawData = {};
-					indirectDrawData.instanceCountIndex = 
-						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes)->getMeshesData().at(lodMeshPtr).drawCommandIndex;
-					indirectDrawData.matricesStartIndex = 
-						renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes)->getMeshesData().at(lodMeshPtr).matricesStartIndex;
+					indirectDrawData.drawCountAddress = 
+						meshGroupPtr->getDrawCommandsBuffer().getBufferDeviceAddress() + 
+						(meshGroupPtr->getMeshesData().at(lodMeshPtr).drawCommandIndex * sizeof(VkDrawIndexedIndirectCommand)) + 
+						offsetof(VkDrawIndexedIndirectCommand, instanceCount);
+					indirectDrawData.matricesBufferAddress = 
+						meshGroupPtr->getModelMatricesBuffer().getBufferDeviceAddress() + 
+						(meshGroupPtr->getMeshesData().at(lodMeshPtr).matricesStartIndex * sizeof(glm::mat4));
 				
 					memcpy(newData.data() + materialMeshGroup.indirectDrawDatasOffset + sizeof(IndirectDrawData) * meshIndex, &indirectDrawData, sizeof(IndirectDrawData));
 				}

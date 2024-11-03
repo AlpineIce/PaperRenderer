@@ -55,35 +55,26 @@ layout(std430, buffer_reference) readonly buffer LODsMaterialMeshGroups
 //mesh group data
 struct IndirectDrawData
 {
-    uint drawCommandIndex;
-    uint matricesStartIndex;
+    uint64_t drawCountAddress;
+    uint64_t matricesBufferAddress;
 };
 
-layout(std430, buffer_reference) readonly buffer IndirectDrawDatas
+layout(scalar, buffer_reference) readonly buffer IndirectDrawDatas
 {
     IndirectDrawData datas[]; //count grabbed from model and is assumed to be in order
 };
 
-//----------MODEL MATRICES AND DRAW COMMANDS----------//
+//----------DRAW COMMANDS AND MATRICES----------//
 
-struct DrawCommand
+layout(scalar, buffer_reference) buffer DrawCount
 {
-    uint indexCount;
-    uint instanceCount;
-    uint firstIndex;
-    int vertexOffset;
-    uint firstInstance;
+    uint count;
 };
 
-layout(scalar, set = 0, binding = 3) buffer DrawCommands
+layout(scalar, buffer_reference) writeonly buffer MatricesBuffer
 {
-    DrawCommand commands[];
-} drawCommands;
-
-layout(scalar, set = 0, binding = 4) writeonly buffer OutputObjects
-{
-    mat4 modelMatrices[];
-} outputObjects;
+    mat4 matrices[];
+};
 
 //----------ENTRY POINT----------//
 
@@ -131,10 +122,10 @@ void main()
                 IndirectDrawData indirectDrawData = IndirectDrawDatas(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset + materialMeshGroup.indirectDrawDatasOffset)).datas[meshIndex];
 
                 //instance count
-                uint writeIndex = atomicAdd(drawCommands.commands[indirectDrawData.drawCommandIndex].instanceCount, 1);
+                uint writeIndex = atomicAdd(DrawCount(indirectDrawData.drawCommandAddress).count, 1);
 
                 //output objects
-                outputObjects.modelMatrices[writeIndex + indirectDrawData.matricesStartIndex] = modelMatrix;
+                MatricesBuffer(indirectDrawData.matricesBufferAddress).matrices[writeIndex] = modelMatrix;
             }
         }
     }

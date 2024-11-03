@@ -39,42 +39,24 @@ namespace PaperRenderer
     std::vector<ModelInstance*> CommonMeshGroup::rebuildBuffer()
     {
         //get new size
-        BufferSizeRequirements bufferSizeRequirements = getBuffersRequirements(bufferSizeRequirements);
+        BufferSizeRequirements bufferSizeRequirements = getBuffersRequirements();
 
         //rebuild buffers
         BufferInfo matricesBufferInfo = {};
         matricesBufferInfo.allocationFlags = 0;
         matricesBufferInfo.size = bufferSizeRequirements.matricesCount * sizeof(ShaderOutputObject);
-        matricesBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
+        matricesBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
         modelMatricesBuffer = std::make_unique<Buffer>(renderer, matricesBufferInfo);
 
         BufferInfo drawCommandsBufferInfo = {};
         drawCommandsBufferInfo.allocationFlags = 0;
         drawCommandsBufferInfo.size = bufferSizeRequirements.drawCommandCount * sizeof(VkDrawIndexedIndirectCommand);
-        drawCommandsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR;
+        drawCommandsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | 
+            VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
         drawCommandsBuffer = std::make_unique<Buffer>(renderer, drawCommandsBufferInfo);
 
-        //staging buffer to add draw commands
-        BufferInfo stagingBufferInfo = {};
-        stagingBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-        stagingBufferInfo.size = bufferSizeRequirements.drawCommandCount * sizeof(VkDrawIndexedIndirectCommand);
-        stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
-        Buffer stagingBuffer(renderer, stagingBufferInfo);
-
-        //set draw commands
-        setDrawCommandData(stagingBuffer);
-
-        //copy staging data
-        VkBufferCopy drawCommandsRegion = {};
-        drawCommandsRegion.dstOffset = 0;
-        drawCommandsRegion.srcOffset = 0;
-        drawCommandsRegion.size = stagingBuffer.getSize();
-
-        SynchronizationInfo syncInfo = {};
-        syncInfo.queueType = TRANSFER;
-        syncInfo.fence = renderer.getDevice().getCommands().getUnsignaledFence();
-
-        drawCommandsBuffer->copyFromBufferRanges(stagingBuffer, { drawCommandsRegion }, syncInfo);
+        //queue transfer of draw command data
+        setDrawCommandData();
 
         //get instances to update
         std::vector<ModelInstance*> modifiedInstances;
@@ -88,14 +70,10 @@ namespace PaperRenderer
         auto uniqueIndices = std::unique(modifiedInstances.begin(), modifiedInstances.end());
         modifiedInstances.erase(uniqueIndices, modifiedInstances.end());
 
-        //wait for transfer operation
-        vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
-        vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
-
         return modifiedInstances;
     }
 
-    CommonMeshGroup::BufferSizeRequirements CommonMeshGroup::getBuffersRequirements(const BufferSizeRequirements currentSizes)
+    CommonMeshGroup::BufferSizeRequirements CommonMeshGroup::getBuffersRequirements()
     {
         BufferSizeRequirements sizeRequirements = {};
 
@@ -108,12 +86,12 @@ namespace PaperRenderer
         for(auto& [mesh, meshInstancesData] : meshesData)
         {
             //draw commands count offset
-            meshInstancesData.drawCommandIndex = currentSizes.drawCommandCount + meshIndex;
+            meshInstancesData.drawCommandIndex = meshIndex;
 
             //output objects
             const uint32_t instanceCount = std::max((uint32_t)(meshInstancesData.instanceCount * instanceCountOverhead), (uint32_t)8); //minimum of 8 instances to make things happy
             meshInstancesData.lastRebuildInstanceCount = instanceCount;
-            meshInstancesData.matricesStartIndex =  currentSizes.matricesCount + sizeRequirements.matricesCount;
+            meshInstancesData.matricesStartIndex = sizeRequirements.matricesCount;
             sizeRequirements.matricesCount += instanceCount;
 
             meshIndex++;
@@ -122,10 +100,11 @@ namespace PaperRenderer
         return sizeRequirements;
     }
 
-    void CommonMeshGroup::setDrawCommandData(const Buffer &stagingBuffer) const
+    void CommonMeshGroup::setDrawCommandData() const
     {
-        for(auto& [mesh, meshInstancesData] : meshesData)
+        for(const auto& [mesh, meshInstancesData] : meshesData)
         {
+            //get command data
             VkDrawIndexedIndirectCommand command = {};
             command.indexCount = mesh->indexCount;
             command.instanceCount = 0;
@@ -133,19 +112,20 @@ namespace PaperRenderer
             command.vertexOffset = mesh->vboOffset;
             command.firstInstance = 0;
 
-            BufferWrite write = {};
-            write.offset = sizeof(VkDrawIndexedIndirectCommand) * meshInstancesData.drawCommandIndex;
-            write.size = sizeof(VkDrawIndexedIndirectCommand);
-            write.data = &command;
+            std::vector<char> data(sizeof(VkDrawIndexedIndirectCommand));
+            memcpy(data.data(), &command, sizeof(VkDrawIndexedIndirectCommand));
 
-            stagingBuffer.writeToBuffer({ write });
+            //queue data transfer
+            renderer.getEngineStagingBuffer().queueDataTransfers(
+                *drawCommandsBuffer,
+                sizeof(VkDrawIndexedIndirectCommand) * meshInstancesData.drawCommandIndex,
+                data
+            );
         }
     }
 
     void CommonMeshGroup::addInstanceMeshes(ModelInstance* instance, const std::vector<LODMesh const*>& instanceMeshesData)
-    {
-        addAndRemoveLock.lock();
-        
+    {        
         for(LODMesh const* meshData : instanceMeshesData)
         {
             if(!meshesData.count(meshData))
@@ -160,14 +140,10 @@ namespace PaperRenderer
         }
 
         this->instanceMeshes[instance].insert(this->instanceMeshes[instance].end(), instanceMeshesData.begin(), instanceMeshesData.end());
-        
-        addAndRemoveLock.unlock();
     }
 
     void CommonMeshGroup::removeInstanceMeshes(ModelInstance *instance)
-    {
-        addAndRemoveLock.lock();
-        
+    {        
         if(instanceMeshes.count(instance))
         {
             for(LODMesh const* meshData : instanceMeshes.at(instance))
@@ -182,8 +158,6 @@ namespace PaperRenderer
             }
             instanceMeshes.erase(instance);
         }
-        
-        addAndRemoveLock.unlock();
     }
 
     void CommonMeshGroup::draw(const VkCommandBuffer &cmdBuffer, const RasterPipeline& pipeline)
@@ -246,6 +220,29 @@ namespace PaperRenderer
                 sizeof(VkDrawIndexedIndirectCommand::instanceCount),
                 drawCountDefaultValue
             );
+
+            //memory barrier
+            VkBufferMemoryBarrier2 memBarrier = {
+                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                .pNext = NULL,
+                .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .buffer = drawCommandsBuffer->getBuffer(),
+                .offset = drawCommandLocation,
+                .size = sizeof(VkDrawIndexedIndirectCommand::instanceCount)
+            };
+
+            VkDependencyInfo dependency = {};
+            dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+            dependency.pNext = NULL;
+            dependency.bufferMemoryBarrierCount = 1;
+            dependency.pBufferMemoryBarriers = &memBarrier;
+
+            vkCmdPipelineBarrier2(cmdBuffer, &dependency);
         }
     }
 }

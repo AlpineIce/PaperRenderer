@@ -197,8 +197,8 @@ namespace PaperRenderer
 
         struct IndirectDrawData
         {
-            uint32_t instanceCountIndex = UINT32_MAX;
-            uint32_t matricesStartIndex = UINT32_MAX;
+            uint64_t drawCountAddress = 0;
+            uint64_t matricesBufferAddress = 0;
         };
 
         void setRenderPassInstanceData(class RenderPass const* renderPass);
