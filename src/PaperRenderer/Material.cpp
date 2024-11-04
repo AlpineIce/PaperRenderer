@@ -19,11 +19,13 @@ namespace PaperRenderer
         rasterDescriptorSets[DescriptorScopes::RASTER_MATERIAL_INSTANCE];
         rasterDescriptorSets[DescriptorScopes::RASTER_OBJECT];
 
-        pcRanges.push_back({
+        rasterDescriptorSets[DescriptorScopes::RASTER_MATERIAL].descriptorBindings[0] = {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
             .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-            .offset = 0,
-            .size = sizeof(GlobalInputData)
-        });
+            .pImmutableSamplers = nullptr
+        };
     }
 
     Material::~Material()
@@ -42,11 +44,18 @@ namespace PaperRenderer
 
         if(camera)
         {
-            GlobalInputData inputData = {};
-            inputData.projection = camera->getProjection();
-            inputData.view = camera->getViewMatrix();
+            //uniform buffer
+            VkDescriptorBufferInfo uniformInfo = {};
+            uniformInfo.buffer = camera->getCameraUBO().getBuffer();
+            uniformInfo.offset = 0;
+            uniformInfo.range = VK_WHOLE_SIZE;
 
-            vkCmdPushConstants(cmdBuffer, rasterPipeline->getLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GlobalInputData), &inputData);
+            PaperRenderer::BuffersDescriptorWrites uniformWrite;
+            uniformWrite.binding = 0;
+            uniformWrite.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            uniformWrite.infos = { uniformInfo };
+
+            rasterDescriptorWrites.bufferWrites.push_back(uniformWrite);
         }
         
         if(rasterDescriptorWrites.bufferViewWrites.size() || rasterDescriptorWrites.bufferWrites.size() || rasterDescriptorWrites.imageWrites.size())

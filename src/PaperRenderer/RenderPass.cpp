@@ -357,7 +357,7 @@ namespace PaperRenderer
                 if(meshGroup)
                 {
                     //clear
-                    meshGroup->clearDrawCommand(cmdBuffer);
+                    //meshGroup->clearDrawCommand(cmdBuffer);
                 }
             }
         }
@@ -379,7 +379,7 @@ namespace PaperRenderer
             //----------PRE-PROCESS----------//
 
             //compute shader
-            renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this);
+            //renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this);
 
             //memory barrier
             VkMemoryBarrier2 preprocessMemBarrier = {};
@@ -451,6 +451,70 @@ namespace PaperRenderer
                 vkCmdPipelineBarrier2(cmdBuffer, renderPassInfo.postRenderBarriers);
             }
         }
+    }
+
+    std::vector<uint32_t> RenderPass::readInstanceCounts()
+    {
+        //command buffer
+        VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(QueueType::GRAPHICS);
+
+        VkCommandBufferBeginInfo beginInfo = {};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.pNext = NULL;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(cmdBuffer, &beginInfo); 
+
+        uint32_t commandCount = 0;
+        for(const auto& [material, materialInstanceNode] : renderTree) //material
+        {
+            for(const auto& [materialInstance, meshGroup] : materialInstanceNode.instances) //material instances
+            {
+                if(meshGroup)
+                {
+                    commandCount += meshGroup->getMeshesData().size();
+                }
+            }
+        }
+        BufferInfo stagingBufferInfo = {};
+        stagingBufferInfo.size = sizeof(uint32_t) * commandCount;
+        stagingBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+        stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR;
+        Buffer stagingBuffer(renderer, stagingBufferInfo);
+        
+        uint32_t dynamicOffset = 0;
+        for(const auto& [material, materialInstanceNode] : renderTree) //material
+        {
+            for(const auto& [materialInstance, meshGroup] : materialInstanceNode.instances) //material instances
+            {
+                if(meshGroup)
+                {
+                    meshGroup->readInstanceCounts(cmdBuffer, stagingBuffer, dynamicOffset);
+                    dynamicOffset += meshGroup->getMeshesData().size();
+                }
+            }
+        }
+
+        vkEndCommandBuffer(cmdBuffer);
+
+        SynchronizationInfo syncInfo = {};
+        syncInfo.fence = renderer.getDevice().getCommands().getUnsignaledFence();
+
+        renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+
+        vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT32_MAX);
+        vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
+
+        std::vector<uint32_t> returnData(commandCount);
+
+        BufferWrite read = {};
+        read.data = returnData.data();
+        read.size = returnData.size() * sizeof(uint32_t);
+        read.offset = 0;
+
+        stagingBuffer.readFromBuffer({ read });
+
+        return returnData;
     }
 
     void RenderPass::addInstance(ModelInstance* instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials)

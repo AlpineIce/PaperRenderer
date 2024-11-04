@@ -197,7 +197,7 @@ namespace PaperRenderer
 
         struct IndirectDrawData
         {
-            uint64_t drawCountAddress = 0;
+            uint64_t drawCommandAddress = 0;
             uint64_t matricesBufferAddress = 0;
         };
 

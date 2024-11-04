@@ -1,14 +1,22 @@
 #include "Camera.h"
+#include "PaperRenderer.h"
 
 namespace PaperRenderer
 {
-    Camera::Camera(const CameraCreateInfo& creationInfo)
+    Camera::Camera(RenderEngine& renderer, const CameraCreateInfo& creationInfo)
         :windowPtr(creationInfo.window),
         clipNear(creationInfo.clipNear),
         clipFar(creationInfo.clipFar),
         fov(creationInfo.fov),
-        translation(creationInfo.initTranslation)
+        translation(creationInfo.initTranslation),
+        renderer(renderer)
     {
+        BufferInfo uboInfo = {};
+        uboInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+        uboInfo.size = sizeof(glm::mat4) * 2;
+        uboInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
+        ubo = std::make_unique<Buffer>(renderer, uboInfo);
+
         updateCameraProjection();
         updateCameraView(translation);
     }
@@ -28,7 +36,13 @@ namespace PaperRenderer
     void Camera::updateCameraProjection()
     {
         glfwGetFramebufferSize(windowPtr, &width, &height);
-        this->projection = glm::perspective(glm::radians(fov), (float)width / (float)height, clipNear, clipFar);
+        projection = glm::perspective(glm::radians(fov), (float)width / (float)height, clipNear, clipFar);
+
+        BufferWrite write = {};
+        write.data = &projection;
+        write.offset = 0;
+        write.size = sizeof(glm::mat4);
+        ubo->writeToBuffer({ write });
     }
 
     void Camera::updateCameraView(const CameraTranslation& newTranslation)
@@ -47,5 +61,11 @@ namespace PaperRenderer
 
         mTranslation = glm::translate(mTranslation, -newTranslation.position);
         view = mRotation * mTranslation;
+
+        BufferWrite write = {};
+        write.data = &view;
+        write.offset = sizeof(glm::mat4);
+        write.size = sizeof(glm::mat4);
+        ubo->writeToBuffer({ write });
     }
 }

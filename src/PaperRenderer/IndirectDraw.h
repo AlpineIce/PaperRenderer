@@ -7,6 +7,13 @@
 
 namespace PaperRenderer
 {
+    //draw command requires 8 byte alignment because of the use of buffer addressing
+    struct DrawCommand
+    {
+        VkDrawIndexedIndirectCommand command = {};
+        float padding = 0.0f;
+    };
+
     class CommonMeshGroup
     {
     private:
@@ -73,6 +80,7 @@ namespace PaperRenderer
 
         void draw(const VkCommandBuffer& cmdBuffer, const class RasterPipeline& pipeline);
         void clearDrawCommand(const VkCommandBuffer& cmdBuffer);
+        void readInstanceCounts(VkCommandBuffer cmdBuffer, Buffer& buffer, uint32_t startIndex) const;
 
         //const Buffer& getModelMatricesBuffer() { return *modelMatricesBuffer; }
         const Buffer& getDrawCommandsBuffer() const { return *drawCommandsBuffer; }

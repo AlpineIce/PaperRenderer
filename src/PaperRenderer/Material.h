@@ -13,12 +13,6 @@ namespace PaperRenderer
     private:
         std::unique_ptr<RasterPipeline> rasterPipeline;
 
-        struct GlobalInputData
-        {
-            glm::mat4 projection;
-            glm::mat4 view;
-        };
-
     protected:
         std::string matName;
         RasterPipelineBuildInfo rasterInfo;
@@ -32,8 +26,6 @@ namespace PaperRenderer
         void buildRasterPipeline(RasterPipelineBuildInfo const* rasterInfo, const RasterPipelineProperties& rasterProperties);
 
         class RenderEngine& renderer;
-
-        //TODO IMPLEMENT A CHIT SHADER AND HAVE RT PIPELINE RETURN THE SBT OFFSET WHEN ADDED TO IT.
 
     public:
         Material(class RenderEngine& renderer, std::string materialName);

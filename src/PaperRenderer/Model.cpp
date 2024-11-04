@@ -299,10 +299,9 @@ namespace PaperRenderer
 					LODMesh const* lodMeshPtr = &modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes.at(meshIndex);
 					CommonMeshGroup const* meshGroupPtr = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes);
 					IndirectDrawData indirectDrawData = {};
-					indirectDrawData.drawCountAddress = 
+					indirectDrawData.drawCommandAddress = 
 						meshGroupPtr->getDrawCommandsBuffer().getBufferDeviceAddress() + 
-						(meshGroupPtr->getMeshesData().at(lodMeshPtr).drawCommandIndex * sizeof(VkDrawIndexedIndirectCommand)) + 
-						offsetof(VkDrawIndexedIndirectCommand, instanceCount);
+						(meshGroupPtr->getMeshesData().at(lodMeshPtr).drawCommandIndex * sizeof(DrawCommand));
 					indirectDrawData.matricesBufferAddress = 
 						meshGroupPtr->getModelMatricesBuffer().getBufferDeviceAddress() + 
 						(meshGroupPtr->getMeshesData().at(lodMeshPtr).matricesStartIndex * sizeof(glm::mat4));

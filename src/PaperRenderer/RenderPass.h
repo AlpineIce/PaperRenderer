@@ -91,6 +91,7 @@ namespace PaperRenderer
 
         void queueInstanceTransfers();
         void render(VkCommandBuffer cmdBuffer, const RenderPassInfo& renderPassInfo);
+        std::vector<uint32_t> readInstanceCounts(); //BRUTE FORCE SYNC DEBUG FUNCTION
 
         void addInstance(ModelInstance* instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials);
         void removeInstance(ModelInstance* instance);

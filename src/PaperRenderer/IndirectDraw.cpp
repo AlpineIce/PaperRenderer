@@ -50,9 +50,9 @@ namespace PaperRenderer
 
         BufferInfo drawCommandsBufferInfo = {};
         drawCommandsBufferInfo.allocationFlags = 0;
-        drawCommandsBufferInfo.size = bufferSizeRequirements.drawCommandCount * sizeof(VkDrawIndexedIndirectCommand);
+        drawCommandsBufferInfo.size = bufferSizeRequirements.drawCommandCount * sizeof(DrawCommand);
         drawCommandsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | 
-            VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
+            VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
         drawCommandsBuffer = std::make_unique<Buffer>(renderer, drawCommandsBufferInfo);
 
         //queue transfer of draw command data
@@ -105,20 +105,20 @@ namespace PaperRenderer
         for(const auto& [mesh, meshInstancesData] : meshesData)
         {
             //get command data
-            VkDrawIndexedIndirectCommand command = {};
-            command.indexCount = mesh->indexCount;
-            command.instanceCount = 0;
-            command.firstIndex = mesh->iboOffset;
-            command.vertexOffset = mesh->vboOffset;
-            command.firstInstance = 0;
+            DrawCommand command = {};
+            command.command.indexCount = mesh->indexCount;
+            command.command.instanceCount = 0;
+            command.command.firstIndex = mesh->iboOffset;
+            command.command.vertexOffset = mesh->vboOffset;
+            command.command.firstInstance = 0;
 
-            std::vector<char> data(sizeof(VkDrawIndexedIndirectCommand));
-            memcpy(data.data(), &command, sizeof(VkDrawIndexedIndirectCommand));
+            std::vector<char> data(sizeof(DrawCommand));
+            memcpy(data.data(), &command, sizeof(DrawCommand));
 
             //queue data transfer
             renderer.getEngineStagingBuffer().queueDataTransfers(
                 *drawCommandsBuffer,
-                sizeof(VkDrawIndexedIndirectCommand) * meshInstancesData.drawCommandIndex,
+                sizeof(DrawCommand) * meshInstancesData.drawCommandIndex,
                 data
             );
         }
@@ -195,14 +195,15 @@ namespace PaperRenderer
             //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)
             meshData.parentModelPtr->bindBuffers(cmdBuffer);
 
+            vkCmdDrawIndexed(cmdBuffer, mesh->indexCount, meshData.instanceCount, mesh->iboOffset, mesh->vboOffset, 0);
             //draw
-            vkCmdDrawIndexedIndirect(
+            /*vkCmdDrawIndexedIndirect(
                 cmdBuffer,
                 drawCommandsBuffer->getBuffer(),
                 meshData.drawCommandIndex * sizeof(uint32_t),
                 1,
-                sizeof(VkDrawIndexedIndirectCommand)
-            );
+                sizeof(DrawCommand)
+            );*/
         }
     }
 
@@ -212,13 +213,13 @@ namespace PaperRenderer
         uint32_t drawCountDefaultValue = 0;
         for(const auto& [mesh, meshData] : meshesData)
         {
-            uint32_t drawCommandLocation = (sizeof(VkDrawIndexedIndirectCommand) * meshData.drawCommandIndex) + offsetof(VkDrawIndexedIndirectCommand, instanceCount);
+            uint32_t instanceCountLocation = (sizeof(DrawCommand) * meshData.drawCommandIndex) + offsetof(VkDrawIndexedIndirectCommand, instanceCount);
             vkCmdFillBuffer(
                 cmdBuffer,
                 drawCommandsBuffer->getBuffer(),
-                drawCommandLocation,
+                instanceCountLocation,
                 sizeof(VkDrawIndexedIndirectCommand::instanceCount),
-                drawCountDefaultValue
+                /*drawCountDefaultValue*/meshData.instanceCount
             );
 
             //memory barrier
@@ -232,7 +233,7 @@ namespace PaperRenderer
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .buffer = drawCommandsBuffer->getBuffer(),
-                .offset = drawCommandLocation,
+                .offset = instanceCountLocation,
                 .size = sizeof(VkDrawIndexedIndirectCommand::instanceCount)
             };
 
@@ -243,6 +244,22 @@ namespace PaperRenderer
             dependency.pBufferMemoryBarriers = &memBarrier;
 
             vkCmdPipelineBarrier2(cmdBuffer, &dependency);
+        }
+    }
+
+    void CommonMeshGroup::readInstanceCounts(VkCommandBuffer cmdBuffer, Buffer& buffer, uint32_t startIndex) const
+    {
+        for(const auto& [mesh, meshData] : meshesData)
+        {
+            uint32_t instanceCountLocation = (sizeof(DrawCommand) * meshData.drawCommandIndex) + offsetof(VkDrawIndexedIndirectCommand, instanceCount);
+
+            VkBufferCopy copy = {};
+            copy.dstOffset = startIndex * sizeof(uint32_t);
+            copy.size = sizeof(uint32_t);
+            copy.srcOffset = instanceCountLocation;
+            vkCmdCopyBuffer(cmdBuffer, drawCommandsBuffer->getBuffer(), buffer.getBuffer(), 1, &copy);
+
+            startIndex++;
         }
     }
 }

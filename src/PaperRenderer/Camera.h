@@ -4,6 +4,8 @@
 #include "glm/gtc/quaternion.hpp"
 #include "GLFW/glfw3.h"
 
+#include <memory>
+
 namespace PaperRenderer
 {
     struct CameraTranslation
@@ -44,9 +46,18 @@ namespace PaperRenderer
         int width;
         int height;
         GLFWwindow* windowPtr;
+
+        struct UBOData
+        {
+            glm::mat4 projection;
+            glm::mat4 view;
+        };
+        std::unique_ptr<class Buffer> ubo;
+
+        class RenderEngine& renderer;
         
     public:
-        Camera(const CameraCreateInfo& creationInfo);
+        Camera(class RenderEngine& renderer, const CameraCreateInfo& creationInfo);
         ~Camera();
         Camera(const Camera&) = delete;
 
@@ -60,5 +71,6 @@ namespace PaperRenderer
         const float getClipFar() const { return clipFar; }
 
         CameraTranslation getTranslation() const { return translation; }
+        const class Buffer& getCameraUBO() const { return *ubo; }
     };
 }
