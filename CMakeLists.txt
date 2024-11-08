@@ -32,7 +32,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC "$<BUILD_INTERFACE:${VMA_INCLU
 
 #GLM
 message("Getting GLM package")
-find_package(glm REQUIRED)
+set(GLM_INCUDE_DIR "${PROJECT_SOURCE_DIR}/lib/glm/include/")
+target_include_directories(${PROJECT_NAME} PUBLIC "$<BUILD_INTERFACE:${GLM_INCUDE_DIR}>$<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/glm>")
 
 #GLFW LIBRARY
 message("GLFW")

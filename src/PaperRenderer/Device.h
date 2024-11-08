@@ -54,7 +54,7 @@ namespace PaperRenderer
         static VkDeviceSize getAlignment(VkDeviceSize size, VkDeviceSize alignment) { return (size + (alignment - 1)) & ~(alignment - 1); };
         const VkDevice& getDevice() const { return device; }
         const VmaAllocator& getAllocator() const { return allocator; }
-        const VkSurfaceKHR& getSurface() { return surface; }
+        const VkSurfaceKHR& getSurface() const { return surface; }
         const VkInstance& getInstance() const { return instance; }
         const VkPhysicalDevice& getGPU() const { return GPU; }
         const VkPhysicalDeviceProperties2& getGPUProperties() const { return gpuProperties; }

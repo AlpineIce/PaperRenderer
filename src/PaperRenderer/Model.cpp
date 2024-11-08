@@ -246,7 +246,7 @@ namespace PaperRenderer
 					.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
 					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 					//if geometry is unique then allow update, otherwise geometry isn't unique, but a parent copy doesnt exist; assume static
-					.flags = uniqueGeometry ? VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR : VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR
+					.flags = uniqueGeometry ? (VkBuildAccelerationStructureFlagsKHR)VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR : (VkBuildAccelerationStructureFlagsKHR)VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR
 				};
 				renderer.asBuilder.queueAs(op);
 			}
