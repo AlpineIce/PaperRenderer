@@ -11,59 +11,46 @@ namespace PaperRenderer
     class Material
     {
     private:
+        const RasterPipelineProperties rasterPipelineProperties = {};
         std::unique_ptr<RasterPipeline> rasterPipeline;
-
+    
     protected:
-        std::string matName;
-        RasterPipelineBuildInfo rasterInfo;
-        
-        std::vector<ShaderPair> shaderPairs;
-        DescriptorWrites rasterDescriptorWrites = {};
-        std::unordered_map<uint32_t, DescriptorSet> rasterDescriptorSets;
-        std::vector<VkPushConstantRange> pcRanges;
-        RasterPipelineProperties rasterPipelineProperties = {};
-
-        void buildRasterPipeline(RasterPipelineBuildInfo const* rasterInfo, const RasterPipelineProperties& rasterProperties);
-
         class RenderEngine& renderer;
 
     public:
-        Material(class RenderEngine& renderer, std::string materialName);
+        Material(class RenderEngine& renderer, const RasterPipelineBuildInfo& pipelineInfo);
         virtual ~Material();
         Material(const Material&) = delete;
 
-        virtual void bind(VkCommandBuffer cmdBuffer, class Camera* camera); //used per pipeline bind and material instance; camera is optional
+        virtual void bind(VkCommandBuffer cmdBuffer, const class Camera& camera); //used per pipeline bind and material instance; camera is optional
         
-        std::string getMaterialName() const { return matName; }
         const RasterPipelineProperties& getRasterPipelineProperties() const { return rasterPipelineProperties; }
-        RasterPipeline const* getRasterPipeline() const { return rasterPipeline.get(); }
+        const RasterPipeline& getRasterPipeline() const { return *rasterPipeline; }
     };
 
     class MaterialInstance
     {
     protected:
-        Material const* baseMaterial = NULL;
-        DescriptorWrites descriptorWrites = {};
-
+        const Material& baseMaterial;
         class RenderEngine& renderer;
 
     public:
-        MaterialInstance(class RenderEngine& renderer, Material const* baseMaterial);
+        MaterialInstance(class RenderEngine& renderer, const Material& baseMaterial);
         virtual ~MaterialInstance();
         MaterialInstance(const MaterialInstance&) = delete;
         
         virtual void bind(VkCommandBuffer cmdBuffer);
 
-        Material const* getBaseMaterialPtr() const { return baseMaterial; }
+        const Material& getBaseMaterial() const { return baseMaterial; }
     };
 
     //----------RT MATERIAL ABSTRACTIONS----------//
 
     struct ShaderHitGroup
     {
-        std::string chitShaderDir; //optional if int shader is valid, leave empty and shader will be ignored
-        std::string ahitShaderDir; //optional, leave empty and shader will be ignored
-        std::string intShaderDir; //optional if chit shader is valid, leave empty and shader will be ignored
+        const std::vector<uint32_t>& chitShaderData; //optional if int shader is valid, leave empty and shader will be ignored
+        const std::vector<uint32_t>& ahitShaderData; //optional, leave empty and shader will be ignored
+        const std::vector<uint32_t>& intShaderData; //optional if chit shader is valid, leave empty and shader will be ignored
     };
 
     class RTMaterial
@@ -76,7 +63,7 @@ namespace PaperRenderer
     public:
         //closest hit shader is required, but any hit and intersection shaders are optional
         RTMaterial(class RenderEngine& renderer, const ShaderHitGroup& hitGroup);
-        virtual ~RTMaterial();
+        ~RTMaterial();
         RTMaterial(const RTMaterial&) = delete;
 
         const std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>>& getShaderHitGroup() const { return shaderHitGroup; }

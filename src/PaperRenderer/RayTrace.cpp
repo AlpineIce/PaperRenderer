@@ -9,20 +9,17 @@ namespace PaperRenderer
     RayTraceRender::RayTraceRender(
         RenderEngine& renderer,
         TLAS& accelerationStructure,
-        const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets,
+        const std::vector<ShaderDescription>& generalShaders,
+        const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptorSets,
         const std::vector<VkPushConstantRange>& pcRanges
     )
-        :descriptorSets(descriptorSets),
-        pcRanges(pcRanges),
+        :pcRanges(pcRanges),
+        descriptorSets(descriptorSets),
+        generalShaders(generalShaders),
         renderer(renderer),
         tlas(accelerationStructure)
     {
-        if(descriptorSets.count(0) && (descriptorSets.at(0).descriptorBindings.count(0) || descriptorSets.at(0).descriptorBindings.count(1)))
-        {
-            throw std::runtime_error("Descriptor set 0 bindings 0 and 1 are reserved and cannot be set for RT shaders");
-        }
-
-        VkShaderStageFlags stages = 
+        /*VkShaderStageFlags stages = 
             VK_SHADER_STAGE_RAYGEN_BIT_KHR |
             VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR |
             VK_SHADER_STAGE_ANY_HIT_BIT_KHR |
@@ -30,18 +27,18 @@ namespace PaperRenderer
             VK_SHADER_STAGE_CALLABLE_BIT_KHR |
             VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
 
-        this->descriptorSets[0].descriptorBindings[0] = {
+        this->descriptorSets[0][0] = {
             .binding = 0,
             .descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
             .descriptorCount = 1,
             .stageFlags = stages
         };
-        this->descriptorSets[0].descriptorBindings[1] = {
+        this->descriptorSets[0][1] = {
             .binding = 1,
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = 1,
             .stageFlags = stages
-        };
+        };*/
     }
 
     RayTraceRender::~RayTraceRender()
@@ -120,7 +117,7 @@ namespace PaperRenderer
             DescriptorBind bindingInfo = {};
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
             bindingInfo.set = rtDescriptorSet;
-            bindingInfo.descriptorScope = 0;
+            bindingInfo.descriptorSetIndex = 0;
             bindingInfo.layout = pipeline->getLayout();
             
             DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
@@ -175,10 +172,11 @@ namespace PaperRenderer
         RTPipelineBuildInfo pipelineBuildInfo = {
             .materials = materials,
             .generalShaders = generalShaders,
-            .descriptors = descriptorSets,
-            .pcRanges = pcRanges
+            .descriptorSets = descriptorSets,
+            .pcRanges = pcRanges,
+            .properties = pipelineProperties
         };
-        pipeline = renderer.getPipelineBuilder().buildRTPipeline(pipelineBuildInfo, pipelineProperties);
+        pipeline = renderer.getPipelineBuilder().buildRTPipeline(pipelineBuildInfo);
     }
 
     void RayTraceRender::addInstance(ModelInstance *instance, RTMaterial const* material)
@@ -208,18 +206,5 @@ namespace PaperRenderer
 
             instance->rtRenderSelfReferences.erase(this);
         }
-    }
-
-    void RayTraceRender::addGeneralShaders(const std::vector<ShaderDescription>& shaders)
-    {
-        generalShaders.insert(generalShaders.end(), shaders.begin(), shaders.end());
-        queuePipelineBuild = true;
-    }
-
-    void RayTraceRender::removeGeneralShader(const ShaderDescription &shader)
-    {
-        auto compareOp = [&](const ShaderDescription& listShader) { return listShader.shader == shader.shader ? false : true; };
-        generalShaders.remove_if(compareOp);
-        queuePipelineBuild = true;
     }
 }

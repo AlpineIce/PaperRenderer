@@ -9,8 +9,46 @@ namespace PaperRenderer
 {
     //----------TLAS INSTANCE BUILD PIPELINE DEFINITIONS----------//
 
-    TLASInstanceBuildPipeline::TLASInstanceBuildPipeline(RenderEngine& renderer, std::string fileDir)
-        :ComputeShader(renderer),
+    TLASInstanceBuildPipeline::TLASInstanceBuildPipeline(RenderEngine& renderer, const std::vector<uint32_t>& shaderData)
+        :computeShader(renderer, {
+            .shaderInfo = {
+                .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+                .data = shaderData
+            },
+            .descriptors = {
+                { 0, {
+                    {
+                        .binding = 0,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .descriptorCount = 1,
+                        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                        .pImmutableSamplers = NULL
+                    },
+                    {
+                        .binding = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .descriptorCount = 1,
+                        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                        .pImmutableSamplers = NULL
+                    },
+                    {
+                        .binding = 2,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .descriptorCount = 1,
+                        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                        .pImmutableSamplers = NULL
+                    },
+                    {
+                        .binding = 3,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .descriptorCount = 1,
+                        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                        .pImmutableSamplers = NULL
+                    }
+                }}
+            },
+            .pcRanges = {}
+        }),
         renderer(renderer)
     {
         //uniform buffer
@@ -19,39 +57,6 @@ namespace PaperRenderer
         uboInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
         uboInfo.size = sizeof(UBOInputData);
         uniformBuffer = std::make_unique<Buffer>(renderer, uboInfo);
-        
-        //pipeline info
-        shader = { VK_SHADER_STAGE_COMPUTE_BIT, fileDir + fileName };
-
-        VkDescriptorSetLayoutBinding inputDataDescriptor = {};
-        inputDataDescriptor.binding = 0;
-        inputDataDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        inputDataDescriptor.descriptorCount = 1;
-        inputDataDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        descriptorSets[0].descriptorBindings[0] = inputDataDescriptor;
-
-        VkDescriptorSetLayoutBinding inputInstancesDescriptor = {};
-        inputInstancesDescriptor.binding = 1;
-        inputInstancesDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        inputInstancesDescriptor.descriptorCount = 1;
-        inputInstancesDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        descriptorSets[0].descriptorBindings[1] = inputInstancesDescriptor;
-
-        VkDescriptorSetLayoutBinding inputASInstancesDescriptor = {};
-        inputASInstancesDescriptor.binding = 2;
-        inputASInstancesDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        inputASInstancesDescriptor.descriptorCount = 1;
-        inputASInstancesDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        descriptorSets[0].descriptorBindings[2] = inputASInstancesDescriptor;
-
-        VkDescriptorSetLayoutBinding outputASInstancesDescriptor = {};
-        outputASInstancesDescriptor.binding = 3;
-        outputASInstancesDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        outputASInstancesDescriptor.descriptorCount = 1;
-        outputASInstancesDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        descriptorSets[0].descriptorBindings[3] = outputASInstancesDescriptor;
-
-        buildPipeline();
     }
 
     TLASInstanceBuildPipeline::~TLASInstanceBuildPipeline()
@@ -115,17 +120,11 @@ namespace PaperRenderer
         bufferWrite3.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         bufferWrite3.infos = { bufferWrite3Info };
 
-        //bind, write, and dispatch
-        bind(cmdBuffer);
-
-        DescriptorWrites descriptorWritesInfo = {};
-        descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2, bufferWrite3 };
-        descriptorWrites[0] = descriptorWritesInfo;
-        writeDescriptorSet(cmdBuffer, 0);
-
         //dispatch
-        workGroupSizes.x = (tlas.nextUpdateSize / 128) + 1;
-        dispatch(cmdBuffer);
+        const DescriptorWrites descriptorWritesInfo = {
+            .bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2, bufferWrite3 }
+        };
+        computeShader.dispatch(cmdBuffer, { { 0, descriptorWritesInfo } }, glm::uvec3((tlas.nextUpdateSize / 128) + 1, 1, 1));
     }
 
     //----------AS BASE CLASS DEFINITIONS----------//
@@ -430,7 +429,7 @@ namespace PaperRenderer
 
             returnData.geometries.emplace_back(structureGeometry);
             returnData.buildRangeInfos.emplace_back(buildRangeInfo);
-            primitiveCounts.emplace_back(tlas.accelerationStructureInstances.size());
+            primitiveCounts.push_back((uint32_t)tlas.accelerationStructureInstances.size());
         }
         else
         {

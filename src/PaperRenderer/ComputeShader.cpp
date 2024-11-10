@@ -3,13 +3,9 @@
 
 namespace PaperRenderer
 {
-    ComputeShader::ComputeShader(RenderEngine& renderer)
-        :renderer(renderer),
-        pipelineBuildInfo({
-            .shaderInfo = shader,
-            .descriptors = descriptorSets,
-            .pcRanges = pcRanges
-        })
+    ComputeShader::ComputeShader(RenderEngine& renderer, const ComputePipelineBuildInfo& pipelineInfo)
+        :pipeline(renderer.getPipelineBuilder().buildComputePipeline(pipelineInfo)),
+        renderer(renderer)
     {
     }
 
@@ -18,21 +14,18 @@ namespace PaperRenderer
         pipeline.reset();
     }
 
-    void ComputeShader::buildPipeline()
+    void ComputeShader::dispatch(const VkCommandBuffer& cmdBuffer,
+        const std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites,
+        const glm::uvec3& workGroupSizes
+    ) const
     {
-        pipeline = renderer.getPipelineBuilder().buildComputePipeline(pipelineBuildInfo);
-    }
-
-    void ComputeShader::bind(VkCommandBuffer cmdBuffer)
-    {
+        //bind
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->getPipeline());
-    }
 
-    void ComputeShader::writeDescriptorSet(VkCommandBuffer cmdBuffer, uint32_t setNumber)
-    {
-        if(descriptorWrites.count(setNumber))
+        //write descriptors
+        for(const auto& [setNumber, writes] : descriptorWrites)
         {
-            if(descriptorWrites.at(setNumber).bufferViewWrites.size() || descriptorWrites.at(setNumber).bufferWrites.size() || descriptorWrites.at(setNumber).imageWrites.size())
+            if(writes.bufferViewWrites.size() || writes.bufferWrites.size() || writes.imageWrites.size())
             {
                 VkDescriptorSet descriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(setNumber));
                 DescriptorAllocator::writeUniforms(renderer, descriptorSet, descriptorWrites.at(setNumber));
@@ -40,16 +33,14 @@ namespace PaperRenderer
                 DescriptorBind bindingInfo = {};
                 bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
                 bindingInfo.set = descriptorSet;
-                bindingInfo.descriptorScope = setNumber;
+                bindingInfo.descriptorSetIndex = setNumber;
                 bindingInfo.layout = pipeline->getLayout();
                 
                 DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
             }
         }
-    }
 
-    void ComputeShader::dispatch(VkCommandBuffer cmdBuffer)
-    {
+        //dispatch
         vkCmdDispatch(cmdBuffer, workGroupSizes.x, workGroupSizes.y, workGroupSizes.z);
     }
 }

@@ -11,10 +11,10 @@ namespace PaperRenderer
 {
     //----------PREPROCESS COMPUTE PIPELINE----------//
 
-    class RasterPreprocessPipeline : public ComputeShader
+    class RasterPreprocessPipeline
     {
     private:
-        std::string fileName = "IndirectDrawBuild.spv";
+        const ComputeShader computeShader;
         std::unique_ptr<Buffer> uniformBuffer;
 
         struct UBOInputData
@@ -31,17 +31,18 @@ namespace PaperRenderer
         class RenderEngine& renderer;
 
     public:
-        RasterPreprocessPipeline(RenderEngine& renderer, std::string fileDir);
-        ~RasterPreprocessPipeline() override;
+        RasterPreprocessPipeline(RenderEngine& renderer, const std::vector<uint32_t>& shaderData);
+        ~RasterPreprocessPipeline();
         RasterPreprocessPipeline(const RasterPreprocessPipeline&) = delete;
 
-        void submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass);
+        void submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera);
     };
     
     //----------RENDER PASS----------//
 
     struct RenderPassInfo
     {
+        const Camera& camera;
         std::vector<VkRenderingAttachmentInfo> colorAttachments;
         VkRenderingAttachmentInfo const* depthAttachment = NULL;
         VkRenderingAttachmentInfo const* stencilAttachment = NULL;
@@ -79,13 +80,12 @@ namespace PaperRenderer
         void clearDrawCounts(VkCommandBuffer cmdBuffer);
 
         RenderEngine& renderer;
-        Camera* cameraPtr;
         MaterialInstance* defaultMaterialInstancePtr;
 
         friend RasterPreprocessPipeline;
         
     public:
-        RenderPass(RenderEngine& renderer, Camera* camera, MaterialInstance* defaultMaterialInstance);
+        RenderPass(RenderEngine& renderer, MaterialInstance* defaultMaterialInstance);
         ~RenderPass();
         RenderPass(const RenderPass&) = delete;
 

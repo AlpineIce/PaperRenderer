@@ -166,32 +166,6 @@ namespace PaperRenderer
         {
             if(!meshData.parentModelPtr) continue; //null safety
 
-            //get new descriptor set
-            VkDescriptorSet objDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(pipeline.getDescriptorSetLayouts().at(DescriptorScopes::RASTER_OBJECT));
-            
-            //write uniforms
-            VkDescriptorBufferInfo descriptorInfo = {};
-            descriptorInfo.buffer = modelMatricesBuffer->getBuffer();
-            descriptorInfo.offset = meshData.matricesStartIndex * sizeof(ShaderOutputObject);
-            descriptorInfo.range = sizeof(ShaderOutputObject) * meshData.instanceCount;
-
-            BuffersDescriptorWrites write = {};
-            write.binding = 0;
-            write.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            write.infos.push_back(descriptorInfo);
-
-            DescriptorWrites descriptorWritesInfo = {};
-            descriptorWritesInfo.bufferWrites = { write };
-            DescriptorAllocator::writeUniforms(renderer, objDescriptorSet, descriptorWritesInfo);
-
-            //bind set
-            DescriptorBind bindingInfo = {};
-            bindingInfo.descriptorScope = DescriptorScopes::RASTER_OBJECT;
-            bindingInfo.set = objDescriptorSet;
-            bindingInfo.layout = pipeline.getLayout();
-            bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-            DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
-
             //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)
             meshData.parentModelPtr->bindBuffers(cmdBuffer);
 

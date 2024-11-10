@@ -141,14 +141,13 @@ namespace PaperRenderer
 
     //----------RENDER ENGINE DEFINITIONS----------//
 
-    RenderEngine::RenderEngine(RendererCreationStruct creationInfo)
-        :shadersDir(creationInfo.shadersDir),
-        device(*this, creationInfo.windowState.windowName),
+    RenderEngine::RenderEngine(const RendererCreationStruct& creationInfo)
+        :device(*this, creationInfo.windowState.windowName),
         swapchain(*this, creationInfo.windowState),
         descriptors(*this),
         pipelineBuilder(*this),
-        rasterPreprocessPipeline(*this, creationInfo.shadersDir),
-        tlasInstanceBuildPipeline(*this, creationInfo.shadersDir),
+        rasterPreprocessPipeline(*this, creationInfo.rasterPreprocessSpirv),
+        tlasInstanceBuildPipeline(*this, creationInfo.rtPreprocessSpirv),
         asBuilder(*this),
         stagingBuffer(*this)
     {

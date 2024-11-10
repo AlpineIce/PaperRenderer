@@ -15,7 +15,7 @@ namespace PaperRenderer
 
     struct WindowState
     {
-        std::string windowName = "Set window name in swapchain creation";
+        const std::string& windowName = "Set window name in swapchain creation";
         unsigned int resX = 1280;
         unsigned int resY = 720;
         WindowMode windowMode = WINDOWED;

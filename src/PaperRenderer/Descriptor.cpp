@@ -198,11 +198,12 @@ namespace PaperRenderer
             cmdBuffer,
             bindingInfo.bindingPoint,
             bindingInfo.layout,
-            bindingInfo.descriptorScope,
+            bindingInfo.descriptorSetIndex,
             1,
             &bindingInfo.set,
             0,
-            NULL);
+            NULL
+        );
     }
 
     void DescriptorAllocator::refreshPools()

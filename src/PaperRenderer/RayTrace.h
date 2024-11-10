@@ -18,15 +18,15 @@ namespace PaperRenderer
     class RayTraceRender
     {
     private:
-        std::unique_ptr<RTPipeline> pipeline;
-        RTPipelineProperties pipelineProperties = {};
-        std::unordered_map<uint32_t, PaperRenderer::DescriptorSet> descriptorSets;
         const std::vector<VkPushConstantRange> pcRanges;
+        const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> descriptorSets;
+        RTPipelineProperties pipelineProperties = {};
+        std::unique_ptr<RTPipeline> pipeline;
+        
         bool queuePipelineBuild = true;
 
-
         std::unordered_map<RTMaterial const*, uint32_t> materialReferences; //uint32_t is the number of instances using it
-        std::list<ShaderDescription> generalShaders;
+        const std::vector<ShaderDescription> generalShaders;
 
         void rebuildPipeline();
         
@@ -37,7 +37,8 @@ namespace PaperRenderer
         RayTraceRender(
             RenderEngine& renderer,
             TLAS& accelerationStructure,
-            const std::unordered_map<uint32_t, PaperRenderer::DescriptorSet>& descriptorSets,
+            const std::vector<ShaderDescription>& generalShaders,
+            const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptors,
             const std::vector<VkPushConstantRange>& pcRanges
         );
         ~RayTraceRender();
@@ -47,9 +48,6 @@ namespace PaperRenderer
 
         void addInstance(class ModelInstance* instance, class RTMaterial const* material);
         void removeInstance(class ModelInstance* instance);
-
-        void addGeneralShaders(const std::vector<ShaderDescription>& shaders);
-        void removeGeneralShader(const ShaderDescription& shader);
 
         const RTPipeline& getPipeline() const { return *pipeline; }
     };

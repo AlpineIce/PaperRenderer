@@ -6,55 +6,26 @@ namespace PaperRenderer
 {
     //----------SHADER DEFINITIONS----------//
 
-    Shader::Shader(Device& device, std::string location)
-        :device(device)
+    Shader::Shader(RenderEngine& renderer, const std::vector<uint32_t>& data)
+        :renderer(renderer)
     {
-        compiledShader = getShaderData(location);
-
         VkShaderModuleCreateInfo creationInfo;
         creationInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         creationInfo.pNext = NULL;
         creationInfo.flags = 0;
-        creationInfo.codeSize = compiledShader.size();
-        creationInfo.pCode = compiledShader.data();
+        creationInfo.codeSize = data.size();
+        creationInfo.pCode = data.data();
 
-        VkResult result = vkCreateShaderModule(device.getDevice(), &creationInfo, nullptr, &program);
+        VkResult result = vkCreateShaderModule(renderer.getDevice().getDevice(), &creationInfo, nullptr, &program);
         if(result != VK_SUCCESS)
         {
-            throw std::runtime_error("Creation of shader at location " + location + " failed.");
+            throw std::runtime_error("Creation of shader module failed.");
         }
     }
 
     Shader::~Shader()
     {
-        vkDestroyShaderModule(device.getDevice(), program, nullptr);
-    }
-
-    std::vector<uint32_t> Shader::getShaderData(std::string location)
-    {
-        
-        std::ifstream file(location, std::ios::binary);
-        std::vector<uint32_t> buffer;
-
-        if(file.is_open())
-        {
-            file.seekg (0, file.end);
-            uint32_t length = file.tellg();
-            file.seekg (0, file.beg);
-
-            buffer.resize(length);
-            file.read((char*)buffer.data(), length);
-
-            file.close();
-
-            return buffer;
-        }
-        else
-        {
-            throw std::runtime_error("Couldn't open pipeline shader file " + location);
-        }
-
-        return std::vector<uint32_t>();
+        vkDestroyShaderModule(renderer.getDevice().getDevice(), program, nullptr);
     }
 
     //----------PIPELINE DEFINITIONS---------//
@@ -234,9 +205,9 @@ namespace PaperRenderer
 
     //----------RT PIPELINE DEFINITIONS----------//
 
-    RTPipeline::RTPipeline(const RTPipelineCreationInfo& creationInfo, const RTPipelineProperties& pipelineProperties)
+    RTPipeline::RTPipeline(const RTPipelineCreationInfo& creationInfo, const RTPipelineProperties& properties)
         :Pipeline(creationInfo),
-        pipelineProperties(pipelineProperties)
+        pipelineProperties(properties)
     {
         //shaders
         std::vector<VkRayTracingShaderGroupCreateInfoKHR> rtShaderGroups;
@@ -523,20 +494,13 @@ namespace PaperRenderer
         vkDestroyPipelineCache(renderer.getDevice().getDevice(), cache, nullptr);
     }
 
-    std::shared_ptr<Shader> PipelineBuilder::createShader(const ShaderPair& pair) const
-    {
-        std::string shaderFile = pair.directory;
-
-        return std::make_shared<Shader>(renderer.getDevice(), shaderFile);
-    }
-
-    std::unordered_map<uint32_t, VkDescriptorSetLayout> PipelineBuilder::createDescriptorLayouts(const std::unordered_map<uint32_t, DescriptorSet> &descriptorSets) const
+    std::unordered_map<uint32_t, VkDescriptorSetLayout> PipelineBuilder::createDescriptorLayouts(const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptorSets) const
     {
         std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
         for(const auto& [setNum, set] : descriptorSets)
         {
             std::vector<VkDescriptorSetLayoutBinding> vBindings;
-            for(const auto& [bindingNum, binding] : set.descriptorBindings)
+            for(const VkDescriptorSetLayoutBinding& binding : set)
             {
                 vBindings.push_back(binding);
             }
@@ -591,19 +555,19 @@ namespace PaperRenderer
                 .pcRanges = info.pcRanges,
                 .pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts, info.pcRanges),
             },
-            createShader(info.shaderInfo)
+            std::make_shared<Shader>(renderer, info.shaderInfo.data)
         };
         
 
         return std::make_unique<ComputePipeline>(pipelineInfo);
     }
 
-    std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const RasterPipelineBuildInfo& info, const RasterPipelineProperties& pipelineProperties) const
+    std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const RasterPipelineBuildInfo& info) const
     {
         RasterPipelineCreationInfo pipelineInfo = {{
             .renderer = renderer,
             .cache = cache,
-            .setLayouts = createDescriptorLayouts(info.descriptors),
+            .setLayouts = createDescriptorLayouts(info.descriptorSets),
             .pcRanges = info.pcRanges,
             .pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts, info.pcRanges)
         }};
@@ -611,18 +575,18 @@ namespace PaperRenderer
         //set shaders
         for(const ShaderPair& pair : info.shaderInfo)
         {
-            pipelineInfo.shaders[pair.stage] = createShader(pair);
+            pipelineInfo.shaders[pair.stage] = std::make_shared<Shader>(renderer, pair.data);
         }
 
-        return std::make_unique<RasterPipeline>(pipelineInfo, pipelineProperties);
+        return std::make_unique<RasterPipeline>(pipelineInfo, info.properties);
     }
 
-    std::unique_ptr<RTPipeline> PipelineBuilder::buildRTPipeline(const RTPipelineBuildInfo& info, const RTPipelineProperties& pipelineProperties) const
+    std::unique_ptr<RTPipeline> PipelineBuilder::buildRTPipeline(const RTPipelineBuildInfo& info) const
     {
         RTPipelineCreationInfo pipelineInfo = { {
                 .renderer = renderer,
                 .cache = cache,
-                .setLayouts = createDescriptorLayouts(info.descriptors),
+                .setLayouts = createDescriptorLayouts(info.descriptorSets),
                 .pcRanges = info.pcRanges,
                 .pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts, info.pcRanges)
             },
@@ -630,6 +594,6 @@ namespace PaperRenderer
             info.generalShaders,
         };
 
-        return std::make_unique<RTPipeline>(pipelineInfo, pipelineProperties);
+        return std::make_unique<RTPipeline>(pipelineInfo, info.properties);
     }
 }

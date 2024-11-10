@@ -20,8 +20,11 @@ namespace PaperRenderer
 {
     struct RendererCreationStruct
     {
-        std::string shadersDir;
-        WindowState windowState = {};
+        //takes in compiled IndirectDrawBuild.comp spirv data
+        const std::vector<uint32_t>& rasterPreprocessSpirv;
+        //takes in compiled TLASInstBuild.comp spirv data
+        const std::vector<uint32_t>& rtPreprocessSpirv;
+        const WindowState& windowState = {};
     };
 
     struct RendererState
@@ -80,7 +83,6 @@ namespace PaperRenderer
         AccelerationStructureBuilder asBuilder;
         EngineStagingBuffer stagingBuffer;
 
-        std::string shadersDir;
         RendererState rendererState = {};
 
         //frame rendering stuff
@@ -124,7 +126,7 @@ namespace PaperRenderer
 
         uint64_t frameNumber = 0;
     public:
-        RenderEngine(RendererCreationStruct creationInfo);
+        RenderEngine(const RendererCreationStruct& creationInfo);
         ~RenderEngine();
         RenderEngine(const RenderEngine&) = delete;
 

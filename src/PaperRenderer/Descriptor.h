@@ -42,18 +42,11 @@ namespace PaperRenderer
         std::vector<AccelerationStructureDescriptorWrites> accelerationStructureWrites = std::vector<AccelerationStructureDescriptorWrites>();
     };
 
-    enum DescriptorScopes
-    {
-        RASTER_MATERIAL = 0,
-        RASTER_MATERIAL_INSTANCE = 1,
-        RASTER_OBJECT = 2
-    };
-
     struct DescriptorBind
     {
         VkPipelineBindPoint bindingPoint;
         VkPipelineLayout layout;
-        uint32_t descriptorScope;
+        uint32_t descriptorSetIndex;
         VkDescriptorSet set;
     };
 

@@ -9,8 +9,39 @@ namespace PaperRenderer
 {
     //----------PREPROCESS PIPELINES DEFINITIONS----------//
 
-    RasterPreprocessPipeline::RasterPreprocessPipeline(RenderEngine& renderer, std::string fileDir)
-        :ComputeShader(renderer),
+    RasterPreprocessPipeline::RasterPreprocessPipeline(RenderEngine& renderer, const std::vector<uint32_t>& shaderData)
+        :computeShader(renderer, {
+            .shaderInfo = {
+                .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+                .data = shaderData
+            },
+            .descriptors = {
+                { 0, {
+                    {
+                        .binding = 0,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .descriptorCount = 1,
+                        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                        .pImmutableSamplers = NULL
+                    },
+                    {
+                        .binding = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .descriptorCount = 1,
+                        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                        .pImmutableSamplers = NULL
+                    },
+                    {
+                        .binding = 2,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .descriptorCount = 1,
+                        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                        .pImmutableSamplers = NULL
+                    }
+                }}
+            },
+            .pcRanges = {}
+        }),
         renderer(renderer)
     {
         //preprocess uniform buffer
@@ -19,46 +50,6 @@ namespace PaperRenderer
         preprocessBufferInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
         preprocessBufferInfo.size = sizeof(UBOInputData);
         uniformBuffer = std::make_unique<Buffer>(renderer, preprocessBufferInfo);
-        
-        //pipeline info
-        shader = { VK_SHADER_STAGE_COMPUTE_BIT, fileDir + fileName };
-
-        VkDescriptorSetLayoutBinding inputDataDescriptor = {};
-        inputDataDescriptor.binding = 0;
-        inputDataDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        inputDataDescriptor.descriptorCount = 1;
-        inputDataDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        descriptorSets[0].descriptorBindings[0] = inputDataDescriptor;
-
-        VkDescriptorSetLayoutBinding inputInstancesDescriptor = {};
-        inputInstancesDescriptor.binding = 1;
-        inputInstancesDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        inputInstancesDescriptor.descriptorCount = 1;
-        inputInstancesDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        descriptorSets[0].descriptorBindings[1] = inputInstancesDescriptor;
-
-        VkDescriptorSetLayoutBinding inputRenderPassInstancesDescriptor = {};
-        inputRenderPassInstancesDescriptor.binding = 2;
-        inputRenderPassInstancesDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        inputRenderPassInstancesDescriptor.descriptorCount = 1;
-        inputRenderPassInstancesDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        descriptorSets[0].descriptorBindings[2] = inputRenderPassInstancesDescriptor;
-
-        VkDescriptorSetLayoutBinding instanceCountsDescriptor = {};
-        instanceCountsDescriptor.binding = 3;
-        instanceCountsDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        instanceCountsDescriptor.descriptorCount = 1;
-        instanceCountsDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        descriptorSets[0].descriptorBindings[3] = instanceCountsDescriptor;
-
-        VkDescriptorSetLayoutBinding modelMatricesDescriptor = {};
-        modelMatricesDescriptor.binding = 4;
-        modelMatricesDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        modelMatricesDescriptor.descriptorCount = 1;
-        modelMatricesDescriptor.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        descriptorSets[0].descriptorBindings[4] = modelMatricesDescriptor;
-
-        buildPipeline();
     }
     
     RasterPreprocessPipeline::~RasterPreprocessPipeline()
@@ -66,12 +57,12 @@ namespace PaperRenderer
         uniformBuffer.reset();
     }
 
-    void RasterPreprocessPipeline::submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass)
+    void RasterPreprocessPipeline::submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera)
     {
         UBOInputData uboInputData = {};
-        uboInputData.camPos = glm::vec4(renderPass.cameraPtr->getTranslation().position, 1.0f);
-        uboInputData.projection = renderPass.cameraPtr->getProjection();
-        uboInputData.view = renderPass.cameraPtr->getViewMatrix();
+        uboInputData.camPos = glm::vec4(camera.getTranslation().position, 1.0f);
+        uboInputData.projection = camera.getProjection();
+        uboInputData.view = camera.getViewMatrix();
         uboInputData.materialDataPtr = renderPass.instancesDataBuffer->getBuffer().getBufferDeviceAddress();
         uboInputData.modelDataPtr = renderer.modelDataBuffer->getBuffer().getBufferDeviceAddress();
         uboInputData.objectCount = renderPass.renderPassInstances.size();
@@ -117,25 +108,17 @@ namespace PaperRenderer
         bufferWrite2.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         bufferWrite2.infos = { bufferWrite2Info };
 
-        //----------DISPATCH COMMANDS----------//
-
-        bind(cmdBuffer);
-
-        DescriptorWrites descriptorWritesInfo = {};
-        descriptorWritesInfo.bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2 };
-        descriptorWrites[0] = descriptorWritesInfo;
-        writeDescriptorSet(cmdBuffer, 0);
-
         //dispatch
-        workGroupSizes.x = ((renderPass.renderPassInstances.size()) / 128) + 1;
-        dispatch(cmdBuffer);
+        const DescriptorWrites descriptorWritesInfo = {
+            .bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2 }
+        };
+        computeShader.dispatch(cmdBuffer, { { 0, descriptorWritesInfo } }, glm::uvec3((renderPass.renderPassInstances.size() / 128) + 1, 1, 1));
     }
 
     //----------RENDER PASS DEFINITIONS----------//
 
-    RenderPass::RenderPass(RenderEngine& renderer, Camera* camera, MaterialInstance* defaultMaterialInstance)
+    RenderPass::RenderPass(RenderEngine& renderer, MaterialInstance* defaultMaterialInstance)
         :renderer(renderer),
-        cameraPtr(camera),
         defaultMaterialInstancePtr(defaultMaterialInstance)
     {
         rebuildMaterialDataBuffer();
@@ -431,13 +414,13 @@ namespace PaperRenderer
             //record draw commands
             for(const auto& [material, materialInstanceNode] : renderTree) //material
             {
-                material->bind(cmdBuffer, cameraPtr);
+                material->bind(cmdBuffer, renderPassInfo.camera);
                 for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
                 {
                     if(meshGroups)
                     {
                         materialInstance->bind(cmdBuffer);
-                        meshGroups->draw(cmdBuffer, *material->getRasterPipeline());
+                        meshGroups->draw(cmdBuffer, material->getRasterPipeline());
                     }
                 }
             }
@@ -546,17 +529,17 @@ namespace PaperRenderer
                 }
 
                 //check if mesh group class is created
-                if(!renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances.count(materialInstance))
+                if(!renderTree[(Material*)&materialInstance->getBaseMaterial()].instances.count(materialInstance))
                 {
-                    renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance] = 
+                    renderTree[(Material*)&materialInstance->getBaseMaterial()].instances[materialInstance] = 
                         std::make_unique<CommonMeshGroup>(renderer, this);
                 }
 
                 //add references
-                renderTree[(Material*)materialInstance->getBaseMaterialPtr()].instances[materialInstance]->addInstanceMeshes(instance, similarMeshes);
+                renderTree[(Material*)&materialInstance->getBaseMaterial()].instances[materialInstance]->addInstanceMeshes(instance, similarMeshes);
 
                 instance->renderPassSelfReferences[this].meshGroupReferences[&instance->getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes] = 
-                    renderTree.at((Material*)materialInstance->getBaseMaterialPtr()).instances.at(materialInstance).get();
+                    renderTree.at((Material*)&materialInstance->getBaseMaterial()).instances.at(materialInstance).get();
             }
         }
 

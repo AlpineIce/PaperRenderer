@@ -7,10 +7,10 @@ namespace PaperRenderer
 {
     //----------TLAS INSTANCE BUILD PIPELINE DECLARATIONS----------//
 
-    class TLASInstanceBuildPipeline : public ComputeShader
+    class TLASInstanceBuildPipeline
     {
     private:
-        std::string fileName = "TLASInstBuild.spv";
+        const ComputeShader computeShader;
         std::unique_ptr<Buffer> uniformBuffer;
 
         struct UBOInputData
@@ -21,8 +21,9 @@ namespace PaperRenderer
         class RenderEngine& renderer;
 
     public:
-        TLASInstanceBuildPipeline(RenderEngine& renderer, std::string fileDir);
-        ~TLASInstanceBuildPipeline() override;
+        TLASInstanceBuildPipeline(RenderEngine& renderer, const std::vector<uint32_t>& shaderData);
+        ~TLASInstanceBuildPipeline();
+        TLASInstanceBuildPipeline(const TLASInstanceBuildPipeline&) = delete;
 
         void submit(VkCommandBuffer cmdBuffer, const TLAS& tlas);
     };
