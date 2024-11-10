@@ -414,12 +414,14 @@ namespace PaperRenderer
             //record draw commands
             for(const auto& [material, materialInstanceNode] : renderTree) //material
             {
-                material->bind(cmdBuffer, renderPassInfo.camera);
+                std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> materialDescriptorWrites;
+                material->bind(cmdBuffer, renderPassInfo.camera, materialDescriptorWrites);
                 for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
                 {
                     if(meshGroups)
                     {
-                        materialInstance->bind(cmdBuffer);
+                        std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> instanceDescriptorWrites;
+                        materialInstance->bind(cmdBuffer, instanceDescriptorWrites);
                         meshGroups->draw(cmdBuffer, material->getRasterPipeline());
                     }
                 }

@@ -88,13 +88,13 @@ namespace PaperRenderer
         ComputePipeline(const ComputePipelineCreationInfo& creationInfo);
         ~ComputePipeline() override;
         ComputePipeline(const ComputePipeline&) = delete;
-        
     };
 
     //raster pipeline
     struct RasterPipelineCreationInfo : public PipelineCreationInfo
     {
         std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
+        const uint32_t drawDescriptorIndex;
     };
 
     struct RasterPipelineProperties
@@ -144,16 +144,21 @@ namespace PaperRenderer
 
     struct RasterPipelineBuildInfo
     {
-        const std::vector<ShaderPair>& shaderInfo;
-        const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptorSets;
-        const std::vector<VkPushConstantRange>& pcRanges;
-        const RasterPipelineProperties& properties;
+        std::vector<ShaderPair> shaderInfo;
+        //SET 0 BINDING 0 AND SET 2 BINDING 0 ARE RESERVED (camera matrices and model matrices respectively)
+        std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> descriptorSets;
+        std::vector<VkPushConstantRange> pcRanges;
+        RasterPipelineProperties properties = {};
+        //Lowest level descriptor, used for drawing. Should be mat4[] at binding 0, which will be filled
+        //in with model matrix data by the renderer.
+        const uint32_t drawDescriptorIndex;
     };
 
     class RasterPipeline : public Pipeline
     {
     private:
         const RasterPipelineProperties pipelineProperties;
+        const uint32_t drawDescriptorIndex;
 
     public:
         RasterPipeline(const RasterPipelineCreationInfo& creationInfo, const RasterPipelineProperties& pipelineProperties);
@@ -161,6 +166,7 @@ namespace PaperRenderer
         RasterPipeline(const RasterPipeline&) = delete;
 
         const RasterPipelineProperties& getPipelineProperties() const { return pipelineProperties; }
+        const uint32_t& getDrawDescriptorIndex() const { return drawDescriptorIndex; }
     };
 
     //ray tracing pipeline
@@ -241,7 +247,7 @@ namespace PaperRenderer
         PipelineBuilder(const PipelineBuilder&) = delete;
 
         std::unique_ptr<ComputePipeline> buildComputePipeline(const ComputePipelineBuildInfo& info) const;
-        std::unique_ptr<RasterPipeline> buildRasterPipeline(const RasterPipelineBuildInfo& info) const;
+        std::unique_ptr<RasterPipeline> buildRasterPipeline(RasterPipelineBuildInfo info) const;
         std::unique_ptr<RTPipeline> buildRTPipeline(const RTPipelineBuildInfo& info) const;
     };
 }

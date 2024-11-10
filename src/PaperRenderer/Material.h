@@ -22,7 +22,8 @@ namespace PaperRenderer
         virtual ~Material();
         Material(const Material&) = delete;
 
-        virtual void bind(VkCommandBuffer cmdBuffer, const class Camera& camera); //used per pipeline bind and material instance; camera is optional
+        //additional descriptor writes can be added with parameter. SET 0, BINDING 0 IS RESERVED FOR CAMERA MATRICES
+        virtual void bind(VkCommandBuffer cmdBuffer, const class Camera& camera, std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites); //used per pipeline bind and material instance; camera is optional
         
         const RasterPipelineProperties& getRasterPipelineProperties() const { return rasterPipelineProperties; }
         const RasterPipeline& getRasterPipeline() const { return *rasterPipeline; }
@@ -39,7 +40,8 @@ namespace PaperRenderer
         virtual ~MaterialInstance();
         MaterialInstance(const MaterialInstance&) = delete;
         
-        virtual void bind(VkCommandBuffer cmdBuffer);
+        //additional descriptor writes can be added with parameter
+        virtual void bind(VkCommandBuffer cmdBuffer, std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites);
 
         const Material& getBaseMaterial() const { return baseMaterial; }
     };

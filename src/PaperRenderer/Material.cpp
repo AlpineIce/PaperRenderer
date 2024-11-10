@@ -18,12 +18,36 @@ namespace PaperRenderer
         rasterPipeline.reset();
     }
 
-    void Material::bind(VkCommandBuffer cmdBuffer, const Camera& camera)
+    void Material::bind(VkCommandBuffer cmdBuffer, const Camera& camera, std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites)
     {
-        //bind pipeline
+        //bind
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
 
-        //this function can also be inherited for material level descriptor writes
+        //camera UBO
+        descriptorWrites[0].bufferWrites.push_back({
+            .infos = { {
+                .buffer = camera.getCameraUBO().getBuffer(),
+                .offset = 0,
+                .range = VK_WHOLE_SIZE
+            } },
+            .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .binding = 0
+        });
+        
+        //write descriptors
+        for(const auto& [setIndex, writes] : descriptorWrites)
+        {
+            VkDescriptorSet descriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(setIndex));
+            DescriptorAllocator::writeUniforms(renderer, descriptorSet, writes);
+
+            DescriptorBind bindingInfo = {};
+            bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            bindingInfo.set = descriptorSet;
+            bindingInfo.descriptorSetIndex = setIndex;
+            bindingInfo.layout = rasterPipeline->getLayout();
+            
+            DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
+        }
     }
 
     //----------MATERIAL INSTANCE DEFINITIONS----------//
@@ -38,10 +62,22 @@ namespace PaperRenderer
     {
     }
 
-    void MaterialInstance::bind(VkCommandBuffer cmdBuffer)
+    void MaterialInstance::bind(VkCommandBuffer cmdBuffer, std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites)
     {
-        //doesnt do anything by itself, but can be inherited to do something in rendering.
-        //good usage would be changing pipeline uniforms/textures
+        //write descriptors
+        for(const auto& [setIndex, writes] : descriptorWrites)
+        {
+            VkDescriptorSet descriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(baseMaterial.getRasterPipeline().getDescriptorSetLayouts().at(setIndex));
+            DescriptorAllocator::writeUniforms(renderer, descriptorSet, writes);
+
+            DescriptorBind bindingInfo = {};
+            bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            bindingInfo.set = descriptorSet;
+            bindingInfo.descriptorSetIndex = setIndex;
+            bindingInfo.layout = baseMaterial.getRasterPipeline().getLayout();
+            
+            DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
+        }
     }
 
     //----------RT MATERIAL DEFINITIONS----------//
@@ -49,13 +85,10 @@ namespace PaperRenderer
     PaperRenderer::RTMaterial::RTMaterial(RenderEngine& renderer, const ShaderHitGroup& hitGroup)
         :renderer(renderer)
     {
-        //chit must be valid
         if(hitGroup.chitShaderData.size())
         {
             shaderHitGroup.emplace(std::make_pair(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, std::make_unique<Shader>(renderer, hitGroup.chitShaderData)));
         }
-
-        //ahit and int are optional
         if(hitGroup.ahitShaderData.size())
         {
             shaderHitGroup.emplace(std::make_pair(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, std::make_unique<Shader>(renderer, hitGroup.ahitShaderData)));

@@ -1,9 +1,6 @@
 #include "IndirectDraw.h"
 #include "PaperRenderer.h"
 
-#include <algorithm>
-#include <iostream>
-
 namespace PaperRenderer
 {
     CommonMeshGroup::CommonMeshGroup(RenderEngine& renderer, RenderPass const* renderPass)
@@ -164,20 +161,47 @@ namespace PaperRenderer
     {
         for(const auto& [mesh, meshData] : meshesData)
         {
-            if(!meshData.parentModelPtr) continue; //null safety
+            if(meshData.parentModelPtr)//null safety
+            {
+                //get new descriptor set
+                VkDescriptorSet objDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(pipeline.getDescriptorSetLayouts().at(pipeline.getDrawDescriptorIndex()));
+                
+                //write uniforms
+                VkDescriptorBufferInfo descriptorInfo = {};
+                descriptorInfo.buffer = modelMatricesBuffer->getBuffer();
+                descriptorInfo.offset = meshData.matricesStartIndex * sizeof(ShaderOutputObject);
+                descriptorInfo.range = sizeof(ShaderOutputObject) * meshData.instanceCount;
 
-            //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)
-            meshData.parentModelPtr->bindBuffers(cmdBuffer);
+                BuffersDescriptorWrites write = {};
+                write.binding = 0;
+                write.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                write.infos.push_back(descriptorInfo);
 
-            vkCmdDrawIndexed(cmdBuffer, mesh->indexCount, meshData.instanceCount, mesh->iboOffset, mesh->vboOffset, 0);
-            //draw
-            /*vkCmdDrawIndexedIndirect(
-                cmdBuffer,
-                drawCommandsBuffer->getBuffer(),
-                meshData.drawCommandIndex * sizeof(uint32_t),
-                1,
-                sizeof(DrawCommand)
-            );*/
+                DescriptorWrites descriptorWritesInfo = {};
+                descriptorWritesInfo.bufferWrites = { write };
+                DescriptorAllocator::writeUniforms(renderer, objDescriptorSet, descriptorWritesInfo);
+
+                //bind set
+                DescriptorBind bindingInfo = {};
+                bindingInfo.descriptorSetIndex = pipeline.getDrawDescriptorIndex();
+                bindingInfo.set = objDescriptorSet;
+                bindingInfo.layout = pipeline.getLayout();
+                bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+                DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
+
+                //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)
+                meshData.parentModelPtr->bindBuffers(cmdBuffer);
+
+                vkCmdDrawIndexed(cmdBuffer, mesh->indexCount, meshData.instanceCount, mesh->iboOffset, mesh->vboOffset, 0);
+                //draw
+                /*vkCmdDrawIndexedIndirect(
+                    cmdBuffer,
+                    drawCommandsBuffer->getBuffer(),
+                    meshData.drawCommandIndex * sizeof(uint32_t),
+                    1,
+                    sizeof(DrawCommand)
+                );*/
+            }
         }
     }
 

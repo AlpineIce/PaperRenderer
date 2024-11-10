@@ -6,13 +6,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 #options
 option(PAPER_RENDERER_BUILD_EXAMPLE "Build example/test" ON)
 
-#multithreading
-if(MSVC)
-    message("Using MSVC Compiler")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /MP")
-endif()
-
 project(PaperRenderer)
 
 set(source_dir "${PROJECT_SOURCE_DIR}/src")

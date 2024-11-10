@@ -1,6 +1,6 @@
 #include "PaperRenderer.h"
 
-#include <fstream>
+#include <functional>
 
 namespace PaperRenderer
 {
@@ -83,7 +83,8 @@ namespace PaperRenderer
 
     RasterPipeline::RasterPipeline(const RasterPipelineCreationInfo& creationInfo, const RasterPipelineProperties& pipelineProperties)
         :Pipeline(creationInfo),
-        pipelineProperties(pipelineProperties)
+        pipelineProperties(pipelineProperties),
+        drawDescriptorIndex(creationInfo.drawDescriptorIndex)
     {
         //pipeline info from here on
         VkPipelineRenderingCreateInfo renderingInfo = {};
@@ -562,15 +563,34 @@ namespace PaperRenderer
         return std::make_unique<ComputePipeline>(pipelineInfo);
     }
 
-    std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const RasterPipelineBuildInfo& info) const
+    std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(RasterPipelineBuildInfo info) const
     {
-        RasterPipelineCreationInfo pipelineInfo = {{
-            .renderer = renderer,
-            .cache = cache,
-            .setLayouts = createDescriptorLayouts(info.descriptorSets),
-            .pcRanges = info.pcRanges,
-            .pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts, info.pcRanges)
-        }};
+        //add reserved descriptors
+        info.descriptorSets[0].push_back({
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .pImmutableSamplers = NULL
+        });
+        info.descriptorSets[2].push_back({
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .pImmutableSamplers = NULL
+        });
+
+        RasterPipelineCreationInfo pipelineInfo = { {
+                .renderer = renderer,
+                .cache = cache,
+                .setLayouts = createDescriptorLayouts(info.descriptorSets),
+                .pcRanges = info.pcRanges,
+                .pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts, info.pcRanges),
+            },
+            {},
+            info.drawDescriptorIndex
+        };
         
         //set shaders
         for(const ShaderPair& pair : info.shaderInfo)
