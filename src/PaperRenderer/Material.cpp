@@ -6,11 +6,27 @@ namespace PaperRenderer
 {
     //----------MATERIAL DEFINITIONS----------//
 
-    Material::Material(RenderEngine& renderer, const RasterPipelineBuildInfo& pipelineInfo)
+    Material::Material(RenderEngine& renderer, RasterPipelineBuildInfo pipelineInfo)
         :rasterPipelineProperties(pipelineInfo.properties),
-        rasterPipeline(renderer.getPipelineBuilder().buildRasterPipeline(pipelineInfo)),
         renderer(renderer)
     {
+        //add reserved descriptors
+        pipelineInfo.descriptorSets[0].push_back({
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .pImmutableSamplers = NULL
+        });
+        pipelineInfo.descriptorSets[2].push_back({
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .pImmutableSamplers = NULL
+        });
+
+        rasterPipeline = renderer.getPipelineBuilder().buildRasterPipeline(pipelineInfo)
     }
 
     Material::~Material()

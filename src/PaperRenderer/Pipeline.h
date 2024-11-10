@@ -247,7 +247,7 @@ namespace PaperRenderer
         PipelineBuilder(const PipelineBuilder&) = delete;
 
         std::unique_ptr<ComputePipeline> buildComputePipeline(const ComputePipelineBuildInfo& info) const;
-        std::unique_ptr<RasterPipeline> buildRasterPipeline(RasterPipelineBuildInfo info) const;
+        std::unique_ptr<RasterPipeline> buildRasterPipeline(const RasterPipelineBuildInfo& info) const;
         std::unique_ptr<RTPipeline> buildRTPipeline(const RTPipelineBuildInfo& info) const;
     };
 }

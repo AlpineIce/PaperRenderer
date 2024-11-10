@@ -563,24 +563,8 @@ namespace PaperRenderer
         return std::make_unique<ComputePipeline>(pipelineInfo);
     }
 
-    std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(RasterPipelineBuildInfo info) const
+    std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const RasterPipelineBuildInfo& info) const
     {
-        //add reserved descriptors
-        info.descriptorSets[0].push_back({
-            .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-            .pImmutableSamplers = NULL
-        });
-        info.descriptorSets[2].push_back({
-            .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-            .pImmutableSamplers = NULL
-        });
-
         RasterPipelineCreationInfo pipelineInfo = { {
                 .renderer = renderer,
                 .cache = cache,

@@ -18,7 +18,7 @@ namespace PaperRenderer
         class RenderEngine& renderer;
 
     public:
-        Material(class RenderEngine& renderer, const RasterPipelineBuildInfo& pipelineInfo);
+        Material(class RenderEngine& renderer, RasterPipelineBuildInfo pipelineInfo);
         virtual ~Material();
         Material(const Material&) = delete;
 
