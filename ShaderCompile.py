@@ -14,10 +14,8 @@ def compile_shader(src_path, dst_path):
         print(f"Shader validation failed:\n{e.stderr}")
 
 #then compile shaders
-pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 pool.submit(compile_shader, "./src/PaperRenderer/Shaders/IndirectDrawBuild.comp", "build/resources/shaders/IndirectDrawBuild.spv")
 pool.submit(compile_shader, "./src/PaperRenderer/Shaders/TLASInstBuild.comp", "build/resources/shaders/TLASInstBuild.spv")
-pool.submit(compile_shader, "./src/PaperRenderer/Shaders/Default.vert", "build/resources/shaders/Default_vert.spv")
-pool.submit(compile_shader, "./src/PaperRenderer/Shaders/Default.frag", "build/resources/shaders/Default_frag.spv")
 
 pool.shutdown(wait=True)

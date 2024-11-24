@@ -117,9 +117,9 @@ namespace PaperRenderer
 
     //----------RENDER PASS DEFINITIONS----------//
 
-    RenderPass::RenderPass(RenderEngine& renderer, MaterialInstance* defaultMaterialInstance)
+    RenderPass::RenderPass(RenderEngine& renderer, MaterialInstance& defaultMaterialInstance)
         :renderer(renderer),
-        defaultMaterialInstancePtr(defaultMaterialInstance)
+        defaultMaterialInstance(defaultMaterialInstance)
     {
         rebuildMaterialDataBuffer();
         rebuildInstancesBuffer();
@@ -520,7 +520,7 @@ namespace PaperRenderer
                 }
                 else //use default material if one isn't selected
                 {
-                    materialInstance = defaultMaterialInstancePtr;
+                    materialInstance = &defaultMaterialInstance;
                 }
 
                 //get meshes using same material

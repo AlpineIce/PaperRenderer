@@ -80,12 +80,12 @@ namespace PaperRenderer
         void clearDrawCounts(VkCommandBuffer cmdBuffer);
 
         RenderEngine& renderer;
-        MaterialInstance* defaultMaterialInstancePtr;
+        MaterialInstance& defaultMaterialInstance;
 
         friend RasterPreprocessPipeline;
         
     public:
-        RenderPass(RenderEngine& renderer, MaterialInstance* defaultMaterialInstance);
+        RenderPass(RenderEngine& renderer, MaterialInstance& defaultMaterialInstance);
         ~RenderPass();
         RenderPass(const RenderPass&) = delete;
 

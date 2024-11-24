@@ -26,7 +26,7 @@ namespace PaperRenderer
             .pImmutableSamplers = NULL
         });
 
-        rasterPipeline = renderer.getPipelineBuilder().buildRasterPipeline(pipelineInfo)
+        rasterPipeline = renderer.getPipelineBuilder().buildRasterPipeline(pipelineInfo);
     }
 
     Material::~Material()

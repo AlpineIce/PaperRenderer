@@ -25,6 +25,72 @@ std::vector<uint32_t> readFile(const std::string& location)
     }
 }
 
+//point light definition
+struct PointLight
+{
+    glm::vec3 position;
+    glm::vec3 color;
+};
+
+std::unique_ptr<PaperRenderer::Buffer> createPointLightsBuffer(PaperRenderer::RenderEngine& renderer)
+{
+    std::vector<PointLight> pointLightsData = {
+        { glm::vec3(10.0f, 10.0, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f) },
+        { glm::vec3(10.0f, -10.0, 0.0f), glm::vec3(1.0f, 1.0f, 0.0f) },
+        { glm::vec3(-10.0f, 10.0, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f) },
+        { glm::vec3(-10.0f, -10.0, 0.0f), glm::vec3(0.0f, 1.0f, 1.0f) }
+    };
+
+    PaperRenderer::BufferInfo pointLightBufferInfo = {
+        .size = sizeof(PointLight) * pointLightsData.size(),
+        .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR,
+        .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
+    };
+    std::unique_ptr<PaperRenderer::Buffer> pointLightBuffer(std::make_unique<PaperRenderer::Buffer>(renderer, pointLightBufferInfo));
+
+    PaperRenderer::BufferWrite pointLightsWrite = {
+        .offset = 0,
+        .size = sizeof(PointLight) * pointLightsData.size(),
+        .data = pointLightsData.data()
+    };
+    pointLightBuffer->writeToBuffer({ pointLightsWrite });
+
+    return pointLightBuffer;
+}
+
+//lighting uniform buffer
+struct LightInfo
+{
+    glm::vec4 ambientLight;
+    glm::vec4 camPos;
+    uint32_t pointLightCount;
+};
+
+std::unique_ptr<PaperRenderer::Buffer> createLightInfoUniformBuffer(PaperRenderer::RenderEngine& renderer)
+{
+    LightInfo uniformBufferData = {
+        .ambientLight = glm::vec4(0.05f, 0.05f, 0.05f, 1.0f),
+        .camPos = glm::vec4(0.0f, 0.0f, 1.5f, 0.0f),
+        .pointLightCount = 4
+    };
+
+    PaperRenderer::BufferInfo uniformBufferInfo = {
+        .size = sizeof(LightInfo),
+        .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR,
+        .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
+    };
+    std::unique_ptr<PaperRenderer::Buffer> uniformBuffer(std::make_unique<PaperRenderer::Buffer>(renderer, uniformBufferInfo));
+
+    PaperRenderer::BufferWrite pointLightsWrite = {
+        .offset = 0,
+        .size = sizeof(LightInfo),
+        .data = &uniformBufferData
+    };
+    uniformBuffer->writeToBuffer({ pointLightsWrite });
+
+    return uniformBuffer;
+}
+
 //vertex definition
 struct Vertex
 {
@@ -85,17 +151,26 @@ public:
 int main()
 {
     //initialize renderer
-    PaperRenderer::RendererCreationStruct engineInfo = {
+    const PaperRenderer::RendererCreationStruct rendererInfo = {
         .rasterPreprocessSpirv = readFile("resources/shaders/IndirectDrawBuild.spv"),
         .rtPreprocessSpirv = readFile("resources/shaders/TLASInstBuild.spv"),
         .windowState = {
             .windowName = "Example"
         }
     };
-    PaperRenderer::RenderEngine renderer(engineInfo);
+    PaperRenderer::RenderEngine renderer(rendererInfo);
+
+    //----------UNIFORM AND STORAGE BUFFERS----------//
+
+    //point lights buffer
+    std::unique_ptr<PaperRenderer::Buffer> pointLightsBuffer = createPointLightsBuffer(renderer);
+
+    std::unique_ptr<PaperRenderer::Buffer> lightingUniformBuffer = createLightInfoUniformBuffer(renderer);
+
+    //----------RASTER MATERIALS----------//
 
     //material info
-    PaperRenderer::RasterPipelineBuildInfo materialInfo = {
+    const PaperRenderer::RasterPipelineBuildInfo materialInfo = {
         .shaderInfo = {
             {
                 .stage = VK_SHADER_STAGE_VERTEX_BIT,
@@ -146,14 +221,98 @@ int main()
                     .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
                 }
             }
-        } //default properties are fine
+        }
     };
     //base material from custom class
     DefaultMaterial material(renderer, materialInfo);
-    //material instance from custom base material
-    DefaultMaterialInstance materialInstance(renderer, material);
+    //default material instance from custom base material
+    DefaultMaterialInstance defaultMaterialInstance(renderer, material);
 
-    //load models
+    //----------RASTER RENDER PASS----------//
+
+    //raster render pass
+    PaperRenderer::RenderPass renderPass(renderer, defaultMaterialInstance);
+
+    //----------RAY TRACING RENDER PASS----------//
+
+    //tlas
+    PaperRenderer::TLAS tlas(renderer);
+
+    //general shaders
+    const PaperRenderer::Shader rgenShader(renderer, readFile("resources/shaders/raytrace_rgen.spv"));
+    const PaperRenderer::Shader rmissShader(renderer, readFile("resources/shaders/raytrace_rmiss.spv"));
+    const PaperRenderer::Shader rshadowShader(renderer, readFile("resources/shaders/raytraceShadow_rmiss.spv"));
+    const std::vector<PaperRenderer::ShaderDescription> generalShaders = {
+        { VK_SHADER_STAGE_RAYGEN_BIT_KHR, &rgenShader },
+        { VK_SHADER_STAGE_MISS_BIT_KHR, &rmissShader },
+        { VK_SHADER_STAGE_MISS_BIT_KHR, &rshadowShader }
+    };
+
+    //descriptors
+    const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> rtDescriptors = {
+        { 0, {
+            {
+                .binding = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR
+            },
+            {
+                .binding = 2,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR
+            },
+            { //hdr buffer
+                .binding = 3,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR
+            },
+            { //light info
+                .binding = 4,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR
+            },
+            { //point lights
+                .binding = 5,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR
+            }
+        }}
+    };
+    PaperRenderer::RayTraceRender rtRenderPass(renderer, tlas, generalShaders, rtDescriptors, {});
+
+    //load models TODO
+
+    //synchronization
+    uint64_t renderingSemaphoreValue = 0;
+    VkSemaphore renderingSemaphore = renderer.getDevice().getCommands().getTimelineSemaphore(renderingSemaphoreValue);
+
+    //rendering loop
+    while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
+    {
+        //wait for last frame
+        VkSemaphoreWaitInfo beginWaitInfo = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .semaphoreCount = 1,
+            .pSemaphores = &renderingSemaphore,
+            .pValues = &renderingSemaphoreValue
+        };
+        vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, UINT64_MAX);
+
+        //sync info
+        PaperRenderer::SynchronizationInfo transferSyncInfo = {};
+        PaperRenderer::SynchronizationInfo asSyncInfo = {};
+
+        const VkSemaphore& swapchainSemaphore = renderer.beginFrame(transferSyncInfo, asSyncInfo);
+
+        //MORE TODO
+    }
     
     return 0;
 }

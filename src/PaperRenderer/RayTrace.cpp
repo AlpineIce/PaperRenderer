@@ -19,7 +19,8 @@ namespace PaperRenderer
         renderer(renderer),
         tlas(accelerationStructure)
     {
-        /*VkShaderStageFlags stages = 
+        //add reserved descriptors
+        const VkShaderStageFlags stages = 
             VK_SHADER_STAGE_RAYGEN_BIT_KHR |
             VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR |
             VK_SHADER_STAGE_ANY_HIT_BIT_KHR |
@@ -27,18 +28,20 @@ namespace PaperRenderer
             VK_SHADER_STAGE_CALLABLE_BIT_KHR |
             VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
 
-        this->descriptorSets[0][0] = {
+        this->descriptorSets[0].push_back({
             .binding = 0,
             .descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
             .descriptorCount = 1,
-            .stageFlags = stages
-        };
-        this->descriptorSets[0][1] = {
+            .stageFlags = stages,
+            .pImmutableSamplers = NULL
+        });
+        this->descriptorSets[0].push_back({
             .binding = 1,
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = 1,
-            .stageFlags = stages
-        };*/
+            .stageFlags = stages,
+            .pImmutableSamplers = NULL
+        });
     }
 
     RayTraceRender::~RayTraceRender()

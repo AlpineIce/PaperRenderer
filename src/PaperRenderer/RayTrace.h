@@ -19,8 +19,8 @@ namespace PaperRenderer
     {
     private:
         const std::vector<VkPushConstantRange> pcRanges;
-        const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> descriptorSets;
-        RTPipelineProperties pipelineProperties = {};
+        std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> descriptorSets;
+        const RTPipelineProperties pipelineProperties = {};
         std::unique_ptr<RTPipeline> pipeline;
         
         bool queuePipelineBuild = true;
