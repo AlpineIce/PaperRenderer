@@ -501,6 +501,7 @@ namespace PaperRenderer
         for(const auto& [setNum, set] : descriptorSets)
         {
             std::vector<VkDescriptorSetLayoutBinding> vBindings;
+            vBindings.reserve(set.size());
             for(const VkDescriptorSetLayoutBinding& binding : set)
             {
                 vBindings.push_back(binding);
@@ -526,6 +527,7 @@ namespace PaperRenderer
     VkPipelineLayout PipelineBuilder::createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, std::vector<VkPushConstantRange> pcRanges) const
     {
         std::vector<VkDescriptorSetLayout> vSetLayouts;
+        vSetLayouts.reserve(setLayouts.size());
         for(const auto& [setNum, set] : setLayouts)
         {
             vSetLayouts.push_back(set);
@@ -558,7 +560,6 @@ namespace PaperRenderer
             },
             std::make_shared<Shader>(renderer, info.shaderInfo.data)
         };
-        
 
         return std::make_unique<ComputePipeline>(pipelineInfo);
     }

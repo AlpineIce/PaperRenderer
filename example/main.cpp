@@ -183,13 +183,18 @@ int main()
         },
         .descriptorSets = {
             { 0, {
-
-            }},
-            { 1, {
-                
-            }},
-            { 2, {
-                
+                {
+                    .binding = 1,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .descriptorCount = 1,
+                    .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+                },
+                {
+                    .binding = 2,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    .descriptorCount = 1,
+                    .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+                }
             }}
         },
         .pcRanges = {}, //no push constants
@@ -305,11 +310,16 @@ int main()
         };
         vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, UINT64_MAX);
 
-        //sync info
+        //begin frame sync info
         PaperRenderer::SynchronizationInfo transferSyncInfo = {};
+        transferSyncInfo.queueType = PaperRenderer::QueueType::TRANSFER;
         PaperRenderer::SynchronizationInfo asSyncInfo = {};
+        asSyncInfo.queueType = PaperRenderer::QueueType::TRANSFER;
 
         const VkSemaphore& swapchainSemaphore = renderer.beginFrame(transferSyncInfo, asSyncInfo);
+
+        //end frame
+        renderer.endFrame({ swapchainSemaphore });
 
         //MORE TODO
     }

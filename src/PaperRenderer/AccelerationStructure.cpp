@@ -499,7 +499,7 @@ namespace PaperRenderer
         }
         
         //blas and tlas builds happen seperately, so the max of either will be used to save scratch memory
-        return std::max(blasSize, tlasSize);
+        return std::max((VkDeviceSize)std::max(blasSize, tlasSize), (VkDeviceSize)256); //minimum of 256 bytes
     }
 
     void AccelerationStructureBuilder::setBuildData()

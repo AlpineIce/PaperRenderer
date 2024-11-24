@@ -15,31 +15,18 @@ layout(std430, set = 0, binding = 0) uniform GlobalInputData
     mat4 view;
 } inputData;
 
-layout(std430, set = 2, binding = 0) readonly buffer ObjectBuffer
+layout(std430, set = 1, binding = 0) readonly buffer ObjectBuffer
 {
     mat4 matrices[];
 } objBuffer;
 
 void main()
 {
-    /*const mat4 projection = {
-        { 0.733, 0.0, 0.0, 0.0},
-        { 0.0, 1.303, 0.0, 0.0},
-        { 0.0, 0.0, -1.0, -1.0},
-        { 0.0, 0.0, -0.2, 0.0}
-    };
-    const mat4 view = {
-        { 1.0, 0.0, 0.0, 0.0 },
-        { 0.0, 0.0, 1.0, 0.0 },
-        { 0.0, -1.0, 0.0, 0.0 },
-        { 0.0, 0.0, 0.0, 1.0 }
-    };*/
-
     const mat4 modelMatrix = objBuffer.matrices[gl_InstanceIndex];
 
     normal = normalize(mat3(transpose(inverse(modelMatrix))) * vertexNormal);
     texCoord = vertexTexCoord;
-    worldPosition = vec3(/*modelMatrix * */vec4(vertexPosition, 1.0));
+    worldPosition = vec3(modelMatrix * vec4(vertexPosition, 1.0));
 
     gl_Position = inputData.projection * inputData.view * modelMatrix * vec4(vertexPosition, 1.0);
 }

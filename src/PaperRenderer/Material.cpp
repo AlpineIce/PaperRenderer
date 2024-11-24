@@ -18,7 +18,7 @@ namespace PaperRenderer
             .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
             .pImmutableSamplers = NULL
         });
-        pipelineInfo.descriptorSets[2].push_back({
+        pipelineInfo.descriptorSets[1].push_back({
             .binding = 0,
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = 1,
