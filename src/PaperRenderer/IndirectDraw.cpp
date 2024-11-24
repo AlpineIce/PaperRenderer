@@ -1,6 +1,8 @@
 #include "IndirectDraw.h"
 #include "PaperRenderer.h"
 
+#include <algorithm>
+
 namespace PaperRenderer
 {
     CommonMeshGroup::CommonMeshGroup(RenderEngine& renderer, RenderPass const* renderPass)
