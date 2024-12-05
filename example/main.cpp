@@ -1,4 +1,8 @@
 #include "../src/PaperRenderer/PaperRenderer.h"
+#define TINYGLTF_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "lib/tinygltf/tiny_gltf.h"
 #include <fstream>
 
 std::vector<uint32_t> readFile(const std::string& location)
@@ -23,6 +27,26 @@ std::vector<uint32_t> readFile(const std::string& location)
     {
         throw std::runtime_error("Couldn't open file " + location);
     }
+}
+
+std::vector<std::unique_ptr<PaperRenderer::Model>> createModels()
+{
+    //model names
+    std::string gltfPath = "./resources/models/PaperRendererExample.glb";
+    
+    //load models TODO
+    std::vector<std::unique_ptr<PaperRenderer::Model>> loadedModels;
+    tinygltf::TinyGLTF gltfContext;
+
+    std::string error;
+    std::string warning;
+
+    tinygltf::Model gltfModel;
+
+    gltfContext.LoadBinaryFromFile(&gltfModel, &error, &warning, gltfPath);
+    
+
+    return loadedModels;
 }
 
 //point light definition
@@ -229,14 +253,14 @@ int main()
         }
     };
     //base material from custom class
-    DefaultMaterial material(renderer, materialInfo);
+    //DefaultMaterial material(renderer, materialInfo);
     //default material instance from custom base material
-    DefaultMaterialInstance defaultMaterialInstance(renderer, material);
+    //DefaultMaterialInstance defaultMaterialInstance(renderer, material);
 
     //----------RASTER RENDER PASS----------//
 
     //raster render pass
-    PaperRenderer::RenderPass renderPass(renderer, defaultMaterialInstance);
+    //PaperRenderer::RenderPass renderPass(renderer, defaultMaterialInstance);
 
     //----------RAY TRACING RENDER PASS----------//
 
@@ -291,6 +315,7 @@ int main()
     PaperRenderer::RayTraceRender rtRenderPass(renderer, tlas, generalShaders, rtDescriptors, {});
 
     //load models TODO
+    std::vector<std::unique_ptr<PaperRenderer::Model>> models = createModels();
 
     //synchronization
     uint64_t renderingSemaphoreValue = 0;
@@ -313,10 +338,16 @@ int main()
         //begin frame sync info
         PaperRenderer::SynchronizationInfo transferSyncInfo = {};
         transferSyncInfo.queueType = PaperRenderer::QueueType::TRANSFER;
+        transferSyncInfo.timelineSignalPairs = {};
+
         PaperRenderer::SynchronizationInfo asSyncInfo = {};
         asSyncInfo.queueType = PaperRenderer::QueueType::TRANSFER;
+        asSyncInfo.timelineSignalPairs = {};
 
+        //begin frame
         const VkSemaphore& swapchainSemaphore = renderer.beginFrame(transferSyncInfo, asSyncInfo);
+
+        //copy HDR buffer to swapchain
 
         //end frame
         renderer.endFrame({ swapchainSemaphore });
