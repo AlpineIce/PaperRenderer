@@ -360,18 +360,13 @@ namespace PaperRenderer
             BLAS& blas = (BLAS&)(op.accelerationStructure);
 
             //get per material group geometry data
-            for(const LODMeshGroup& meshGroup : blas.getParentModelPtr()->getLODs().at(0).meshMaterialData) //use LOD 0 for BLAS
+            for(const MaterialMesh& materialMesh : blas.getParentModelPtr()->getLODs().at(0).materialMeshes) //use LOD 0 for BLAS
             {
-                VkDeviceSize vertexCount = 0;
-                VkDeviceSize indexCount = 0;
-                VkDeviceAddress vertexOffset = meshGroup.meshes.at(0).vboOffset;
-                VkDeviceAddress indexOffset = meshGroup.meshes.at(0).iboOffset;
-
-                for(const LODMesh& mesh : meshGroup.meshes) //per mesh in mesh group data
-                {
-                    vertexCount += mesh.vertexCount;
-                    indexCount += mesh.indexCount;
-                }
+                //mesh data
+                VkDeviceSize vertexCount = materialMesh.mesh.vertexCount;
+                VkDeviceSize indexCount = materialMesh.mesh.indexCount;
+                VkDeviceAddress vertexOffset = materialMesh.mesh.vboOffset;
+                VkDeviceAddress indexOffset = materialMesh.mesh.iboOffset;
 
                 //buffer information
                 VkAccelerationStructureGeometryTrianglesDataKHR trianglesGeometry = {};
@@ -388,7 +383,7 @@ namespace PaperRenderer
                 VkAccelerationStructureGeometryKHR structureGeometry = {};
                 structureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
                 structureGeometry.pNext = NULL;
-                structureGeometry.flags = meshGroup.invokeAnyHit ? VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR : VK_GEOMETRY_OPAQUE_BIT_KHR; 
+                structureGeometry.flags = materialMesh.invokeAnyHit ? VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR : VK_GEOMETRY_OPAQUE_BIT_KHR; 
                 structureGeometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
                 structureGeometry.geometry.triangles = trianglesGeometry;
                 

@@ -18,15 +18,15 @@ namespace PaperRenderer
         uint32_t materialIndex;
     };
 
-    struct MeshGroupInfo
+    struct MaterialMeshInfo
     {
-        std::vector<MeshInfo> meshInfo;
+        MeshInfo meshInfo;
         bool opaque = true; //set to false if geometry will invoke any hit shaders in ray tracing
     };
 
     struct ModelLODInfo
     {
-        std::unordered_map<uint32_t, MeshGroupInfo> lodData; //groups of meshes with a shared common material
+        std::unordered_map<uint32_t, MaterialMeshInfo> lodData; //groups of meshes with a shared common material
     };
 
     struct ModelCreateInfo
@@ -48,15 +48,15 @@ namespace PaperRenderer
         uint32_t indexCount;
     };
 
-    struct LODMeshGroup
+    struct MaterialMesh
     {
-        std::vector<LODMesh> meshes;
+        LODMesh mesh;
         bool invokeAnyHit;
     };
 
     struct LOD //acts more like an individual model
     {
-        std::vector<LODMeshGroup> meshMaterialData; //material index, meshes in material slot
+        std::vector<MaterialMesh> materialMeshes; //material index, mesh in material slot
     };
 
     struct AABB
@@ -112,8 +112,6 @@ namespace PaperRenderer
 
         struct ShaderModelLODMeshGroup
         {
-            uint32_t meshCount;
-            uint32_t meshesOffset; //old variable, but still here for 16 byte alignment
             uint32_t iboOffset; //for ray tracing
             uint32_t vboOffset; //for ray tracing
         };
@@ -192,11 +190,6 @@ namespace PaperRenderer
 
         struct MaterialMeshGroup
         {
-            uint32_t indirectDrawDatasOffset;
-        };
-
-        struct IndirectDrawData
-        {
             uint64_t drawCommandAddress = 0;
             uint64_t matricesBufferAddress = 0;
         };
@@ -212,7 +205,7 @@ namespace PaperRenderer
         {
             std::vector<char> renderPassInstanceData;
             VkDeviceSize LODsMaterialDataOffset = UINT64_MAX;
-            std::unordered_map<std::vector<LODMesh> const*, class CommonMeshGroup*> meshGroupReferences;
+            std::unordered_map<LODMesh const*, class CommonMeshGroup*> meshGroupReferences;
             uint32_t selfIndex;
         };
         std::unordered_map<class RenderPass const*, RenderPassData> renderPassSelfReferences;

@@ -34,40 +34,37 @@ namespace PaperRenderer
 		for(const ModelLODInfo& lod : creationInfo.LODs)
 		{
 			LOD returnLOD;
+
+			//iterate materials in LOD
 			for(const auto& [matIndex, meshGroup] : lod.lodData)
 			{
-				LODMeshGroup LODMeshGroup;
-				LODMeshGroup.invokeAnyHit = !meshGroup.opaque;
-				for(const MeshInfo& mesh : meshGroup.meshInfo)
+				//process mesh data
+				MaterialMesh materialMesh;
+				materialMesh.invokeAnyHit = !meshGroup.opaque;
+				materialMesh.mesh.vboOffset = dynamicVertexOffset;
+				materialMesh.mesh.vertexCount =  meshGroup.meshInfo.verticesData.size() / vertexDescription.stride;
+				materialMesh.mesh.iboOffset = creationIndices.size();
+				materialMesh.mesh.indexCount =  meshGroup.meshInfo.indices.size();
+
+				creationVerticesData.insert(creationVerticesData.end(), meshGroup.meshInfo.verticesData.begin(), meshGroup.meshInfo.verticesData.end());
+				creationIndices.insert(creationIndices.end(), meshGroup.meshInfo.indices.begin(), meshGroup.meshInfo.indices.end());
+
+				dynamicVertexOffset += materialMesh.mesh.vertexCount;
+
+				//AABB processing
+				uint32_t vertexCount = creationVerticesData.size() / vertexDescription.stride;
+				for(uint32_t i = 0; i < vertexCount; i++)
 				{
-					LODMesh returnMesh;
-					returnMesh.vboOffset = dynamicVertexOffset;
-					returnMesh.vertexCount =  mesh.verticesData.size() / vertexDescription.stride;
-					returnMesh.iboOffset = creationIndices.size();
-					returnMesh.indexCount =  mesh.indices.size();
+					const glm::vec3& vertexPosition = *(glm::vec3*)(creationVerticesData.data() + (i * vertexDescription.stride) + vertexPositionOffset);
 
-					creationVerticesData.insert(creationVerticesData.end(), mesh.verticesData.begin(), mesh.verticesData.end());
-					creationIndices.insert(creationIndices.end(), mesh.indices.begin(), mesh.indices.end());
-
-					dynamicVertexOffset += returnMesh.vertexCount;
-
-					LODMeshGroup.meshes.push_back(returnMesh);
-
-					//AABB processing
-					uint32_t vertexCount = creationVerticesData.size() / vertexDescription.stride;
-					for(uint32_t i = 0; i < vertexCount; i++)
-					{
-						const glm::vec3& vertexPosition = *(glm::vec3*)(creationVerticesData.data() + (i * vertexDescription.stride) + vertexPositionOffset);
-
-						aabb.posX = std::max(vertexPosition.x, aabb.posX);
-						aabb.negX = std::min(vertexPosition.x, aabb.negX);
-						aabb.posY = std::max(vertexPosition.y, aabb.posY);
-						aabb.negY = std::min(vertexPosition.y, aabb.negY);
-						aabb.posZ = std::max(vertexPosition.z, aabb.posZ);
-						aabb.negZ = std::min(vertexPosition.z, aabb.negZ);
-					}
+					aabb.posX = std::max(vertexPosition.x, aabb.posX);
+					aabb.negX = std::min(vertexPosition.x, aabb.negX);
+					aabb.posY = std::max(vertexPosition.y, aabb.posY);
+					aabb.negY = std::min(vertexPosition.y, aabb.negY);
+					aabb.posZ = std::max(vertexPosition.z, aabb.posZ);
+					aabb.negZ = std::min(vertexPosition.z, aabb.negZ);
 				}
-				returnLOD.meshMaterialData.push_back(LODMeshGroup);
+				returnLOD.materialMeshes.push_back(materialMesh);
 			}
 			LODs.push_back(returnLOD);
 		}
@@ -129,22 +126,20 @@ namespace PaperRenderer
 		for(uint32_t lodIndex = 0; lodIndex < LODs.size(); lodIndex++)
 		{
 			ShaderModelLOD modelLOD = {};
-			modelLOD.materialCount = LODs.at(lodIndex).meshMaterialData.size();
+			modelLOD.materialCount = LODs.at(lodIndex).materialMeshes.size();
 			modelLOD.meshGroupsOffset = dynamicOffset;
 
 			memcpy(newData.data() + shaderModel.lodsOffset + sizeof(ShaderModelLOD) * lodIndex, &modelLOD, sizeof(ShaderModelLOD));
 			
 			//LOD mesh groups data
-			dynamicOffset += sizeof(ShaderModelLODMeshGroup) * LODs.at(lodIndex).meshMaterialData.size();
+			dynamicOffset += sizeof(ShaderModelLODMeshGroup) * LODs.at(lodIndex).materialMeshes.size();
 			newData.resize(dynamicOffset);
 
-			for(uint32_t matIndex = 0; matIndex < LODs.at(lodIndex).meshMaterialData.size(); matIndex++)
+			for(uint32_t matIndex = 0; matIndex < LODs.at(lodIndex).materialMeshes.size(); matIndex++)
 			{
 				ShaderModelLODMeshGroup materialMeshGroup = {};
-				materialMeshGroup.meshCount = LODs.at(lodIndex).meshMaterialData.at(matIndex).meshes.size();
-				materialMeshGroup.meshesOffset = dynamicOffset;
-				materialMeshGroup.iboOffset = LODs.at(lodIndex).meshMaterialData.at(matIndex).meshes.at(0).iboOffset;
-				materialMeshGroup.vboOffset = LODs.at(lodIndex).meshMaterialData.at(matIndex).meshes.at(0).vboOffset;
+				materialMeshGroup.iboOffset = LODs.at(lodIndex).materialMeshes.at(matIndex).mesh.iboOffset;
+				materialMeshGroup.vboOffset = LODs.at(lodIndex).materialMeshes.at(matIndex).mesh.vboOffset;
 
 				memcpy(newData.data() + modelLOD.meshGroupsOffset + sizeof(ShaderModelLODMeshGroup) * matIndex, &materialMeshGroup, sizeof(ShaderModelLODMeshGroup));
 			}
@@ -277,37 +272,28 @@ namespace PaperRenderer
 			memcpy(newData.data() + sizeof(LODMaterialData) * lodIndex, &lodMaterialData, sizeof(LODMaterialData));
 			
 			//LOD mesh groups data
-			dynamicOffset += sizeof(MaterialMeshGroup) * modelPtr->getLODs().at(lodIndex).meshMaterialData.size();
+			dynamicOffset += sizeof(MaterialMeshGroup) * modelPtr->getLODs().at(lodIndex).materialMeshes.size();
 			newData.resize(dynamicOffset);
 
-			for(uint32_t matIndex = 0; matIndex < modelPtr->getLODs().at(lodIndex).meshMaterialData.size(); matIndex++)
+			for(uint32_t matIndex = 0; matIndex < modelPtr->getLODs().at(lodIndex).materialMeshes.size(); matIndex++)
 			{
 				dynamicOffset = Device::getAlignment(dynamicOffset, 8);
 				newData.resize(dynamicOffset);
 
+				//pointers
+				LODMesh const* lodMeshPtr = &modelPtr->getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh;
+				CommonMeshGroup const* meshGroupPtr = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh);
+
+				//material mesh group data
 				MaterialMeshGroup materialMeshGroup = {};
-				materialMeshGroup.indirectDrawDatasOffset = dynamicOffset;
+				materialMeshGroup.drawCommandAddress = 
+					meshGroupPtr->getDrawCommandsBuffer().getBufferDeviceAddress() + 
+					(meshGroupPtr->getMeshesData().at(lodMeshPtr).drawCommandIndex * sizeof(DrawCommand));
+				materialMeshGroup.matricesBufferAddress = 
+					meshGroupPtr->getModelMatricesBuffer().getBufferDeviceAddress() + 
+					(meshGroupPtr->getMeshesData().at(lodMeshPtr).matricesStartIndex * sizeof(glm::mat4));
 
 				memcpy(newData.data() + lodMaterialData.meshGroupsOffset + sizeof(MaterialMeshGroup) * matIndex, &materialMeshGroup, sizeof(MaterialMeshGroup));
-
-				//LOD mesh group meshes data
-				dynamicOffset += sizeof(IndirectDrawData) * modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes.size();
-				newData.resize(dynamicOffset);
-
-				for(uint32_t meshIndex = 0; meshIndex < modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes.size(); meshIndex++)
-				{
-					LODMesh const* lodMeshPtr = &modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes.at(meshIndex);
-					CommonMeshGroup const* meshGroupPtr = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes);
-					IndirectDrawData indirectDrawData = {};
-					indirectDrawData.drawCommandAddress = 
-						meshGroupPtr->getDrawCommandsBuffer().getBufferDeviceAddress() + 
-						(meshGroupPtr->getMeshesData().at(lodMeshPtr).drawCommandIndex * sizeof(DrawCommand));
-					indirectDrawData.matricesBufferAddress = 
-						meshGroupPtr->getModelMatricesBuffer().getBufferDeviceAddress() + 
-						(meshGroupPtr->getMeshesData().at(lodMeshPtr).matricesStartIndex * sizeof(glm::mat4));
-				
-					memcpy(newData.data() + materialMeshGroup.indirectDrawDatasOffset + sizeof(IndirectDrawData) * meshIndex, &indirectDrawData, sizeof(IndirectDrawData));
-				}
 			}
 		}
 

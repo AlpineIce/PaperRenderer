@@ -45,8 +45,6 @@ layout(scalar, buffer_reference) readonly buffer ModelLODs
 //mesh group
 struct ModelLODMeshGroup
 {
-    uint meshCount;
-    uint meshesOffset;
     uint iboOffset; //only used for ray tracing
     uint vboOffset; //only used for ray tracing
 };

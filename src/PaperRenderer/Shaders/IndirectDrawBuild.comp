@@ -44,7 +44,8 @@ layout(std430, buffer_reference) readonly buffer LODsMaterialData
 
 struct MaterialMeshGroup
 {
-    uint indirectDrawDatasOffset;
+    uint64_t drawCommandAddress;
+    uint64_t matricesBufferAddress;
 };
 
 layout(std430, buffer_reference) readonly buffer LODsMaterialMeshGroups
@@ -120,24 +121,16 @@ void main()
         const ModelLOD modelLOD = ModelLODs(inputData.modelDataPtr + uint64_t(modelInstance.modelDataOffset + model.lodsOffset)).LODs[lodLevel];
         const LODMaterialData materialData = LODsMaterialData(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset)).materialDatas[lodLevel];
 
-        //loop through LOD materials
+        //loop through LOD materials (1 mesh per material)
         for(uint matIndex = 0; matIndex < modelLOD.materialCount; matIndex++)
         {
-            const ModelLODMeshGroup modelMeshGroup = ModelLODMeshGroups(inputData.modelDataPtr + uint64_t(modelInstance.modelDataOffset + modelLOD.meshGroupOffset)).groups[matIndex];
             const MaterialMeshGroup materialMeshGroup = LODsMaterialMeshGroups(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset + materialData.meshGroupsOffset)).datas[matIndex];
 
-            //loop through material meshes
-            for(uint meshIndex = 0; meshIndex < modelMeshGroup.meshCount; meshIndex++)
-            {
-                //draw data
-                const IndirectDrawData indirectDrawData = IndirectDrawDatas(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset + materialMeshGroup.indirectDrawDatasOffset)).datas[meshIndex];
+            //instance count
+            uint writeIndex = atomicAdd(DrawCommands(materialMeshGroup.drawCommandAddress).command.instanceCount, 1);
 
-                //instance count
-                uint writeIndex = atomicAdd(DrawCommands(indirectDrawData.drawCommandAddress).command.instanceCount, 1);
-
-                //output objects
-                MatricesBuffer(indirectDrawData.matricesBufferAddress).matrices[writeIndex] = modelMatrix;
-            }
+            //output objects
+            MatricesBuffer(materialMeshGroup.matricesBufferAddress).matrices[writeIndex] = modelMatrix;
         }
     }
 }

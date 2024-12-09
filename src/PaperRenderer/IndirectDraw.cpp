@@ -123,22 +123,19 @@ namespace PaperRenderer
         }
     }
 
-    void CommonMeshGroup::addInstanceMeshes(ModelInstance* instance, const std::vector<LODMesh const*>& instanceMeshesData)
+    void CommonMeshGroup::addInstanceMesh(ModelInstance* instance, LODMesh const* instanceMeshData)
     {        
-        for(LODMesh const* meshData : instanceMeshesData)
+        if(!meshesData.count(instanceMeshData))
         {
-            if(!meshesData.count(meshData))
-            {
-                meshesData[meshData].parentModelPtr = instance->getParentModelPtr();
-                rebuild = true;
-            }
-
-            meshesData.at(meshData).instanceCount++;
-
-            if(meshesData.at(meshData).instanceCount > meshesData.at(meshData).lastRebuildInstanceCount) rebuild = true;
+            meshesData[instanceMeshData].parentModelPtr = instance->getParentModelPtr();
+            rebuild = true;
         }
 
-        this->instanceMeshes[instance].insert(this->instanceMeshes[instance].end(), instanceMeshesData.begin(), instanceMeshesData.end());
+        meshesData.at(instanceMeshData).instanceCount++;
+
+        if(meshesData.at(instanceMeshData).instanceCount > meshesData.at(instanceMeshData).lastRebuildInstanceCount) rebuild = true;
+
+        this->instanceMeshes[instance].push_back(instanceMeshData);
     }
 
     void CommonMeshGroup::removeInstanceMeshes(ModelInstance *instance)

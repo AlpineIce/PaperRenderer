@@ -508,7 +508,7 @@ namespace PaperRenderer
         materials.resize(instance->getParentModelPtr()->getLODs().size());
         for(uint32_t lodIndex = 0; lodIndex < instance->getParentModelPtr()->getLODs().size(); lodIndex++)
         {
-            for(uint32_t matIndex = 0; matIndex < instance->getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.size(); matIndex++) //iterate materials in LOD
+            for(uint32_t matIndex = 0; matIndex < instance->getParentModelPtr()->getLODs().at(lodIndex).materialMeshes.size(); matIndex++) //iterate materials in LOD
             {
                 //----------MAIN MATERIALS----------//
 
@@ -523,12 +523,8 @@ namespace PaperRenderer
                     materialInstance = &defaultMaterialInstance;
                 }
 
-                //get meshes using same material
-                std::vector<LODMesh const*> similarMeshes;
-                for(uint32_t meshIndex = 0; meshIndex < instance->getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes.size(); meshIndex++)
-                {
-                    similarMeshes.push_back(&instance->getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes.at(meshIndex));
-                }
+                //get mesh using same material
+                LODMesh const* similarMesh = &instance->getParentModelPtr()->getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh;
 
                 //check if mesh group class is created
                 if(!renderTree[(Material*)&materialInstance->getBaseMaterial()].instances.count(materialInstance))
@@ -538,9 +534,9 @@ namespace PaperRenderer
                 }
 
                 //add references
-                renderTree[(Material*)&materialInstance->getBaseMaterial()].instances[materialInstance]->addInstanceMeshes(instance, similarMeshes);
+                renderTree[(Material*)&materialInstance->getBaseMaterial()].instances[materialInstance]->addInstanceMesh(instance, similarMesh);
 
-                instance->renderPassSelfReferences[this].meshGroupReferences[&instance->getParentModelPtr()->getLODs().at(lodIndex).meshMaterialData.at(matIndex).meshes] = 
+                instance->renderPassSelfReferences[this].meshGroupReferences[&instance->getParentModelPtr()->getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh] = 
                     renderTree.at((Material*)&materialInstance->getBaseMaterial()).instances.at(materialInstance).get();
             }
         }
