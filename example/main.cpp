@@ -37,7 +37,23 @@ struct Vertex
     glm::vec2 uv;
 };
 
-std::vector<std::unique_ptr<PaperRenderer::Model>> createModels(PaperRenderer::RenderEngine& renderer)
+struct MaterialParameters
+{
+    glm::vec4 baseColor;
+    glm::vec4 emission;
+    float roughness;
+    float metallic;
+};
+
+struct SceneData
+{
+    std::unordered_map<std::string, std::unique_ptr<PaperRenderer::Model>> models;
+    std::unordered_map<std::string, MaterialParameters> materialInstancesData;
+    std::unique_ptr<PaperRenderer::Camera> camera;
+};
+
+//example function for loading a glTF and integrating with Model, Material, and Camera creation
+SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
 {
     //glTF path
     std::string gltfPath = "./resources/models/PaperRendererExample.glb";
@@ -50,15 +66,16 @@ std::vector<std::unique_ptr<PaperRenderer::Model>> createModels(PaperRenderer::R
 
     gltfContext.LoadBinaryFromFile(&gltfModel, &error, &warning, gltfPath);
 
-    //loaded models vector
-    std::vector<std::unique_ptr<PaperRenderer::Model>> loadedModels;
-    loadedModels.reserve(gltfModel.meshes.size());
+    //initialize scene data variable
+    SceneData returnData;
+    returnData.models.reserve(gltfModel.meshes.size());
+    returnData.materialInstancesData.reserve(gltfModel.materials.size());
 
     //iterate nodes
     for(const tinygltf::Node& node : gltfModel.nodes)
     {
-        //verify node is a mesh
-        if(node.mesh != -1)
+        //get node type
+        if(node.mesh != -1) //models
         {
             //model name
             const std::string modelName = node.name;
@@ -75,13 +92,16 @@ std::vector<std::unique_ptr<PaperRenderer::Model>> createModels(PaperRenderer::R
                 const tinygltf::BufferView& vertexPositions = gltfModel.bufferViews[primitive.attributes.at("POSITION")];
                 const tinygltf::BufferView& vertexNormals = gltfModel.bufferViews[primitive.attributes.at("NORMAL")];
                 const tinygltf::BufferView& vertexUVs = gltfModel.bufferViews[primitive.attributes.at("TEXCOORD_0")];
-                std::vector<char> vertexData(gltfModel.accessors[primitive.attributes.at("POSITION")].count);
+                std::vector<char> vertexData(sizeof(Vertex) * gltfModel.accessors[primitive.attributes.at("POSITION")].count);
 
-                for(uint32_t i = 0; i < vertexData.size(); i++)
+                for(uint32_t i = 0; i < gltfModel.accessors[primitive.attributes.at("POSITION")].count; i++)
                 {
-                    memcpy(vertexData.data() + (sizeof(Vertex) * i) + 0,  gltfModel.buffers[0].data.data() + vertexPositions.byteOffset + (12 * i), 12);
-                    memcpy(vertexData.data() + (sizeof(Vertex) * i) + 12, gltfModel.buffers[0].data.data() + vertexNormals.byteOffset   + (12 * i), 12);
-                    memcpy(vertexData.data() + (sizeof(Vertex) * i) + 24, gltfModel.buffers[0].data.data() + vertexUVs.byteOffset       + (8  * i), 8 );
+                    Vertex vertex = {
+                        .position = *(glm::vec3*)(gltfModel.buffers[0].data.data() + vertexPositions.byteOffset + (12 * i)),
+                        .normal =   *(glm::vec3*)(gltfModel.buffers[0].data.data() + vertexNormals.byteOffset   + (12 * i)),
+                        .uv =       *(glm::vec2*)(gltfModel.buffers[0].data.data() + vertexUVs.byteOffset       + (8  * i))
+                    };
+                    memcpy(vertexData.data() + (sizeof(Vertex) * i), &vertex, sizeof(Vertex));
                 }
 
                 //fill in a vector with index data
@@ -89,15 +109,15 @@ std::vector<std::unique_ptr<PaperRenderer::Model>> createModels(PaperRenderer::R
                 const uint32_t indexStride = tinygltf::GetComponentSizeInBytes(gltfModel.accessors[primitive.indices].componentType);
                 std::vector<uint32_t> indexData(gltfModel.accessors[primitive.indices].count);
 
-                for(uint32_t i = 0; i < indexData.size(); i++)
+                for(uint32_t i = 0; i < gltfModel.accessors[primitive.indices].count; i++)
                 {
                     memcpy(indexData.data() + i, gltfModel.buffers[0].data.data() + indices.byteOffset + (i * indexStride), indexStride);
                 }
 
                 //push data to LOD
                 modelLOD.lodData[matIndex] = {
-                    .verticesData = &vertexData,
-                    .indices = &indexData,
+                    .verticesData = std::move(vertexData),
+                    .indices = std::move(indexData),
                     .opaque = gltfModel.materials[matIndex].alphaMode == "OPAQUE"
                 };
             }
@@ -133,11 +153,65 @@ std::vector<std::unique_ptr<PaperRenderer::Model>> createModels(PaperRenderer::R
                 .modelName = modelName
             };
 
-            loadedModels.push_back(std::make_unique<PaperRenderer::Model>(renderer, modelInfo));
+            returnData.models[modelName] = std::make_unique<PaperRenderer::Model>(renderer, modelInfo);
+        }
+        else if(node.camera != -1 && !returnData.camera) //camera
+        {
+            const tinygltf::Camera& camera = gltfModel.cameras[node.camera];
+
+            const PaperRenderer::CameraTranslation cameraTranslationInfo = {
+                .pitch = 0.0f,
+                .yaw = 0.0f,
+                .roll = 0.0f,
+                .position = glm::vec3(node.translation[0], node.translation[1], node.translation[2]),
+                .qRotation = glm::quat(node.rotation[0], node.rotation[1], node.rotation[2], node.rotation[3]),
+                .useQuaternion = true //IMPORTANT TO SET IF USING qRotation FOR ROTATION AND NOT PITCH, YAW, ROLL
+            };
+
+            const PaperRenderer::CameraCreateInfo cameraInfo = {
+                .fov = (float)camera.perspective.yfov,
+                .clipNear = (float)camera.perspective.znear,
+                .clipFar = (float)camera.perspective.zfar,
+                .initTranslation = cameraTranslationInfo
+            };
+
+            returnData.camera = std::make_unique<PaperRenderer::Camera>(renderer, cameraInfo);
         }
     }
+
+    //load material instances
+    for(const tinygltf::Material& material : gltfModel.materials)
+    {
+        const tinygltf::ColorValue baseColor = material.values.at("baseColorFactor").ColorFactor();
+        const float roughness = material.values.at("roughnessFactor").Factor();
+        const float metallic = material.values.at("metallicFactor").Factor();
+
+        //emissive
+        float emissionStrength = 0.0f;
+        glm::vec3 emission = glm::vec3(0.0f, 0.0f, 0.0f);
+
+        if(material.extensions.contains("KHR_materials_emissive_strength"))
+        {
+            const std::vector<double>& numberArray = material.additionalValues.at("emissiveFactor").number_array;
+            emissionStrength = material.extensions.at("KHR_materials_emissive_strength").Get("emissiveStrength").GetNumberAsDouble();
+            emission = glm::vec3(numberArray[0], numberArray[1], numberArray[2]);
+        }
+        
+        returnData.materialInstancesData[material.name] = {
+            .baseColor = glm::vec4(baseColor[0], baseColor[1], baseColor[2], baseColor[3]),
+            .emission = glm::vec4(emission.r, emission.g, emission.b, emissionStrength),
+            .roughness = roughness,
+            .metallic = metallic
+        };
+    }
+
+    //verify loading worked
+    if(!(returnData.models.size() && returnData.materialInstancesData.size() && returnData.camera))
+    {
+        throw std::runtime_error("glTF loading falied because either no models or materials were loaded, or no camera existed in the glTF");
+    }
     
-    return loadedModels;
+    return returnData;
 }
 
 //point light definition
@@ -266,6 +340,11 @@ int main()
         }
     };
     PaperRenderer::RenderEngine renderer(rendererInfo);
+
+    //----------GLTF SCENE LOADING----------//
+
+    //load glTF scene
+    SceneData scene = loadSceneData(renderer);
 
     //----------UNIFORM AND STORAGE BUFFERS----------//
 
@@ -396,9 +475,6 @@ int main()
         }}
     };
     PaperRenderer::RayTraceRender rtRenderPass(renderer, tlas, generalShaders, rtDescriptors, {});
-
-    //load models TODO
-    std::vector<std::unique_ptr<PaperRenderer::Model>> models = createModels(renderer);
 
     //synchronization
     uint64_t renderingSemaphoreValue = 0;
