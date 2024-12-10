@@ -11,8 +11,8 @@ namespace PaperRenderer
 
     struct MaterialMeshInfo
     {
-        std::vector<char> const* verticesData;
-        std::vector<uint32_t> const* indices;
+        std::vector<char> verticesData; //DEEP COPY WARNING! USE STD::MOVE why is it like this? because theres a high risk of accidential dangling pointers
+        std::vector<uint32_t> indices; //DEEP COPY WARNING! USE STD::MOVE why is it like this? because theres a high risk of accidential dangling pointers
         bool opaque = true; //set to false if geometry will invoke any hit shaders in ray tracing
     };
 
@@ -75,7 +75,6 @@ namespace PaperRenderer
     private:
         std::vector<VkVertexInputAttributeDescription> vertexAttributes;
         VkVertexInputBindingDescription vertexDescription;
-        uint32_t vertexPositionOffset;
         const std::string modelName;
 
         std::vector<LOD> LODs;

@@ -15,6 +15,7 @@ namespace PaperRenderer
         float roll = 0.0f;
         glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f);
         glm::quat qRotation = glm::quat(glm::mat4(1.0f));
+        bool useQuaternion = false;
     };
 
     struct CameraCreateInfo
@@ -22,9 +23,7 @@ namespace PaperRenderer
         float fov = 75.0f;
         float clipNear = 0.1f;
         float clipFar = 1000.0f;
-
         CameraTranslation initTranslation;
-        GLFWwindow* window;
     };
 
     class Camera

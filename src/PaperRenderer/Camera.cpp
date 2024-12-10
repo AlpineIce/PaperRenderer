@@ -4,7 +4,7 @@
 namespace PaperRenderer
 {
     Camera::Camera(RenderEngine& renderer, const CameraCreateInfo& creationInfo)
-        :windowPtr(creationInfo.window),
+        :windowPtr(renderer.getSwapchain().getGLFWwindow()),
         clipNear(creationInfo.clipNear),
         clipFar(creationInfo.clipFar),
         fov(creationInfo.fov),
@@ -49,12 +49,18 @@ namespace PaperRenderer
     {
         this->translation = newTranslation;
 
-        glm::quat yawRot = glm::angleAxis(glm::radians(newTranslation.yaw), glm::vec3(0.0f, 0.0f, -1.0f));
-        glm::quat pitchRot = glm::angleAxis(glm::radians(newTranslation.pitch - 90.0f), glm::vec3(-1.0f, 0.0f, 0.0f));
-        glm::quat qRotation =  pitchRot * yawRot;
+        glm::quat qRotation = this->translation.qRotation;
 
-        glm::quat zUpPitchRot = glm::angleAxis(glm::radians(newTranslation.pitch), glm::vec3(-1.0f, 0.0f, 0.0f));
-        this->translation.qRotation = zUpPitchRot * yawRot;
+        //calculate rotation from angle axis if not using quaternion
+        if(!this->translation.useQuaternion)
+        {
+            glm::quat yawRot = glm::angleAxis(glm::radians(newTranslation.yaw), glm::vec3(0.0f, 0.0f, -1.0f));
+            glm::quat pitchRot = glm::angleAxis(glm::radians(newTranslation.pitch - 90.0f), glm::vec3(-1.0f, 0.0f, 0.0f));
+            glm::quat qRotation =  pitchRot * yawRot;
+
+            glm::quat zUpPitchRot = glm::angleAxis(glm::radians(newTranslation.pitch), glm::vec3(-1.0f, 0.0f, 0.0f));
+            this->translation.qRotation = zUpPitchRot * yawRot;
+        }
 
         glm::mat4 mRotation = glm::mat4_cast(qRotation);
         glm::mat4 mTranslation = glm::mat4(1.0f);

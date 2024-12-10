@@ -42,12 +42,12 @@ namespace PaperRenderer
 				MaterialMesh materialMesh;
 				materialMesh.invokeAnyHit = !meshGroup.opaque;
 				materialMesh.mesh.vboOffset = dynamicVertexOffset;
-				materialMesh.mesh.vertexCount =  meshGroup.verticesData->size() / vertexDescription.stride;
+				materialMesh.mesh.vertexCount =  meshGroup.verticesData.size() / vertexDescription.stride;
 				materialMesh.mesh.iboOffset = creationIndices.size();
-				materialMesh.mesh.indexCount =  meshGroup.indices->size();
+				materialMesh.mesh.indexCount =  meshGroup.indices.size();
 
-				creationVerticesData.insert(creationVerticesData.end(), meshGroup.verticesData->begin(), meshGroup.verticesData->end());
-				creationIndices.insert(creationIndices.end(), meshGroup.indices->begin(), meshGroup.indices->end());
+				creationVerticesData.insert(creationVerticesData.end(), meshGroup.verticesData.begin(), meshGroup.verticesData.end());
+				creationIndices.insert(creationIndices.end(), meshGroup.indices.begin(), meshGroup.indices.end());
 
 				dynamicVertexOffset += materialMesh.mesh.vertexCount;
 
@@ -55,7 +55,7 @@ namespace PaperRenderer
 				uint32_t vertexCount = creationVerticesData.size() / vertexDescription.stride;
 				for(uint32_t i = 0; i < vertexCount; i++)
 				{
-					const glm::vec3& vertexPosition = *(glm::vec3*)(creationVerticesData.data() + (i * vertexDescription.stride) + vertexPositionOffset);
+					const glm::vec3& vertexPosition = *(glm::vec3*)(creationVerticesData.data() + (i * vertexDescription.stride));
 
 					aabb.posX = std::max(vertexPosition.x, aabb.posX);
 					aabb.negX = std::min(vertexPosition.x, aabb.negX);
