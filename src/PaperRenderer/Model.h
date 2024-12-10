@@ -33,9 +33,9 @@ namespace PaperRenderer
     {
         std::vector<VkVertexInputAttributeDescription> vertexAttributes;
         VkVertexInputBindingDescription vertexDescription;
-        uint32_t vertexPositionOffset;
         std::vector<ModelLODInfo> LODs;
         bool createBLAS = true; //create a default BLAS
+        std::string modelName;
     };
 
     //----------MODEL INFORMATION----------//
@@ -84,6 +84,7 @@ namespace PaperRenderer
         std::vector<VkVertexInputAttributeDescription> vertexAttributes;
         VkVertexInputBindingDescription vertexDescription;
         uint32_t vertexPositionOffset;
+        const std::string modelName;
 
         std::vector<LOD> LODs;
         std::unique_ptr<Buffer> vbo;
@@ -138,7 +139,6 @@ namespace PaperRenderer
 
         const std::vector<VkVertexInputAttributeDescription>& getVertexAttributes() const { return vertexAttributes; }
         const VkVertexInputBindingDescription& getVertexDescription() const { return vertexDescription; }
-        const uint32_t& getVertexPositionOffset() const { return vertexPositionOffset; }
         VkDeviceAddress getVBOAddress() const { return vbo->getBufferDeviceAddress(); }
         VkDeviceAddress getIBOAddress() const { return ibo->getBufferDeviceAddress(); }
         BLAS const* getBlasPtr() const { return defaultBLAS ? defaultBLAS.get() : NULL; }
@@ -146,6 +146,7 @@ namespace PaperRenderer
         const std::vector<LOD>& getLODs() const { return LODs; }
         const std::vector<char>& getShaderData() const { return shaderData; }
         const VkDeviceSize& getShaderDataLocation() const { return shaderDataLocation; }
+        const std::string& getModelName() const { return modelName; }
     };
 
     //----------MODEL INSTANCE DECLARATIONS----------//

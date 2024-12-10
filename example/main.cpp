@@ -29,21 +29,51 @@ std::vector<uint32_t> readFile(const std::string& location)
     }
 }
 
-std::vector<std::unique_ptr<PaperRenderer::Model>> createModels()
+std::vector<std::unique_ptr<PaperRenderer::Model>> createModels(PaperRenderer::RenderEngine& renderer)
 {
-    //model names
+    //glTF path
     std::string gltfPath = "./resources/models/PaperRendererExample.glb";
     
-    //load models TODO
-    std::vector<std::unique_ptr<PaperRenderer::Model>> loadedModels;
-    tinygltf::TinyGLTF gltfContext;
-
+    //load glTF
+    tinygltf::Model gltfModel;
     std::string error;
     std::string warning;
-
-    tinygltf::Model gltfModel;
+    tinygltf::TinyGLTF gltfContext;
 
     gltfContext.LoadBinaryFromFile(&gltfModel, &error, &warning, gltfPath);
+
+    //loaded models vector
+    std::vector<std::unique_ptr<PaperRenderer::Model>> loadedModels;
+    loadedModels.reserve(gltfModel.meshes.size());
+
+    //iterate meshes
+    for(const tinygltf::Mesh& mesh : gltfModel.meshes)
+    {
+        const std::string modelName = mesh.name;
+
+        //iterate sub-meshes (no LODs in this example, but an LOD implementation shouldn't be too hard to understand, its just different "sub-models" in one model)
+        for(const tinygltf::Primitive& primitive : mesh.primitives)
+        {
+            const uint32_t matIndex = primitive.material;
+            const tinygltf::BufferView& indices = gltfModel.bufferViews[primitive.indices];
+
+            //fill in a vector with index data
+            
+            
+
+            //fill in a vector with vertex data
+
+            int a = 0;
+        }
+
+        PaperRenderer::ModelCreateInfo modelInfo;
+        modelInfo.vertexAttributes = 
+        modelInfo.vertexDescription = 
+        modelInfo.vertexPositionOffset = 
+        modelInfo.LODs = 
+        modelInfo.createBLAS = true;
+        loadedModels.push_back(std::make_unique<PaperRenderer::Model>(modelInfo));
+    }
     
 
     return loadedModels;
@@ -315,7 +345,7 @@ int main()
     PaperRenderer::RayTraceRender rtRenderPass(renderer, tlas, generalShaders, rtDescriptors, {});
 
     //load models TODO
-    std::vector<std::unique_ptr<PaperRenderer::Model>> models = createModels();
+    std::vector<std::unique_ptr<PaperRenderer::Model>> models = createModels(renderer);
 
     //synchronization
     uint64_t renderingSemaphoreValue = 0;

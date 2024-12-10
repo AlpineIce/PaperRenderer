@@ -10,7 +10,8 @@ namespace PaperRenderer
 	//----------MODEL DEFINITIONS----------//
 
     Model::Model(RenderEngine& renderer, const ModelCreateInfo& creationInfo)
-        :renderer(renderer)
+        :modelName(creationInfo.modelName),
+		renderer(renderer)
     {
 		//temporary variables for creating the singular vertex and index buffer
 		std::vector<char> creationVerticesData;
@@ -27,7 +28,6 @@ namespace PaperRenderer
 		//vertex data
 		vertexAttributes = creationInfo.vertexAttributes;
 		vertexDescription = creationInfo.vertexDescription;
-		vertexPositionOffset = creationInfo.vertexPositionOffset;
 
 		//fill in variables with the input LOD data
 		VkDeviceSize dynamicVertexOffset = 0;
