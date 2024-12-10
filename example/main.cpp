@@ -29,6 +29,14 @@ std::vector<uint32_t> readFile(const std::string& location)
     }
 }
 
+//vertex definition
+struct Vertex
+{
+    glm::vec3 position;
+    glm::vec3 normal;
+    glm::vec2 uv;
+};
+
 std::vector<std::unique_ptr<PaperRenderer::Model>> createModels(PaperRenderer::RenderEngine& renderer)
 {
     //glTF path
@@ -46,33 +54,83 @@ std::vector<std::unique_ptr<PaperRenderer::Model>> createModels(PaperRenderer::R
     std::vector<std::unique_ptr<PaperRenderer::Model>> loadedModels;
     loadedModels.reserve(gltfModel.meshes.size());
 
+    //iterate nodes
+    for(const tinygltf::Node& node : gltfModel.nodes)
+    {
+        //verify node is a mesh
+        if(node.mesh != -1)
+        {
+            //model name
+            const std::string modelName = node.name;
+
+            //only one LOD will be used in this example
+            PaperRenderer::ModelLODInfo modelLOD;
+
+            PaperRenderer::ModelCreateInfo modelInfo;
+            modelInfo.vertexAttributes = {
+                {
+                    .location = 0,
+                    .binding = 0,
+                    .format = VK_FORMAT_R32G32B32_SFLOAT,
+                    .offset = offsetof(Vertex, position)
+                },
+                {
+                    .location = 1,
+                    .binding = 0,
+                    .format = VK_FORMAT_R32G32B32_SFLOAT,
+                    .offset = offsetof(Vertex, normal)
+                },
+                {
+                    .location = 2,
+                    .binding = 0,
+                    .format = VK_FORMAT_R32G32_SFLOAT,
+                    .offset = offsetof(Vertex, uv)
+                }
+            };
+            modelInfo.vertexDescription = {
+                .binding = 0,
+                .stride = sizeof(Vertex),
+                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+            };
+            modelInfo.LODs = { modelLOD };
+            modelInfo.createBLAS = true;
+            modelInfo.modelName = modelName;
+            loadedModels.push_back(std::make_unique<PaperRenderer::Model>(renderer, modelInfo));
+        }
+    }
     //iterate meshes
     for(const tinygltf::Mesh& mesh : gltfModel.meshes)
     {
-        const std::string modelName = mesh.name;
-
         //iterate sub-meshes (no LODs in this example, but an LOD implementation shouldn't be too hard to understand, its just different "sub-models" in one model)
         for(const tinygltf::Primitive& primitive : mesh.primitives)
         {
             const uint32_t matIndex = primitive.material;
-            const tinygltf::BufferView& indices = gltfModel.bufferViews[primitive.indices];
+            
+            //fill in a vector with vertex data
+            const tinygltf::BufferView& vertexPositions = gltfModel.bufferViews[primitive.attributes.at("POSITION")];
+            const tinygltf::BufferView& vertexNormals = gltfModel.bufferViews[primitive.attributes.at("NORMAL")];
+            const tinygltf::BufferView& vertexUVs = gltfModel.bufferViews[primitive.attributes.at("TEXCOORD_0")];
+            std::vector<Vertex> vertexData(gltfModel.accessors[primitive.attributes.at("POSITION")].count);
+
+            for(uint32_t i = 0; i < vertexData.size(); i++)
+            {
+                memcpy((unsigned char*)vertexData.data() + (sizeof(Vertex) * i) + 0,  gltfModel.buffers[0].data.data() + vertexPositions.byteOffset + (12 * i), 12);
+                memcpy((unsigned char*)vertexData.data() + (sizeof(Vertex) * i) + 12, gltfModel.buffers[0].data.data() + vertexNormals.byteOffset   + (12 * i), 12);
+                memcpy((unsigned char*)vertexData.data() + (sizeof(Vertex) * i) + 24, gltfModel.buffers[0].data.data() + vertexUVs.byteOffset       + (8  * i), 8 );
+            }
 
             //fill in a vector with index data
-            
-            
+            const tinygltf::BufferView& indices = gltfModel.bufferViews[primitive.indices];
+            const uint32_t indexStride = tinygltf::GetComponentSizeInBytes(gltfModel.accessors[primitive.indices].componentType);
+            std::vector<uint32_t> indexData(gltfModel.accessors[primitive.indices].count);
 
-            //fill in a vector with vertex data
+            for(uint32_t i = 0; i < indexData.size(); i++)
+            {
+                memcpy(indexData.data() + i, gltfModel.buffers[0].data.data() + indices.byteOffset + (i * indexStride), indexStride);
+            }
 
             int a = 0;
         }
-
-        PaperRenderer::ModelCreateInfo modelInfo;
-        modelInfo.vertexAttributes = 
-        modelInfo.vertexDescription = 
-        modelInfo.vertexPositionOffset = 
-        modelInfo.LODs = 
-        modelInfo.createBLAS = true;
-        loadedModels.push_back(std::make_unique<PaperRenderer::Model>(modelInfo));
     }
     
 
@@ -144,14 +202,6 @@ std::unique_ptr<PaperRenderer::Buffer> createLightInfoUniformBuffer(PaperRendere
 
     return uniformBuffer;
 }
-
-//vertex definition
-struct Vertex
-{
-    glm::vec3 position;
-    glm::vec3 normal;
-    glm::vec2 uv;
-};
 
 //default material class inherits PaperRenderer::Material
 class DefaultMaterial : public PaperRenderer::Material
