@@ -9,18 +9,10 @@ namespace PaperRenderer
 {
     //----------MODEL CREATION INFO----------//
 
-    struct MeshInfo
-    {
-        ///where the vertexDescription stride represents the total size of a vertex, the position offset represents the offset in bytes of a vec3 (4 byte floats, 12 bytes total)
-        ///of where the position data is. position is required since its used in creating an AABB for culling purposes
-        std::vector<char> verticesData;
-        std::vector<uint32_t> indices;
-        uint32_t materialIndex;
-    };
-
     struct MaterialMeshInfo
     {
-        MeshInfo meshInfo;
+        std::vector<char> const* verticesData;
+        std::vector<uint32_t> const* indices;
         bool opaque = true; //set to false if geometry will invoke any hit shaders in ray tracing
     };
 
@@ -33,9 +25,9 @@ namespace PaperRenderer
     {
         std::vector<VkVertexInputAttributeDescription> vertexAttributes;
         VkVertexInputBindingDescription vertexDescription;
-        std::vector<ModelLODInfo> LODs;
+        const std::vector<ModelLODInfo>& LODs;
         bool createBLAS = true; //create a default BLAS
-        std::string modelName;
+        const std::string& modelName;
     };
 
     //----------MODEL INFORMATION----------//

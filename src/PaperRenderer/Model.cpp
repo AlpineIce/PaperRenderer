@@ -42,12 +42,12 @@ namespace PaperRenderer
 				MaterialMesh materialMesh;
 				materialMesh.invokeAnyHit = !meshGroup.opaque;
 				materialMesh.mesh.vboOffset = dynamicVertexOffset;
-				materialMesh.mesh.vertexCount =  meshGroup.meshInfo.verticesData.size() / vertexDescription.stride;
+				materialMesh.mesh.vertexCount =  meshGroup.verticesData->size() / vertexDescription.stride;
 				materialMesh.mesh.iboOffset = creationIndices.size();
-				materialMesh.mesh.indexCount =  meshGroup.meshInfo.indices.size();
+				materialMesh.mesh.indexCount =  meshGroup.indices->size();
 
-				creationVerticesData.insert(creationVerticesData.end(), meshGroup.meshInfo.verticesData.begin(), meshGroup.meshInfo.verticesData.end());
-				creationIndices.insert(creationIndices.end(), meshGroup.meshInfo.indices.begin(), meshGroup.meshInfo.indices.end());
+				creationVerticesData.insert(creationVerticesData.end(), meshGroup.verticesData->begin(), meshGroup.verticesData->end());
+				creationIndices.insert(creationIndices.end(), meshGroup.indices->begin(), meshGroup.indices->end());
 
 				dynamicVertexOffset += materialMesh.mesh.vertexCount;
 
