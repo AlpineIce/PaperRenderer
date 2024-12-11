@@ -309,23 +309,54 @@ public:
 class DefaultMaterialInstance : public PaperRenderer::MaterialInstance
 {
 private:
+    //Parameters and corresponding UBO to be used for material instances. Setting uniforms in material instances saves on expensive pipeline binding
+    const MaterialParameters parameters;
+    std::unique_ptr<PaperRenderer::Buffer> parametersUBO;
 
 public:
-    DefaultMaterialInstance(PaperRenderer::RenderEngine& renderer, const PaperRenderer::Material& baseMaterial)
-        :PaperRenderer::MaterialInstance(renderer, baseMaterial)
+    DefaultMaterialInstance(PaperRenderer::RenderEngine& renderer, const PaperRenderer::Material& baseMaterial, MaterialParameters parameters)
+        :PaperRenderer::MaterialInstance(renderer, baseMaterial),
+        parameters(parameters)
     {
+        //create UBO
+        PaperRenderer::BufferInfo uboInfo = {
+            .size = sizeof(MaterialParameters),
+            .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
+            .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
+        };
 
+        parametersUBO = std::make_unique<PaperRenderer::Buffer>(renderer, uboInfo);
+
+        //fill UBO data (this can change every frame too, which should be done in the bind() function, but for this example, that is unnecessary)
+        PaperRenderer::BufferWrite uboWrite = {
+            .offset = 0,
+            .size=  sizeof(MaterialParameters),
+            .data = &parameters
+        };
+
+        parametersUBO->writeToBuffer({ uboWrite });
     }
+
     ~DefaultMaterialInstance() override
     {
-
     }
 
     void bind(VkCommandBuffer cmdBuffer, std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites>& descriptorWrites) override
     {
         //additional non-default descriptor writes can be inserted into descriptorWrites here
 
-        MaterialInstance::bind(cmdBuffer, descriptorWrites); //parent class function must be called
+        //set 2, binding 0 (example material parameters)
+        descriptorWrites[2].bufferWrites.push_back({
+            .infos = {{
+                .buffer = parametersUBO->getBuffer(),
+                .offset = 0,
+                .range = VK_WHOLE_SIZE
+            }},
+            .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .binding = 0
+        });
+        //remember to call the parent class function!
+        MaterialInstance::bind(cmdBuffer, descriptorWrites);
     }
 };
 
@@ -336,7 +367,7 @@ int main()
         .rasterPreprocessSpirv = readFile("resources/shaders/IndirectDrawBuild.spv"),
         .rtPreprocessSpirv = readFile("resources/shaders/TLASInstBuild.spv"),
         .windowState = {
-            .windowName = "Example"
+            .windowName = "Paper Renderer Example"
         }
     };
     PaperRenderer::RenderEngine renderer(rendererInfo);
@@ -353,9 +384,9 @@ int main()
 
     std::unique_ptr<PaperRenderer::Buffer> lightingUniformBuffer = createLightInfoUniformBuffer(renderer);
 
-    //----------RASTER MATERIALS----------//
+    //----------MATERIALS----------//
 
-    //material info
+    //base raster material
     const PaperRenderer::RasterPipelineBuildInfo materialInfo = {
         .shaderInfo = {
             {
@@ -412,13 +443,33 @@ int main()
                     .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
                 }
             }
-        }
+        },
+        .drawDescriptorIndex = 1
     };
-    //base material from custom class
-    //DefaultMaterial material(renderer, materialInfo);
-    //default material instance from custom base material
-    //DefaultMaterialInstance defaultMaterialInstance(renderer, material);
 
+    DefaultMaterial baseMaterial(renderer, materialInfo);
+
+    //base RT material
+    PaperRenderer::ShaderHitGroup baseMaterialHitGroup = {
+        .chitShaderData = readFile("resources/shaders/raytrace_chit.spv"),
+        .ahitShaderData = {}, //TODO FOR TRANSPARENCY
+        .intShaderData = {}
+    };
+
+    PaperRenderer::RTMaterial baseRTMaterial(renderer, baseMaterialHitGroup);
+
+    //create material instances that "derive" from base material and the loaded scene data parameters
+    std::unordered_map<std::string, std::unique_ptr<PaperRenderer::MaterialInstance>> materialInstances;
+    materialInstances.reserve(scene.materialInstancesData.size());
+    for(const auto& [name, parameters] : scene.materialInstancesData)
+    {
+        materialInstances[name] = std::make_unique<DefaultMaterialInstance>(renderer, baseMaterial, parameters);
+
+        //TODO RT MATERIAL "INSTANCE" IMPLEMENTATION
+
+    }
+
+    
     //----------RASTER RENDER PASS----------//
 
     //raster render pass

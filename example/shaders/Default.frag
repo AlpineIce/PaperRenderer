@@ -25,6 +25,14 @@ layout(std430, set = 0, binding = 2) uniform LightInformation
     uint pointLightCount;
 } lightInfo;
 
+layout(std430, set = 2, binding = 0) uniform MaterialParameters
+{
+    vec4 baseColor;
+    vec4 emission;
+    float roughness;
+    float metallic;
+} materialParameters;
+
 void main()
 {
     //solve the integral, use basic lambertian diffuse (N dot L / pi)

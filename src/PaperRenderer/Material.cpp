@@ -11,6 +11,8 @@ namespace PaperRenderer
         renderer(renderer)
     {
         //add reserved descriptors
+
+        //camera UBO
         pipelineInfo.descriptorSets[0].push_back({
             .binding = 0,
             .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -18,7 +20,9 @@ namespace PaperRenderer
             .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
             .pImmutableSamplers = NULL
         });
-        pipelineInfo.descriptorSets[1].push_back({
+
+        //model matrices SBO
+        pipelineInfo.descriptorSets[pipelineInfo.drawDescriptorIndex].push_back({
             .binding = 0,
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
             .descriptorCount = 1,

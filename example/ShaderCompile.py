@@ -11,7 +11,7 @@ def compile_shader(src_path, dst_path):
         result = subprocess.run(["glslangValidator", "-V", "-g", "--target-env", "vulkan1.3", src_path, "-o", dst_path], capture_output=True, check=True, text=True)
         print(result.stdout)
     except subprocess.CalledProcessError as e:
-        print(f"Shader validation failed:\n{e.stderr}")
+        print(f"Shader validation failed:\n{e.stdout}")
 
 #then compile shaders
 pool = concurrent.futures.ThreadPoolExecutor(max_workers=6)

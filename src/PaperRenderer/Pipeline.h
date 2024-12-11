@@ -150,8 +150,8 @@ namespace PaperRenderer
         std::vector<VkPushConstantRange> pcRanges;
         RasterPipelineProperties properties = {};
         //Lowest level descriptor, used for drawing. Should be mat4[] at binding 0, which will be filled
-        //in with model matrix data by the renderer.
-        const uint32_t drawDescriptorIndex;
+        //in with model matrix data by the renderer. Default value is 1, which means it will use set 1, binding 0 unless otherwise specified
+        const uint32_t drawDescriptorIndex = 1;
     };
 
     class RasterPipeline : public Pipeline
