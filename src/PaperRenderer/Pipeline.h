@@ -12,7 +12,7 @@ namespace PaperRenderer
     struct ShaderPair
     {
         VkShaderStageFlagBits stage = VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
-        const std::vector<uint32_t>& data;
+        std::vector<uint32_t> data;
     };
 
     struct ShaderDescription
@@ -237,7 +237,7 @@ namespace PaperRenderer
         VkPipelineCache cache;
 
         std::unordered_map<uint32_t, VkDescriptorSetLayout> createDescriptorLayouts(const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptorSets) const;
-        VkPipelineLayout createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, std::vector<VkPushConstantRange> pcRanges) const;
+        VkPipelineLayout createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, const std::vector<VkPushConstantRange>& pcRanges) const;
 
         class RenderEngine& renderer;
 

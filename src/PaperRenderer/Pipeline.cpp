@@ -524,7 +524,7 @@ namespace PaperRenderer
         return setLayouts;
     }
 
-    VkPipelineLayout PipelineBuilder::createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, std::vector<VkPushConstantRange> pcRanges) const
+    VkPipelineLayout PipelineBuilder::createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, const std::vector<VkPushConstantRange>& pcRanges) const
     {
         std::vector<VkDescriptorSetLayout> vSetLayouts;
         vSetLayouts.reserve(setLayouts.size());
@@ -543,7 +543,7 @@ namespace PaperRenderer
         layoutInfo.pPushConstantRanges = pcRanges.data();
 
         VkPipelineLayout returnLayout;
-        VkResult result = vkCreatePipelineLayout(renderer.getDevice().getDevice(), &layoutInfo, nullptr, &returnLayout);
+        VkResult result = vkCreatePipelineLayout(renderer.getDevice().getDevice(), &layoutInfo, NULL, &returnLayout);
         if(result != VK_SUCCESS) throw std::runtime_error("Pipeline layout creation failed");
 
         return returnLayout;
@@ -566,23 +566,25 @@ namespace PaperRenderer
 
     std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const RasterPipelineBuildInfo& info) const
     {
-        RasterPipelineCreationInfo pipelineInfo = { {
+        //set shaders
+        std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<PaperRenderer::Shader>> shaders;
+        for(const ShaderPair& pair : info.shaderInfo)
+        {
+            shaders[pair.stage] = std::make_shared<Shader>(renderer, pair.data);
+        }
+
+        //pipeline info
+        const RasterPipelineCreationInfo pipelineInfo = { {
                 .renderer = renderer,
                 .cache = cache,
                 .setLayouts = createDescriptorLayouts(info.descriptorSets),
                 .pcRanges = info.pcRanges,
                 .pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts, info.pcRanges),
             },
-            {},
+            shaders,
             info.drawDescriptorIndex
         };
         
-        //set shaders
-        for(const ShaderPair& pair : info.shaderInfo)
-        {
-            pipelineInfo.shaders[pair.stage] = std::make_shared<Shader>(renderer, pair.data);
-        }
-
         return std::make_unique<RasterPipeline>(pipelineInfo, info.properties);
     }
 
