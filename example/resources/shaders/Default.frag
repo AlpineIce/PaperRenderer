@@ -1,5 +1,8 @@
 #version 460
 #extension GL_EXT_scalar_block_layout : require
+#extension GL_GOOGLE_include_directive : require
+
+#include "pbr.glsl"
 
 layout(location = 0) out vec4 color;
 

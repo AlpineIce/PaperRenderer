@@ -525,6 +525,7 @@ int main()
             }
         }}
     };
+    
     PaperRenderer::RayTraceRender rtRenderPass(renderer, tlas, generalShaders, rtDescriptors, {});
 
     //synchronization
