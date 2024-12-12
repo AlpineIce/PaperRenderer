@@ -4,7 +4,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 #extension GL_EXT_nonuniform_qualifier : enable
 
-layout(set = 0, binding = 2) uniform InputData
+layout(set = 0, binding = 4) uniform InputData
 {
     mat4 projection;
     mat4 view;

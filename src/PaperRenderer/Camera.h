@@ -23,7 +23,7 @@ namespace PaperRenderer
         float fov = 75.0f;
         float clipNear = 0.1f;
         float clipFar = 1000.0f;
-        CameraTranslation initTranslation;
+        CameraTranslation initTranslation = {};
     };
 
     class Camera

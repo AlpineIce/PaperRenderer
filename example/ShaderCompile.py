@@ -14,12 +14,14 @@ def compile_shader(src_path, dst_path):
         print(f"Shader validation failed:\n{e.stdout}")
 
 #then compile shaders
-pool = concurrent.futures.ThreadPoolExecutor(max_workers=6)
+pool = concurrent.futures.ThreadPoolExecutor(max_workers=8)
 pool.submit(compile_shader, "./resources/shaders/raytrace.rchit", "../build/resources/shaders/raytrace_chit.spv")
 pool.submit(compile_shader, "./resources/shaders/raytrace.rgen", "../build/resources/shaders/raytrace_rgen.spv")
 pool.submit(compile_shader, "./resources/shaders/raytrace.rmiss", "../build/resources/shaders/raytrace_rmiss.spv")
 pool.submit(compile_shader, "./resources/shaders/raytraceShadow.rmiss", "../build/resources/shaders/raytraceShadow_rmiss.spv")
 pool.submit(compile_shader, "./resources/shaders/Default.vert", "../build/resources/shaders/Default_vert.spv")
 pool.submit(compile_shader, "./resources/shaders/Default.frag", "../build/resources/shaders/Default_frag.spv")
+pool.submit(compile_shader, "./resources/shaders/Quad.vert", "../build/resources/shaders/Quad.spv")
+pool.submit(compile_shader, "./resources/shaders/BufferCopy.frag", "../build/resources/shaders/BufferCopy.spv")
 
 pool.shutdown(wait=True)

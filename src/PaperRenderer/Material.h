@@ -11,22 +11,22 @@ namespace PaperRenderer
     class Material
     {
     private:
-        const RasterPipelineProperties rasterPipelineProperties = {};
+        const bool assignDefaultDescriptors;
         std::unique_ptr<RasterPipeline> rasterPipeline;
     
     protected:
         class RenderEngine& renderer;
 
     public:
-        Material(class RenderEngine& renderer, RasterPipelineBuildInfo pipelineInfo);
+        Material(class RenderEngine& renderer, RasterPipelineBuildInfo pipelineInfo, bool assignDefaultDescriptors=true);
         virtual ~Material();
         Material(const Material&) = delete;
 
         //additional descriptor writes can be added with parameter. SET 0, BINDING 0 IS RESERVED FOR CAMERA MATRICES
         virtual void bind(VkCommandBuffer cmdBuffer, const class Camera& camera, std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites); //used per pipeline bind and material instance; camera is optional
         
-        const RasterPipelineProperties& getRasterPipelineProperties() const { return rasterPipelineProperties; }
         const RasterPipeline& getRasterPipeline() const { return *rasterPipeline; }
+        const bool& usesDefaultDescriptors() const { return assignDefaultDescriptors; }
     };
 
     class MaterialInstance

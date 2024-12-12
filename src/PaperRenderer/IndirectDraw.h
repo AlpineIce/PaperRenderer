@@ -78,7 +78,7 @@ namespace PaperRenderer
         void addInstanceMesh(ModelInstance* instance, LODMesh const* instanceMeshData);
         void removeInstanceMeshes(class ModelInstance* instance);
 
-        void draw(const VkCommandBuffer& cmdBuffer, const class RasterPipeline& pipeline);
+        void draw(const VkCommandBuffer& cmdBuffer, const class Material& material);
         void clearDrawCommand(const VkCommandBuffer& cmdBuffer);
         void readInstanceCounts(VkCommandBuffer cmdBuffer, Buffer& buffer, uint32_t startIndex) const;
 

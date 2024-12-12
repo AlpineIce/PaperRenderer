@@ -156,37 +156,41 @@ namespace PaperRenderer
         }
     }
 
-    void CommonMeshGroup::draw(const VkCommandBuffer &cmdBuffer, const RasterPipeline& pipeline)
+    void CommonMeshGroup::draw(const VkCommandBuffer &cmdBuffer, const Material& material)
     {
         for(const auto& [mesh, meshData] : meshesData)
         {
             if(meshData.parentModelPtr)//null safety
             {
-                //get new descriptor set
-                VkDescriptorSet objDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(pipeline.getDescriptorSetLayouts().at(pipeline.getDrawDescriptorIndex()));
-                
-                //write uniforms
-                VkDescriptorBufferInfo descriptorInfo = {};
-                descriptorInfo.buffer = modelMatricesBuffer->getBuffer();
-                descriptorInfo.offset = meshData.matricesStartIndex * sizeof(ShaderOutputObject);
-                descriptorInfo.range = sizeof(ShaderOutputObject) * meshData.instanceCount;
+                //assign object descriptor if used
+                if(material.usesDefaultDescriptors())
+                {
+                    //get new descriptor set
+                    VkDescriptorSet objDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(material.getRasterPipeline().getDescriptorSetLayouts().at(material.getRasterPipeline().getDrawDescriptorIndex()));
+                    
+                    //write uniforms
+                    VkDescriptorBufferInfo descriptorInfo = {};
+                    descriptorInfo.buffer = modelMatricesBuffer->getBuffer();
+                    descriptorInfo.offset = meshData.matricesStartIndex * sizeof(ShaderOutputObject);
+                    descriptorInfo.range = sizeof(ShaderOutputObject) * meshData.instanceCount;
 
-                BuffersDescriptorWrites write = {};
-                write.binding = 0;
-                write.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                write.infos.push_back(descriptorInfo);
+                    BuffersDescriptorWrites write = {};
+                    write.binding = 0;
+                    write.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                    write.infos.push_back(descriptorInfo);
 
-                DescriptorWrites descriptorWritesInfo = {};
-                descriptorWritesInfo.bufferWrites = { write };
-                DescriptorAllocator::writeUniforms(renderer, objDescriptorSet, descriptorWritesInfo);
+                    DescriptorWrites descriptorWritesInfo = {};
+                    descriptorWritesInfo.bufferWrites = { write };
+                    DescriptorAllocator::writeUniforms(renderer, objDescriptorSet, descriptorWritesInfo);
 
-                //bind set
-                DescriptorBind bindingInfo = {};
-                bindingInfo.descriptorSetIndex = pipeline.getDrawDescriptorIndex();
-                bindingInfo.set = objDescriptorSet;
-                bindingInfo.layout = pipeline.getLayout();
-                bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-                DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
+                    //bind set
+                    DescriptorBind bindingInfo = {};
+                    bindingInfo.descriptorSetIndex = material.getRasterPipeline().getDrawDescriptorIndex();
+                    bindingInfo.set = objDescriptorSet;
+                    bindingInfo.layout = material.getRasterPipeline().getLayout();
+                    bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+                    DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
+                }
 
                 //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)
                 meshData.parentModelPtr->bindBuffers(cmdBuffer);

@@ -99,10 +99,10 @@ namespace PaperRenderer
 
     struct RasterPipelineProperties
     {
-        std::vector<VkVertexInputAttributeDescription> vertexAttributes; //a good start is vec3 position, vec3 normal, vec2 UVs. Attributes are assumed to be in order
+        std::vector<VkVertexInputAttributeDescription> vertexAttributes = {}; //a good start is vec3 position, vec3 normal, vec2 UVs. Attributes are assumed to be in order
         std::vector<VkVertexInputBindingDescription> vertexDescriptions = {};
         std::vector<VkPipelineColorBlendAttachmentState> colorAttachments = {};
-        std::vector<VkFormat> colorAttachmentFormats;
+        std::vector<VkFormat> colorAttachmentFormats = {};
         VkFormat depthAttachmentFormat = VK_FORMAT_UNDEFINED;
         VkFormat stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
         VkPipelineTessellationStateCreateInfo tessellationInfo = {

@@ -169,8 +169,8 @@ namespace PaperRenderer
 
         void setImageData(const Buffer& imageStagingBuffer);
 
-        static VkImageView getNewImageView(const Image& image, class RenderEngine& renderer, VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format);
-        static VkSampler getNewSampler(const Image& image, class RenderEngine& renderer);
+        VkImageView getNewImageView(VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format);
+        VkSampler getNewSampler();
 
         const VkImage& getImage() const { return image; }
         const VkExtent3D getExtent() const { return imageInfo.extent; }

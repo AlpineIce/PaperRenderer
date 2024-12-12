@@ -6,29 +6,32 @@ namespace PaperRenderer
 {
     //----------MATERIAL DEFINITIONS----------//
 
-    Material::Material(RenderEngine& renderer, RasterPipelineBuildInfo pipelineInfo)
-        :rasterPipelineProperties(pipelineInfo.properties),
+    Material::Material(RenderEngine& renderer, RasterPipelineBuildInfo pipelineInfo, bool assignDefaultDescriptors)
+        :assignDefaultDescriptors(assignDefaultDescriptors),
         renderer(renderer)
     {
-        //add reserved descriptors
+        //add reserved descriptors if set
+        if(assignDefaultDescriptors)
+        {
+            //camera UBO
+            pipelineInfo.descriptorSets[0].push_back({
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                .pImmutableSamplers = NULL
+            });
 
-        //camera UBO
-        pipelineInfo.descriptorSets[0].push_back({
-            .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-            .pImmutableSamplers = NULL
-        });
-
-        //model matrices SBO
-        pipelineInfo.descriptorSets[pipelineInfo.drawDescriptorIndex].push_back({
-            .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-            .pImmutableSamplers = NULL
-        });
+            //model matrices SBO
+            pipelineInfo.descriptorSets[pipelineInfo.drawDescriptorIndex].push_back({
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                .pImmutableSamplers = NULL
+            });
+        }
+        
 
         rasterPipeline = renderer.getPipelineBuilder().buildRasterPipeline(pipelineInfo);
     }
@@ -43,16 +46,20 @@ namespace PaperRenderer
         //bind
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
 
-        //camera UBO
-        descriptorWrites[0].bufferWrites.push_back({
-            .infos = { {
-                .buffer = camera.getCameraUBO().getBuffer(),
-                .offset = 0,
-                .range = VK_WHOLE_SIZE
-            } },
-            .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .binding = 0
-        });
+        //camera UBO if used
+        if(assignDefaultDescriptors)
+        {
+            
+            descriptorWrites[0].bufferWrites.push_back({
+                .infos = { {
+                    .buffer = camera.getCameraUBO().getBuffer(),
+                    .offset = 0,
+                    .range = VK_WHOLE_SIZE
+                } },
+                .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .binding = 0
+            });
+        }
         
         //write descriptors
         for(const auto& [setIndex, writes] : descriptorWrites)

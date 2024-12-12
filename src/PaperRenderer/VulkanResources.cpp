@@ -396,12 +396,12 @@ namespace PaperRenderer
         vmaDestroyImage(renderer.getDevice().getAllocator(), image, allocation);
     }
 
-    VkImageView Image::getNewImageView(const Image& image, RenderEngine& renderer, VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format)
+    VkImageView Image::getNewImageView(VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format)
     {
         VkImageSubresourceRange subresource = {};
         subresource.aspectMask = aspectMask;
         subresource.baseMipLevel = 0;
-        subresource.levelCount = image.mipmapLevels;
+        subresource.levelCount = mipmapLevels;
         subresource.baseArrayLayer = 0;
         subresource.layerCount = 1;
 
@@ -409,7 +409,7 @@ namespace PaperRenderer
         viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         viewInfo.pNext = NULL;
         viewInfo.flags = 0;
-        viewInfo.image = image.getImage();
+        viewInfo.image = image;
         viewInfo.viewType = viewType;
         viewInfo.format = format;
         viewInfo.subresourceRange = subresource;
@@ -454,7 +454,7 @@ namespace PaperRenderer
         vkDestroyFence(renderer.getDevice().getDevice(), blitSynchronization.fence, nullptr);
     }
 
-    VkSampler Image::getNewSampler(const Image& image, RenderEngine& renderer)
+    VkSampler Image::getNewSampler()
     {
         VkPhysicalDeviceFeatures2 features = {};
         features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
@@ -482,7 +482,7 @@ namespace PaperRenderer
         samplerInfo.compareEnable = VK_FALSE;
         samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
         samplerInfo.minLod = 0.0f;
-        samplerInfo.maxLod = image.mipmapLevels;
+        samplerInfo.maxLod = mipmapLevels;
         samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
         samplerInfo.unnormalizedCoordinates = VK_FALSE;
 

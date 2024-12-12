@@ -422,7 +422,7 @@ namespace PaperRenderer
                     {
                         std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> instanceDescriptorWrites;
                         materialInstance->bind(cmdBuffer, instanceDescriptorWrites);
-                        meshGroups->draw(cmdBuffer, material->getRasterPipeline());
+                        meshGroups->draw(cmdBuffer, *material);
                     }
                 }
             }
