@@ -149,7 +149,6 @@ namespace PaperRenderer
         VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
         VkImageUsageFlags usage;
         VkImageAspectFlagBits imageAspect;
-        QueueFamiliesIndices queueFamiliesIndices = {};
         VkImageLayout desiredLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     };
 

@@ -363,14 +363,17 @@ namespace PaperRenderer
         imageCreateInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
         imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
+        const QueueFamiliesIndices& deviceQueueFamilies = renderer.getDevice().getQueueFamiliesIndices();
         std::vector<uint32_t> queueFamilyIndices;
-        if(imageInfo.queueFamiliesIndices.graphicsFamilyIndex != -1) queueFamilyIndices.push_back(imageInfo.queueFamiliesIndices.graphicsFamilyIndex);
-        if(imageInfo.queueFamiliesIndices.computeFamilyIndex != -1) queueFamilyIndices.push_back(imageInfo.queueFamiliesIndices.computeFamilyIndex);
-        if(imageInfo.queueFamiliesIndices.transferFamilyIndex != -1) queueFamilyIndices.push_back(imageInfo.queueFamiliesIndices.transferFamilyIndex);
-        if(imageInfo.queueFamiliesIndices.presentationFamilyIndex != -1) queueFamilyIndices.push_back(imageInfo.queueFamiliesIndices.presentationFamilyIndex);
+        if(deviceQueueFamilies.graphicsFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.graphicsFamilyIndex);
+        if(deviceQueueFamilies.computeFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.computeFamilyIndex);
+        if(deviceQueueFamilies.transferFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.transferFamilyIndex);
+        if(deviceQueueFamilies.presentationFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.presentationFamilyIndex);
         std::sort(queueFamilyIndices.begin(), queueFamilyIndices.end());
         auto uniqueIndices = std::unique(queueFamilyIndices.begin(), queueFamilyIndices.end());
         queueFamilyIndices.erase(uniqueIndices, queueFamilyIndices.end());
+
+        if(!queueFamilyIndices.size()) throw std::runtime_error("Tried to create buffer with no queue family indices referenced");
         
         imageCreateInfo.queueFamilyIndexCount = queueFamilyIndices.size();
         imageCreateInfo.pQueueFamilyIndices = queueFamilyIndices.data();
