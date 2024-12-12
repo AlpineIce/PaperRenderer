@@ -1,6 +1,6 @@
 #pragma once
 #include "VulkanResources.h"
-#include "glm/gtc/quaternion.hpp"
+#include "gtc/quaternion.hpp"
 
 #include <unordered_map>
 #include <list>

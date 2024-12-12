@@ -2,8 +2,8 @@
 #include "volk.h"
 #include "vk_mem_alloc.h"
 #include "GLFW/glfw3.h"
-#include "glm/glm.hpp"
-#include "glm/gtc/quaternion.hpp"
+#include "glm.hpp"
+#include "gtc/quaternion.hpp"
 #include "Command.h"
 
 #include <vector>
