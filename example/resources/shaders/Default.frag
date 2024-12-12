@@ -27,8 +27,15 @@ layout(std430, set = 2, binding = 0) uniform MaterialParameters
 void main()
 {
     //get camera position from view matrix
-    const vec3 camPos = inverse(inputData.view[3].xyz);
+    const vec3 camPos = inverse(inputData.view)[3].xyz;
     
     //BRDF
-    color = calculatePBR(brdfInput, camPos, worldPosition);
+    BRDFInput brdfInput;
+    brdfInput.baseColor = materialParameters.baseColor;
+    brdfInput.emissive = materialParameters.emission;
+    brdfInput.roughness = materialParameters.roughness;
+    brdfInput.metallic = materialParameters.metallic;
+
+    //output
+    color = calculatePBR(brdfInput, camPos, worldPosition, normal);
 }

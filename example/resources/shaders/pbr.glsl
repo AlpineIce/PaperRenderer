@@ -116,7 +116,7 @@ float attenuate(vec3 N)
 }
 
 //take inputs and output a vec4 color to be directly drawn on screen before post-processing
-vec4 calculatePBR(BRDFInput inputValues, vec3 camPos, vec3 worldPosition)
+vec4 calculatePBR(BRDFInput inputValues, vec3 camPos, vec3 worldPosition, vec3 normal)
 {
     vec3 totalLight = lightInfo.ambientLight.xyz * lightInfo.ambientLight.w; //ambient light
 

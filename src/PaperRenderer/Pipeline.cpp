@@ -526,11 +526,10 @@ namespace PaperRenderer
 
     VkPipelineLayout PipelineBuilder::createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, const std::vector<VkPushConstantRange>& pcRanges) const
     {
-        std::vector<VkDescriptorSetLayout> vSetLayouts;
-        vSetLayouts.reserve(setLayouts.size());
+        std::vector<VkDescriptorSetLayout> vSetLayouts(setLayouts.size());
         for(const auto& [setNum, set] : setLayouts)
         {
-            vSetLayouts.push_back(set);
+            vSetLayouts[setNum] = set;
         }
 
         VkPipelineLayoutCreateInfo layoutInfo = {};
