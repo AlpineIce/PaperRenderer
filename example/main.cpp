@@ -217,17 +217,17 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
 //point light definition
 struct PointLight
 {
-    glm::vec3 position;
-    glm::vec3 color;
+    glm::vec4 position;
+    glm::vec4 color;
 };
 
 std::unique_ptr<PaperRenderer::Buffer> createPointLightsBuffer(PaperRenderer::RenderEngine& renderer)
 {
     std::vector<PointLight> pointLightsData = {
-        { glm::vec3(10.0f, 10.0, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f) },
-        { glm::vec3(10.0f, -10.0, 0.0f), glm::vec3(1.0f, 1.0f, 0.0f) },
-        { glm::vec3(-10.0f, 10.0, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f) },
-        { glm::vec3(-10.0f, -10.0, 0.0f), glm::vec3(0.0f, 1.0f, 1.0f) }
+        { glm::vec4(10.0f, 10.0, 0.0f, 5.0f), glm::vec4(1.0f, 0.0f, 0.0f, 5.0f) },
+        { glm::vec4(10.0f, -10.0, 0.0f, 5.0f), glm::vec4(1.0f, 1.0f, 0.0f, 5.0f) },
+        { glm::vec4(-10.0f, 10.0, 0.0f, 5.0f), glm::vec4(0.0f, 1.0f, 0.0f, 5.0f) },
+        { glm::vec4(-10.0f, -10.0, 0.0f, 5.0f), glm::vec4(0.0f, 1.0f, 1.0f, 5.0f) }
     };
 
     PaperRenderer::BufferInfo pointLightBufferInfo = {
@@ -251,7 +251,6 @@ std::unique_ptr<PaperRenderer::Buffer> createPointLightsBuffer(PaperRenderer::Re
 struct LightInfo
 {
     glm::vec4 ambientLight;
-    glm::vec4 camPos;
     uint32_t pointLightCount;
 };
 
@@ -259,7 +258,6 @@ std::unique_ptr<PaperRenderer::Buffer> createLightInfoUniformBuffer(PaperRendere
 {
     LightInfo uniformBufferData = {
         .ambientLight = glm::vec4(0.05f, 0.05f, 0.05f, 1.0f),
-        .camPos = glm::vec4(0.0f, 0.0f, 1.5f, 0.0f),
         .pointLightCount = 4
     };
 
@@ -468,12 +466,19 @@ int main()
         //TODO RT MATERIAL "INSTANCE" IMPLEMENTATION
 
     }
-
     
     //----------RASTER RENDER PASS----------//
 
+    //default material instance
+    DefaultMaterialInstance defaultMaterialInstance(renderer, baseMaterial, {
+        .baseColor = glm::vec4(1.0f, 0.5f, 1.0f, 1.0f),
+        .emission = glm::vec4(0.0f),
+        .roughness = 0.5f,
+        .metallic = 0.0f
+    });
+
     //raster render pass
-    //PaperRenderer::RenderPass renderPass(renderer, defaultMaterialInstance);
+    PaperRenderer::RenderPass renderPass(renderer, defaultMaterialInstance);
 
     //----------RAY TRACING RENDER PASS----------//
 
