@@ -16,7 +16,7 @@ namespace PaperRenderer
     {
         for(auto& [instance, meshes] : instanceMeshes)
         {
-            removeInstanceMeshes(instance);
+            removeInstanceMeshes(*instance);
         }
 
         modelMatricesBuffer.reset();
@@ -123,26 +123,26 @@ namespace PaperRenderer
         }
     }
 
-    void CommonMeshGroup::addInstanceMesh(ModelInstance* instance, LODMesh const* instanceMeshData)
+    void CommonMeshGroup::addInstanceMesh(ModelInstance& instance, const LODMesh& instanceMeshData)
     {        
-        if(!meshesData.count(instanceMeshData))
+        if(!meshesData.count(&instanceMeshData))
         {
-            meshesData[instanceMeshData].parentModelPtr = &instance->getParentModel();
+            meshesData[&instanceMeshData].parentModelPtr = &instance.getParentModel();
             rebuild = true;
         }
 
-        meshesData.at(instanceMeshData).instanceCount++;
+        meshesData.at(&instanceMeshData).instanceCount++;
 
-        if(meshesData.at(instanceMeshData).instanceCount > meshesData.at(instanceMeshData).lastRebuildInstanceCount) rebuild = true;
+        if(meshesData.at(&instanceMeshData).instanceCount > meshesData.at(&instanceMeshData).lastRebuildInstanceCount) rebuild = true;
 
-        this->instanceMeshes[instance].push_back(instanceMeshData);
+        this->instanceMeshes[&instance].push_back(&instanceMeshData);
     }
 
-    void CommonMeshGroup::removeInstanceMeshes(ModelInstance *instance)
+    void CommonMeshGroup::removeInstanceMeshes(ModelInstance& instance)
     {        
-        if(instanceMeshes.count(instance))
+        if(instanceMeshes.count(&instance))
         {
-            for(LODMesh const* meshData : instanceMeshes.at(instance))
+            for(LODMesh const* meshData : instanceMeshes.at(&instance))
             {
                 meshesData.at(meshData).instanceCount--;
 
@@ -152,7 +152,7 @@ namespace PaperRenderer
                     meshesData.erase(meshData);
                 }
             }
-            instanceMeshes.erase(instance);
+            instanceMeshes.erase(&instance);
         }
     }
 

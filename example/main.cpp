@@ -52,6 +52,7 @@ struct SceneData
 {
     std::unordered_map<std::string, std::unique_ptr<PaperRenderer::Model>> models;
     std::unordered_map<PaperRenderer::Model const*, PaperRenderer::ModelTransformation> instanceTransforms; //this example does 1 instance per model, so thats why its 1:1
+    std::unordered_map<std::string, std::vector<std::string>> instanceMaterials;
     std::unordered_map<std::string, MaterialParameters> materialInstancesData;
     std::unique_ptr<PaperRenderer::Camera> camera;
 };
@@ -124,6 +125,9 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
                     .indices = std::move(indexData),
                     .opaque = gltfModel.materials[matIndex].alphaMode == "OPAQUE"
                 };
+
+                //set instance material
+                returnData.instanceMaterials[modelName].push_back(gltfModel.materials[matIndex].name);
             }
 
             const PaperRenderer::ModelCreateInfo modelInfo = {
@@ -331,6 +335,69 @@ HDRBuffer getHDRBuffer(PaperRenderer::RenderEngine& renderer, VkImageLayout star
 
     return { std::move(hdrBuffer), format, view, sampler };
 }
+
+//----------DEPTH BUFFER----------//
+
+struct DepthBuffer
+{
+    std::unique_ptr<PaperRenderer::Image> image = NULL;
+    VkFormat format = VK_FORMAT_UNDEFINED;
+    VkImageView view = VK_NULL_HANDLE;
+};
+
+DepthBuffer getDepthBuffer(PaperRenderer::RenderEngine& renderer)
+{
+    //depth buffer format
+    VkFormat depthBufferFormat = VK_FORMAT_UNDEFINED;
+    VkFormatProperties properties;
+
+    //find format (prefer higher bits)
+    vkGetPhysicalDeviceFormatProperties(renderer.getDevice().getGPU(), VK_FORMAT_D32_SFLOAT, &properties);
+    if(properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
+    {
+        depthBufferFormat = VK_FORMAT_D32_SFLOAT;
+    }
+    else
+    {
+        vkGetPhysicalDeviceFormatProperties(renderer.getDevice().getGPU(), VK_FORMAT_D24_UNORM_S8_UINT, &properties);
+        if(properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
+        {
+            depthBufferFormat = VK_FORMAT_D24_UNORM_S8_UINT;
+        }
+        else 
+        {
+            vkGetPhysicalDeviceFormatProperties(renderer.getDevice().getGPU(), VK_FORMAT_D16_UNORM_S8_UINT, &properties);
+            if(properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
+            {
+                depthBufferFormat = VK_FORMAT_D16_UNORM_S8_UINT;
+            }
+        }
+    }
+
+    //get new extent
+    const VkExtent2D extent = renderer.getSwapchain().getExtent();
+
+    //depth buffer for rendering
+    const PaperRenderer::ImageInfo depthBufferInfo = {
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = depthBufferFormat,
+        .extent = { extent.width, extent.height, 1 },
+        .maxMipLevels = 1,
+        .samples = VK_SAMPLE_COUNT_1_BIT, //no MSAA used
+        .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+        .imageAspect = VK_IMAGE_ASPECT_DEPTH_BIT,
+        .desiredLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
+    };
+
+    std::unique_ptr<PaperRenderer::Image> depthBuffer = std::make_unique<PaperRenderer::Image>(renderer, depthBufferInfo);
+
+    //depth buffer view
+    VkImageView view = depthBuffer->getNewImageView(VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_VIEW_TYPE_2D, depthBufferFormat);
+
+    return { std::move(depthBuffer), depthBufferFormat, view };
+}
+
+//----------HDR BUFFER -> SWAPCHAIN COPY PASS----------//
 
 //Buffer copy render pass
 class BufferCopyPass
@@ -857,6 +924,7 @@ void rasterRender(
     const PaperRenderer::Buffer& lightInfoBuffer,
     const PaperRenderer::Camera& camera,
     const HDRBuffer& hdrBuffer,
+    const DepthBuffer& depthBuffer,
     const PaperRenderer::SynchronizationInfo& syncInfo
 )
 {
@@ -914,7 +982,7 @@ void rasterRender(
     const VkRenderingAttachmentInfo depthAttachment = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .pNext = NULL,
-        .imageView = hdrBuffer.view,
+        .imageView = depthBuffer.view,
         .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
         .resolveMode = VK_RESOLVE_MODE_NONE,
         .resolveImageView = VK_NULL_HANDLE,
@@ -1288,7 +1356,25 @@ int main()
     //render pass
     PaperRenderer::RayTraceRender rtRenderPass(renderer, tlas, generalShaders, rtDescriptors, {});
 
-    //----------HDR RENDERING BUFFER----------//
+    //----------ADD MODEL INSTANCES TO RT AND RASTER PASSES----------//
+
+    for(std::unique_ptr<PaperRenderer::ModelInstance>& instance: modelInstances)
+    {
+        //raster render pass
+        std::unordered_map<uint32_t, PaperRenderer::MaterialInstance*> materials;
+        uint32_t matIndex = 0;
+        for(const std::string& matName : scene.instanceMaterials[instance->getParentModel().getModelName()])
+        {
+            materials[matIndex] = materialInstances[matName].get();
+            matIndex++;
+        }
+        renderPass.addInstance(*instance, { materials });
+
+        //rt render pass (just use the base RT material for simplicity)
+        rtRenderPass.addInstance(*instance, baseRTMaterial);
+    }
+
+    //----------HDR & DEPTH RENDERING BUFFER----------//
 
     //get HDR buffer
     HDRBuffer hdrBuffer = getHDRBuffer(renderer, VK_IMAGE_LAYOUT_GENERAL);
@@ -1296,17 +1382,27 @@ int main()
     //HDR buffer copy render pass
     BufferCopyPass bufferCopyPass(renderer, hdrBuffer);
 
+    //get depth buffer
+    DepthBuffer depthBuffer = getDepthBuffer(renderer);
+
     //----------MISC----------//
 
     //swapchain resize callback
     auto swapchainResizeFunction = [&](VkExtent2D newExtent) {
         //destroy old HDR buffer
-        hdrBuffer.image.reset();
-        vkDestroyImageView(renderer.getDevice().getDevice(), hdrBuffer.view, nullptr);
         vkDestroySampler(renderer.getDevice().getDevice(), hdrBuffer.sampler, nullptr);
+        vkDestroyImageView(renderer.getDevice().getDevice(), hdrBuffer.view, nullptr);
+        hdrBuffer.image.reset();
 
         //create new HDR buffer
         hdrBuffer = getHDRBuffer(renderer, VK_IMAGE_LAYOUT_GENERAL);
+
+        //destroy old depth buffer
+        vkDestroyImageView(renderer.getDevice().getDevice(), depthBuffer.view, nullptr);
+        depthBuffer.image.reset();
+
+        //create new depth buffer
+        depthBuffer = getDepthBuffer(renderer);
 
         //update camera
         scene.camera->updateCameraProjection();
@@ -1321,6 +1417,7 @@ int main()
     VkSemaphore presentationSemaphore = renderer.getDevice().getCommands().getSemaphore();
 
     //rendering loop
+    bool raster = false;
     while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
     {
         //wait for last frame
@@ -1348,29 +1445,44 @@ int main()
         };
         renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
 
-        //build queued BLAS's (wait on transfer, signal rendering semaphore
-        const PaperRenderer::SynchronizationInfo blasSyncInfo = {
-            .queueType = PaperRenderer::QueueType::COMPUTE,
-            .timelineWaitPairs = { { renderer.getStagingBuffer().getTransferSemaphore() } },
-            .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue + 1 } }
-        };
-        renderer.getAsBuilder().submitQueuedOps(blasSyncInfo, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
-        
-        //update tlas
-        const PaperRenderer::SynchronizationInfo tlasSyncInfo = {
-            .queueType = PaperRenderer::QueueType::COMPUTE,
-            .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue + 1 } },
-            .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue + 2 } }
-        };
-        rtRenderPass.updateTLAS(VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR, tlasSyncInfo);
+        //ray tracing
+        if(!raster)
+        {
+            //build queued BLAS's (wait on transfer, signal rendering semaphore
+            const PaperRenderer::SynchronizationInfo blasSyncInfo = {
+                .queueType = PaperRenderer::QueueType::COMPUTE,
+                .timelineWaitPairs = { { renderer.getStagingBuffer().getTransferSemaphore() } },
+                .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue + 1 } }
+            };
+            renderer.getAsBuilder().submitQueuedOps(blasSyncInfo, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
+            
+            //update tlas (wait for BLAS build, signal rendering semaphore)
+            const PaperRenderer::SynchronizationInfo tlasSyncInfo = {
+                .queueType = PaperRenderer::QueueType::COMPUTE,
+                .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue + 1 } },
+                .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue + 2 } }
+            };
+            rtRenderPass.updateTLAS(VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR, tlasSyncInfo);
 
-        //render pass (wait for TLAS build, signal rendering semaphore)
-        PaperRenderer::SynchronizationInfo rtRenderSync = {
-            .queueType = PaperRenderer::QueueType::COMPUTE,
-            .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValue + 2 } },
-            .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue + 3 } }
-        };
-        rayTraceRender(renderer, rtRenderPass, *pointLightsBuffer, *lightingUniformBuffer, *rtInfoUBO, *scene.camera, hdrBuffer, rtRenderSync);
+            //render pass (wait for TLAS build, signal rendering semaphore)
+            PaperRenderer::SynchronizationInfo rtRenderSync = {
+                .queueType = PaperRenderer::QueueType::COMPUTE,
+                .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValue + 2 } },
+                .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue + 3 } }
+            };
+            rayTraceRender(renderer, rtRenderPass, *pointLightsBuffer, *lightingUniformBuffer, *rtInfoUBO, *scene.camera, hdrBuffer, rtRenderSync);
+        }
+        //raster
+        else
+        {
+            //render pass (wait on transfer, signal rendering semaphore)
+            const PaperRenderer::SynchronizationInfo rasterSyncInfo = {
+                .queueType = PaperRenderer::QueueType::COMPUTE,
+                .timelineWaitPairs = { { renderer.getStagingBuffer().getTransferSemaphore() } },
+                .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, finalSemaphoreValue + 3 } }
+            };
+            rasterRender(renderer, renderPass, *pointLightsBuffer, *lightingUniformBuffer, *scene.camera, hdrBuffer, depthBuffer, rasterSyncInfo);
+        }
 
         //copy HDR buffer to swapchain (wait for render pass and swapchain, signal rendering and presentation semaphores)
         PaperRenderer::SynchronizationInfo bufferCopySyncInfo = {

@@ -18,7 +18,7 @@ namespace PaperRenderer
 
     struct ModelLODInfo
     {
-        std::unordered_map<uint32_t, MaterialMeshInfo> lodData; //groups of meshes with a shared common material
+        std::map<uint32_t, MaterialMeshInfo> lodData; //groups of meshes with a shared common material... ordered because I learned this the hard way
     };
 
     struct ModelCreateInfo

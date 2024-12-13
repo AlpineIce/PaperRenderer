@@ -47,8 +47,8 @@ namespace PaperRenderer
         void render(RayTraceRenderInfo rtRenderInfo, SynchronizationInfo syncInfo);
         void updateTLAS(VkBuildAccelerationStructureModeKHR mode, VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo);
 
-        void addInstance(class ModelInstance* instance, class RTMaterial const* material);
-        void removeInstance(class ModelInstance* instance);
+        void addInstance(class ModelInstance& instance, const class RTMaterial& material);
+        void removeInstance(class ModelInstance& instance);
 
         const RTPipeline& getPipeline() const { return *pipeline; }
         const TLAS& getTLAS() const { return tlas; } //this class doesn't own TLAS, but it can be useful to retrieve which TLAS it is referencing

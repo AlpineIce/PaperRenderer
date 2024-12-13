@@ -502,13 +502,13 @@ namespace PaperRenderer
         return returnData;
     }
 
-    void RenderPass::addInstance(ModelInstance* instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials)
+    void RenderPass::addInstance(ModelInstance& instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials)
     {
         //material data
-        materials.resize(instance->getParentModel().getLODs().size());
-        for(uint32_t lodIndex = 0; lodIndex < instance->getParentModel().getLODs().size(); lodIndex++)
+        materials.resize(instance.getParentModel().getLODs().size());
+        for(uint32_t lodIndex = 0; lodIndex < instance.getParentModel().getLODs().size(); lodIndex++)
         {
-            for(uint32_t matIndex = 0; matIndex < instance->getParentModel().getLODs().at(lodIndex).materialMeshes.size(); matIndex++) //iterate materials in LOD
+            for(uint32_t matIndex = 0; matIndex < instance.getParentModel().getLODs().at(lodIndex).materialMeshes.size(); matIndex++) //iterate materials in LOD
             {
                 //----------MAIN MATERIALS----------//
 
@@ -524,7 +524,7 @@ namespace PaperRenderer
                 }
 
                 //get mesh using same material
-                LODMesh const* similarMesh = &instance->getParentModel().getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh;
+                const LODMesh& similarMesh = instance.getParentModel().getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh;
 
                 //check if mesh group class is created
                 if(!renderTree[(Material*)&materialInstance->getBaseMaterial()].instances.count(materialInstance))
@@ -536,36 +536,36 @@ namespace PaperRenderer
                 //add references
                 renderTree[(Material*)&materialInstance->getBaseMaterial()].instances[materialInstance]->addInstanceMesh(instance, similarMesh);
 
-                instance->renderPassSelfReferences[this].meshGroupReferences[&instance->getParentModel().getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh] = 
+                instance.renderPassSelfReferences[this].meshGroupReferences[&instance.getParentModel().getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh] = 
                     renderTree.at((Material*)&materialInstance->getBaseMaterial()).instances.at(materialInstance).get();
             }
         }
 
         //add reference
-        instance->renderPassSelfReferences.at(this).selfIndex = renderPassInstances.size();
-        renderPassInstances.push_back(instance);
+        instance.renderPassSelfReferences.at(this).selfIndex = renderPassInstances.size();
+        renderPassInstances.push_back(&instance);
 
         //add instance to queue
-        toUpdateInstances.push_front(instance);
+        toUpdateInstances.push_front(&instance);
     }
 
-    void RenderPass::removeInstance(ModelInstance* instance)
+    void RenderPass::removeInstance(ModelInstance& instance)
     {
-        for(auto& [mesh, reference] : instance->renderPassSelfReferences.at(this).meshGroupReferences)
+        for(auto& [mesh, reference] : instance.renderPassSelfReferences.at(this).meshGroupReferences)
         {
             reference->removeInstanceMeshes(instance);
         }
-        instance->renderPassSelfReferences.at(this).meshGroupReferences.clear();
+        instance.renderPassSelfReferences.at(this).meshGroupReferences.clear();
 
         //remove reference
         if(renderPassInstances.size() > 1)
         {
-            uint32_t& selfReference = instance->renderPassSelfReferences.at(this).selfIndex;
+            uint32_t& selfReference = instance.renderPassSelfReferences.at(this).selfIndex;
             renderPassInstances.at(selfReference) = renderPassInstances.back();
             renderPassInstances.at(selfReference)->renderPassSelfReferences.at(this).selfIndex = selfReference;
 
             //queue data transfer
-            toUpdateInstances.push_front(renderPassInstances.at(instance->renderPassSelfReferences.at(this).selfIndex));
+            toUpdateInstances.push_front(renderPassInstances.at(instance.renderPassSelfReferences.at(this).selfIndex));
             
             renderPassInstances.pop_back();
         }
@@ -577,18 +577,18 @@ namespace PaperRenderer
         //null out any instances that may be queued
         for(ModelInstance*& thisInstance : toUpdateInstances)
         {
-            if(thisInstance == instance)
+            if(thisInstance == &instance)
             {
                 thisInstance = NULL;
             }
         }
 
         //remove data from fragmenable buffer if referenced
-        if(instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset != UINT64_MAX)
+        if(instance.renderPassSelfReferences.at(this).LODsMaterialDataOffset != UINT64_MAX)
         {
-            instancesDataBuffer->removeFromRange(instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset, instance->getRenderPassInstanceData(this).size());
+            instancesDataBuffer->removeFromRange(instance.renderPassSelfReferences.at(this).LODsMaterialDataOffset, instance.getRenderPassInstanceData(this).size());
         }
 
-        instance->renderPassSelfReferences.erase(this);
+        instance.renderPassSelfReferences.erase(this);
     }
 }

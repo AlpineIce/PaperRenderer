@@ -75,8 +75,8 @@ namespace PaperRenderer
 
         std::vector<class ModelInstance*> verifyBufferSize();
 
-        void addInstanceMesh(ModelInstance* instance, LODMesh const* instanceMeshData);
-        void removeInstanceMeshes(class ModelInstance* instance);
+        void addInstanceMesh(ModelInstance& instance, const LODMesh& instanceMeshData);
+        void removeInstanceMeshes(class ModelInstance& instance);
 
         void draw(const VkCommandBuffer& cmdBuffer, const class Material& material);
         void clearDrawCommand(const VkCommandBuffer& cmdBuffer);

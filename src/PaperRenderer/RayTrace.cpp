@@ -142,32 +142,32 @@ namespace PaperRenderer
         pipeline = renderer.getPipelineBuilder().buildRTPipeline(pipelineBuildInfo);
     }
 
-    void RayTraceRender::addInstance(ModelInstance *instance, RTMaterial const* material)
+    void RayTraceRender::addInstance(ModelInstance& instance, const RTMaterial& material)
     {
         //add reference
-        instance->rtRenderSelfReferences[this] = material;
+        instance.rtRenderSelfReferences[this] = &material;
 
         //increment material reference counter and rebuild pipeline if needed
-        if(!materialReferences.count(instance->rtRenderSelfReferences.at(this)))
+        if(!materialReferences.count(instance.rtRenderSelfReferences.at(this)))
         {
             queuePipelineBuild = true;
         }
-        materialReferences[instance->rtRenderSelfReferences.at(this)]++;
+        materialReferences[instance.rtRenderSelfReferences.at(this)]++;
     }
     
-    void RayTraceRender::removeInstance(ModelInstance *instance)
+    void RayTraceRender::removeInstance(ModelInstance& instance)
     {
-        if(instance->rtRenderSelfReferences.count(this))
+        if(instance.rtRenderSelfReferences.count(this))
         {
             //decrement material reference and check size to see if material entry should be deleted
-            materialReferences.at(instance->rtRenderSelfReferences.at(this))--;
-            if(!materialReferences.at(instance->rtRenderSelfReferences.at(this)))
+            materialReferences.at(instance.rtRenderSelfReferences.at(this))--;
+            if(!materialReferences.at(instance.rtRenderSelfReferences.at(this)))
             {
-                materialReferences.erase(instance->rtRenderSelfReferences.at(this));
+                materialReferences.erase(instance.rtRenderSelfReferences.at(this));
                 queuePipelineBuild = true;
             }
 
-            instance->rtRenderSelfReferences.erase(this);
+            instance.rtRenderSelfReferences.erase(this);
         }
     }
 }
