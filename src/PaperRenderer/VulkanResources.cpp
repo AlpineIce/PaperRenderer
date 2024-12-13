@@ -502,7 +502,7 @@ namespace PaperRenderer
         beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
         VkImageSubresourceLayers subresource = {};
-        subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        subresource.aspectMask = imageInfo.imageAspect;
         subresource.mipLevel = 0;
         subresource.baseArrayLayer = 0;
         subresource.layerCount = 1;
@@ -531,7 +531,7 @@ namespace PaperRenderer
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .image = image,
             .subresourceRange = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .aspectMask = imageInfo.imageAspect,
                 .baseMipLevel = 0,
                 .levelCount = 1,
                 .baseArrayLayer = 0,
@@ -594,7 +594,7 @@ namespace PaperRenderer
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .image = image,
                 .subresourceRange = {
-                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .aspectMask = imageInfo.imageAspect,
                     .baseMipLevel = i - 1,
                     .levelCount = 1,
                     .baseArrayLayer = 0,
@@ -616,7 +616,7 @@ namespace PaperRenderer
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .image = image,
                 .subresourceRange = {
-                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .aspectMask = imageInfo.imageAspect,
                     .baseMipLevel = i,
                     .levelCount = 1,
                     .baseArrayLayer = 0,
@@ -644,14 +644,14 @@ namespace PaperRenderer
             imageBlit.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2;
             imageBlit.pNext = NULL;
             imageBlit.srcSubresource = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .aspectMask = imageInfo.imageAspect,
                 .mipLevel = i - 1,
                 .baseArrayLayer = 0,
                 .layerCount = 1
             };
             imageBlit.srcOffsets[1] = { int32_t(imageInfo.extent.width >> (i - 1)), int32_t(imageInfo.extent.height >> (i - 1)), 1 };
             imageBlit.dstSubresource = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .aspectMask = imageInfo.imageAspect,
                 .mipLevel = i,
                 .baseArrayLayer = 0,
                 .layerCount = 1
@@ -673,7 +673,7 @@ namespace PaperRenderer
         }
 
         //final image layout transitions
-        for(uint32_t i = 0; i < mipmapLevels - 1; i++)
+        for(uint32_t i = 0; i < mipmapLevels; i++)
         {
             VkImageMemoryBarrier2 finalImageBarrier = {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -682,13 +682,13 @@ namespace PaperRenderer
                 .srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT,
                 .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                 .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
-                .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
                 .newLayout = imageInfo.desiredLayout,
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .image = image,
                 .subresourceRange = {
-                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .aspectMask = imageInfo.imageAspect,
                     .baseMipLevel = i,
                     .levelCount = 1,
                     .baseArrayLayer = 0,
@@ -710,42 +710,6 @@ namespace PaperRenderer
 
             vkCmdPipelineBarrier2(blitBuffer, &finalDependencyInfo);
         }
-
-        //final mip level transition (outlier from bad code)
-        VkImageMemoryBarrier2 finalImageBarrier = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-            .pNext = NULL,
-            .srcStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT,
-            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-            .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT,
-            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            .newLayout = imageInfo.desiredLayout,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = image,
-            .subresourceRange = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = mipmapLevels - 1,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1,
-            }
-        };
-
-        VkDependencyInfo finalDependencyInfo = {
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .pNext = NULL,
-            .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
-            .memoryBarrierCount = 0,
-            .pMemoryBarriers = NULL,
-            .bufferMemoryBarrierCount = 0,
-            .pBufferMemoryBarriers = NULL,
-            .imageMemoryBarrierCount = 1,
-            .pImageMemoryBarriers = &finalImageBarrier
-        };
-
-        vkCmdPipelineBarrier2(blitBuffer, &finalDependencyInfo);
         
         vkEndCommandBuffer(blitBuffer);
 
