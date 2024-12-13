@@ -81,7 +81,7 @@ namespace PaperRenderer
 		//create BLAS
 		if(creationInfo.createBLAS && renderer.getDevice().getRTSupport())
 		{
-			defaultBLAS = std::make_unique<BLAS>(renderer, this, vbo.get());
+			defaultBLAS = std::make_unique<BLAS>(renderer, *this, vbo.get());
 			AccelerationStructureOp op = {
 				.accelerationStructure = *defaultBLAS.get(),
                 .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
@@ -199,19 +199,19 @@ namespace PaperRenderer
 
 	//----------MODEL INSTANCE DEFINITIONS----------//
 
-    ModelInstance::ModelInstance(RenderEngine& renderer, Model const* parentModel, bool uniqueGeometry)
+    ModelInstance::ModelInstance(RenderEngine& renderer, const Model& parentModel, bool uniqueGeometry)
         :renderer(renderer),
-        modelPtr(parentModel)
+        parentModel(parentModel)
     {
 		renderer.addObject(this);
 		uniqueGeometryData.isUsed = uniqueGeometry;
 		
 		//create unique VBO and BLAS if requested
-		if((uniqueGeometry || !parentModel->defaultBLAS) && renderer.getDevice().getRTSupport())
+		if((uniqueGeometry || !parentModel.defaultBLAS) && renderer.getDevice().getRTSupport())
 		{
 			BufferInfo bufferInfo = {};
 			bufferInfo.allocationFlags = 0;
-			bufferInfo.size = modelPtr->vbo->getSize();
+			bufferInfo.size = parentModel.vbo->getSize();
 			bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
 				VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
 			uniqueGeometryData.uniqueVBO  = std::make_unique<Buffer>(renderer, bufferInfo);
@@ -220,13 +220,13 @@ namespace PaperRenderer
 			VkBufferCopy copyRegion;
 			copyRegion.dstOffset = 0;
 			copyRegion.srcOffset = 0;
-			copyRegion.size = modelPtr->vbo->getSize();
+			copyRegion.size = parentModel.vbo->getSize();
 
 			SynchronizationInfo synchronizationInfo = {};
 			synchronizationInfo.queueType = QueueType::TRANSFER;
 			synchronizationInfo.fence = renderer.getDevice().getCommands().getUnsignaledFence();
 
-			uniqueGeometryData.uniqueVBO->copyFromBufferRanges(*modelPtr->vbo, { copyRegion }, synchronizationInfo);
+			uniqueGeometryData.uniqueVBO->copyFromBufferRanges(*parentModel.vbo, { copyRegion }, synchronizationInfo);
 
 			//wait for fence and destroy (potential for efficiency improvements here since this is technically brute force synchronization)
 			vkWaitForFences(renderer.getDevice().getDevice(), 1, &synchronizationInfo.fence, VK_TRUE, UINT64_MAX);
@@ -235,7 +235,7 @@ namespace PaperRenderer
 			//create BLAS
 			if(renderer.getDevice().getRTSupport())
 			{
-				uniqueGeometryData.blas = std::make_unique<BLAS>(renderer, modelPtr, uniqueGeometryData.uniqueVBO.get());
+				uniqueGeometryData.blas = std::make_unique<BLAS>(renderer, parentModel, uniqueGeometryData.uniqueVBO.get());
 				AccelerationStructureOp op = {
 					.accelerationStructure = *uniqueGeometryData.blas.get(),
 					.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
@@ -259,10 +259,10 @@ namespace PaperRenderer
 		newData.reserve(renderPassSelfReferences.at(renderPass).renderPassInstanceData.size());
 		uint32_t dynamicOffset = 0;
 
-		dynamicOffset += sizeof(LODMaterialData) * modelPtr->getLODs().size();
+		dynamicOffset += sizeof(LODMaterialData) * parentModel.getLODs().size();
 		newData.resize(dynamicOffset);
 
-		for(uint32_t lodIndex = 0; lodIndex < modelPtr->getLODs().size(); lodIndex++)
+		for(uint32_t lodIndex = 0; lodIndex < parentModel.getLODs().size(); lodIndex++)
 		{
 			dynamicOffset = Device::getAlignment(dynamicOffset, 8);
 
@@ -272,17 +272,17 @@ namespace PaperRenderer
 			memcpy(newData.data() + sizeof(LODMaterialData) * lodIndex, &lodMaterialData, sizeof(LODMaterialData));
 			
 			//LOD mesh groups data
-			dynamicOffset += sizeof(MaterialMeshGroup) * modelPtr->getLODs().at(lodIndex).materialMeshes.size();
+			dynamicOffset += sizeof(MaterialMeshGroup) * parentModel.getLODs().at(lodIndex).materialMeshes.size();
 			newData.resize(dynamicOffset);
 
-			for(uint32_t matIndex = 0; matIndex < modelPtr->getLODs().at(lodIndex).materialMeshes.size(); matIndex++)
+			for(uint32_t matIndex = 0; matIndex < parentModel.getLODs().at(lodIndex).materialMeshes.size(); matIndex++)
 			{
 				dynamicOffset = Device::getAlignment(dynamicOffset, 8);
 				newData.resize(dynamicOffset);
 
 				//pointers
-				LODMesh const* lodMeshPtr = &modelPtr->getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh;
-				CommonMeshGroup const* meshGroupPtr = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&modelPtr->getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh);
+				LODMesh const* lodMeshPtr = &parentModel.getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh;
+				CommonMeshGroup const* meshGroupPtr = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&parentModel.getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh);
 
 				//material mesh group data
 				MaterialMeshGroup materialMeshGroup = {};
@@ -306,7 +306,7 @@ namespace PaperRenderer
 		shaderModelInstance.position = transform.position;
 		shaderModelInstance.qRotation = transform.rotation;
 		shaderModelInstance.scale = transform.scale;
-		shaderModelInstance.modelDataOffset = modelPtr->shaderDataLocation;
+		shaderModelInstance.modelDataOffset = parentModel.shaderDataLocation;
 
 		return shaderModelInstance;
     }
@@ -323,9 +323,9 @@ namespace PaperRenderer
 		{
 			return uniqueGeometryData.blas.get();
 		}
-		else if(modelPtr->getBlasPtr())
+		else if(parentModel.getBlasPtr())
 		{
-			return modelPtr->getBlasPtr();
+			return parentModel.getBlasPtr();
 		}
 		else
 		{

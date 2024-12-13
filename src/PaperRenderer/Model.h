@@ -220,7 +220,7 @@ namespace PaperRenderer
         ModelTransformation transform = {};
 
         class RenderEngine& renderer;
-        Model const* modelPtr = NULL;
+        const Model& parentModel;
 
         friend class RenderEngine;
         friend class RenderPass;
@@ -233,14 +233,14 @@ namespace PaperRenderer
         
     public:
         //uniqueGeometry should only be set to true if the instance is animate
-        ModelInstance(RenderEngine& renderer, Model const* parentModel, bool uniqueGeometry);
+        ModelInstance(RenderEngine& renderer, const Model& parentModel, bool uniqueGeometry);
         ~ModelInstance();
         ModelInstance(const ModelInstance&) = delete;
 
         void setTransformation(const ModelTransformation& newTransformation);
         //void setVisibility(class RenderPass* renderPass, bool newVisibility); //renderPass can be NULL if setting the visibility for all is desired
         
-        Model const* getParentModelPtr() const { return modelPtr; }
+        const Model& getParentModel() const { return parentModel; }
         Buffer const* getUniqueVBO() const { return uniqueGeometryData.isUsed ? uniqueGeometryData.uniqueVBO.get() : NULL; }
         class BLAS const* getBLAS() const; //Returns unique BLAS if created, else model BLAS. Returns null if either
         const ModelTransformation& getTransformation() const { return transform; };

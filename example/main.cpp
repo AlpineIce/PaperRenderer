@@ -51,6 +51,7 @@ struct MaterialParameters
 struct SceneData
 {
     std::unordered_map<std::string, std::unique_ptr<PaperRenderer::Model>> models;
+    std::unordered_map<PaperRenderer::Model const*, PaperRenderer::ModelTransformation> instanceTransforms; //this example does 1 instance per model, so thats why its 1:1
     std::unordered_map<std::string, MaterialParameters> materialInstancesData;
     std::unique_ptr<PaperRenderer::Camera> camera;
 };
@@ -157,6 +158,14 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
             };
 
             returnData.models[modelName] = std::make_unique<PaperRenderer::Model>(renderer, modelInfo);
+
+            //model transform
+            PaperRenderer::ModelTransformation transform = {
+                .position = node.translation.size() ? glm::vec3(node.translation[0], node.translation[1], node.translation[2]) : glm::vec3(0.0f),
+                .scale = node.scale.size() ? glm::vec3(node.scale[0], node.scale[1], node.scale[2]) : glm::vec3(1.0f),
+                .rotation = node.rotation.size() ? glm::quat(node.rotation[0], node.rotation[1], node.rotation[2], node.rotation[3]) : glm::quat(1.0f, 0.0f, 0.0f, 0.0f)
+            };
+            returnData.instanceTransforms[returnData.models[modelName].get()] = transform;
         }
         else if(node.camera != -1 && !returnData.camera) //camera
         {
@@ -598,13 +607,6 @@ public:
         //----------ATTACHMENTS----------//
         
         //color attachment
-        VkClearValue colorClearValue = {};
-        colorClearValue.color = {0.0f, 0.0f, 0.0f, 0.0f};
-
-        VkClearValue depthClearValue = {};
-        depthClearValue.color = {0.0f, 0.0f, 0.0, 0.0f};
-
-        //attachments
         std::vector<VkRenderingAttachmentInfo> colorAttachments;
         colorAttachments.push_back({    //output
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -613,7 +615,7 @@ public:
             .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
             .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-            .clearValue = colorClearValue 
+            .clearValue = { 0.0f, 0.0f, 0.0f, 0.0f } 
         });
     
 
@@ -848,9 +850,128 @@ void rayTraceRender(
     rtRenderPass.render(rtRenderInfo, syncInfo);
 }
 
-void rasterRender()
+void rasterRender(
+    PaperRenderer::RenderEngine& renderer, 
+    PaperRenderer::RenderPass& renderPass,
+    const PaperRenderer::Buffer& pointLightsBuffer,
+    const PaperRenderer::Buffer& lightInfoBuffer,
+    const PaperRenderer::Camera& camera,
+    const HDRBuffer& hdrBuffer,
+    const PaperRenderer::SynchronizationInfo& syncInfo
+)
 {
-    //PaperRenderer::RenderPassInfo
+    //pre-render barriers
+    std::vector<VkImageMemoryBarrier2> preRenderImageBarriers;
+    preRenderImageBarriers.push_back({ //HDR buffer undefined -> general layout; required for correct shader access
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .pNext = NULL,
+        .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
+        .srcAccessMask = VK_ACCESS_2_NONE,
+        .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        .dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = hdrBuffer.image->getImage(),
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        }
+    });
+    
+    const VkDependencyInfo preRenderDependency = {
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .pNext = NULL,
+        .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+        .memoryBarrierCount = 0,
+        .pMemoryBarriers = NULL,
+        .bufferMemoryBarrierCount = 0,
+        .pBufferMemoryBarriers = NULL,
+        .imageMemoryBarrierCount = (uint32_t)preRenderImageBarriers.size(),
+        .pImageMemoryBarriers = preRenderImageBarriers.data()
+    };
+
+    //color attachment
+    std::vector<VkRenderingAttachmentInfo> colorAttachments;
+    colorAttachments.push_back({
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = NULL,
+        .imageView = hdrBuffer.view,
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue = { 0.1f, 0.1f, 0.1f, 1.0f }
+    });
+
+    //depth attachment
+    const VkRenderingAttachmentInfo depthAttachment = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = NULL,
+        .imageView = hdrBuffer.view,
+        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = VK_NULL_HANDLE,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue = { 1.0f, 0 }
+    };
+
+    //viewport, scissors, render area
+    const VkViewport viewport = {
+        .x = 0.0f,
+        .y = 0.0f,
+        .width = (float)(renderer.getSwapchain().getExtent().width),
+        .height = (float)(renderer.getSwapchain().getExtent().height),
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f
+    };
+
+    const VkRect2D scissors = {
+        .offset = { 0, 0 },
+        .extent = renderer.getSwapchain().getExtent()
+    };
+
+    const VkRect2D renderArea = {
+        .offset = { 0, 0 },
+        .extent = renderer.getSwapchain().getExtent()
+    };
+
+    //render pass info
+    const PaperRenderer::RenderPassInfo renderPassInfo = {
+        .camera = camera,
+        .colorAttachments = colorAttachments,
+        .depthAttachment = &depthAttachment,
+        .stencilAttachment = NULL,
+        .viewports = { viewport },
+        .scissors = { scissors },
+        .renderArea = renderArea,
+        .preRenderBarriers = &preRenderDependency,
+        .postRenderBarriers = NULL,
+        .depthCompareOp = VK_COMPARE_OP_LESS
+    };
+
+    //render
+    VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(PaperRenderer::QueueType::GRAPHICS);
+
+    VkCommandBufferBeginInfo cmdBufferBeginInfo = {};
+    cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cmdBufferBeginInfo.pNext = NULL;
+    cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    cmdBufferBeginInfo.pInheritanceInfo = NULL;
+    
+    vkBeginCommandBuffer(cmdBuffer, &cmdBufferBeginInfo);
+    renderPass.render(cmdBuffer, renderPassInfo);
+    vkEndCommandBuffer(cmdBuffer);
+
+    renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
 }
 
 void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::Camera& camera, PaperRenderer::Buffer& rtUBO)
@@ -975,13 +1096,29 @@ int main()
     //load glTF scene
     SceneData scene = loadSceneData(renderer);
 
+    //----------MODEL INSTANCES----------//
+
+    std::vector<std::unique_ptr<PaperRenderer::ModelInstance>> modelInstances;
+    modelInstances.reserve(scene.models.size());
+
+    //create 1 instance per model for this example
+    for(const auto& [name, model] : scene.models)
+    {
+        //unique geometry is false because animation is currently unavailable
+        std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *model, false);
+
+        //set transformation
+        instance->setTransformation(scene.instanceTransforms[model.get()]);
+        modelInstances.push_back(std::move(instance));
+    }
+
     //----------UNIFORM AND STORAGE BUFFERS----------//
 
     //point lights buffer
     std::unique_ptr<PaperRenderer::Buffer> pointLightsBuffer = createPointLightsBuffer(renderer);
 
     std::unique_ptr<PaperRenderer::Buffer> lightingUniformBuffer = createLightInfoUniformBuffer(renderer);
-
+    
     //----------MATERIALS----------//
 
     //base raster material

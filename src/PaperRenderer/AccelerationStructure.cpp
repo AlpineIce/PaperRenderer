@@ -145,12 +145,12 @@ namespace PaperRenderer
 
     //----------BLAS DEFINITIONS----------//
 
-    BLAS::BLAS(RenderEngine& renderer, Model const* model, Buffer const* vbo)
+    BLAS::BLAS(RenderEngine& renderer, const Model& model, Buffer const* vbo)
         :AS(renderer),
-        parentModelPtr(model)
+        parentModel(model),
+        vboPtr(vbo)
+
     {
-        if(!model) throw std::runtime_error("Model pointer cannot be null in BLAS creation");
-        if(vbo) vboPtr = vbo;
     }
 
     BLAS::~BLAS()
@@ -285,7 +285,7 @@ namespace PaperRenderer
 
             //write description data
             InstanceDescription descriptionShaderData = {};
-            descriptionShaderData.modelDataOffset = instance->getParentModelPtr()->getShaderDataLocation(); //TODO MODEL DATA COMPACTION ERROR
+            descriptionShaderData.modelDataOffset = instance->getParentModel().getShaderDataLocation(); //TODO MODEL DATA COMPACTION ERROR
 
             std::vector<char> descriptionData(sizeof(InstanceDescription));
             memcpy(descriptionData.data(), &descriptionShaderData, descriptionData.size());
@@ -360,7 +360,7 @@ namespace PaperRenderer
             BLAS& blas = (BLAS&)(op.accelerationStructure);
 
             //get per material group geometry data
-            for(const MaterialMesh& materialMesh : blas.getParentModelPtr()->getLODs().at(0).materialMeshes) //use LOD 0 for BLAS
+            for(const MaterialMesh& materialMesh : blas.getParentModel().getLODs().at(0).materialMeshes) //use LOD 0 for BLAS
             {
                 //mesh data
                 VkDeviceSize vertexCount = materialMesh.mesh.vertexCount;
@@ -375,9 +375,9 @@ namespace PaperRenderer
                 trianglesGeometry.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
                 trianglesGeometry.vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = blas.getVBOAddress()};
                 trianglesGeometry.maxVertex = vertexCount;
-                trianglesGeometry.vertexStride = blas.getParentModelPtr()->getVertexDescription().stride;
+                trianglesGeometry.vertexStride = blas.getParentModel().getVertexDescription().stride;
                 trianglesGeometry.indexType = VK_INDEX_TYPE_UINT32;
-                trianglesGeometry.indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = blas.getParentModelPtr()->getIBOAddress()};
+                trianglesGeometry.indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = blas.getParentModel().getIBOAddress()};
 
                 //geometries
                 VkAccelerationStructureGeometryKHR structureGeometry = {};

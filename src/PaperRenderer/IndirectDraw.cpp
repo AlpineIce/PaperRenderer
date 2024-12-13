@@ -127,7 +127,7 @@ namespace PaperRenderer
     {        
         if(!meshesData.count(instanceMeshData))
         {
-            meshesData[instanceMeshData].parentModelPtr = instance->getParentModelPtr();
+            meshesData[instanceMeshData].parentModelPtr = &instance->getParentModel();
             rebuild = true;
         }
 

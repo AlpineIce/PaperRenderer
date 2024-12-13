@@ -57,18 +57,18 @@ namespace PaperRenderer
     class BLAS : public AS
     {
     private:
-        class Model const* parentModelPtr;
+        const class Model& parentModel;
         Buffer const* vboPtr = NULL;
 
     public:
         //If vbo is null, BLAS will instead use those directly from the model. Model is needed
         //for data describing different geometries
-        BLAS(RenderEngine& renderer, Model const* model, Buffer const* vbo);
+        BLAS(RenderEngine& renderer, const Model& model, Buffer const* vbo);
         ~BLAS();
         BLAS(const BLAS&) = delete;
 
         VkDeviceAddress getVBOAddress() const { return vboPtr->getBufferDeviceAddress(); }
-        Model const* getParentModelPtr() const { return parentModelPtr; }
+        const Model& getParentModel() const { return parentModel; }
     };
 
     //top level acceleration structure

@@ -299,15 +299,12 @@ namespace PaperRenderer
 
     void RenderEngine::addObject(ModelInstance* object)
     {
-        if(object->getParentModelPtr() != NULL)
-        {
-            //self reference
-            object->rendererSelfIndex = renderingModelInstances.size();
-            renderingModelInstances.push_back(object);
-            
-            //queue data transfer
-            toUpdateModelInstances.push_front(object);
-        }
+        //self reference
+        object->rendererSelfIndex = renderingModelInstances.size();
+        renderingModelInstances.push_back(object);
+        
+        //queue data transfer
+        toUpdateModelInstances.push_front(object);
     }
 
     void RenderEngine::removeObject(ModelInstance* object)
