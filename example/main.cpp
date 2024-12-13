@@ -1500,6 +1500,9 @@ int main()
         //increment final semaphore value to wait on
         finalSemaphoreValue += 4;
     }
+
+    //remember to wait for the device before exiting
+    vkDeviceWaitIdle(renderer.getDevice().getDevice());
     
     return 0;
 }

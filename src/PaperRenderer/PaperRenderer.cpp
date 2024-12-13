@@ -8,7 +8,6 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE 
 #include "glm.hpp"
 
-#include <iostream>
 #include <math.h>
 
 namespace PaperRenderer
@@ -155,7 +154,6 @@ namespace PaperRenderer
 
         //finish up
         vkDeviceWaitIdle(device.getDevice());
-        std::cout << "Renderer initialization complete" << std::endl;
     }
 
     RenderEngine::~RenderEngine()
