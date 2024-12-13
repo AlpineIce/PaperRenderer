@@ -96,7 +96,7 @@ void main()
     else
     {
         //environment map
-        totalLight = vec3(0.0, 0.0, 0.0);
+        totalLight = vec3(0.5, 0.5, 1.0);
     }
 
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(totalLight, 1.0));

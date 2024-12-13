@@ -4,6 +4,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "lib/tinygltf/tiny_gltf.h"
 #include <fstream>
+#include <functional>
 
 std::vector<uint32_t> readFile(const std::string& location)
 {
@@ -265,7 +266,7 @@ std::unique_ptr<PaperRenderer::Buffer> createLightInfoUniformBuffer(PaperRendere
 
     PaperRenderer::BufferInfo uniformBufferInfo = {
         .size = sizeof(LightInfo),
-        .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR,
+        .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
         .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
     };
     std::unique_ptr<PaperRenderer::Buffer> uniformBuffer(std::make_unique<PaperRenderer::Buffer>(renderer, uniformBufferInfo));
@@ -396,7 +397,7 @@ private:
                         },
                         .colorAttachmentFormats = { 
                             { renderer.getSwapchain().getFormat() }
-                        }/*,
+                        },
                         .rasterInfo = {
                             .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
                             .pNext = NULL,
@@ -404,14 +405,14 @@ private:
                             .depthClampEnable = VK_FALSE,
                             .rasterizerDiscardEnable = VK_FALSE,
                             .polygonMode = VK_POLYGON_MODE_FILL,
-                            .cullMode = VK_CULL_MODE_BACK_BIT, //no depth testing
-                            .frontFace = VK_CULL_MODE_NONE,
+                            .cullMode = VK_CULL_MODE_NONE, //no depth testing
+                            .frontFace = VK_FRONT_FACE_CLOCKWISE,
                             .depthBiasEnable = VK_FALSE,
                             .depthBiasConstantFactor = 0.0f,
                             .depthBiasClamp = 0.0f,
                             .depthBiasSlopeFactor = 0.0f,
                             .lineWidth = 1.0f
-                        }*/
+                        }
                     }
                 },
                 false
@@ -507,7 +508,7 @@ public:
         preRenderImageBarriers.push_back({
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .pNext = NULL,
-            .srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+            .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
             .srcAccessMask = VK_ACCESS_2_NONE,
             .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
             .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
@@ -527,7 +528,7 @@ public:
         preRenderImageBarriers.push_back({
                 .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
                 .pNext = NULL,
-                .srcStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+                .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
                 .srcAccessMask = VK_ACCESS_2_NONE,
                 .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
                 .dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
@@ -691,6 +692,179 @@ public:
     }
 };
 
+//----------RENDER PASSES----------//
+
+//rt UBO
+struct RayTraceInfo
+{
+    glm::mat4 projection;
+    glm::mat4 view;
+    uint64_t modelDataReference;
+    uint64_t frameNumber;
+};
+
+std::unique_ptr<PaperRenderer::Buffer> createRTInfoUBO(PaperRenderer::RenderEngine& renderer, const PaperRenderer::Camera& camera)
+{
+    RayTraceInfo uniformBufferData = {
+        .projection = camera.getProjection(),
+        .view = camera.getViewMatrix(),
+        .modelDataReference = renderer.getModelDataBuffer().getBufferDeviceAddress(),
+        .frameNumber = 0
+    };
+
+    PaperRenderer::BufferInfo uniformBufferInfo = {
+        .size = sizeof(RayTraceInfo),
+        .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
+        .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
+    };
+    std::unique_ptr<PaperRenderer::Buffer> uniformBuffer(std::make_unique<PaperRenderer::Buffer>(renderer, uniformBufferInfo));
+
+    PaperRenderer::BufferWrite uboDataWrite = {
+        .offset = 0,
+        .size = sizeof(RayTraceInfo),
+        .data = &uniformBufferData
+    };
+    uniformBuffer->writeToBuffer({ uboDataWrite });
+
+    return uniformBuffer;
+}
+
+void rayTraceRender(
+    PaperRenderer::RenderEngine& renderer, 
+    PaperRenderer::RayTraceRender& rtRenderPass,
+    const PaperRenderer::Buffer& pointLightsBuffer,
+    const PaperRenderer::Buffer& lightInfoBuffer,
+    const PaperRenderer::Buffer& rtInfoUBO,
+    const PaperRenderer::Camera& camera,
+    const HDRBuffer& hdrBuffer,
+    const PaperRenderer::SynchronizationInfo& syncInfo
+)
+{
+    //pre-render barriers
+    std::vector<VkImageMemoryBarrier2> preRenderImageBarriers;
+    preRenderImageBarriers.push_back({ //HDR buffer undefined -> general layout; required for correct shader access
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .pNext = NULL,
+        .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
+        .srcAccessMask = VK_ACCESS_2_NONE,
+        .dstStageMask = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+        .dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = hdrBuffer.image->getImage(),
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        }
+    });
+    
+    const VkDependencyInfo preRenderDependency = {
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+        .pNext = NULL,
+        .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+        .memoryBarrierCount = 0,
+        .pMemoryBarriers = NULL,
+        .bufferMemoryBarrierCount = 0,
+        .pBufferMemoryBarriers = NULL,
+        .imageMemoryBarrierCount = (uint32_t)preRenderImageBarriers.size(),
+        .pImageMemoryBarriers = preRenderImageBarriers.data()
+    };
+
+    //descriptor writes
+    const PaperRenderer::DescriptorWrites descriptorWrites = {
+        .bufferWrites = {
+            {
+                .infos = {{
+                    .buffer = pointLightsBuffer.getBuffer(),
+                    .offset = 0,
+                    .range = VK_WHOLE_SIZE
+                }},
+                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .binding = 1
+            },
+            {
+                .infos = {{
+                    .buffer = lightInfoBuffer.getBuffer(),
+                    .offset = 0,
+                    .range = VK_WHOLE_SIZE
+                }},
+                .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .binding = 2
+            },
+            {
+                .infos = {{
+                    .buffer = rtInfoUBO.getBuffer(),
+                    .offset = 0,
+                    .range = VK_WHOLE_SIZE
+                }},
+                .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .binding = 4
+            },
+
+        },
+        .imageWrites = {
+            {
+                .infos = {{
+                    .sampler = hdrBuffer.sampler,
+                    .imageView = hdrBuffer.view,
+                    .imageLayout = VK_IMAGE_LAYOUT_GENERAL
+                }},
+                .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                .binding = 3
+            }
+        },
+        .bufferViewWrites = {},
+        .accelerationStructureWrites = {
+            {
+                .accelerationStructures = { &rtRenderPass.getTLAS() },
+                .binding = 0
+            },
+        }
+    };
+
+    //rt render info
+    const PaperRenderer::RayTraceRenderInfo rtRenderInfo = {
+        .tlasBuildMode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
+        .tlasBuildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
+        .image = *hdrBuffer.image,
+        .camera = camera,
+        .preRenderBarriers = &preRenderDependency,
+        .postRenderBarriers = NULL, //no post render barrier
+        .rtDescriptorWrites = descriptorWrites
+    };
+    
+    rtRenderPass.render(rtRenderInfo, syncInfo);
+}
+
+void rasterRender()
+{
+    //PaperRenderer::RenderPassInfo
+}
+
+void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::Camera& camera, PaperRenderer::Buffer& rtUBO)
+{
+    //update RT UBO
+    RayTraceInfo rtInfo = {
+        .projection = camera.getProjection(),
+        .view = camera.getViewMatrix(),
+        .modelDataReference = renderer.getModelDataBuffer().getBufferDeviceAddress(),
+        .frameNumber = renderer.getFramesRenderedCount()
+    };
+
+    PaperRenderer::BufferWrite rtInfoWrite = {
+        .offset = 0,
+        .size = sizeof(RayTraceInfo),
+        .data = &rtInfo
+    };
+
+    rtUBO.writeToBuffer({ rtInfoWrite });
+}
+
 //----------MATERIALS----------//
 
 //default material class inherits PaperRenderer::Material
@@ -772,8 +946,6 @@ public:
         MaterialInstance::bind(cmdBuffer, descriptorWrites);
     }
 };
-
-
 
 
 
@@ -959,7 +1131,11 @@ int main()
             },
         }}
     };
+
+    //ubo
+    std::unique_ptr<PaperRenderer::Buffer> rtInfoUBO = createRTInfoUBO(renderer, *scene.camera);
     
+    //render pass
     PaperRenderer::RayTraceRender rtRenderPass(renderer, tlas, generalShaders, rtDescriptors, {});
 
     //----------HDR RENDERING BUFFER----------//
@@ -969,6 +1145,25 @@ int main()
 
     //HDR buffer copy render pass
     BufferCopyPass bufferCopyPass(renderer, hdrBuffer);
+
+    //----------MISC----------//
+
+    //swapchain resize callback
+    auto swapchainResizeFunction = [&](VkExtent2D newExtent) {
+        //destroy old HDR buffer
+        hdrBuffer.image.reset();
+        vkDestroyImageView(renderer.getDevice().getDevice(), hdrBuffer.view, nullptr);
+        vkDestroySampler(renderer.getDevice().getDevice(), hdrBuffer.sampler, nullptr);
+
+        //create new HDR buffer
+        hdrBuffer = getHDRBuffer(renderer, VK_IMAGE_LAYOUT_GENERAL);
+
+        //update camera
+        scene.camera->updateCameraProjection();
+    };
+    renderer.getSwapchain().setSwapchainRebuildCallback(swapchainResizeFunction);
+
+    //----------RENDER LOOP----------//
 
     //synchronization
     uint64_t finalSemaphoreValue = 0;
@@ -988,6 +1183,9 @@ int main()
         };
         vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, UINT64_MAX);
 
+        //update uniform  buffers
+        updateUniformBuffers(renderer, *scene.camera, *rtInfoUBO);
+
         //begin frame sync info
         PaperRenderer::SynchronizationInfo transferSyncInfo = {};
         transferSyncInfo.queueType = PaperRenderer::QueueType::TRANSFER;
@@ -1001,12 +1199,21 @@ int main()
         //begin frame
         const VkSemaphore& swapchainSemaphore = renderer.beginFrame(transferSyncInfo, asSyncInfo);
 
+        //render pass
+        PaperRenderer::SynchronizationInfo rtRenderSync = {
+            .queueType = PaperRenderer::QueueType::COMPUTE,
+            .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValue + 2 } },
+            .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue + 3 } }
+        };
+        rayTraceRender(renderer, rtRenderPass, *pointLightsBuffer, *lightingUniformBuffer, *rtInfoUBO, *scene.camera, hdrBuffer, rtRenderSync);
+
         //copy HDR buffer to swapchain
-        PaperRenderer::SynchronizationInfo bufferCopySyncInfo = {};
-        bufferCopySyncInfo.queueType = PaperRenderer::QueueType::GRAPHICS;
-        bufferCopySyncInfo.binaryWaitPairs = { { swapchainSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT } };
-        bufferCopySyncInfo.timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, finalSemaphoreValue + 2 } };
-        bufferCopySyncInfo.timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, finalSemaphoreValue + 3 } };
+        PaperRenderer::SynchronizationInfo bufferCopySyncInfo = {
+            .queueType = PaperRenderer::QueueType::GRAPHICS,
+            .binaryWaitPairs = { { swapchainSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT } },
+            .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, finalSemaphoreValue + 3 } },
+            .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue + 4 } }
+        };
         bufferCopyPass.render(bufferCopySyncInfo, *scene.camera, hdrBuffer, false);
 
         //end frame

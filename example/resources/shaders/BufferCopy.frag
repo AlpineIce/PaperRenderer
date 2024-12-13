@@ -132,5 +132,5 @@ void main()
     pixel.y = pow(pixel.y, inputData.gammaCorrection);
     pixel.z = pow(pixel.z, inputData.gammaCorrection);
     
-    color = vec4(1.0, 0.0, 1.0, 1.0);//pixel;
+    color = pixel;
 }
