@@ -437,7 +437,7 @@ namespace PaperRenderer
         sbtBuffer = std::make_unique<Buffer>(renderer, deviceBufferInfo);
 
         //queue data transfer
-        renderer.getEngineStagingBuffer().queueDataTransfers(*sbtBuffer, 0, sbtRawData);
+        renderer.getStagingBuffer().queueDataTransfers(*sbtBuffer, 0, sbtRawData);
 
         //set SBT addresses
         VkDeviceAddress dynamicOffset = sbtBuffer->getBufferDeviceAddress();

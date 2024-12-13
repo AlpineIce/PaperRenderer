@@ -115,7 +115,7 @@ namespace PaperRenderer
             memcpy(data.data(), &command, sizeof(DrawCommand));
 
             //queue data transfer
-            renderer.getEngineStagingBuffer().queueDataTransfers(
+            renderer.getStagingBuffer().queueDataTransfers(
                 *drawCommandsBuffer,
                 sizeof(DrawCommand) * meshInstancesData.drawCommandIndex,
                 data

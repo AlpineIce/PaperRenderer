@@ -279,7 +279,7 @@ namespace PaperRenderer
 
             //queue material data write
             const std::vector<char>& materialData = instance->getRenderPassInstanceData(this);
-            renderer.getEngineStagingBuffer().queueDataTransfers(instancesDataBuffer->getBuffer(), instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset, materialData);
+            renderer.getStagingBuffer().queueDataTransfers(instancesDataBuffer->getBuffer(), instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset, materialData);
 
             //write instance data
             ModelInstance::RenderPassInstance instanceShaderData = {};
@@ -291,7 +291,7 @@ namespace PaperRenderer
             memcpy(instanceData.data(), &instanceShaderData, instanceData.size());
             
             //queue data transfer
-            renderer.getEngineStagingBuffer().queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::RenderPassInstance) * instance->renderPassSelfReferences.at(this).selfIndex, instanceData);
+            renderer.getStagingBuffer().queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::RenderPassInstance) * instance->renderPassSelfReferences.at(this).selfIndex, instanceData);
         }
 
         //clear deques

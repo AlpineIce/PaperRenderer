@@ -35,25 +35,6 @@ namespace PaperRenderer
             queuePipelineBuild = false;
         }
 
-        //update TLAS instances
-        tlas.queueInstanceTransfers(this);
-
-        //build TLAS (build timeline semaphore is implicitly signaled)
-        renderer.asBuilder.queueAs({
-            .accelerationStructure = tlas,
-            .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-            .mode = rtRenderInfo.tlasBuildMode,
-            .flags = rtRenderInfo.tlasBuildFlags
-        });
-        renderer.asBuilder.setBuildData();
-
-        SynchronizationInfo tlasBuildSyncInfo = {};
-        tlasBuildSyncInfo.queueType = COMPUTE;
-        tlasBuildSyncInfo.binaryWaitPairs = syncInfo.binaryWaitPairs;
-        tlasBuildSyncInfo.timelineWaitPairs = syncInfo.timelineWaitPairs;
-        tlasBuildSyncInfo.timelineWaitPairs.push_back({ renderer.getEngineStagingBuffer().getTransferSemaphore() });
-        renderer.asBuilder.submitQueuedOps(tlasBuildSyncInfo, VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
-
         //command buffer
         VkCommandBufferBeginInfo commandInfo;
         commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -65,63 +46,48 @@ namespace PaperRenderer
 
         vkBeginCommandBuffer(cmdBuffer, &commandInfo);
 
-        //bind pipeline
-        vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline->getPipeline());
-
-        //write acceleration structure
-        PaperRenderer::AccelerationStructureDescriptorWrites accelStructureWrites = {};
-        accelStructureWrites.accelerationStructures = { &tlas };
-        accelStructureWrites.binding = 0;
-        
-        //write instance descriptions
-        VkDescriptorBufferInfo instanceDescriptionWriteInfo = {};
-        instanceDescriptionWriteInfo.buffer = tlas.getInstancesBuffer().getBuffer();
-        instanceDescriptionWriteInfo.offset = tlas.getInstanceDescriptionsOffset();
-        instanceDescriptionWriteInfo.range = tlas.getInstanceDescriptionsRange();
-
-        PaperRenderer::BuffersDescriptorWrites instanceDescriptionWrite = {};
-        instanceDescriptionWrite.binding = 1;
-        instanceDescriptionWrite.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        instanceDescriptionWrite.infos = { instanceDescriptionWriteInfo };
-
-        //append
-        rtRenderInfo.rtDescriptorWrites.accelerationStructureWrites.push_back(accelStructureWrites);
-        rtRenderInfo.rtDescriptorWrites.bufferWrites.push_back(instanceDescriptionWrite);
-
-        if(rtRenderInfo.rtDescriptorWrites.bufferViewWrites.size() || rtRenderInfo.rtDescriptorWrites.bufferWrites.size() || 
-            rtRenderInfo.rtDescriptorWrites.imageWrites.size() || rtRenderInfo.rtDescriptorWrites.accelerationStructureWrites.size())
-        {
-            VkDescriptorSet rtDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(0));
-            DescriptorAllocator::writeUniforms(renderer, rtDescriptorSet, rtRenderInfo.rtDescriptorWrites);
-
-            DescriptorBind bindingInfo = {};
-            bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
-            bindingInfo.set = rtDescriptorSet;
-            bindingInfo.descriptorSetIndex = 0;
-            bindingInfo.layout = pipeline->getLayout();
-            
-            DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
-        }
-
-        //pre-pipeline barrier
+        //pre-render barriers
         if(rtRenderInfo.preRenderBarriers)
         {
             vkCmdPipelineBarrier2(cmdBuffer, rtRenderInfo.preRenderBarriers);
         }
 
-        //trace rays
-        vkCmdTraceRaysKHR(
-            cmdBuffer,
-            &pipeline->getShaderBindingTableData().raygenShaderBindingTable,
-            &pipeline->getShaderBindingTableData().missShaderBindingTable,
-            &pipeline->getShaderBindingTableData().hitShaderBindingTable,
-            &pipeline->getShaderBindingTableData().callableShaderBindingTable,
-            rtRenderInfo.image.getExtent().width,
-            rtRenderInfo.image.getExtent().height,
-            1
-        );
+        //only trace rays if acceleration structure is valid
+        if(tlas.getAccelerationStructure())
+        {
+            //bind pipeline
+            vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline->getPipeline());
 
-        //post-pipeline barrier
+            //descriptor writes
+            if(rtRenderInfo.rtDescriptorWrites.bufferViewWrites.size() || rtRenderInfo.rtDescriptorWrites.bufferWrites.size() || 
+                rtRenderInfo.rtDescriptorWrites.imageWrites.size() || rtRenderInfo.rtDescriptorWrites.accelerationStructureWrites.size())
+            {
+                VkDescriptorSet rtDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(0));
+                DescriptorAllocator::writeUniforms(renderer, rtDescriptorSet, rtRenderInfo.rtDescriptorWrites);
+
+                DescriptorBind bindingInfo = {};
+                bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
+                bindingInfo.set = rtDescriptorSet;
+                bindingInfo.descriptorSetIndex = 0;
+                bindingInfo.layout = pipeline->getLayout();
+                
+                DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
+            }
+
+            //trace rays
+            vkCmdTraceRaysKHR(
+                cmdBuffer,
+                &pipeline->getShaderBindingTableData().raygenShaderBindingTable,
+                &pipeline->getShaderBindingTableData().missShaderBindingTable,
+                &pipeline->getShaderBindingTableData().hitShaderBindingTable,
+                &pipeline->getShaderBindingTableData().callableShaderBindingTable,
+                rtRenderInfo.image.getExtent().width,
+                rtRenderInfo.image.getExtent().height,
+                1
+            );
+        }
+
+        //post-render barriers
         if(rtRenderInfo.postRenderBarriers)
         {
             vkCmdPipelineBarrier2(cmdBuffer, rtRenderInfo.postRenderBarriers);
@@ -133,6 +99,23 @@ namespace PaperRenderer
         //submit
         syncInfo.timelineWaitPairs.push_back(renderer.asBuilder.getBuildSemaphore());
         renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+    }
+
+    void RayTraceRender::updateTLAS(VkBuildAccelerationStructureModeKHR mode, VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo)
+    {
+        //update TLAS instances (signals transfer semaphore in staging buffer)
+        tlas.queueInstanceTransfers(*this);
+
+        //build TLAS
+        renderer.asBuilder.queueAs({
+            .accelerationStructure = tlas,
+            .type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+            .mode = mode,
+            .flags = flags
+        });
+
+        syncInfo.timelineWaitPairs.push_back({ renderer.getStagingBuffer().getTransferSemaphore() });
+        renderer.asBuilder.submitQueuedOps(syncInfo, VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
     }
 
     void RayTraceRender::rebuildPipeline()

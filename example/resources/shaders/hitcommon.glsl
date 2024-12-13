@@ -11,7 +11,7 @@ struct InstanceDescription
     uint modelDataOffset;
 };
 
-layout(scalar, set = 0, binding = 1) readonly buffer InstanceDescriptions
+layout(scalar, set = 0, binding = 5) readonly buffer InstanceDescriptions
 {
     InstanceDescription descriptions[];
 } instanceDescriptions;

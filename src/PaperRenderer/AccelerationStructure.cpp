@@ -245,7 +245,7 @@ namespace PaperRenderer
         }
     }
 
-    void TLAS::queueInstanceTransfers(RayTraceRender const* rtRender)
+    void TLAS::queueInstanceTransfers(const RayTraceRender& rtRender)
     {
         //set next update size to 0
         nextUpdateSize = 0;
@@ -270,8 +270,8 @@ namespace PaperRenderer
 
             //get sbt offset
             uint32_t sbtOffset = 
-                rtRender->getPipeline().getShaderBindingTableData().shaderBindingTableOffsets.
-                materialShaderGroupOffsets.at(instance->rtRenderSelfReferences.at(rtRender));
+                rtRender.getPipeline().getShaderBindingTableData().shaderBindingTableOffsets.
+                materialShaderGroupOffsets.at(instance->rtRenderSelfReferences.at(&rtRender));
 
             //write instance data
             ModelInstance::AccelerationStructureInstance instanceShaderData = {};
@@ -291,8 +291,8 @@ namespace PaperRenderer
             memcpy(descriptionData.data(), &descriptionShaderData, descriptionData.size());
             
             //queue data transfers
-            renderer.getEngineStagingBuffer().queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::AccelerationStructureInstance) * instanceIndex, instanceData);
-            renderer.getEngineStagingBuffer().queueDataTransfers(*instancesBuffer, instanceDescriptionsOffset + sizeof(InstanceDescription) * instance->rendererSelfIndex, descriptionData);
+            renderer.getStagingBuffer().queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::AccelerationStructureInstance) * instanceIndex, instanceData);
+            renderer.getStagingBuffer().queueDataTransfers(*instancesBuffer, instanceDescriptionsOffset + sizeof(InstanceDescription) * instance->rendererSelfIndex, descriptionData);
 
             instanceIndex++;
         }
@@ -300,7 +300,7 @@ namespace PaperRenderer
         //record transfers
         SynchronizationInfo syncInfo = {};
         syncInfo.queueType = TRANSFER;
-        renderer.getEngineStagingBuffer().submitQueuedTransfers(syncInfo);
+        renderer.getStagingBuffer().submitQueuedTransfers(syncInfo);
     }
 
     void TLAS::addInstance(ModelInstance *instance)
@@ -543,6 +543,9 @@ namespace PaperRenderer
 
     void AccelerationStructureBuilder::submitQueuedOps(const SynchronizationInfo& syncInfo, VkAccelerationStructureTypeKHR type)
     {
+        //set build data
+        setBuildData();
+
         //rebuild scratch buffer if needed
         const VkDeviceSize requiredScratchSize = getScratchSize(buildData.blasDatas, buildData.tlasDatas);
         if(!scratchBuffer || scratchBuffer->getSize() < requiredScratchSize)

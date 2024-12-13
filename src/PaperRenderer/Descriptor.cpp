@@ -142,8 +142,6 @@ namespace PaperRenderer
             }
         }
 
-        tlasReferences.reserve(descriptorWritesInfo.accelerationStructureWrites.size());
-        tlasWriteInfos.reserve(descriptorWritesInfo.accelerationStructureWrites.size());
         for(const AccelerationStructureDescriptorWrites& write : descriptorWritesInfo.accelerationStructureWrites)
         {
             if(write.accelerationStructures.size())
@@ -153,10 +151,7 @@ namespace PaperRenderer
                 tlasReferences.rbegin()->reserve(write.accelerationStructures.size());
                 for(TLAS const* accelerationStructure : write.accelerationStructures)
                 {
-                    if(accelerationStructure->getAccelerationStructure())
-                    {
-                        tlasReferences.rbegin()->push_back(accelerationStructure->getAccelerationStructure());
-                    }
+                    tlasReferences.rbegin()->push_back(accelerationStructure->getAccelerationStructure());
                 }
 
                 //descriptor write

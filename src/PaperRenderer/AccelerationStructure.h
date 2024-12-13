@@ -91,7 +91,7 @@ namespace PaperRenderer
         };
 
         void verifyInstancesBuffer();
-        void queueInstanceTransfers(class RayTraceRender const* rtRender);
+        void queueInstanceTransfers(const class RayTraceRender& rtRender);
 
         friend RenderEngine;
         friend class ModelInstance;
@@ -158,6 +158,9 @@ namespace PaperRenderer
 
         //scratch size
         VkDeviceSize getScratchSize(std::vector<AsBuildData>& blasDatas, std::vector<AsBuildData>& tlasDatas) const;
+
+        //set build data (happens on submission)
+        void setBuildData();
         
         //for keeping structures to derrive compaction from in scope
         struct OldStructureData
@@ -174,7 +177,6 @@ namespace PaperRenderer
         AccelerationStructureBuilder(const AccelerationStructureBuilder&) = delete;
         
         void queueAs(const AccelerationStructureOp& op) { asQueue.emplace_back(op); }
-        void setBuildData();
         void destroyOldData();
 
         TimelineSemaphorePair getBuildSemaphore() const { return { asBuildSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue }; }

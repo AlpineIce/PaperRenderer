@@ -2,7 +2,6 @@
 #define VK_NO_PROTOTYPES
 #include "volk.h"
 #define VMA_IMPLEMENTATION
-#define VMA_VULKAN_VERSION 1003000
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
 #define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
 #include "vk_mem_alloc.h"
@@ -16,19 +15,19 @@ namespace PaperRenderer
 {
     //----------STAGING BUFFER DEFINITIONS----------//
 
-    EngineStagingBuffer::EngineStagingBuffer(RenderEngine& renderer)
+    RendererStagingBuffer::RendererStagingBuffer(RenderEngine& renderer)
         :renderer(renderer)
     {
         transferSemaphore = renderer.getDevice().getCommands().getTimelineSemaphore(finalSemaphoreValue);
     }
 
-    EngineStagingBuffer::~EngineStagingBuffer()
+    RendererStagingBuffer::~RendererStagingBuffer()
     {
         stagingBuffer.reset();
         vkDestroySemaphore(renderer.getDevice().getDevice(), transferSemaphore, nullptr);
     }
 
-    void EngineStagingBuffer::queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char> &data)
+    void RendererStagingBuffer::queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char> &data)
     {
         //push transfer to queue
         transferQueues[&dstBuffer].emplace_front(
@@ -38,7 +37,7 @@ namespace PaperRenderer
         queueSize += data.size();
     }
 
-    std::vector<EngineStagingBuffer::DstCopy> EngineStagingBuffer::getDataTransfers()
+    std::vector<RendererStagingBuffer::DstCopy> RendererStagingBuffer::getDataTransfers()
     {
         //wait for transfer to complete
         VkSemaphoreWaitInfo waitInfo = {};
@@ -105,7 +104,7 @@ namespace PaperRenderer
         return dstCopies;
     }
 
-    void EngineStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
+    void RendererStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
     {
         //start command buffer
         VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(syncInfo.queueType);
@@ -130,7 +129,7 @@ namespace PaperRenderer
         renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
     }
 
-    void EngineStagingBuffer::submitQueuedTransfers(VkCommandBuffer cmdBuffer)
+    void RendererStagingBuffer::submitQueuedTransfers(VkCommandBuffer cmdBuffer)
     {
         //copy to dst
         for(const auto& copy : getDataTransfers())
@@ -388,11 +387,14 @@ namespace PaperRenderer
         toUpdateModels.clear();
     }
 
-    const VkSemaphore& RenderEngine::beginFrame(const SynchronizationInfo& transferSyncInfo, const SynchronizationInfo& asSyncInfo)
+    const VkSemaphore& RenderEngine::beginFrame()
     {
         //reset command and descriptor pools
         device.getCommands().resetCommandPools();
         descriptors.refreshPools();
+
+        //destroy old acceleration structure data
+        asBuilder.destroyOldData();
 
         //acquire next image
         const VkSemaphore& imageAcquireSemaphore = swapchain.acquireNextImage();
@@ -406,31 +408,6 @@ namespace PaperRenderer
         {
             renderPass->queueInstanceTransfers();
         }
-
-        //write all staged transfers
-        stagingBuffer.submitQueuedTransfers(transferSyncInfo);
-
-        //destroy old acceleration structure data
-        asBuilder.destroyOldData();
-
-        //set blas data
-        asBuilder.setBuildData();
-
-        //build queued BLAS'
-        SynchronizationInfo blasSyncInfo = {};
-        blasSyncInfo.queueType = asSyncInfo.queueType;
-        blasSyncInfo.binaryWaitPairs = asSyncInfo.binaryWaitPairs;
-        blasSyncInfo.timelineWaitPairs = asSyncInfo.timelineWaitPairs;
-        asBuilder.submitQueuedOps(blasSyncInfo, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
-
-        //build queued TLAS'
-        SynchronizationInfo tlasSyncInfo = {};
-        tlasSyncInfo.queueType = asSyncInfo.queueType;
-        tlasSyncInfo.timelineWaitPairs = { stagingBuffer.getTransferSemaphore() };
-        tlasSyncInfo.binarySignalPairs = asSyncInfo.binarySignalPairs;
-        tlasSyncInfo.timelineSignalPairs = asSyncInfo.timelineSignalPairs;
-        tlasSyncInfo.fence = asSyncInfo.fence;
-        asBuilder.submitQueuedOps(tlasSyncInfo, VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
 
         //return image acquire semaphore
         return imageAcquireSemaphore;

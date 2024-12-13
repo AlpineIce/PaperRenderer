@@ -33,7 +33,7 @@ namespace PaperRenderer
     };
 
     //Dynamically resizing staging buffer to be used for most staging data operations used by the renderer (render passes, acceleration structures, instances, etc)
-    class EngineStagingBuffer
+    class RendererStagingBuffer
     {
     private:
         std::unique_ptr<Buffer> stagingBuffer;
@@ -61,8 +61,8 @@ namespace PaperRenderer
         class RenderEngine& renderer;
 
     public:
-        EngineStagingBuffer(RenderEngine& renderer);
-        ~EngineStagingBuffer();
+        RendererStagingBuffer(RenderEngine& renderer);
+        ~RendererStagingBuffer();
         
         void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char>& data); //do not submit more than 1 transfer with the same destination! undefined behavior!
         void submitQueuedTransfers(SynchronizationInfo syncInfo); //Submits all queued transfers and clears the queue. Does not need to be explicitly synced with last transfer
@@ -81,7 +81,7 @@ namespace PaperRenderer
         RasterPreprocessPipeline rasterPreprocessPipeline;
         TLASInstanceBuildPipeline tlasInstanceBuildPipeline;
         AccelerationStructureBuilder asBuilder;
-        EngineStagingBuffer stagingBuffer;
+        RendererStagingBuffer stagingBuffer;
 
         RendererState rendererState = {};
 
@@ -131,7 +131,7 @@ namespace PaperRenderer
         RenderEngine(const RenderEngine&) = delete;
 
         //returns the image acquire semaphore from the swapchain
-        const VkSemaphore& beginFrame(const SynchronizationInfo& transferSyncInfo, const SynchronizationInfo& asSyncInfo);
+        const VkSemaphore& beginFrame();
         void endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
 
         uint32_t getBufferIndex() const { return frameNumber % 2; }
@@ -142,7 +142,8 @@ namespace PaperRenderer
         PipelineBuilder& getPipelineBuilder() { return pipelineBuilder; }
         RendererState& getRendererState() { return rendererState; }
         Swapchain& getSwapchain() { return swapchain; }
-        EngineStagingBuffer& getEngineStagingBuffer() { return stagingBuffer; }
+        RendererStagingBuffer& getStagingBuffer() { return stagingBuffer; }
+        AccelerationStructureBuilder& getAsBuilder() { return asBuilder; }
         const std::vector<Model*>& getModelReferences() const { return renderingModels; }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
         Buffer& getModelDataBuffer() const { return modelDataBuffer->getBuffer(); }

@@ -45,6 +45,7 @@ namespace PaperRenderer
         RayTraceRender(const RayTraceRender&) = delete;
 
         void render(RayTraceRenderInfo rtRenderInfo, SynchronizationInfo syncInfo);
+        void updateTLAS(VkBuildAccelerationStructureModeKHR mode, VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo);
 
         void addInstance(class ModelInstance* instance, class RTMaterial const* material);
         void removeInstance(class ModelInstance* instance);
