@@ -50,5 +50,6 @@ namespace PaperRenderer
         void removeInstance(class ModelInstance* instance);
 
         const RTPipeline& getPipeline() const { return *pipeline; }
+        const TLAS& getTLAS() const { return tlas; } //this class doesn't own TLAS, but it can be useful to retrieve which TLAS it is referencing
     };
 }
