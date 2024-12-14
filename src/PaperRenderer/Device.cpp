@@ -309,6 +309,7 @@ namespace PaperRenderer
             });
         }
 
+        //RT features
         VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationFeatures = {};
         accelerationFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
         accelerationFeatures.pNext = NULL;
@@ -329,42 +330,29 @@ namespace PaperRenderer
         rtMaintFeatures.pNext = &rayQueryFeatures;
         rtMaintFeatures.rayTracingMaintenance1 = VK_TRUE;
 
-        VkPhysicalDeviceShaderDrawParametersFeatures drawParamFeatures = {}; //tbh i dont even remember why i have this in here
-        drawParamFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
-        drawParamFeatures.pNext = NULL;
-        drawParamFeatures.shaderDrawParameters = VK_TRUE;
-
-        if(rtSupport) drawParamFeatures.pNext = &rtMaintFeatures;
-
-        VkPhysicalDeviceTimelineSemaphoreFeatures timelineSemaphoreFeatures = {};
-        timelineSemaphoreFeatures.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
-        timelineSemaphoreFeatures.pNext = &drawParamFeatures;
-        timelineSemaphoreFeatures.timelineSemaphore = VK_TRUE;
-
+        //Core features
         VkPhysicalDeviceExtendedDynamicState3FeaturesEXT dynamicState3Features = {};
         dynamicState3Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT;
-        dynamicState3Features.pNext = &drawParamFeatures; //timeline semaphore broken with validation layers?
+        dynamicState3Features.pNext = rtSupport ? &rtMaintFeatures : NULL;
         dynamicState3Features.extendedDynamicState3RasterizationSamples = VK_TRUE;
-
-        VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderFeatures = {};
-        dynamicRenderFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
-        dynamicRenderFeatures.pNext = &dynamicState3Features;
-        dynamicRenderFeatures.dynamicRendering = VK_TRUE;
 
         VkPhysicalDeviceVulkan12Features vulkan12Features = {};
         vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-        vulkan12Features.pNext = &dynamicRenderFeatures;
+        vulkan12Features.pNext = &dynamicState3Features;
         vulkan12Features.drawIndirectCount = VK_TRUE;
         vulkan12Features.bufferDeviceAddress = VK_TRUE;
-
-        VkPhysicalDeviceSynchronization2Features synchro2;
-        synchro2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
-        synchro2.pNext = &vulkan12Features;
-        synchro2.synchronization2 = VK_TRUE;
+        vulkan12Features.timelineSemaphore = VK_TRUE;
+        vulkan12Features.scalarBlockLayout = VK_TRUE;
+        
+        VkPhysicalDeviceVulkan13Features vulkan13Features = {};
+        vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+        vulkan13Features.pNext = &vulkan12Features;
+        vulkan13Features.dynamicRendering = VK_TRUE;
+        vulkan13Features.synchronization2 = VK_TRUE;
 
         VkPhysicalDeviceFeatures2 features2 = {};
         features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        features2.pNext = &synchro2;
+        features2.pNext = &vulkan13Features;
 
         vkGetPhysicalDeviceFeatures2(GPU, &features2);
 
