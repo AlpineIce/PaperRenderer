@@ -238,7 +238,7 @@ namespace PaperRenderer
 
         //check buffer sizes
         if(instancesBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderPassInstances.size() ||
-            instancesBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) > renderPassInstances.size() * 2)
+            instancesBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) > (std::max(renderPassInstances.size(), (size_t)(sizeof(ModelInstance::RenderPassInstance) * 64)) / sizeof(ModelInstance::ShaderModelInstance) * 2))
         {
             rebuildInstancesBuffer(); //TODO SYNCHRONIZATION
         }

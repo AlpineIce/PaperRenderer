@@ -935,8 +935,8 @@ void rasterRender(
         .pNext = NULL,
         .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
         .srcAccessMask = VK_ACCESS_2_NONE,
-        .dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-        .dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
         .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -1067,22 +1067,32 @@ void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::
 class DefaultMaterial : public PaperRenderer::Material
 {
 private:
+    const PaperRenderer::Buffer& lightInfoUBO;
 
 public:
-    DefaultMaterial(PaperRenderer::RenderEngine& renderer, const PaperRenderer::RasterPipelineBuildInfo& pipelineInfo)
-        :PaperRenderer::Material(renderer, pipelineInfo)
+    DefaultMaterial(PaperRenderer::RenderEngine& renderer, const PaperRenderer::RasterPipelineBuildInfo& pipelineInfo, const PaperRenderer::Buffer& lightInfoUBO)
+        :PaperRenderer::Material(renderer, pipelineInfo),
+        lightInfoUBO(lightInfoUBO)
     {
-
     }
+
     ~DefaultMaterial() override
     {
-
     }
 
     //bind class can override base class
     void bind(VkCommandBuffer cmdBuffer, const PaperRenderer::Camera& camera, std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites>& descriptorWrites) override
     {
         //additional non-default descriptor writes can be inserted into descriptorWrites here
+        descriptorWrites[0].bufferWrites.push_back({
+            .infos = {{
+                .buffer = lightInfoUBO.getBuffer(),
+                .offset = 0,
+                .range = VK_WHOLE_SIZE
+            }},
+            .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .binding = 2
+        });
 
         Material::bind(cmdBuffer, camera, descriptorWrites); //parent class function must be called
     }
@@ -1180,11 +1190,21 @@ int main()
         modelInstances.push_back(std::move(instance));
     }
 
+    //----------HDR & DEPTH RENDERING BUFFER----------//
+
+    //get HDR buffer
+    HDRBuffer hdrBuffer = getHDRBuffer(renderer, VK_IMAGE_LAYOUT_GENERAL);
+
+    //HDR buffer copy render pass
+    BufferCopyPass bufferCopyPass(renderer, hdrBuffer);
+
+    //get depth buffer
+    DepthBuffer depthBuffer = getDepthBuffer(renderer);
+
     //----------UNIFORM AND STORAGE BUFFERS----------//
 
-    //point lights buffer
+    //lgihting buffers
     std::unique_ptr<PaperRenderer::Buffer> pointLightsBuffer = createPointLightsBuffer(renderer);
-
     std::unique_ptr<PaperRenderer::Buffer> lightingUniformBuffer = createLightInfoUniformBuffer(renderer);
     
     //----------MATERIALS----------//
@@ -1253,12 +1273,13 @@ int main()
                     .stride = sizeof(Vertex),
                     .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
                 }
-            }
+            },
+            .depthAttachmentFormat = depthBuffer.format
         },
         .drawDescriptorIndex = 1
     };
 
-    DefaultMaterial baseMaterial(renderer, materialInfo);
+    DefaultMaterial baseMaterial(renderer, materialInfo, *lightingUniformBuffer);
 
     //base RT material
     PaperRenderer::ShaderHitGroup baseMaterialHitGroup = {
@@ -1374,17 +1395,6 @@ int main()
         rtRenderPass.addInstance(*instance, baseRTMaterial);
     }
 
-    //----------HDR & DEPTH RENDERING BUFFER----------//
-
-    //get HDR buffer
-    HDRBuffer hdrBuffer = getHDRBuffer(renderer, VK_IMAGE_LAYOUT_GENERAL);
-
-    //HDR buffer copy render pass
-    BufferCopyPass bufferCopyPass(renderer, hdrBuffer);
-
-    //get depth buffer
-    DepthBuffer depthBuffer = getDepthBuffer(renderer);
-
     //----------MISC----------//
 
     //swapchain resize callback
@@ -1417,17 +1427,19 @@ int main()
     VkSemaphore presentationSemaphore = renderer.getDevice().getCommands().getSemaphore();
 
     //rendering loop
-    bool raster = false;
+    bool raster = true;
     while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
     {
-        //wait for last frame
+        //wait for last frame and last staging buffer transfer
+        const std::vector<VkSemaphore> toWaitSemaphores = { renderingSemaphore, renderer.getStagingBuffer().getTransferSemaphore().semaphore };
+        const std::vector<uint64_t> toWaitSemaphoreValues = { finalSemaphoreValue, renderer.getStagingBuffer().getTransferSemaphore().value };
         VkSemaphoreWaitInfo beginWaitInfo = {
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
             .pNext = NULL,
             .flags = 0,
-            .semaphoreCount = 1,
-            .pSemaphores = &renderingSemaphore,
-            .pValues = &finalSemaphoreValue
+            .semaphoreCount = toWaitSemaphores.size(),
+            .pSemaphores = toWaitSemaphores.data(),
+            .pValues = toWaitSemaphoreValues.data()
         };
         vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, UINT64_MAX);
 
@@ -1477,9 +1489,9 @@ int main()
         {
             //render pass (wait on transfer, signal rendering semaphore)
             const PaperRenderer::SynchronizationInfo rasterSyncInfo = {
-                .queueType = PaperRenderer::QueueType::COMPUTE,
+                .queueType = PaperRenderer::QueueType::GRAPHICS,
                 .timelineWaitPairs = { { renderer.getStagingBuffer().getTransferSemaphore() } },
-                .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, finalSemaphoreValue + 3 } }
+                .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, finalSemaphoreValue + 3 } }
             };
             rasterRender(renderer, renderPass, *pointLightsBuffer, *lightingUniformBuffer, *scene.camera, hdrBuffer, depthBuffer, rasterSyncInfo);
         }
@@ -1492,7 +1504,7 @@ int main()
             .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, finalSemaphoreValue + 3 } },
             .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue + 4 } }
         };
-        bufferCopyPass.render(bufferCopySyncInfo, *scene.camera, hdrBuffer, false);
+        bufferCopyPass.render(bufferCopySyncInfo, *scene.camera, hdrBuffer, raster);
 
         //end frame
         renderer.endFrame({ presentationSemaphore });
