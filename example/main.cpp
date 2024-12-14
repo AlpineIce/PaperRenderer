@@ -481,7 +481,7 @@ private:
                             .depthClampEnable = VK_FALSE,
                             .rasterizerDiscardEnable = VK_FALSE,
                             .polygonMode = VK_POLYGON_MODE_FILL,
-                            .cullMode = VK_CULL_MODE_NONE, //no depth testing
+                            .cullMode = VK_CULL_MODE_NONE,
                             .frontFace = VK_FRONT_FACE_CLOCKWISE,
                             .depthBiasEnable = VK_FALSE,
                             .depthBiasConstantFactor = 0.0f,
@@ -1290,7 +1290,22 @@ int main()
                     .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
                 }
             },
-            .depthAttachmentFormat = depthBuffer.format
+            .depthAttachmentFormat = depthBuffer.format,
+            .rasterInfo = {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+                .pNext = NULL,
+                .flags = 0,
+                .depthClampEnable = VK_FALSE,
+                .rasterizerDiscardEnable = VK_FALSE,
+                .polygonMode = VK_POLYGON_MODE_FILL,
+                .cullMode = VK_CULL_MODE_BACK_BIT,
+                .frontFace = VK_FRONT_FACE_CLOCKWISE,
+                .depthBiasEnable = VK_FALSE,
+                .depthBiasConstantFactor = 0.0f,
+                .depthBiasClamp = 0.0f,
+                .depthBiasSlopeFactor = 0.0f,
+                .lineWidth = 1.0f
+            }
         },
         .drawDescriptorIndex = 1
     };
