@@ -1435,7 +1435,7 @@ int main()
     VkSemaphore presentationSemaphore = renderer.getDevice().getCommands().getSemaphore();
 
     //rendering loop
-    bool raster = false;
+    bool raster = true;
     while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
     {
         //wait for last frame and last staging buffer transfer

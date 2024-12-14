@@ -340,7 +340,7 @@ namespace PaperRenderer
                 if(meshGroup)
                 {
                     //clear
-                    //meshGroup->clearDrawCommand(cmdBuffer);
+                    meshGroup->clearDrawCommand(cmdBuffer);
                 }
             }
         }
@@ -362,7 +362,7 @@ namespace PaperRenderer
             //----------PRE-PROCESS----------//
 
             //compute shader
-            //renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this);
+            renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this, renderPassInfo.camera);
 
             //memory barrier
             VkMemoryBarrier2 preprocessMemBarrier = {};

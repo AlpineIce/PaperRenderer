@@ -195,15 +195,14 @@ namespace PaperRenderer
                 //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)
                 meshData.parentModelPtr->bindBuffers(cmdBuffer);
 
-                vkCmdDrawIndexed(cmdBuffer, mesh->indexCount, meshData.instanceCount, mesh->iboOffset, mesh->vboOffset, 0);
                 //draw
-                /*vkCmdDrawIndexedIndirect(
+                vkCmdDrawIndexedIndirect(
                     cmdBuffer,
                     drawCommandsBuffer->getBuffer(),
                     meshData.drawCommandIndex * sizeof(uint32_t),
                     1,
                     sizeof(DrawCommand)
-                );*/
+                );
             }
         }
     }
