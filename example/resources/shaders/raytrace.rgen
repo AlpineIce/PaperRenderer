@@ -85,7 +85,7 @@ void main()
 
                 if(!isShadowed)
                 {
-                    totalLight += (dot(N, L) / 3.14) * light.color.xyz * light.color.w * (1.0 / (length(L) * length(L)));
+                    totalLight += light.color.xyz * light.color.w * float(((1.0 / length(L) * length(L)) * (dot(N, L) / 3.14)));
                 }
             }
         }

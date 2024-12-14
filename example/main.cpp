@@ -198,7 +198,7 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
     //load material instances
     for(const tinygltf::Material& material : gltfModel.materials)
     {
-        const tinygltf::ColorValue baseColor = material.values.at("baseColorFactor").ColorFactor();
+        const tinygltf::ColorValue baseColor = material.values.count("baseColorFactor") ? material.values.at("baseColorFactor").ColorFactor() : tinygltf::ColorValue({1.0, 1.0, 1.0, 1.0});
         const float roughness = material.values.at("roughnessFactor").Factor();
         const float metallic = material.values.at("metallicFactor").Factor();
 
@@ -240,10 +240,10 @@ struct PointLight
 std::unique_ptr<PaperRenderer::Buffer> createPointLightsBuffer(PaperRenderer::RenderEngine& renderer)
 {
     std::vector<PointLight> pointLightsData = {
-        { glm::vec4(10.0f, 10.0, 0.0f, 1.0f), glm::vec4(1.0f, 0.0f, 0.0f, 1.0f) },
-        { glm::vec4(10.0f, -10.0, 0.0f, 1.0f), glm::vec4(1.0f, 1.0f, 0.0f, 1.0f) },
-        { glm::vec4(-10.0f, 10.0, 0.0f, 1.0f), glm::vec4(0.0f, 1.0f, 0.0f, 1.0f) },
-        { glm::vec4(-10.0f, -10.0, 0.0f, 1.0f), glm::vec4(0.0f, 1.0f, 1.0f, 1.0f) }
+        { glm::vec4(10.0f, 10.0, 5.0f, 1.0f),   glm::vec4(0.6f, 1.0f, 0.8f, 1.0f) },
+        { glm::vec4(10.0f, -10.0, 5.0f, 1.0f),  glm::vec4(1.0f, 0.8f, 0.8f, 1.0f) },
+        { glm::vec4(-10.0f, 10.0, 5.0f, 1.0f),  glm::vec4(0.6f, 0.8f, 1.0f, 1.0f) },
+        { glm::vec4(-10.0f, -10.0, 5.0f, 1.0f), glm::vec4(0.8f, 1.0f, 0.6f, 1.0f) }
     };
 
     PaperRenderer::BufferInfo pointLightBufferInfo = {
