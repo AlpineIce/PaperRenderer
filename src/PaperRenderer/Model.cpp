@@ -251,6 +251,22 @@ namespace PaperRenderer
     ModelInstance::~ModelInstance()
     {
 		renderer.removeObject(this);
+
+		//remove from references
+		for(auto& [renderPass, data] : renderPassSelfReferences)
+		{
+			((RenderPass*)renderPass)->removeInstance(*this);
+		}
+
+		for(auto& [rtRender, data] : rtRenderSelfReferences)
+		{
+			((RayTraceRender*)rtRender)->removeInstance(*this);
+		}
+
+		for(auto& [tlas, data] : accelerationStructureSelfReferences)
+		{
+			((TLAS*)tlas)->removeInstance(*this);
+		}
     }
 
 	void ModelInstance::setRenderPassInstanceData(RenderPass const* renderPass)

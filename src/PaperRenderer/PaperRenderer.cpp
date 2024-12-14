@@ -332,8 +332,6 @@ namespace PaperRenderer
                 instance = NULL;
             }
         }
-
-        //TODO UPDATE DEPENDENCIES
         
         object->rendererSelfIndex = UINT32_MAX;
     }

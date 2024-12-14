@@ -32,14 +32,9 @@ layout(scalar, set = 0, binding = 2) readonly buffer RenderPassInstances
 } inputObjects;
 
 //mesh groups
-struct LODMaterialData
+layout(scalar, buffer_reference) readonly buffer MeshGroupOffsets
 {
-    uint meshGroupsOffset;
-};
-
-layout(std430, buffer_reference) readonly buffer LODsMaterialData
-{
-    LODMaterialData materialDatas[]; //count grabbed from model and is assumed to be in order
+    uint offsets[]; //count grabbed from model and is assumed to be in order
 };
 
 struct MaterialMeshGroup
@@ -48,7 +43,7 @@ struct MaterialMeshGroup
     uint64_t matricesBufferAddress;
 };
 
-layout(std430, buffer_reference) readonly buffer LODsMaterialMeshGroups
+layout(scalar, buffer_reference) readonly buffer LODsMaterialMeshGroups
 {
     MaterialMeshGroup datas[]; //count grabbed from model and is assumed to be in order
 };
@@ -119,12 +114,12 @@ void main()
         const uint lodLevel = min(getLODLevel(modelInstance, model, inputData.camPos), model.lodCount - 1);
 
         const ModelLOD modelLOD = ModelLODs(inputData.modelDataPtr + uint64_t(modelInstance.modelDataOffset + model.lodsOffset)).LODs[lodLevel];
-        const LODMaterialData materialData = LODsMaterialData(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset)).materialDatas[lodLevel];
+        const uint meshGroupOffset = MeshGroupOffsets(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset)).offsets[lodLevel];
 
-        //loop through LOD materials (1 mesh per material)
+        //loop through LOD meshes (1 mesh to 1 material)
         for(uint matIndex = 0; matIndex < modelLOD.materialCount; matIndex++)
         {
-            const MaterialMeshGroup materialMeshGroup = LODsMaterialMeshGroups(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset + materialData.meshGroupsOffset)).datas[matIndex];
+            const MaterialMeshGroup materialMeshGroup = LODsMaterialMeshGroups(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset + meshGroupOffset)).datas[matIndex];
 
             //instance count
             uint writeIndex = atomicAdd(DrawCommands(materialMeshGroup.drawCommandAddress).command.instanceCount, 1);

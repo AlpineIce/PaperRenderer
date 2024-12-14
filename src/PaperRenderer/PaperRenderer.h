@@ -67,7 +67,7 @@ namespace PaperRenderer
         void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char>& data); //do not submit more than 1 transfer with the same destination! undefined behavior!
         void submitQueuedTransfers(SynchronizationInfo syncInfo); //Submits all queued transfers and clears the queue. Does not need to be explicitly synced with last transfer
         void submitQueuedTransfers(VkCommandBuffer cmdBuffer); //submits all queued transfers and clears queue, but takes command buffer as parameter
-        TimelineSemaphorePair getTransferSemaphore() const { return { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValue }; }
+        TimelineSemaphorePair getTransferSemaphore() const { return { transferSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue }; }
     };
 
     //Render engine object. Contains the entire state of the renderer and some important buffers
