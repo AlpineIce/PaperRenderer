@@ -303,19 +303,19 @@ namespace PaperRenderer
         renderer.getStagingBuffer().submitQueuedTransfers(syncInfo);
     }
 
-    void TLAS::addInstance(ModelInstance *instance)
+    void TLAS::addInstance(ModelInstance& instance)
     {
         //add reference
-        instance->accelerationStructureSelfReferences[this] = accelerationStructureInstances.size();
-        accelerationStructureInstances.push_back(instance);
+        instance.accelerationStructureSelfReferences[this] = accelerationStructureInstances.size();
+        accelerationStructureInstances.push_back(&instance);
     }
     
-    void TLAS::removeInstance(ModelInstance *instance)
+    void TLAS::removeInstance(ModelInstance& instance)
     {
         //remove reference
         if(accelerationStructureInstances.size() > 1)
         {
-            uint32_t& selfReference = instance->accelerationStructureSelfReferences.at(this);
+            uint32_t& selfReference = instance.accelerationStructureSelfReferences.at(this);
             accelerationStructureInstances.at(selfReference) = accelerationStructureInstances.back();
             accelerationStructureInstances.at(selfReference)->accelerationStructureSelfReferences.at(this) = selfReference;
             
@@ -327,7 +327,7 @@ namespace PaperRenderer
         }
 
         //remove reference
-        instance->accelerationStructureSelfReferences.erase(this);
+        instance.accelerationStructureSelfReferences.erase(this);
     }
 
     //----------AS BUILDER DEFINITIONS----------//

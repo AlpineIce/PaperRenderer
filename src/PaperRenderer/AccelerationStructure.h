@@ -103,8 +103,8 @@ namespace PaperRenderer
         ~TLAS();
         TLAS(const TLAS&) = delete;
 
-        void addInstance(class ModelInstance* instance);
-        void removeInstance(class ModelInstance* instance);
+        void addInstance(class ModelInstance& instance);
+        void removeInstance(class ModelInstance& instance);
 
         const Buffer& getInstancesBuffer() const { return *instancesBuffer; }
         const VkDeviceSize getInstanceDescriptionsOffset() const { return instanceDescriptionsOffset; }

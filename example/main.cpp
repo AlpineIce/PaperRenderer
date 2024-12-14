@@ -180,12 +180,12 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
                 .yaw = 0.0f,
                 .roll = 0.0f,
                 .position = glm::vec3(node.translation[0], node.translation[1], node.translation[2]),
-                .qRotation = glm::quat(node.rotation[0], node.rotation[1], node.rotation[2], node.rotation[3]),
+                .qRotation = glm::quat(node.rotation[3], node.rotation[0], node.rotation[1], node.rotation[2]),
                 .useQuaternion = true //IMPORTANT TO SET IF USING qRotation FOR ROTATION AND NOT PITCH, YAW, ROLL
             };
 
             const PaperRenderer::CameraCreateInfo cameraInfo = {
-                .fov = (float)camera.perspective.yfov,
+                .fov = (float)camera.perspective.yfov * 100.0f,
                 .clipNear = (float)camera.perspective.znear,
                 .clipFar = (float)camera.perspective.zfar,
                 .initTranslation = cameraTranslationInfo
@@ -1058,6 +1058,11 @@ void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::
         .data = &rtInfo
     };
 
+    //update camera
+    PaperRenderer::CameraTranslation newTranslation = camera.getTranslation();
+    newTranslation.qRotation = glm::quat(sin(glfwGetTime()), sin(glfwGetTime()), cos(glfwGetTime()), 1.0f);
+    //camera.updateCameraView(newTranslation);
+
     rtUBO.writeToBuffer({ rtInfoWrite });
 }
 
@@ -1393,6 +1398,9 @@ int main()
 
         //rt render pass (just use the base RT material for simplicity)
         rtRenderPass.addInstance(*instance, baseRTMaterial);
+
+        //add to TLAS
+        tlas.addInstance(*instance);
     }
 
     //----------MISC----------//
@@ -1427,7 +1435,7 @@ int main()
     VkSemaphore presentationSemaphore = renderer.getDevice().getCommands().getSemaphore();
 
     //rendering loop
-    bool raster = true;
+    bool raster = false;
     while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
     {
         //wait for last frame and last staging buffer transfer
@@ -1437,7 +1445,7 @@ int main()
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
             .pNext = NULL,
             .flags = 0,
-            .semaphoreCount = toWaitSemaphores.size(),
+            .semaphoreCount = (uint32_t)toWaitSemaphores.size(),
             .pSemaphores = toWaitSemaphores.data(),
             .pValues = toWaitSemaphoreValues.data()
         };

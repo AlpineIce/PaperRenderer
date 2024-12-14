@@ -28,13 +28,6 @@ namespace PaperRenderer
 
     void RayTraceRender::render(RayTraceRenderInfo rtRenderInfo, SynchronizationInfo syncInfo)
     {
-        //update RT pipeline if needed
-        if(queuePipelineBuild)
-        {
-            rebuildPipeline();
-            queuePipelineBuild = false;
-        }
-
         //command buffer
         VkCommandBufferBeginInfo commandInfo;
         commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -103,6 +96,13 @@ namespace PaperRenderer
 
     void RayTraceRender::updateTLAS(VkBuildAccelerationStructureModeKHR mode, VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo)
     {
+        //update RT pipeline if needed (required to access SBT offsets for TLAS)
+        if(queuePipelineBuild)
+        {
+            rebuildPipeline();
+            queuePipelineBuild = false;
+        }
+
         //update TLAS instances (signals transfer semaphore in staging buffer)
         tlas.queueInstanceTransfers(*this);
 

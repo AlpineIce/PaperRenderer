@@ -48,8 +48,7 @@ namespace PaperRenderer
     void Camera::updateCameraView(const CameraTranslation& newTranslation)
     {
         this->translation = newTranslation;
-
-        glm::quat qRotation = this->translation.qRotation;
+        this->translation.qRotation = glm::normalize(this->translation.qRotation);
 
         //calculate rotation from angle axis if not using quaternion
         if(!this->translation.useQuaternion)
@@ -62,10 +61,10 @@ namespace PaperRenderer
             this->translation.qRotation = zUpPitchRot * yawRot;
         }
 
-        glm::mat4 mRotation = glm::mat4_cast(qRotation);
+        glm::mat4 mRotation = glm::mat4_cast(this->translation.qRotation);
         glm::mat4 mTranslation = glm::mat4(1.0f);
 
-        mTranslation = glm::translate(mTranslation, -newTranslation.position);
+        mTranslation = glm::translate(mTranslation, glm::vec3(-newTranslation.position.x, newTranslation.position.y, -newTranslation.position.z));
         view = mRotation * mTranslation;
 
         BufferWrite write = {};

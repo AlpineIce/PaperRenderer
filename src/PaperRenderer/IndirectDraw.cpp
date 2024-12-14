@@ -14,7 +14,7 @@ namespace PaperRenderer
 
     CommonMeshGroup::~CommonMeshGroup()
     {
-        for(auto& [instance, meshes] : instanceMeshes)
+        for(const auto& [instance, meshes] : instanceMeshes)
         {
             removeInstanceMeshes(*instance);
         }
