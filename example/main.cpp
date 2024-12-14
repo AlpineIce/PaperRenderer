@@ -240,10 +240,10 @@ struct PointLight
 std::unique_ptr<PaperRenderer::Buffer> createPointLightsBuffer(PaperRenderer::RenderEngine& renderer)
 {
     std::vector<PointLight> pointLightsData = {
-        { glm::vec4(10.0f, 10.0, 0.0f, 5.0f), glm::vec4(1.0f, 0.0f, 0.0f, 5.0f) },
-        { glm::vec4(10.0f, -10.0, 0.0f, 5.0f), glm::vec4(1.0f, 1.0f, 0.0f, 5.0f) },
-        { glm::vec4(-10.0f, 10.0, 0.0f, 5.0f), glm::vec4(0.0f, 1.0f, 0.0f, 5.0f) },
-        { glm::vec4(-10.0f, -10.0, 0.0f, 5.0f), glm::vec4(0.0f, 1.0f, 1.0f, 5.0f) }
+        { glm::vec4(10.0f, 10.0, 0.0f, 1.0f), glm::vec4(1.0f, 0.0f, 0.0f, 1.0f) },
+        { glm::vec4(10.0f, -10.0, 0.0f, 1.0f), glm::vec4(1.0f, 1.0f, 0.0f, 1.0f) },
+        { glm::vec4(-10.0f, 10.0, 0.0f, 1.0f), glm::vec4(0.0f, 1.0f, 0.0f, 1.0f) },
+        { glm::vec4(-10.0f, -10.0, 0.0f, 1.0f), glm::vec4(0.0f, 1.0f, 1.0f, 1.0f) }
     };
 
     PaperRenderer::BufferInfo pointLightBufferInfo = {
@@ -1072,11 +1072,13 @@ void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::
 class DefaultMaterial : public PaperRenderer::Material
 {
 private:
+    const PaperRenderer::Buffer& lightBuffer;
     const PaperRenderer::Buffer& lightInfoUBO;
 
 public:
-    DefaultMaterial(PaperRenderer::RenderEngine& renderer, const PaperRenderer::RasterPipelineBuildInfo& pipelineInfo, const PaperRenderer::Buffer& lightInfoUBO)
+    DefaultMaterial(PaperRenderer::RenderEngine& renderer, const PaperRenderer::RasterPipelineBuildInfo& pipelineInfo, const PaperRenderer::Buffer& lightBuffer, const PaperRenderer::Buffer& lightInfoUBO)
         :PaperRenderer::Material(renderer, pipelineInfo),
+        lightBuffer(lightBuffer),
         lightInfoUBO(lightInfoUBO)
     {
     }
@@ -1089,6 +1091,15 @@ public:
     void bind(VkCommandBuffer cmdBuffer, const PaperRenderer::Camera& camera, std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites>& descriptorWrites) override
     {
         //additional non-default descriptor writes can be inserted into descriptorWrites here
+        descriptorWrites[0].bufferWrites.push_back({
+            .infos = {{
+                .buffer = lightBuffer.getBuffer(),
+                .offset = 0,
+                .range = VK_WHOLE_SIZE
+            }},
+            .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .binding = 1
+        });
         descriptorWrites[0].bufferWrites.push_back({
             .infos = {{
                 .buffer = lightInfoUBO.getBuffer(),
@@ -1284,7 +1295,7 @@ int main()
         .drawDescriptorIndex = 1
     };
 
-    DefaultMaterial baseMaterial(renderer, materialInfo, *lightingUniformBuffer);
+    DefaultMaterial baseMaterial(renderer, materialInfo, *pointLightsBuffer, *lightingUniformBuffer);
 
     //base RT material
     PaperRenderer::ShaderHitGroup baseMaterialHitGroup = {

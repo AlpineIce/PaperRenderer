@@ -219,7 +219,7 @@ namespace PaperRenderer
                 drawCommandsBuffer->getBuffer(),
                 instanceCountLocation,
                 sizeof(VkDrawIndexedIndirectCommand::instanceCount),
-                /*drawCountDefaultValue*/meshData.instanceCount
+                drawCountDefaultValue
             );
 
             //memory barrier
