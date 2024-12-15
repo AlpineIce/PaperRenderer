@@ -180,7 +180,7 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
                 .pitch = 0.0f,
                 .yaw = 0.0f,
                 .roll = 0.0f,
-                .position = 2.0f * glm::vec3(node.translation[0], node.translation[1], node.translation[2]),
+                .position = glm::vec3(node.translation[0], node.translation[1], node.translation[2]),
                 .qRotation = glm::quat(node.rotation[3], node.rotation[0], node.rotation[1], node.rotation[2]),
                 .useQuaternion = true //IMPORTANT TO SET IF USING qRotation FOR ROTATION AND NOT PITCH, YAW, ROLL
             };
