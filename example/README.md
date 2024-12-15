@@ -35,7 +35,7 @@ WORKING DIRECTORY
 
 ```
 
-I will admit that this could be done better, but I'd probably give myself an aneurysm before I figure out how to copy all these files into the cmake output directory, especially considering that 
+I will admit that this could be done better, but I'd probably give myself an aneurysm before I figure out how to copy all these files into the cmake output directory.
 
 These are the main features that I decided were good abstractions for a renderer and therefore created. Overall, they create a good foundation for developing a mesh rendering application, especially one using ray tracing. While this example is mostly complete, it shouldn't necessarily be considered to as the overall cleanliness of it will improve, and more features will be showcased as I develop them. With that being said, it can still be used as a reference on how to generally develop around this renderer I created.
 
