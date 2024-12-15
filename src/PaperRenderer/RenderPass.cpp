@@ -132,6 +132,11 @@ namespace PaperRenderer
         instancesBuffer.reset();
         instancesDataBuffer.reset();
 
+        for(ModelInstance* instance : renderPassInstances)
+        {
+            removeInstance(*instance);
+        }
+
         for(auto& [material, materialNode] : renderTree)
         {
             for(auto& [materialInstance, instanceNode] : materialNode.instances)
@@ -584,7 +589,7 @@ namespace PaperRenderer
         }
 
         //remove data from fragmenable buffer if referenced
-        if(instance.renderPassSelfReferences.at(this).LODsMaterialDataOffset != UINT64_MAX)
+        if(instance.renderPassSelfReferences.at(this).LODsMaterialDataOffset != UINT64_MAX && instancesDataBuffer)
         {
             instancesDataBuffer->removeFromRange(instance.renderPassSelfReferences.at(this).LODsMaterialDataOffset, instance.getRenderPassInstanceData(this).size());
         }

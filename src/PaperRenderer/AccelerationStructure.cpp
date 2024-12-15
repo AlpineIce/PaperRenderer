@@ -167,6 +167,11 @@ namespace PaperRenderer
     TLAS::~TLAS()
     {
         instancesBuffer.reset();
+
+        for(ModelInstance* instance : accelerationStructureInstances)
+        {
+            removeInstance(*instance);
+        }
     }
 
     void TLAS::verifyInstancesBuffer()

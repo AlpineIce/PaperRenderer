@@ -5,6 +5,7 @@
 #include <vector>
 #include <deque>
 #include <mutex>
+#include <thread>
 
 namespace PaperRenderer
 {
@@ -72,12 +73,14 @@ namespace PaperRenderer
         struct CommandPoolData
         {
             VkCommandPool cmdPool = VK_NULL_HANDLE;
-            std::deque<VkCommandBuffer> cmdBuffers;
+            std::recursive_mutex threadLock = {};
+            std::deque<VkCommandBuffer> cmdBuffers = {};
             uint32_t cmdBufferStackLocation = 0;
         };
         std::unordered_map<QueueType, QueuesInFamily>* queuesPtr;
-        std::unordered_map<QueueType, CommandPoolData> commandPools;
-        const uint32_t maxThreadCount;
+        std::unordered_map<QueueType, std::vector<CommandPoolData>> commandPools;
+        std::unordered_map<VkCommandBuffer, CommandPoolData*> cmdBuffersLockedPool;
+        const uint32_t coreCount = std::thread::hardware_concurrency();
 
         void createCommandPools();
 

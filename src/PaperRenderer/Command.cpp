@@ -3,7 +3,8 @@
 
 #include <stdexcept>
 #include <algorithm>
-#include <thread>
+#include <future>
+#include <functional>
 
 namespace PaperRenderer
 {
@@ -11,8 +12,7 @@ namespace PaperRenderer
 
     Commands::Commands(RenderEngine& renderer, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr)
         :renderer(renderer),
-        queuesPtr(queuesPtr),
-        maxThreadCount(std::thread::hardware_concurrency())
+        queuesPtr(queuesPtr)
     {
         VkSurfaceCapabilitiesKHR capabilities;
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &capabilities);
@@ -22,32 +22,76 @@ namespace PaperRenderer
 
     Commands::~Commands()
     {
-        for(auto& [type, pool] : commandPools)
+        for(auto& [type, pools] : commandPools)
         {
-            vkDestroyCommandPool(renderer.getDevice().getDevice(), pool.cmdPool, nullptr);
+            //wait for any remaining queue submissions
+            for(Queue* queue : queuesPtr->at(type).queues)
+            {
+                std::lock_guard<std::mutex> guard(queue->threadLock);
+            }
+
+            //wait for and destroy command pools
+            for(CommandPoolData& pool : pools)
+            {
+                std::lock_guard<std::recursive_mutex> guard(pool.threadLock);
+                vkDestroyCommandPool(renderer.getDevice().getDevice(), pool.cmdPool, nullptr);
+            }
         }
     }
 
     void Commands::createCommandPools()
     {
-        for(auto& [queueType, queues] : *queuesPtr)
+        //create pool function
+        auto createPool = [&](QueueType type, uint32_t queueFamilyIndex, VkCommandPool* pool)
         {
             VkCommandPoolCreateInfo graphicsPoolInfo = {};
             graphicsPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
             graphicsPoolInfo.pNext = NULL;
             graphicsPoolInfo.flags = 0;
-            graphicsPoolInfo.queueFamilyIndex = queues.queueFamilyIndex;
+            graphicsPoolInfo.queueFamilyIndex = queueFamilyIndex;
 
-            vkCreateCommandPool(renderer.getDevice().getDevice(), &graphicsPoolInfo, nullptr, &commandPools[queueType].cmdPool);
+            vkCreateCommandPool(renderer.getDevice().getDevice(), &graphicsPoolInfo, nullptr, pool);
+        };
+
+        //create 4 arrays of std::thread::hardware_concurrency length arrays of command pools (honestly presentation doesnt need that many pools but its ok)
+        for(auto& [queueType, queues] : *queuesPtr)
+        {
+            //async create pools
+            commandPools[queueType] = std::vector<CommandPoolData>(coreCount);
+            std::vector<std::future<void>> futures;
+            futures.reserve(coreCount);
+
+            for(uint32_t i = 0; i < coreCount; i++)
+            {
+                futures.push_back(std::async(createPool, queueType, queues.queueFamilyIndex, &commandPools[queueType][i].cmdPool));
+            }
         }
     }
 
     void Commands::resetCommandPools()
     {
-        for(auto& [queueType, poolData] : commandPools)
+        //reset pool function
+        auto resetPool = [&](CommandPoolData* pool)
         {
-            vkResetCommandPool(renderer.getDevice().getDevice(), poolData.cmdPool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
-            poolData.cmdBufferStackLocation = 0;
+            //wait for any non-submitted command buffers (potentially a deadlock problem)
+            std::lock_guard<std::recursive_mutex> guard(pool->threadLock);
+
+            //reset pool
+            vkResetCommandPool(renderer.getDevice().getDevice(), pool->cmdPool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
+            pool->cmdBufferStackLocation = 0;
+        };
+
+        //reset all pools
+        for(auto& [queueType, pools] : commandPools)
+        {
+            //async reset pools
+            std::vector<std::future<void>> futures;
+            futures.reserve(coreCount);
+
+            for(CommandPoolData& pool : pools)
+            {
+                futures.push_back(std::async(resetPool, &pool));
+            }
         }
     }
 
@@ -57,6 +101,7 @@ namespace PaperRenderer
         std::vector<VkCommandBufferSubmitInfo> cmdBufferSubmitInfos = {};
         for(const VkCommandBuffer& cmdBuffer : commandBuffers)
         {
+            //add to submit info
             VkCommandBufferSubmitInfo cmdBufferSubmitInfo = {};
             cmdBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
             cmdBufferSubmitInfo.pNext = NULL;
@@ -64,6 +109,10 @@ namespace PaperRenderer
             cmdBufferSubmitInfo.deviceMask = 0;
 
             cmdBufferSubmitInfos.push_back(cmdBufferSubmitInfo);
+
+            //unlock the command pool used by the command buffer
+            cmdBuffersLockedPool[cmdBuffer]->threadLock.unlock();
+
         }
 
         std::vector<VkSemaphoreSubmitInfo> semaphoreWaitInfos;
@@ -234,30 +283,51 @@ namespace PaperRenderer
 
     VkCommandBuffer Commands::getCommandBuffer(QueueType type)
     {
-        uint32_t& stackLocation = commandPools.at(type).cmdBufferStackLocation;
+        //find a command pool to lock (similar to queue submit, just keep looping until one is available)
+        bool threadLocked = false;
+        CommandPoolData* lockedPool = NULL;
+        while(!threadLocked)
+        {
+            for(CommandPoolData& pool : commandPools[type])
+            {
+                if(pool.threadLock.try_lock())
+                {
+                    threadLocked = true;
+                    lockedPool = &pool;
+
+                    break;
+                }
+            }
+        }
+
+        uint32_t& stackLocation = lockedPool->cmdBufferStackLocation;
 
         //allocate more command buffers if needed
-        if(!(stackLocation < commandPools.at(type).cmdBuffers.size()))
+        if(!(stackLocation < lockedPool->cmdBuffers.size()))
         {
             const uint32_t bufferCount = 64;
-            commandPools.at(type).cmdBuffers.resize(commandPools.at(type).cmdBuffers.size() + 64);
+            lockedPool->cmdBuffers.resize(lockedPool->cmdBuffers.size() + 64);
 
             VkCommandBufferAllocateInfo bufferInfo = {};
             bufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
             bufferInfo.pNext = NULL;
             bufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
             bufferInfo.commandBufferCount = bufferCount;
-            bufferInfo.commandPool = commandPools.at(type).cmdPool;
+            bufferInfo.commandPool = lockedPool->cmdPool;
 
-            VkResult result = vkAllocateCommandBuffers(renderer.getDevice().getDevice(), &bufferInfo,
-                &commandPools.at(type).cmdBuffers.at(stackLocation));
+            VkResult result = vkAllocateCommandBuffers(renderer.getDevice().getDevice(), &bufferInfo, &lockedPool->cmdBuffers[stackLocation]);
         }
 
         //get command buffer
-        const VkCommandBuffer& returnBuffer = commandPools.at(type).cmdBuffers.at(stackLocation);
+        const VkCommandBuffer& returnBuffer = lockedPool->cmdBuffers[stackLocation];
+
+        //keep track of command buffer's locked command pool
+        cmdBuffersLockedPool[returnBuffer] = lockedPool;
 
         //increment stack
         stackLocation++;
+
+        //----------COMMAND POOL REMAINS LOCKED UNTIL QUEUE SUBMISSION, BUT CAN STILL BE USED ON THE SAME THREAD----------//
         
         return returnBuffer;
     }

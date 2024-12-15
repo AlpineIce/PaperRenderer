@@ -157,7 +157,7 @@ namespace PaperRenderer
     
     void RayTraceRender::removeInstance(ModelInstance& instance)
     {
-        if(instance.rtRenderSelfReferences.count(this))
+        if(instance.rtRenderSelfReferences.count(this) && materialReferences.count(instance.rtRenderSelfReferences.at(this)))
         {
             //decrement material reference and check size to see if material entry should be deleted
             materialReferences.at(instance.rtRenderSelfReferences.at(this))--;

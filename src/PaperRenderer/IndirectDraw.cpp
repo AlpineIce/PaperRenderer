@@ -14,18 +14,6 @@ namespace PaperRenderer
 
     CommonMeshGroup::~CommonMeshGroup()
     {
-        try
-        {
-            for(const auto [instance, meshes] : instanceMeshes)
-            {
-                removeInstanceMeshes(*instance);
-            }
-        }
-        catch(const std::exception& e)
-        {
-            //lol idk how to fix this but its at destruction so idc
-        }
-
         modelMatricesBuffer.reset();
         drawCommandsBuffer.reset();
     }
