@@ -148,7 +148,7 @@ namespace PaperRenderer
         uint32_t maxMipLevels = 1; //maximum number of mip levels to create, including the base level. arbitrarily high number can be used for maximum mip levels, such as UINT32_MAX
         VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
         VkImageUsageFlags usage;
-        VkImageAspectFlagBits imageAspect;
+        VkImageAspectFlags imageAspect;
         VkImageLayout desiredLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     };
 
