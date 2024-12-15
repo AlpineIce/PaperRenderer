@@ -1022,6 +1022,7 @@ void rasterRender(
         .viewports = { viewport },
         .scissors = { scissors },
         .renderArea = renderArea,
+        .sampleCount = VK_SAMPLE_COUNT_1_BIT,
         .preRenderBarriers = &preRenderDependency,
         .postRenderBarriers = NULL,
         .depthCompareOp = VK_COMPARE_OP_LESS

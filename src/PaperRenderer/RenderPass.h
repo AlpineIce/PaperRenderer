@@ -49,6 +49,7 @@ namespace PaperRenderer
         std::vector<VkViewport> viewports;
         std::vector<VkRect2D> scissors;
         VkRect2D renderArea = {};
+        VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
         VkDependencyInfo const* preRenderBarriers = NULL; //applied before data transfers, preprocess and render pass
         VkDependencyInfo const* postRenderBarriers = NULL; //applied after render pass
         VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS;

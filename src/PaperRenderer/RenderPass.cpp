@@ -404,7 +404,7 @@ namespace PaperRenderer
             vkCmdSetScissorWithCount(cmdBuffer, renderPassInfo.scissors.size(), renderPassInfo.scissors.data());
 
             //MSAA samples
-            vkCmdSetRasterizationSamplesEXT(cmdBuffer, renderer.getRendererState().msaaSamples);
+            vkCmdSetRasterizationSamplesEXT(cmdBuffer, renderPassInfo.sampleCount);
 
             //compare op
             vkCmdSetDepthCompareOp(cmdBuffer, renderPassInfo.depthCompareOp);

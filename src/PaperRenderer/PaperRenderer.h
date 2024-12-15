@@ -27,11 +27,6 @@ namespace PaperRenderer
         const WindowState& windowState = {};
     };
 
-    struct RendererState
-    {
-        VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-    };
-
     //Dynamically resizing staging buffer to be used for most staging data operations used by the renderer (render passes, acceleration structures, instances, etc)
     class RendererStagingBuffer
     {
@@ -82,8 +77,6 @@ namespace PaperRenderer
         TLASInstanceBuildPipeline tlasInstanceBuildPipeline;
         AccelerationStructureBuilder asBuilder;
         RendererStagingBuffer stagingBuffer;
-
-        RendererState rendererState = {};
 
         //frame rendering stuff
         std::vector<ModelInstance*> renderingModelInstances;
@@ -140,7 +133,6 @@ namespace PaperRenderer
         RasterPreprocessPipeline& getRasterPreprocessPipeline() { return rasterPreprocessPipeline; }
         DescriptorAllocator& getDescriptorAllocator() { return descriptors; }
         PipelineBuilder& getPipelineBuilder() { return pipelineBuilder; }
-        RendererState& getRendererState() { return rendererState; }
         Swapchain& getSwapchain() { return swapchain; }
         RendererStagingBuffer& getStagingBuffer() { return stagingBuffer; }
         AccelerationStructureBuilder& getAsBuilder() { return asBuilder; }
