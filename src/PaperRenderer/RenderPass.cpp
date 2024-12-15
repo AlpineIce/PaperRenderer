@@ -385,7 +385,7 @@ namespace PaperRenderer
             //----------RENDER PASS----------//
 
             //rendering
-            VkRenderingInfoKHR renderInfo = {};
+            VkRenderingInfo renderInfo = {};
             renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR;
             renderInfo.pNext = NULL;
             renderInfo.flags = 0;
