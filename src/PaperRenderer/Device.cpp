@@ -336,10 +336,13 @@ namespace PaperRenderer
         dynamicState3Features.pNext = rtSupport ? &rtMaintFeatures : NULL;
         dynamicState3Features.extendedDynamicState3RasterizationSamples = VK_TRUE;
 
+        VkPhysicalDeviceVulkan11Features vulkan11Features = {};
+        vulkan11Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+        vulkan11Features.pNext = &dynamicState3Features;
+
         VkPhysicalDeviceVulkan12Features vulkan12Features = {};
         vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-        vulkan12Features.pNext = &dynamicState3Features;
-        vulkan12Features.drawIndirectCount = VK_TRUE;
+        vulkan12Features.pNext = &vulkan11Features;
         vulkan12Features.bufferDeviceAddress = VK_TRUE;
         vulkan12Features.timelineSemaphore = VK_TRUE;
         vulkan12Features.scalarBlockLayout = VK_TRUE;

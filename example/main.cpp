@@ -3,6 +3,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "lib/tinygltf/tiny_gltf.h"
+
 #include <fstream>
 #include <functional>
 
@@ -179,7 +180,7 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
                 .pitch = 0.0f,
                 .yaw = 0.0f,
                 .roll = 0.0f,
-                .position = glm::vec3(node.translation[0], node.translation[1], node.translation[2]),
+                .position = 2.0f * glm::vec3(node.translation[0], node.translation[1], node.translation[2]),
                 .qRotation = glm::quat(node.rotation[3], node.rotation[0], node.rotation[1], node.rotation[2]),
                 .useQuaternion = true //IMPORTANT TO SET IF USING qRotation FOR ROTATION AND NOT PITCH, YAW, ROLL
             };
@@ -1290,6 +1291,21 @@ int main()
                     .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
                 }
             },
+            .colorAttachments = {
+                {
+                    .blendEnable = VK_FALSE,
+                    .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+                    .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                    .colorBlendOp = VK_BLEND_OP_ADD,
+                    .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+                    .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+                    .alphaBlendOp = VK_BLEND_OP_ADD,
+                    .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
+                }
+            },
+            .colorAttachmentFormats = {
+                { hdrBuffer.format }
+            },
             .depthAttachmentFormat = depthBuffer.format,
             .rasterInfo = {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
@@ -1546,9 +1562,6 @@ int main()
         //increment final semaphore value to wait on
         finalSemaphoreValue += 4;
     }
-
-    //remember to wait for the device before exiting
-    vkDeviceWaitIdle(renderer.getDevice().getDevice());
     
     return 0;
 }
