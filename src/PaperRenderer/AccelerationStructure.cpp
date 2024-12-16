@@ -238,6 +238,8 @@ namespace PaperRenderer
                 vkCmdCopyBuffer(cmdBuffer, instancesBuffer->getBuffer(), newInstancesBuffer->getBuffer(), 1, &instancesCopyRegion);
                 vkEndCommandBuffer(cmdBuffer);
 
+                renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
+
                 //submit
                 renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
 
@@ -753,6 +755,8 @@ namespace PaperRenderer
         //end command buffer and submit
         vkEndCommandBuffer(cmdBuffer);
 
+        renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
+
         SynchronizationInfo buildSyncInfo = {};
         buildSyncInfo.queueType = COMPUTE;
         buildSyncInfo.binaryWaitPairs = syncInfo.binaryWaitPairs;
@@ -853,6 +857,8 @@ namespace PaperRenderer
 
             //end cmd buffer
             vkEndCommandBuffer(cmdBuffer);
+
+            renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
             //submit
             SynchronizationInfo compactionSyncInfo = {};

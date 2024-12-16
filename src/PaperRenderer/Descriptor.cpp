@@ -1,26 +1,34 @@
 #include "Descriptor.h"
 #include "PaperRenderer.h"
 
+#include <functional>
+#include <future>
+
 namespace PaperRenderer
 {
     DescriptorAllocator::DescriptorAllocator(RenderEngine& renderer)
-        :renderer(renderer)
+        :descriptorPoolDatas(coreCount),
+        renderer(renderer)
     {
     }
     
     DescriptorAllocator::~DescriptorAllocator()
     {   
-        for(VkDescriptorPool& pool : descriptorPools)
+        for(DescriptorPoolData& poolsData : descriptorPoolDatas)
         {
-            vkDestroyDescriptorPool(renderer.getDevice().getDevice(), pool, nullptr);
+            std::lock_guard<std::recursive_mutex> guard(poolsData.threadLock);
+            for(VkDescriptorPool& pool : poolsData.descriptorPools)
+            {
+                vkDestroyDescriptorPool(renderer.getDevice().getDevice(), pool, nullptr);
+            }
         }
     }
 
-    VkDescriptorPool DescriptorAllocator::allocateDescriptorPool()
+    VkDescriptorPool DescriptorAllocator::allocateDescriptorPool() const
     {
         std::vector<VkDescriptorPoolSize> poolSizes;
         
-        VkDescriptorPoolSize UBOpoolSize = {};
+        /*VkDescriptorPoolSize UBOpoolSize = {};
         UBOpoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         UBOpoolSize.descriptorCount = 256;
         poolSizes.push_back(UBOpoolSize);
@@ -33,15 +41,15 @@ namespace PaperRenderer
         VkDescriptorPoolSize samplerPoolSize = {};
         samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         samplerPoolSize.descriptorCount = 256;
-        poolSizes.push_back(samplerPoolSize);
+        poolSizes.push_back(samplerPoolSize);*/
         
         VkDescriptorPoolCreateInfo poolInfo = {};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         poolInfo.pNext = NULL;
         poolInfo.flags = 0;
         poolInfo.maxSets = 256;
-        poolInfo.poolSizeCount = poolSizes.size();
-        poolInfo.pPoolSizes = poolSizes.data();
+        poolInfo.poolSizeCount = 0;//poolSizes.size(); is this even needed?
+        poolInfo.pPoolSizes = NULL;//poolSizes.data();
 
         VkDescriptorPool returnPool;
         VkResult result = vkCreateDescriptorPool(renderer.getDevice().getDevice(), &poolInfo, nullptr, &returnPool);
@@ -55,12 +63,29 @@ namespace PaperRenderer
 
     VkDescriptorSet DescriptorAllocator::allocateDescriptorSet(VkDescriptorSetLayout setLayout)
     {
+        //find a descriptor pool to lock
+        bool threadLocked = false;
+        DescriptorPoolData* lockedPool = NULL;
+        while(!threadLocked)
+        {
+            for(DescriptorPoolData& pool : descriptorPoolDatas)
+            {
+                if(pool.threadLock.try_lock())
+                {
+                    threadLocked = true;
+                    lockedPool = &pool;
+
+                    break;
+                }
+            }
+        }
+
         VkDescriptorSet returnSet;
 
         VkDescriptorSetAllocateInfo allocInfo = {};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.pNext = NULL;
-        allocInfo.descriptorPool = *currentPool;
+        allocInfo.descriptorPool = lockedPool->currentPool;
         allocInfo.descriptorSetCount = 1;
         allocInfo.pSetLayouts = &setLayout;
 
@@ -68,17 +93,20 @@ namespace PaperRenderer
 
         if(result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL)
         {
-            descriptorPools.push_back(allocateDescriptorPool());
-            currentPool = &(descriptorPools.back());
+            lockedPool->descriptorPools.push_back(allocateDescriptorPool());
+            lockedPool->currentPool = lockedPool->descriptorPools.back();
 
             result = vkAllocateDescriptorSets(renderer.getDevice().getDevice(), &allocInfo, &returnSet);
             if(result != VK_SUCCESS) throw std::runtime_error("Descriptor allocator failed");
         }
 
+        //unlock mutex
+        lockedPool->threadLock.unlock();
+
         return returnSet;
     }
 
-    void DescriptorAllocator::writeUniforms(RenderEngine& renderer, VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo)
+    void DescriptorAllocator::writeUniforms(VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo) const
     {
         //4 different writes for 4 different types
         std::vector<VkWriteDescriptorSet> descriptorWrites;
@@ -187,7 +215,7 @@ namespace PaperRenderer
         }
     }
 
-    void DescriptorAllocator::bindSet(VkCommandBuffer cmdBuffer, const DescriptorBind& bindingInfo)
+    void DescriptorAllocator::bindSet(VkCommandBuffer cmdBuffer, const DescriptorBind& bindingInfo) const
     {
         vkCmdBindDescriptorSets(
             cmdBuffer,
@@ -203,12 +231,28 @@ namespace PaperRenderer
 
     void DescriptorAllocator::refreshPools()
     {
-        for(VkDescriptorPool& pool : descriptorPools)
+        //reset pool function
+        auto resetPool = [&](DescriptorPoolData* pool)
         {
-            vkDestroyDescriptorPool(renderer.getDevice().getDevice(), pool, nullptr);
+            //wait for any non-submitted command buffers (potentially a deadlock problem)
+            std::lock_guard<std::recursive_mutex> guard(pool->threadLock);
+
+            //reset pool
+            for(VkDescriptorPool& pool : pool->descriptorPools)
+            {
+                vkDestroyDescriptorPool(renderer.getDevice().getDevice(), pool, nullptr);
+            }
+            pool->descriptorPools = { allocateDescriptorPool() };
+            pool->currentPool = pool->descriptorPools[0];
+        };
+
+        //async reset pools
+        std::vector<std::future<void>> futures;
+        futures.reserve(coreCount);
+
+        for(DescriptorPoolData& poolData : descriptorPoolDatas)
+        {
+            futures.push_back(std::async(resetPool, &poolData));
         }
-        descriptorPools.resize(0);
-        descriptorPools.push_back(allocateDescriptorPool());
-        currentPool = &(descriptorPools.back());
     }
 }

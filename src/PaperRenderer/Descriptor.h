@@ -2,6 +2,8 @@
 #include "VulkanResources.h"
 
 #include <unordered_map>
+#include <thread>
+#include <mutex>
 
 namespace PaperRenderer
 {
@@ -55,20 +57,27 @@ namespace PaperRenderer
     class DescriptorAllocator
     {
     private:
-        std::vector<VkDescriptorPool> descriptorPools;
-        VkDescriptorPool* currentPool = NULL;
+        struct DescriptorPoolData
+        {
+            std::vector<VkDescriptorPool> descriptorPools;
+            VkDescriptorPool currentPool = VK_NULL_HANDLE;
+            std::recursive_mutex threadLock = {};
+        };
+        std::vector<DescriptorPoolData> descriptorPoolDatas; //collection of pools that can be used async
+        std::unordered_map<VkCommandBuffer, DescriptorPoolData*> descriptorsLockedPool;
+        const uint32_t coreCount = std::thread::hardware_concurrency();
 
         class RenderEngine& renderer;
 
-        VkDescriptorPool allocateDescriptorPool();
+        VkDescriptorPool allocateDescriptorPool() const;
 
     public:
         DescriptorAllocator(class RenderEngine& renderer);
         ~DescriptorAllocator();
         DescriptorAllocator(const DescriptorAllocator&) = delete;
 
-        static void writeUniforms(class RenderEngine& renderer, VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo);
-        static void bindSet(VkCommandBuffer cmdBuffer, const DescriptorBind& bindingInfo);
+        void writeUniforms(VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo) const;
+        void bindSet(VkCommandBuffer cmdBuffer, const DescriptorBind& bindingInfo) const;
 
         VkDescriptorSet allocateDescriptorSet(VkDescriptorSetLayout setLayout);
         void refreshPools();

@@ -65,7 +65,7 @@ namespace PaperRenderer
         for(const auto& [setIndex, writes] : descriptorWrites)
         {
             VkDescriptorSet descriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(setIndex));
-            DescriptorAllocator::writeUniforms(renderer, descriptorSet, writes);
+            renderer.getDescriptorAllocator().writeUniforms(descriptorSet, writes);
 
             DescriptorBind bindingInfo = {};
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -73,7 +73,7 @@ namespace PaperRenderer
             bindingInfo.descriptorSetIndex = setIndex;
             bindingInfo.layout = rasterPipeline->getLayout();
             
-            DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
+            renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
         }
     }
 
@@ -95,7 +95,7 @@ namespace PaperRenderer
         for(const auto& [setIndex, writes] : descriptorWrites)
         {
             VkDescriptorSet descriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(baseMaterial.getRasterPipeline().getDescriptorSetLayouts().at(setIndex));
-            DescriptorAllocator::writeUniforms(renderer, descriptorSet, writes);
+            renderer.getDescriptorAllocator().writeUniforms(descriptorSet, writes);
 
             DescriptorBind bindingInfo = {};
             bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -103,7 +103,7 @@ namespace PaperRenderer
             bindingInfo.descriptorSetIndex = setIndex;
             bindingInfo.layout = baseMaterial.getRasterPipeline().getLayout();
             
-            DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
+            renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
         }
     }
 

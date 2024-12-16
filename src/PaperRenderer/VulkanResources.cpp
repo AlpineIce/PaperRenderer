@@ -109,6 +109,8 @@ namespace PaperRenderer
         vkCmdCopyBuffer(transferBuffer, src.getBuffer(), this->buffer, regions.size(), regions.data());
         vkEndCommandBuffer(transferBuffer);
 
+        renderer.getDevice().getCommands().unlockCommandBuffer(transferBuffer);
+
         renderer.getDevice().getCommands().submitToQueue(synchronizationInfo, { transferBuffer });
     }
 
@@ -317,6 +319,8 @@ namespace PaperRenderer
             if(cmdBuffer)
             {
                 vkEndCommandBuffer(cmdBuffer);
+
+                renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
                 //submit
                 SynchronizationInfo syncInfo = {};
@@ -558,6 +562,8 @@ namespace PaperRenderer
 
         vkEndCommandBuffer(transferBuffer);
 
+        renderer.getDevice().getCommands().unlockCommandBuffer(transferBuffer);
+
         renderer.getDevice().getCommands().submitToQueue(synchronizationInfo, { transferBuffer });
     }
     
@@ -712,6 +718,8 @@ namespace PaperRenderer
         }
         
         vkEndCommandBuffer(blitBuffer);
+
+        renderer.getDevice().getCommands().unlockCommandBuffer(blitBuffer);
 
         renderer.getDevice().getCommands().submitToQueue(synchronizationInfo, { blitBuffer });
     }

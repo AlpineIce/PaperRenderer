@@ -176,7 +176,7 @@ namespace PaperRenderer
 
                     DescriptorWrites descriptorWritesInfo = {};
                     descriptorWritesInfo.bufferWrites = { write };
-                    DescriptorAllocator::writeUniforms(renderer, objDescriptorSet, descriptorWritesInfo);
+                    renderer.getDescriptorAllocator().writeUniforms(objDescriptorSet, descriptorWritesInfo);
 
                     //bind set
                     DescriptorBind bindingInfo = {};
@@ -184,7 +184,7 @@ namespace PaperRenderer
                     bindingInfo.set = objDescriptorSet;
                     bindingInfo.layout = material.getRasterPipeline().getLayout();
                     bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-                    DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
+                    renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
                 }
 
                 //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)

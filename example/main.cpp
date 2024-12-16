@@ -758,6 +758,8 @@ public:
 
         vkEndCommandBuffer(cmdBuffer);
 
+        renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
+
         renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
     }
 };
@@ -1029,19 +1031,7 @@ void rasterRender(
     };
 
     //render
-    VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(PaperRenderer::QueueType::GRAPHICS);
-
-    VkCommandBufferBeginInfo cmdBufferBeginInfo = {};
-    cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cmdBufferBeginInfo.pNext = NULL;
-    cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    cmdBufferBeginInfo.pInheritanceInfo = NULL;
-    
-    vkBeginCommandBuffer(cmdBuffer, &cmdBufferBeginInfo);
-    renderPass.render(cmdBuffer, renderPassInfo);
-    vkEndCommandBuffer(cmdBuffer);
-
-    renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+    renderer.getDevice().getCommands().submitToQueue(syncInfo, renderPass.render(renderPassInfo));
 }
 
 void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::Camera& camera, PaperRenderer::Buffer& rtUBO)
@@ -1563,6 +1553,16 @@ int main()
         //increment final semaphore value to wait on
         finalSemaphoreValue += 4;
     }
+
+    //wait for rendering
+    vkDeviceWaitIdle(renderer.getDevice().getDevice());
+
+    //destroy some stuff
+    vkDestroySemaphore(renderer.getDevice().getDevice(), presentationSemaphore, nullptr);
+    vkDestroySemaphore(renderer.getDevice().getDevice(), renderingSemaphore, nullptr);
+    vkDestroyImageView(renderer.getDevice().getDevice(), hdrBuffer.view, nullptr);
+    vkDestroyImageView(renderer.getDevice().getDevice(), depthBuffer.view, nullptr);
+    vkDestroySampler(renderer.getDevice().getDevice(), hdrBuffer.sampler, nullptr);
     
     return 0;
 }

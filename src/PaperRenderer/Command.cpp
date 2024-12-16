@@ -110,9 +110,8 @@ namespace PaperRenderer
 
             cmdBufferSubmitInfos.push_back(cmdBufferSubmitInfo);
 
-            //unlock the command pool used by the command buffer
-            cmdBuffersLockedPool[cmdBuffer]->threadLock.unlock();
-
+            //verify command buffer is unlocked, throw error if it isnt
+            if(cmdBuffersLockedPool.count(cmdBuffer)) throw std::runtime_error("Command buffer submitted never had its mutex unlocked. Please call unlockCommandBuffer(cmdBuffer) on same thread recorded on");
         }
 
         std::vector<VkSemaphoreSubmitInfo> semaphoreWaitInfos;
@@ -322,13 +321,25 @@ namespace PaperRenderer
         const VkCommandBuffer& returnBuffer = lockedPool->cmdBuffers[stackLocation];
 
         //keep track of command buffer's locked command pool
+        std::lock_guard guard(cmdBuffersLockedPoolMutex);
         cmdBuffersLockedPool[returnBuffer] = lockedPool;
 
         //increment stack
         stackLocation++;
 
-        //----------COMMAND POOL REMAINS LOCKED UNTIL QUEUE SUBMISSION, BUT CAN STILL BE USED ON THE SAME THREAD----------//
+        //----------COMMAND POOL REMAINS LOCKED UNTIL QUEUE SUBMISSION, BUT RECURSIVE MUTEX ALLOWS MORE ALLOCATIONS ON THE SAME THREAD----------//
         
         return returnBuffer;
+    }
+
+    void Commands::unlockCommandBuffer(VkCommandBuffer cmdBuffer)
+    {
+        //unlock the command pool used by the command buffer (if in map)
+        std::lock_guard guard(cmdBuffersLockedPoolMutex);
+        if(cmdBuffersLockedPool.count(cmdBuffer))
+        {
+            cmdBuffersLockedPool[cmdBuffer]->threadLock.unlock();
+            cmdBuffersLockedPool.erase(cmdBuffer);
+        }
     }
 }

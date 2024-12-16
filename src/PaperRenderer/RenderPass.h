@@ -15,7 +15,13 @@ namespace PaperRenderer
     {
     private:
         const ComputeShader computeShader;
-        std::unique_ptr<Buffer> uniformBuffer;
+
+        class RenderEngine& renderer;
+
+    public:
+        RasterPreprocessPipeline(RenderEngine& renderer, const std::vector<uint32_t>& shaderData);
+        ~RasterPreprocessPipeline();
+        RasterPreprocessPipeline(const RasterPreprocessPipeline&) = delete;
 
         struct UBOInputData
         {
@@ -28,14 +34,7 @@ namespace PaperRenderer
             bool doCulling = true;
         };
 
-        class RenderEngine& renderer;
-
-    public:
-        RasterPreprocessPipeline(RenderEngine& renderer, const std::vector<uint32_t>& shaderData);
-        ~RasterPreprocessPipeline();
-        RasterPreprocessPipeline(const RasterPreprocessPipeline&) = delete;
-
-        void submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera);
+        void submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera, Buffer& uniformBuffer);
     };
     
     //----------RENDER PASS----------//
@@ -71,6 +70,7 @@ namespace PaperRenderer
         std::deque<ModelInstance*> toUpdateInstances;
 
         //buffers
+        std::unique_ptr<Buffer> preprocessUniformBuffer;
         std::unique_ptr<Buffer> instancesBuffer;
         std::unique_ptr<FragmentableBuffer> instancesDataBuffer;
 
@@ -91,8 +91,7 @@ namespace PaperRenderer
         RenderPass(const RenderPass&) = delete;
 
         void queueInstanceTransfers();
-        void render(VkCommandBuffer cmdBuffer, const RenderPassInfo& renderPassInfo);
-        std::vector<uint32_t> readInstanceCounts(); //BRUTE FORCE SYNC DEBUG FUNCTION
+        std::vector<VkCommandBuffer> render(const RenderPassInfo& renderPassInfo); //returns list of GRAPHICS command buffers, in order, to submit
 
         void addInstance(ModelInstance& instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials);
         void removeInstance(ModelInstance& instance);

@@ -123,6 +123,8 @@ namespace PaperRenderer
 
         vkEndCommandBuffer(cmdBuffer);
 
+        renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
+
         //submit
         syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValue });
         renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });

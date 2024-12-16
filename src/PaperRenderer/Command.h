@@ -5,6 +5,7 @@
 #include <vector>
 #include <deque>
 #include <mutex>
+#include <atomic>
 #include <thread>
 
 namespace PaperRenderer
@@ -77,6 +78,7 @@ namespace PaperRenderer
             std::deque<VkCommandBuffer> cmdBuffers = {};
             uint32_t cmdBufferStackLocation = 0;
         };
+        std::mutex cmdBuffersLockedPoolMutex;
         std::unordered_map<QueueType, QueuesInFamily>* queuesPtr;
         std::unordered_map<QueueType, std::vector<CommandPoolData>> commandPools;
         std::unordered_map<VkCommandBuffer, CommandPoolData*> cmdBuffersLockedPool;
@@ -98,6 +100,11 @@ namespace PaperRenderer
         VkSemaphore getTimelineSemaphore(uint64_t initialValue);
         VkFence getSignaledFence();
         VkFence getUnsignaledFence();
+        
+        //MUST CALL unlockCommandBuffer() BEFORE THREAD SUBMISSION, AND ON SAME THREAD
         VkCommandBuffer getCommandBuffer(QueueType type);
+
+        //MUST BE CALLED ON SAME THREAD getCommandBuffer() WAS CALLED ON
+        void unlockCommandBuffer(VkCommandBuffer cmdBuffer);
     };
 }

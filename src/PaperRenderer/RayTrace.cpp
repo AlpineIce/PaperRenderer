@@ -56,7 +56,7 @@ namespace PaperRenderer
                 rtRenderInfo.rtDescriptorWrites.imageWrites.size() || rtRenderInfo.rtDescriptorWrites.accelerationStructureWrites.size())
             {
                 VkDescriptorSet rtDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(0));
-                DescriptorAllocator::writeUniforms(renderer, rtDescriptorSet, rtRenderInfo.rtDescriptorWrites);
+                renderer.getDescriptorAllocator().writeUniforms(rtDescriptorSet, rtRenderInfo.rtDescriptorWrites);
 
                 DescriptorBind bindingInfo = {};
                 bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
@@ -64,7 +64,7 @@ namespace PaperRenderer
                 bindingInfo.descriptorSetIndex = 0;
                 bindingInfo.layout = pipeline->getLayout();
                 
-                DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
+                renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
             }
 
             //trace rays
@@ -88,6 +88,8 @@ namespace PaperRenderer
         
         //end
         vkEndCommandBuffer(cmdBuffer);
+
+        renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
         
         //submit
         syncInfo.timelineWaitPairs.push_back(renderer.asBuilder.getBuildSemaphore());

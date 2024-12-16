@@ -28,7 +28,7 @@ namespace PaperRenderer
             if(writes.bufferViewWrites.size() || writes.bufferWrites.size() || writes.imageWrites.size())
             {
                 VkDescriptorSet descriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(setNumber));
-                DescriptorAllocator::writeUniforms(renderer, descriptorSet, descriptorWrites.at(setNumber));
+                renderer.getDescriptorAllocator().writeUniforms(descriptorSet, descriptorWrites.at(setNumber));
 
                 DescriptorBind bindingInfo = {};
                 bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
@@ -36,7 +36,7 @@ namespace PaperRenderer
                 bindingInfo.descriptorSetIndex = setNumber;
                 bindingInfo.layout = pipeline->getLayout();
                 
-                DescriptorAllocator::bindSet(cmdBuffer, bindingInfo);
+                renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
             }
         }
 
