@@ -6,6 +6,7 @@
 
 #include <fstream>
 #include <functional>
+#include <future>
 
 std::vector<uint32_t> readFile(const std::string& location)
 {
@@ -1034,30 +1035,6 @@ void rasterRender(
     renderer.getDevice().getCommands().submitToQueue(syncInfo, renderPass.render(renderPassInfo));
 }
 
-void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::Camera& camera, PaperRenderer::Buffer& rtUBO)
-{
-    //update RT UBO
-    RayTraceInfo rtInfo = {
-        .projection = camera.getProjection(),
-        .view = camera.getViewMatrix(),
-        .modelDataReference = renderer.getModelDataBuffer().getBufferDeviceAddress(),
-        .frameNumber = renderer.getFramesRenderedCount()
-    };
-
-    PaperRenderer::BufferWrite rtInfoWrite = {
-        .offset = 0,
-        .size = sizeof(RayTraceInfo),
-        .data = &rtInfo
-    };
-
-    //update camera
-    PaperRenderer::CameraTranslation newTranslation = camera.getTranslation();
-    newTranslation.qRotation = glm::quat(sin(glfwGetTime()), sin(glfwGetTime()), cos(glfwGetTime()), 1.0f);
-    //camera.updateCameraView(newTranslation);
-
-    rtUBO.writeToBuffer({ rtInfoWrite });
-}
-
 //----------MATERIALS----------//
 
 //default material class inherits PaperRenderer::Material
@@ -1160,6 +1137,31 @@ public:
         MaterialInstance::bind(cmdBuffer, descriptorWrites);
     }
 };
+
+
+//----------UBOs----------//
+
+void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::Camera& camera, PaperRenderer::Buffer& rtUBO)
+{
+    //update RT UBO
+    RayTraceInfo rtInfo = {
+        .projection = camera.getProjection(),
+        .view = camera.getViewMatrix(),
+        .modelDataReference = renderer.getModelDataBuffer().getBufferDeviceAddress(),
+        .frameNumber = renderer.getFramesRenderedCount()
+    };
+
+    std::vector<char> rtInfoData(sizeof(RayTraceInfo));
+    memcpy(rtInfoData.data(), &rtInfo, sizeof(RayTraceInfo));
+
+    renderer.getStagingBuffer().queueDataTransfers(rtUBO, 0, rtInfoData);
+
+    //update camera
+    PaperRenderer::CameraTranslation newTranslation = camera.getTranslation();
+    newTranslation.position = glm::vec3(15.0f * sin(glfwGetTime()), 15.0f * cos(glfwGetTime()), 5.0f);
+    newTranslation.qRotation = glm::lookAt(newTranslation.position, glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
+    camera.updateCameraView(newTranslation);
+}
 
 
 
@@ -1467,11 +1469,9 @@ int main()
     VkSemaphore renderingSemaphore = renderer.getDevice().getCommands().getTimelineSemaphore(finalSemaphoreValue);
     VkSemaphore presentationSemaphore = renderer.getDevice().getCommands().getSemaphore();
 
-    //rendering loop
-    bool raster = true;
-    while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
+    //rendering loop functions
+    auto waitSemaphoreFunction = [&]()
     {
-        //wait for last frame and last staging buffer transfer
         const std::vector<VkSemaphore> toWaitSemaphores = { renderingSemaphore, renderer.getStagingBuffer().getTransferSemaphore().semaphore };
         const std::vector<uint64_t> toWaitSemaphoreValues = { finalSemaphoreValue, renderer.getStagingBuffer().getTransferSemaphore().value };
         VkSemaphoreWaitInfo beginWaitInfo = {
@@ -1484,13 +1484,21 @@ int main()
         };
         vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, UINT64_MAX);
 
-        //----------END OF SYNCHRONIZATOIN DEPENDENCIES FROM LAST FRAME----------//
-
-        //update uniform  buffers
-        updateUniformBuffers(renderer, *scene.camera, *rtInfoUBO);
-
         //begin frame
-        const VkSemaphore& swapchainSemaphore = renderer.beginFrame();
+        return renderer.beginFrame();
+    };
+
+    bool raster = true;
+    while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
+    {
+        //async wait for last frame and last staging buffer transfer (on this frame, which was incremented on presentation)
+        std::future waitSemaphoreFuture(std::async(waitSemaphoreFunction));
+        
+        //update uniform buffers
+        updateUniformBuffers(renderer, *scene.camera, *rtInfoUBO);
+        
+        //block this thread and while waiting for the begin function, no more work to do
+        VkSemaphore swapchainSemaphore = waitSemaphoreFuture.get();
 
         //remember to explicitly submit the staging buffer transfers (do entire submit in this case)
         const PaperRenderer::SynchronizationInfo transferSyncInfo = {

@@ -15,6 +15,7 @@
 #include <vector>
 #include <deque>
 #include <queue>
+#include <array>
 
 namespace PaperRenderer
 {
@@ -31,6 +32,7 @@ namespace PaperRenderer
     class RendererStagingBuffer
     {
     private:
+        std::mutex stagingBufferMutex;
         std::unique_ptr<Buffer> stagingBuffer;
         const float bufferOverhead = 1.5f;
 
@@ -41,6 +43,7 @@ namespace PaperRenderer
         };
 
         std::unordered_map<Buffer const*, std::deque<QueuedTransfer>> transferQueues;
+        
 
         VkSemaphore transferSemaphore;
         VkDeviceSize queueSize = 0;
@@ -76,7 +79,7 @@ namespace PaperRenderer
         RasterPreprocessPipeline rasterPreprocessPipeline;
         TLASInstanceBuildPipeline tlasInstanceBuildPipeline;
         AccelerationStructureBuilder asBuilder;
-        RendererStagingBuffer stagingBuffer;
+        std::array<RendererStagingBuffer, 2> stagingBuffer; //double buffered
 
         //frame rendering stuff
         std::vector<ModelInstance*> renderingModelInstances;
@@ -134,7 +137,7 @@ namespace PaperRenderer
         DescriptorAllocator& getDescriptorAllocator() { return descriptors; }
         PipelineBuilder& getPipelineBuilder() { return pipelineBuilder; }
         Swapchain& getSwapchain() { return swapchain; }
-        RendererStagingBuffer& getStagingBuffer() { return stagingBuffer; }
+        RendererStagingBuffer& getStagingBuffer() { return stagingBuffer[getBufferIndex()]; }
         AccelerationStructureBuilder& getAsBuilder() { return asBuilder; }
         const std::vector<Model*>& getModelReferences() const { return renderingModels; }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }

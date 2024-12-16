@@ -63,10 +63,10 @@ namespace PaperRenderer
             VkDescriptorPool currentPool = VK_NULL_HANDLE;
             std::recursive_mutex threadLock = {};
         };
+        const uint32_t coreCount = std::thread::hardware_concurrency();
         std::vector<DescriptorPoolData> descriptorPoolDatas; //collection of pools that can be used async
         std::unordered_map<VkCommandBuffer, DescriptorPoolData*> descriptorsLockedPool;
-        const uint32_t coreCount = std::thread::hardware_concurrency();
-
+        
         class RenderEngine& renderer;
 
         VkDescriptorPool allocateDescriptorPool() const;

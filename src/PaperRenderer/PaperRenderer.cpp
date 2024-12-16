@@ -28,6 +28,9 @@ namespace PaperRenderer
 
     void RendererStagingBuffer::queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char> &data)
     {
+        //lock mutex
+        std::lock_guard guard(stagingBufferMutex);
+
         //push transfer to queue
         transferQueues[&dstBuffer].emplace_front(
             dstOffset,
@@ -105,6 +108,9 @@ namespace PaperRenderer
 
     void RendererStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
     {
+        //lock mutex
+        std::lock_guard guard(stagingBufferMutex);
+
         //start command buffer
         VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(syncInfo.queueType);
 
@@ -132,6 +138,9 @@ namespace PaperRenderer
 
     void RendererStagingBuffer::submitQueuedTransfers(VkCommandBuffer cmdBuffer)
     {
+        //lock mutex
+        std::lock_guard guard(stagingBufferMutex);
+        
         //copy to dst
         for(const auto& copy : getDataTransfers())
         {
@@ -149,7 +158,7 @@ namespace PaperRenderer
         rasterPreprocessPipeline(*this, creationInfo.rasterPreprocessSpirv),
         tlasInstanceBuildPipeline(*this, creationInfo.rtPreprocessSpirv),
         asBuilder(*this),
-        stagingBuffer(*this)
+        stagingBuffer({ *this, *this })
     {
         rebuildModelDataBuffer();
         rebuildInstancesbuffer();
@@ -368,13 +377,13 @@ namespace PaperRenderer
             std::vector<char> data(sizeof(ModelInstance::ShaderModelInstance));
             memcpy(data.data(), &shaderInstance, data.size());
             
-            stagingBuffer.queueDataTransfers(*instancesDataBuffer, sizeof(ModelInstance::ShaderModelInstance) * instance->rendererSelfIndex, data);
+            getStagingBuffer().queueDataTransfers(*instancesDataBuffer, sizeof(ModelInstance::ShaderModelInstance) * instance->rendererSelfIndex, data);
         }
 
         //queue model data
         for(Model* model : toUpdateModels)
         {
-            stagingBuffer.queueDataTransfers(modelDataBuffer->getBuffer(), model->shaderDataLocation, model->getShaderData());
+            getStagingBuffer().queueDataTransfers(modelDataBuffer->getBuffer(), model->shaderDataLocation, model->getShaderData());
         }
 
         //clear deques
@@ -393,7 +402,6 @@ namespace PaperRenderer
 
         //acquire next image
         const VkSemaphore& imageAcquireSemaphore = swapchain.acquireNextImage();
-        frameNumber++;
 
         //queue data transfers
         queueModelsAndInstancesTransfers();
@@ -412,6 +420,9 @@ namespace PaperRenderer
     {
         //presentation
         swapchain.presentImage(waitSemaphores);
+
+        //increment frame counter so next frame can be prepared early
+        frameNumber++;
 
         glfwPollEvents();
     }

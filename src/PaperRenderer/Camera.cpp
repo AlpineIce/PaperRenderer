@@ -38,11 +38,11 @@ namespace PaperRenderer
         glfwGetFramebufferSize(windowPtr, &width, &height);
         projection = glm::perspective(glm::radians(fov), (float)width / (float)height, clipNear, clipFar);
 
-        BufferWrite write = {};
-        write.data = &projection;
-        write.offset = 0;
-        write.size = sizeof(glm::mat4);
-        ubo->writeToBuffer({ write });
+        //queue data transfer
+        std::vector<char> uboData(sizeof(glm::mat4));
+        memcpy(uboData.data(), &projection, sizeof(glm::mat4));
+        
+        renderer.getStagingBuffer().queueDataTransfers(*ubo, 0, uboData);
     }
 
     void Camera::updateCameraView(const CameraTranslation& newTranslation)
@@ -64,13 +64,13 @@ namespace PaperRenderer
         glm::mat4 mRotation = glm::mat4_cast(this->translation.qRotation);
         glm::mat4 mTranslation = glm::mat4(1.0f);
 
-        mTranslation = glm::translate(mTranslation, glm::vec3(-newTranslation.position.x, newTranslation.position.y, -newTranslation.position.z));
+        mTranslation = glm::translate(mTranslation, glm::vec3(-newTranslation.position.x, -newTranslation.position.y, -newTranslation.position.z));
         view = mRotation * mTranslation;
 
-        BufferWrite write = {};
-        write.data = &view;
-        write.offset = sizeof(glm::mat4);
-        write.size = sizeof(glm::mat4);
-        ubo->writeToBuffer({ write });
+        //queue data transfer
+        std::vector<char> uboData(sizeof(glm::mat4));
+        memcpy(uboData.data(), &view, sizeof(glm::mat4));
+        
+        renderer.getStagingBuffer().queueDataTransfers(*ubo, sizeof(glm::mat4), uboData);
     }
 }
