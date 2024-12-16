@@ -1,7 +1,8 @@
 #pragma once
-#include "GLFW/glfw3.h"
 
+#include "Statistics.h"
 #include "Device.h"
+#include "Swapchain.h"
 #include "Descriptor.h"
 #include "Pipeline.h"
 #include "AccelerationStructure.h"
@@ -21,10 +22,10 @@ namespace PaperRenderer
 {
     struct RendererCreationStruct
     {
-        //takes in compiled IndirectDrawBuild.comp spirv data
-        const std::vector<uint32_t>& rasterPreprocessSpirv;
-        //takes in compiled TLASInstBuild.comp spirv data
-        const std::vector<uint32_t>& rtPreprocessSpirv;
+        const std::function<void(RenderEngine&, const LogEvent&)>& logEventCallbackFunction = NULL;
+        const std::function<void(RenderEngine&, VkExtent2D newExtent)>& swapchainRebuildCallbackFunction = NULL;
+        const std::vector<uint32_t>& rasterPreprocessSpirv; //takes in compiled IndirectDrawBuild.comp spirv data
+        const std::vector<uint32_t>& rtPreprocessSpirv; //takes in compiled TLASInstBuild.comp spirv data
         const WindowState& windowState = {};
     };
 
@@ -72,6 +73,7 @@ namespace PaperRenderer
     class RenderEngine
     {
     private:
+        Logger logger;
         Device device;
         Swapchain swapchain;
         DescriptorAllocator descriptors;

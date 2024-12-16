@@ -151,8 +151,9 @@ namespace PaperRenderer
     //----------RENDER ENGINE DEFINITIONS----------//
 
     RenderEngine::RenderEngine(const RendererCreationStruct& creationInfo)
-        :device(*this, creationInfo.windowState.windowName),
-        swapchain(*this, creationInfo.windowState),
+        :logger(*this, creationInfo.logEventCallbackFunction),
+        device(*this, creationInfo.windowState.windowName),
+        swapchain(*this, creationInfo.swapchainRebuildCallbackFunction, creationInfo.windowState),
         descriptors(*this),
         pipelineBuilder(*this),
         rasterPreprocessPipeline(*this, creationInfo.rasterPreprocessSpirv),

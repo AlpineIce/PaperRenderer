@@ -6,9 +6,10 @@
 
 namespace PaperRenderer
 {
-    Swapchain::Swapchain(RenderEngine& renderer, WindowState startingWindowState)
-        :renderer(renderer),
-        currentWindowState(startingWindowState)
+    Swapchain::Swapchain(class RenderEngine& renderer, const std::function<void(RenderEngine&, VkExtent2D newExtent)>& swapchainRebuildCallbackFunction, WindowState startingWindowState)
+        :currentWindowState(startingWindowState),
+        swapchainRebuildCallback(swapchainRebuildCallbackFunction),
+        renderer(renderer)
     {
         //----------WINDOW CREATION----------//
 
@@ -338,6 +339,6 @@ namespace PaperRenderer
         buildSwapchain();
         vkDestroySwapchainKHR(renderer.getDevice().getDevice(), oldSwapchain, nullptr);
 
-        if(swapchainRebuildCallback) swapchainRebuildCallback(swapchainExtent);
+        if(swapchainRebuildCallback) swapchainRebuildCallback(renderer, swapchainExtent);
     }
 }

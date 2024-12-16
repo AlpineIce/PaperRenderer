@@ -7,6 +7,7 @@
 #include <fstream>
 #include <functional>
 #include <future>
+#include <iostream> //for logging callback
 
 std::vector<uint32_t> readFile(const std::string& location)
 {
@@ -52,11 +53,11 @@ struct MaterialParameters
 //loaded scene data from glTF
 struct SceneData
 {
-    std::unordered_map<std::string, std::unique_ptr<PaperRenderer::Model>> models;
-    std::unordered_map<PaperRenderer::Model const*, PaperRenderer::ModelTransformation> instanceTransforms; //this example does 1 instance per model, so thats why its 1:1
-    std::unordered_map<std::string, std::vector<std::string>> instanceMaterials;
-    std::unordered_map<std::string, MaterialParameters> materialInstancesData;
-    std::unique_ptr<PaperRenderer::Camera> camera;
+    std::unordered_map<std::string, std::unique_ptr<PaperRenderer::Model>> models = {};
+    std::unordered_map<PaperRenderer::Model const*, PaperRenderer::ModelTransformation> instanceTransforms = {}; //this example does 1 instance per model, so thats why its 1:1
+    std::unordered_map<std::string, std::vector<std::string>> instanceMaterials = {};
+    std::unordered_map<std::string, MaterialParameters> materialInstancesData = {};
+    std::unique_ptr<PaperRenderer::Camera> camera = NULL;
 };
 
 //example function for loading a glTF and integrating with Model, Material, and Camera creation
@@ -1169,8 +1170,61 @@ void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::
 
 int main()
 {
+    //pre-declare rendering buffers and glTF scene for callback function lambda recordings
+    HDRBuffer hdrBuffer = {};
+    DepthBuffer depthBuffer = {};
+    SceneData scene = {};
+
+    //----------RENDERER INITIALIZATION----------//
+
+    //log event callback
+    const auto logCallbackFunction = [&](PaperRenderer::RenderEngine& renderer, const PaperRenderer::LogEvent& event) {
+        std::cout << "PAPER RENDERER LOG --";
+
+        switch(event.type)
+        {
+            //only print info if in debug
+#ifndef NDEBUG
+        case PaperRenderer::LogType::INFO:
+            std::cout << "INFO--: ";
+            break;
+#endif
+        case PaperRenderer::LogType::WARNING:
+            std::cout << "WARNING--: ";
+            break;
+        case PaperRenderer::LogType::ERROR:
+            std::cout << "ERROR--: ";
+            break;
+        }
+
+        std::cout << event.text;
+    };
+
+    //swapchain resize callback
+    const auto swapchainResizeFunction = [&](PaperRenderer::RenderEngine& renderer, VkExtent2D newExtent) {
+        //destroy old HDR buffer
+        vkDestroySampler(renderer.getDevice().getDevice(), hdrBuffer.sampler, nullptr);
+        vkDestroyImageView(renderer.getDevice().getDevice(), hdrBuffer.view, nullptr);
+        hdrBuffer.image.reset();
+
+        //create new HDR buffer
+        hdrBuffer = getHDRBuffer(renderer, VK_IMAGE_LAYOUT_GENERAL);
+
+        //destroy old depth buffer
+        vkDestroyImageView(renderer.getDevice().getDevice(), depthBuffer.view, nullptr);
+        depthBuffer.image.reset();
+
+        //create new depth buffer
+        depthBuffer = getDepthBuffer(renderer);
+
+        //update camera
+        scene.camera->updateCameraProjection();
+    };
+
     //initialize renderer
     const PaperRenderer::RendererCreationStruct rendererInfo = {
+        .logEventCallbackFunction = logCallbackFunction,
+        .swapchainRebuildCallbackFunction = swapchainResizeFunction,
         .rasterPreprocessSpirv = readFile("resources/shaders/IndirectDrawBuild.spv"),
         .rtPreprocessSpirv = readFile("resources/shaders/TLASInstBuild.spv"),
         .windowState = {
@@ -1182,7 +1236,7 @@ int main()
     //----------GLTF SCENE LOADING----------//
 
     //load glTF scene
-    SceneData scene = loadSceneData(renderer);
+    scene = loadSceneData(renderer);
 
     //----------MODEL INSTANCES----------//
 
@@ -1203,13 +1257,13 @@ int main()
     //----------HDR & DEPTH RENDERING BUFFER----------//
 
     //get HDR buffer
-    HDRBuffer hdrBuffer = getHDRBuffer(renderer, VK_IMAGE_LAYOUT_GENERAL);
+    hdrBuffer = getHDRBuffer(renderer, VK_IMAGE_LAYOUT_GENERAL);
 
     //HDR buffer copy render pass
     BufferCopyPass bufferCopyPass(renderer, hdrBuffer);
 
     //get depth buffer
-    DepthBuffer depthBuffer = getDepthBuffer(renderer);
+    depthBuffer = getDepthBuffer(renderer);
 
     //----------UNIFORM AND STORAGE BUFFERS----------//
 
@@ -1437,30 +1491,6 @@ int main()
         //add to TLAS
         tlas.addInstance(*instance);
     }
-
-    //----------MISC----------//
-
-    //swapchain resize callback
-    auto swapchainResizeFunction = [&](VkExtent2D newExtent) {
-        //destroy old HDR buffer
-        vkDestroySampler(renderer.getDevice().getDevice(), hdrBuffer.sampler, nullptr);
-        vkDestroyImageView(renderer.getDevice().getDevice(), hdrBuffer.view, nullptr);
-        hdrBuffer.image.reset();
-
-        //create new HDR buffer
-        hdrBuffer = getHDRBuffer(renderer, VK_IMAGE_LAYOUT_GENERAL);
-
-        //destroy old depth buffer
-        vkDestroyImageView(renderer.getDevice().getDevice(), depthBuffer.view, nullptr);
-        depthBuffer.image.reset();
-
-        //create new depth buffer
-        depthBuffer = getDepthBuffer(renderer);
-
-        //update camera
-        scene.camera->updateCameraProjection();
-    };
-    renderer.getSwapchain().setSwapchainRebuildCallback(swapchainResizeFunction);
 
     //----------RENDER LOOP----------//
 

@@ -15,7 +15,7 @@ namespace PaperRenderer
 
     struct WindowState
     {
-        const std::string& windowName = "Set window name in swapchain creation";
+        std::string windowName = "Set window name in swapchain creation";
         unsigned int resX = 1280;
         unsigned int resY = 720;
         WindowMode windowMode = WINDOWED;
@@ -41,7 +41,7 @@ namespace PaperRenderer
         bool usingHDR = false;
 
         static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
-        std::function<void(VkExtent2D newExtent)> swapchainRebuildCallback = NULL;
+        const std::function<void(RenderEngine&, VkExtent2D newExtent)> swapchainRebuildCallback = NULL;
 
         class RenderEngine& renderer;
         
@@ -49,7 +49,7 @@ namespace PaperRenderer
         void createImageViews();
 
     public:
-        Swapchain(class RenderEngine& renderer, WindowState startingWindowState);
+        Swapchain(class RenderEngine& renderer, const std::function<void(RenderEngine&, VkExtent2D newExtent)>& swapchainRebuildCallbackFunction, WindowState startingWindowState);
         ~Swapchain();
         Swapchain(const Swapchain&) = delete;
 
@@ -57,7 +57,6 @@ namespace PaperRenderer
         const VkSemaphore& acquireNextImage();
         void presentImage(const std::vector<VkSemaphore>& waitSemaphores);
         void recreate();
-        void setSwapchainRebuildCallback(std::function<void(VkExtent2D newExtent)> callbackFunction) { this->swapchainRebuildCallback = callbackFunction; }
 
         GLFWwindow* getGLFWwindow() const { return window; }
         const WindowState& getWindowState() const { return currentWindowState; }
