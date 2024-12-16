@@ -74,6 +74,7 @@ namespace PaperRenderer
     {
     private:
         Logger logger;
+        StatisticsTracker statisticsTracker;
         Device device;
         Swapchain swapchain;
         DescriptorAllocator descriptors;
@@ -134,6 +135,8 @@ namespace PaperRenderer
 
         uint32_t getBufferIndex() const { return frameNumber % 2; }
         uint64_t getFramesRenderedCount() const { return frameNumber; }
+        Logger& getLogger() { return logger; }
+        StatisticsTracker& getStatisticsTracker() { return statisticsTracker; }
         Device& getDevice() { return device; }
         RasterPreprocessPipeline& getRasterPreprocessPipeline() { return rasterPreprocessPipeline; }
         DescriptorAllocator& getDescriptorAllocator() { return descriptors; }

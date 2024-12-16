@@ -25,24 +25,57 @@ namespace PaperRenderer
     }
 
     //----------PROFILING AND STATE----------//
-
-    RendererStatistics::RendererStatistics()
+    
+    //statistics tracker definitions
+    StatisticsTracker::StatisticsTracker()
     {
     }
 
-    RendererStatistics::~RendererStatistics()
+    StatisticsTracker::~StatisticsTracker()
     {
     }
 
-    void RendererStatistics::insertTimeStatistic(const std::string &name, double value)
+    void StatisticsTracker::insertTimeStatistic(const std::string &name, std::chrono::duration<double> duration)
     {
-        std::lock_guard<std::mutex> guard(mutex);
-        timeStatistics[name] = value;
+        std::lock_guard<std::mutex> guard(statisticsMutex);
+        if(name.size()) statistics.timeStatistics[name] = duration;
     }
 
-    void RendererStatistics::modifyObjectCounter(const std::string &name, int increment)
+    void StatisticsTracker::modifyObjectCounter(const std::string &name, int increment)
     {
-        std::lock_guard<std::mutex> guard(mutex);
-        objectCounters[name] += increment;
+        std::lock_guard<std::mutex> guard(statisticsMutex);
+        if(name.size()) statistics.objectCounters[name] += increment;
+    }
+
+    void StatisticsTracker::clearStatistics()
+    {
+        statistics = {};
+    }
+
+    // timer definitions
+    Timer::Timer(const std::string& timerName, StatisticsTracker &tracker)
+        :timerName(timerName),
+        startTime(std::chrono::high_resolution_clock::now()),
+        tracker(tracker)
+    {
+    }
+
+    Timer::~Timer()
+    {
+        tryInsertTimeStatistic();
+    }
+
+    void Timer::tryInsertTimeStatistic()
+    {
+        if(!released)
+        {
+            tracker.insertTimeStatistic(timerName, (std::chrono::high_resolution_clock::now() - startTime));
+            released = true;
+        }
+    }
+
+    void Timer::release()
+    {
+        tryInsertTimeStatistic();
     }
 }

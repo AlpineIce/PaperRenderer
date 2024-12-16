@@ -40,18 +40,45 @@ namespace PaperRenderer
 
     //----------PROFILING AND STATE----------//
 
-    class RendererStatistics
+    struct Statistics
+    {
+        std::unordered_map<std::string, std::chrono::duration<double>> timeStatistics = {};
+        std::unordered_map<std::string, uint64_t> objectCounters = {};
+    };
+
+    class StatisticsTracker
     {
     private:
-        std::unordered_map<std::string, double> timeStatistics;
-        std::unordered_map<std::string, uint64_t> objectCounters;
-        std::mutex mutex;
+        Statistics statistics = {};
+        std::mutex statisticsMutex;
         
     public:
-        RendererStatistics();
-        ~RendererStatistics();
+        StatisticsTracker();
+        ~StatisticsTracker();
 
-        void insertTimeStatistic(const std::string& name, double value);
+        void insertTimeStatistic(const std::string& name, std::chrono::duration<double> duration); //insert time statistic (e.g. time for render pass or AS build)
         void modifyObjectCounter(const std::string& name, int increment); //increment can be positive for incrementing or negative for decrementing
+        void clearStatistics(); //clears all statistical values (times, object counters, etc)
+
+        const Statistics& getStatistics() const { return statistics; }
+    };
+
+    //RAII style timer that inserts time statistic automatically. Can be released early. Ownership limited to one thread
+    class Timer
+    {
+    private:
+        const std::string timerName;
+        const std::chrono::time_point<std::chrono::high_resolution_clock> startTime;
+        bool released = false;
+
+        void tryInsertTimeStatistic();
+
+        StatisticsTracker& tracker;
+        
+    public:
+        Timer(const std::string& timerName, StatisticsTracker& tracker);
+        ~Timer();
+
+        void release(); //Release is typically done when this goes out of scope, but early release can be done to send time statistic now
     };
 }
