@@ -42,14 +42,25 @@ namespace PaperRenderer
         {
             glfwExtensions[i] = glfwGetRequiredInstanceExtensions(&glfwExtensionCount)[i];
         }
-        
-        //layers
-        std::vector<const char*> layerNames = {};
+
         std::vector<const char*> extensionNames = {
             VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME
         };
         extensionNames.insert(extensionNames.end(), glfwExtensions.begin(), glfwExtensions.end());
 
+        //log all extension names
+        for(const char* extension : extensionNames)
+        {
+            renderer.getLogger().recordLog({
+                .type = INFO,
+                .text = "Using instance extension: " + std::string(extension)
+            });
+        }
+        
+        //layers
+        std::vector<const char*> layerNames = {};
+        
+        //application info
         VkApplicationInfo appInfo = {
             .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
             .pNext = NULL,
