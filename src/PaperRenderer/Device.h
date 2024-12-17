@@ -16,6 +16,14 @@
 
 namespace PaperRenderer
 {
+    struct DeviceInstanceInfo
+    {
+        std::string appName = "Set app name in deviceInstanceInfo in renderer creation";
+        uint32_t appVersion = VK_API_VERSION_MAJOR(1);
+        std::string engineName = "Set engine name in deviceInstanceInfo in renderer creation";
+        uint32_t engineVersion = VK_API_VERSION_MAJOR(1);
+    };
+
     class Device
     {
     private:
@@ -36,7 +44,7 @@ namespace PaperRenderer
 
         class RenderEngine& renderer;
 
-        void createContext(std::string appName);
+        void createContext(const DeviceInstanceInfo& instanceData);
         void findGPU();
         void findQueueFamilies(uint32_t& queueFamilyCount, std::vector<VkQueueFamilyProperties>& queueFamiliesProperties);
         void createQueues(std::unordered_map<uint32_t, VkDeviceQueueCreateInfo>& queuesCreationInfo,
@@ -45,7 +53,7 @@ namespace PaperRenderer
         void retrieveQueues(std::unordered_map<uint32_t, VkDeviceQueueCreateInfo>& queuecreationInfo);
         
     public:
-        Device(class RenderEngine& renderer, std::string appName);
+        Device(class RenderEngine& renderer, const DeviceInstanceInfo& instanceInfo);
         ~Device();
         Device(const Device&) = delete;
 

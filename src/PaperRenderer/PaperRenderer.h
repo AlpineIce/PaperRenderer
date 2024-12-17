@@ -26,6 +26,7 @@ namespace PaperRenderer
         const std::function<void(RenderEngine&, VkExtent2D newExtent)>& swapchainRebuildCallbackFunction = NULL;
         const std::vector<uint32_t>& rasterPreprocessSpirv; //takes in compiled IndirectDrawBuild.comp spirv data
         const std::vector<uint32_t>& rtPreprocessSpirv; //takes in compiled TLASInstBuild.comp spirv data
+        const DeviceInstanceInfo& deviceInstanceInfo = {};
         const WindowState& windowState = {};
     };
 

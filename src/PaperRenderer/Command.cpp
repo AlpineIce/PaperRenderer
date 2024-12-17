@@ -314,7 +314,7 @@ namespace PaperRenderer
         }
 
         //get command buffer
-        const VkCommandBuffer& returnBuffer = lockedPool->cmdBuffers[stackLocation];
+        VkCommandBuffer returnBuffer = lockedPool->cmdBuffers[stackLocation];
 
         //keep track of command buffer's locked command pool
         std::lock_guard guard(cmdBuffersLockedPoolMutex);

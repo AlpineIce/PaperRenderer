@@ -164,7 +164,7 @@ namespace PaperRenderer
 
     RenderEngine::RenderEngine(const RendererCreationStruct& creationInfo)
         :logger(*this, creationInfo.logEventCallbackFunction),
-        device(*this, creationInfo.windowState.windowName),
+        device(*this, creationInfo.deviceInstanceInfo),
         swapchain(*this, creationInfo.swapchainRebuildCallbackFunction, creationInfo.windowState),
         descriptors(*this),
         pipelineBuilder(*this),

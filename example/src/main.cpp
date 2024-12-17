@@ -1156,10 +1156,17 @@ void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::
         .frameNumber = renderer.getFramesRenderedCount()
     };
 
-    std::vector<char> rtInfoData(sizeof(RayTraceInfo));
-    memcpy(rtInfoData.data(), &rtInfo, sizeof(RayTraceInfo));
+    //std::vector<char> rtInfoData(sizeof(RayTraceInfo));
+    //memcpy(rtInfoData.data(), &rtInfo, sizeof(RayTraceInfo));
+    
+    PaperRenderer::BufferWrite write = {
+        .offset = 0,
+        .size = sizeof(RayTraceInfo),
+        .data = &rtInfo
+    };
+    rtUBO.writeToBuffer({ write });
 
-    renderer.getStagingBuffer().queueDataTransfers(rtUBO, 0, rtInfoData);
+    //renderer.getStagingBuffer().queueDataTransfers(rtUBO, 0, rtInfoData);
 
     //update camera
     PaperRenderer::CameraTranslation newTranslation = camera.getTranslation();
@@ -1231,6 +1238,10 @@ int main()
         .swapchainRebuildCallbackFunction = swapchainResizeFunction,
         .rasterPreprocessSpirv = readFile("resources/shaders/IndirectDrawBuild.spv"),
         .rtPreprocessSpirv = readFile("resources/shaders/TLASInstBuild.spv"),
+        .deviceInstanceInfo = {
+            .appName = "PaperRenderer Example",
+            .engineName = "PaperRenderer"
+        },
         .windowState = {
             .windowName = "Paper Renderer Example"
         }
@@ -1531,10 +1542,10 @@ int main()
     while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
     {
         //async wait for last frame and last staging buffer transfer (on this frame, which was incremented on presentation)
-        std::future waitSemaphoreFuture(std::async(std::launch::async, waitSemaphoreFunction));
+        //std::future waitSemaphoreFuture(std::async(std::launch::async, waitSemaphoreFunction));
 
         //block this thread and while waiting for the begin function, no more work to do BIG OL TODO WE ASYNC-ING
-        VkSemaphore swapchainSemaphore = waitSemaphoreFuture.get();
+        VkSemaphore swapchainSemaphore = waitSemaphoreFunction();//waitSemaphoreFuture.get();
         
         //update uniform buffers
         updateUniformBuffers(renderer, *scene.camera, *rtInfoUBO);
@@ -1596,7 +1607,7 @@ int main()
         //render GUI
         const PaperRenderer::SynchronizationInfo guiSyncInfo = {
             .queueType = PaperRenderer::QueueType::GRAPHICS,
-            .binarySignalPairs = { { presentationSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT } },
+            .binarySignalPairs = { { presentationSemaphore, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT } },
             .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, finalSemaphoreValue + 4 } },
             .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue + 5 } }
         };
@@ -1612,7 +1623,8 @@ int main()
     //wait for rendering
     vkDeviceWaitIdle(renderer.getDevice().getDevice());
 
-    
+    //destroy ImGui
+    destroyImGui();
 
     //destroy hdr and depth buffers
     hdrBuffer.image.reset();

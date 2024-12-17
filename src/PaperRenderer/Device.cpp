@@ -6,13 +6,13 @@
 
 namespace PaperRenderer
 {
-    Device::Device(RenderEngine& renderer, std::string appName)
+    Device::Device(RenderEngine& renderer, const DeviceInstanceInfo& instanceInfo)
         :renderer(renderer)
     {
         //volk
         VkResult result = volkInitialize();
         glfwInit();
-        createContext(appName);
+        createContext(instanceInfo);
         findGPU();
     }
 
@@ -30,7 +30,7 @@ namespace PaperRenderer
         });
     }
 
-    void Device::createContext(std::string appName)
+    void Device::createContext(const DeviceInstanceInfo& instanceData)
     {
         //----------INSTANCE CREATION----------//
 
@@ -50,24 +50,26 @@ namespace PaperRenderer
         };
         extensionNames.insert(extensionNames.end(), glfwExtensions.begin(), glfwExtensions.end());
 
-        VkApplicationInfo appInfo;
-        appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        appInfo.pNext = NULL;
+        VkApplicationInfo appInfo = {
+            .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+            .pNext = NULL,
+            .pApplicationName = instanceData.appName.c_str(),
+            .applicationVersion = instanceData.appVersion,
+            .pEngineName = instanceData.engineName.c_str(),
+            .engineVersion = instanceData.engineVersion
+        };
         vkEnumerateInstanceVersion(&appInfo.apiVersion);
-        appInfo.applicationVersion = VK_API_VERSION_MAJOR(1);
-        appInfo.engineVersion = VK_API_VERSION_MAJOR(1);
-        appInfo.pApplicationName = appName.c_str();
-        appInfo.pEngineName = appName.c_str();
 
-        VkInstanceCreateInfo instanceInfo;
-        instanceInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        instanceInfo.flags = 0;
-        instanceInfo.pApplicationInfo = &appInfo;
-        instanceInfo.pNext = NULL;
-        instanceInfo.enabledExtensionCount = extensionNames.size();
-        instanceInfo.ppEnabledExtensionNames = extensionNames.data();
-        instanceInfo.enabledLayerCount = layerNames.size();
-        instanceInfo.ppEnabledLayerNames = layerNames.data();
+        VkInstanceCreateInfo instanceInfo = {
+            .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .pApplicationInfo = &appInfo,
+            .enabledLayerCount = (uint32_t)layerNames.size(),
+            .ppEnabledLayerNames = layerNames.data(),
+            .enabledExtensionCount = (uint32_t)extensionNames.size(),
+            .ppEnabledExtensionNames = extensionNames.data()
+        };
 
         //instance creation
         VkResult result = vkCreateInstance(&instanceInfo, nullptr, &instance);
@@ -92,9 +94,10 @@ namespace PaperRenderer
             rtPipelineProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
             rtPipelineProperties.pNext = &asProperties;
 
-            VkPhysicalDeviceProperties2 properties;
-            properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-            properties.pNext = &rtPipelineProperties;
+            VkPhysicalDeviceProperties2 properties = {
+                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+                .pNext = &rtPipelineProperties
+            };
             vkGetPhysicalDeviceProperties2(physicalDevice, &properties);
 
             uint32_t extensionCount;
