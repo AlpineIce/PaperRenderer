@@ -22,7 +22,7 @@ namespace PaperRenderer
         vmaDestroyAllocator(allocator);
         vkDestroyDevice(device, nullptr);
         vkDestroyInstance(instance, nullptr);
-
+        
         //log destructor
         renderer.getLogger().recordLog({
             .type = INFO,
@@ -256,12 +256,6 @@ namespace PaperRenderer
                     .queueCount = queueFamiliesProperties.at(queuesInFamily.queueFamilyIndex).queueCount,
                     .pQueuePriorities = queuePriority
                 };
-
-                //record log
-                renderer.getLogger().recordLog({
-                    .type = INFO,
-                    .text = std::string("Using ") + std::to_string(queuesInFamily.queues.size()) + " Queues on queue family index " + std::to_string(queuesInFamily.queueFamilyIndex)
-                });
             }
         }
     }
@@ -285,6 +279,12 @@ namespace PaperRenderer
             {
                 queuesInFamily.queues.push_back(&familyQueues.at(queuesInFamily.queueFamilyIndex).at(i));
             }
+            
+            //record log
+            renderer.getLogger().recordLog({
+                .type = INFO,
+                .text = std::string("Using ") + std::to_string(queuesInFamily.queues.size()) + " Queues on queue family index " + std::to_string(queuesInFamily.queueFamilyIndex)
+            });
         }
     }
 
