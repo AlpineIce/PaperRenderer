@@ -10,3 +10,8 @@
 [submodule "lib/glm"]
 	path = lib/glm
 	url = https://github.com/g-truc/glm.git
+
+#for example
+[submodule "/example/lib/imgui"]
+	path = example/lib/imgui
+	url = https://github.com/ocornut/imgui.git

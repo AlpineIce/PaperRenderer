@@ -2,7 +2,14 @@
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+
+//tinygltf
 #include "lib/tinygltf/tiny_gltf.h"
+
+//imgui
+#include "lib/imgui/imgui.h"
+#include "lib/imgui/backends/imgui_impl_glfw.h"
+#include "lib/imgui/backends/imgui_impl_vulkan.h"
 
 #include <fstream>
 #include <functional>
