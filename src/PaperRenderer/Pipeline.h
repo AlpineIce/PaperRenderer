@@ -245,7 +245,8 @@ namespace PaperRenderer
         PipelineBuilder(RenderEngine& renderer);
         ~PipelineBuilder();
         PipelineBuilder(const PipelineBuilder&) = delete;
-
+        
+        const VkPipelineCache& getPipelineCache() const { return cache; }
         std::unique_ptr<ComputePipeline> buildComputePipeline(const ComputePipelineBuildInfo& info) const;
         std::unique_ptr<RasterPipeline> buildRasterPipeline(const RasterPipelineBuildInfo& info) const;
         std::unique_ptr<RTPipeline> buildRTPipeline(const RTPipelineBuildInfo& info) const;

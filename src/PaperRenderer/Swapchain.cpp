@@ -258,12 +258,15 @@ namespace PaperRenderer
         this->swapchainExtent.width = std::min(currentWindowState.resX, capabilities.maxImageExtent.width);
         this->swapchainExtent.height = std::min(currentWindowState.resY, capabilities.maxImageExtent.height);
 
+        //set min image count
+        minImageCount = std::max(capabilities.minImageCount, (uint32_t)2);
+
         VkSwapchainCreateInfoKHR swapchainInfo = {};
         swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
         swapchainInfo.pNext = NULL;
         swapchainInfo.flags =  0;
         swapchainInfo.surface = renderer.getDevice().getSurface();
-        swapchainInfo.minImageCount = std::max(capabilities.minImageCount, (uint32_t)2);
+        swapchainInfo.minImageCount = minImageCount;
         swapchainInfo.imageFormat = this->swapchainImageFormat;
         swapchainInfo.imageColorSpace = this->imageColorSpace;
         swapchainInfo.imageExtent = this->swapchainExtent;
@@ -304,7 +307,6 @@ namespace PaperRenderer
 
     void Swapchain::createImageViews()
     {
-        uint32_t imageCount;
         vkGetSwapchainImagesKHR(renderer.getDevice().getDevice(), swapchain, &imageCount, nullptr);
         swapchainImages.resize(imageCount);
         vkGetSwapchainImagesKHR(renderer.getDevice().getDevice(), swapchain, &imageCount, swapchainImages.data());

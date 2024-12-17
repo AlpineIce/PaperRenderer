@@ -62,7 +62,7 @@ namespace PaperRenderer
         const bool& getRTSupport() const { return rtSupport; }
         const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& getRTproperties() const { return rtPipelineProperties; }
         const VkPhysicalDeviceAccelerationStructurePropertiesKHR& getASproperties() const { return asProperties; }
-        const std::unordered_map<QueueType, QueuesInFamily>& getQueues() const { return queues; }
+        std::unordered_map<QueueType, QueuesInFamily>& getQueues() { return queues; }
         Commands& getCommands() { return *commands; }
         QueueFamiliesIndices getQueueFamiliesIndices() const;
     };

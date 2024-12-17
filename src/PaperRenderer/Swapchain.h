@@ -31,6 +31,8 @@ namespace PaperRenderer
         VkColorSpaceKHR imageColorSpace;
         VkPresentModeKHR presentationMode;
         VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+        uint32_t minImageCount = 0;
+        uint32_t imageCount = 0;
         std::vector<VkImage> swapchainImages;
         std::vector<VkImageView> imageViews;
         std::vector<VkSemaphore> imageSemaphores;
@@ -64,6 +66,8 @@ namespace PaperRenderer
         const VkImage& getCurrentImage() const { return swapchainImages.at(frameIndex); }
         const VkFormat& getFormat() const { return swapchainImageFormat; }
         const VkSwapchainKHR& getSwapchain() const { return swapchain; }
+        const uint32_t& getMinImageCount() const { return minImageCount; }
+        const uint32_t& getImageCount() const { return imageCount; }
         const VkExtent2D& getExtent() const { return swapchainExtent; } //AKA resolution
         const uint32_t& getSwapchainImageIndex() const { return frameIndex; }
         const bool& getIsUsingHDR() const { return usingHDR; }
