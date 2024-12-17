@@ -122,7 +122,7 @@ namespace PaperRenderer
         //preprocess uniform buffer
         BufferInfo preprocessBufferInfo = {};
         preprocessBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-        preprocessBufferInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
+        preprocessBufferInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT;
         preprocessBufferInfo.size = sizeof(RasterPreprocessPipeline::UBOInputData);
         preprocessUniformBuffer = std::make_unique<Buffer>(renderer, preprocessBufferInfo);
 

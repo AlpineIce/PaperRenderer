@@ -788,7 +788,7 @@ std::unique_ptr<PaperRenderer::Buffer> createRTInfoUBO(PaperRenderer::RenderEngi
 
     PaperRenderer::BufferInfo uniformBufferInfo = {
         .size = sizeof(RayTraceInfo),
-        .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
+        .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT,
         .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
     };
     std::unique_ptr<PaperRenderer::Buffer> uniformBuffer(std::make_unique<PaperRenderer::Buffer>(renderer, uniformBufferInfo));
@@ -1523,12 +1523,12 @@ int main()
     {
         //async wait for last frame and last staging buffer transfer (on this frame, which was incremented on presentation)
         std::future waitSemaphoreFuture(std::async(waitSemaphoreFunction));
+
+        //block this thread and while waiting for the begin function, no more work to do BIG OL TODO WE ASYNC-ING
+        VkSemaphore swapchainSemaphore = waitSemaphoreFuture.get();
         
         //update uniform buffers
         updateUniformBuffers(renderer, *scene.camera, *rtInfoUBO);
-        
-        //block this thread and while waiting for the begin function, no more work to do
-        VkSemaphore swapchainSemaphore = waitSemaphoreFuture.get();
 
         //remember to explicitly submit the staging buffer transfers (do entire submit in this case)
         const PaperRenderer::SynchronizationInfo transferSyncInfo = {
@@ -1594,6 +1594,20 @@ int main()
 
     //wait for rendering
     vkDeviceWaitIdle(renderer.getDevice().getDevice());
+
+    //destroy hdr and depth buffers
+    hdrBuffer.image.reset();
+    depthBuffer.image.reset();
+
+    //destroy rt uniform buffer
+    rtInfoUBO.reset();
+
+    //destroy scene info
+    scene = {};
+
+    //destroy light buffers
+    lightingUniformBuffer.reset();
+    pointLightsBuffer.reset();
 
     //destroy some stuff
     vkDestroySemaphore(renderer.getDevice().getDevice(), presentationSemaphore, nullptr);

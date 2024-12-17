@@ -14,7 +14,7 @@ namespace PaperRenderer
         BufferInfo uboInfo = {};
         uboInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
         uboInfo.size = sizeof(glm::mat4) * 2;
-        uboInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
+        uboInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR;
         ubo = std::make_unique<Buffer>(renderer, uboInfo);
 
         updateCameraProjection();
@@ -23,7 +23,7 @@ namespace PaperRenderer
 
     Camera::~Camera()
     {
-
+        ubo.reset();
     }
 
     void Camera::setClipSpace(float near, float far)
