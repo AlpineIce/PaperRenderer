@@ -518,8 +518,8 @@ namespace PaperRenderer
 
             //call and return results
             
-            std::future<VkCommandBuffer> result1 = std::async(preprocessFunction);
-            std::future<VkCommandBuffer> result2 = std::async(renderPassFunction);
+            std::future<VkCommandBuffer> result1 = std::async(std::launch::async, preprocessFunction);
+            std::future<VkCommandBuffer> result2 = std::async(std::launch::async, renderPassFunction);
             VkCommandBuffer result0 = drawClearFunction(); //yes this is out of order BUT its not that hard to read... really just do this on this thread for increasing CPU "occupancy"
             
             return { result0, result1.get(), result2.get() };

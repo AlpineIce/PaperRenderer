@@ -75,7 +75,7 @@ namespace PaperRenderer
 
             for(uint32_t i = 0; i < coreCount; i++)
             {
-                futures.push_back(std::async(createPool, queueType, queues.queueFamilyIndex, &commandPools[queueType][i].cmdPool));
+                futures.push_back(std::async(std::launch::async, createPool, queueType, queues.queueFamilyIndex, &commandPools[queueType][i].cmdPool));
             }
         }
     }
@@ -102,7 +102,7 @@ namespace PaperRenderer
 
             for(CommandPoolData& pool : pools)
             {
-                futures.push_back(std::async(resetPool, &pool));
+                futures.push_back(std::async(std::launch::async, resetPool, &pool));
             }
         }
     }

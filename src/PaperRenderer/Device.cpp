@@ -393,7 +393,6 @@ namespace PaperRenderer
             .pNext = &vulkan12Features,
             .synchronization2 = VK_TRUE,
             .dynamicRendering = VK_TRUE
-            
         };
 
         VkPhysicalDeviceFeatures2 features2 = {

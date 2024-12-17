@@ -263,7 +263,7 @@ namespace PaperRenderer
 
         for(DescriptorPoolData& poolData : descriptorPoolDatas)
         {
-            futures.push_back(std::async(resetPool, &poolData));
+            futures.push_back(std::async(std::launch::async, resetPool, &poolData));
         }
     }
 }

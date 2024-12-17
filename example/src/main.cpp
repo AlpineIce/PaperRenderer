@@ -1,15 +1,12 @@
 #include "../src/PaperRenderer/PaperRenderer.h"
+#include "GuiRender.h"
+
+//tinygltf
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 
-//tinygltf
 #include "lib/tinygltf/tiny_gltf.h"
-
-//imgui
-#include "lib/imgui/imgui.h"
-#include "lib/imgui/backends/imgui_impl_glfw.h"
-#include "lib/imgui/backends/imgui_impl_vulkan.h"
 
 #include <fstream>
 #include <functional>
@@ -1499,6 +1496,11 @@ int main()
         tlas.addInstance(*instance);
     }
 
+    //----------MISC----------//
+
+    //init GUI
+    GuiContext guiContext = initImGui(renderer);
+
     //----------RENDER LOOP----------//
 
     //synchronization
@@ -1529,7 +1531,7 @@ int main()
     while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
     {
         //async wait for last frame and last staging buffer transfer (on this frame, which was incremented on presentation)
-        std::future waitSemaphoreFuture(std::async(waitSemaphoreFunction));
+        std::future waitSemaphoreFuture(std::async(std::launch::async, waitSemaphoreFunction));
 
         //block this thread and while waiting for the begin function, no more work to do BIG OL TODO WE ASYNC-ING
         VkSemaphore swapchainSemaphore = waitSemaphoreFuture.get();
@@ -1583,24 +1585,34 @@ int main()
         }
 
         //copy HDR buffer to swapchain (wait for render pass and swapchain, signal rendering and presentation semaphores)
-        PaperRenderer::SynchronizationInfo bufferCopySyncInfo = {
+        const PaperRenderer::SynchronizationInfo bufferCopySyncInfo = {
             .queueType = PaperRenderer::QueueType::GRAPHICS,
             .binaryWaitPairs = { { swapchainSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT } },
-            .binarySignalPairs = { { presentationSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT } },
             .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, finalSemaphoreValue + 3 } },
             .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue + 4 } }
         };
         bufferCopyPass.render(bufferCopySyncInfo, *scene.camera, hdrBuffer, raster);
 
+        //render GUI
+        const PaperRenderer::SynchronizationInfo guiSyncInfo = {
+            .queueType = PaperRenderer::QueueType::GRAPHICS,
+            .binarySignalPairs = { { presentationSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT } },
+            .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, finalSemaphoreValue + 4 } },
+            .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue + 5 } }
+        };
+        renderImGui(&renderer, guiContext, guiSyncInfo);
+
         //end frame
         renderer.endFrame({ presentationSemaphore });
 
         //increment final semaphore value to wait on
-        finalSemaphoreValue += 4;
+        finalSemaphoreValue += 5;
     }
 
     //wait for rendering
     vkDeviceWaitIdle(renderer.getDevice().getDevice());
+
+    
 
     //destroy hdr and depth buffers
     hdrBuffer.image.reset();
