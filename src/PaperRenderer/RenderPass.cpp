@@ -46,10 +46,20 @@ namespace PaperRenderer
         }),
         renderer(renderer)
     {
+        //log constructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "RasterPreprocessPipeline constructor finished"
+        });
     }
     
     RasterPreprocessPipeline::~RasterPreprocessPipeline()
     {
+        //log destructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "RasterPreprocessPipeline destructor finished"
+        });
     }
 
     void RasterPreprocessPipeline::submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera, Buffer& uniformBuffer)

@@ -18,6 +18,12 @@ namespace PaperRenderer
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &capabilities);
 
         createCommandPools();
+
+        //log constructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "Commands constructor finished"
+        });
     }
 
     Commands::~Commands()
@@ -37,6 +43,12 @@ namespace PaperRenderer
                 vkDestroyCommandPool(renderer.getDevice().getDevice(), pool.cmdPool, nullptr);
             }
         }
+
+        //log destructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "Commands destructor initialized"
+        });
     }
 
     void Commands::createCommandPools()

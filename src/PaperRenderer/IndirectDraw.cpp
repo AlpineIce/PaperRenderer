@@ -9,7 +9,6 @@ namespace PaperRenderer
         :renderer(renderer),
         renderPassPtr(renderPass)
     {
-
     }
 
     CommonMeshGroup::~CommonMeshGroup()

@@ -90,6 +90,12 @@ namespace PaperRenderer
         {
             imageSemaphores.at(i) = renderer.getDevice().getCommands().getSemaphore();
         }
+
+        //log constructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "Swapchain constructor finished"
+        });
     }
 
     Swapchain::~Swapchain()
@@ -109,6 +115,12 @@ namespace PaperRenderer
         //glfw window and surface
         vkDestroySurfaceKHR(renderer.getDevice().getInstance(), renderer.getDevice().getSurface(), nullptr);
         glfwDestroyWindow(window);
+
+        //log destructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "Swapchain destructor finished"
+        });
     }
 
     const VkSemaphore& Swapchain::acquireNextImage()
@@ -282,6 +294,12 @@ namespace PaperRenderer
         if(result != VK_SUCCESS) throw std::runtime_error("Swapchain creation/recreation failed");
         
         createImageViews();
+
+        //log build
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "Swapchain built"
+        });
     }
 
     void Swapchain::createImageViews()

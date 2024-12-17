@@ -488,11 +488,23 @@ namespace PaperRenderer
         creationInfo.initialDataSize = 0;
         creationInfo.pInitialData = NULL;
         vkCreatePipelineCache(renderer.getDevice().getDevice(), &creationInfo, nullptr, &cache);
+
+        //log constructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "PipelineBuilder constructor finished"
+        });
     }
 
     PipelineBuilder::~PipelineBuilder()
     {
         vkDestroyPipelineCache(renderer.getDevice().getDevice(), cache, nullptr);
+
+        //log destructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "PipelineBuilder destructor finished"
+        });
     }
 
     std::unordered_map<uint32_t, VkDescriptorSetLayout> PipelineBuilder::createDescriptorLayouts(const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptorSets) const

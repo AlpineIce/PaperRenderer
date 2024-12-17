@@ -10,6 +10,11 @@ namespace PaperRenderer
         :descriptorPoolDatas(coreCount),
         renderer(renderer)
     {
+        //log constructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "DescriptorAllocator constructor finished"
+        });
     }
     
     DescriptorAllocator::~DescriptorAllocator()
@@ -22,6 +27,12 @@ namespace PaperRenderer
                 vkDestroyDescriptorPool(renderer.getDevice().getDevice(), pool, nullptr);
             }
         }
+
+        //log destructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "DescriptorAllocator destructor initialized"
+        });
     }
 
     VkDescriptorPool DescriptorAllocator::allocateDescriptorPool() const

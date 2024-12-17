@@ -22,6 +22,12 @@ namespace PaperRenderer
         vmaDestroyAllocator(allocator);
         vkDestroyDevice(device, nullptr);
         vkDestroyInstance(instance, nullptr);
+
+        //log destructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "Device destructor initialized"
+        });
     }
 
     void Device::createContext(std::string appName)
@@ -462,6 +468,12 @@ namespace PaperRenderer
 
         //command pools init
         commands = std::make_unique<Commands>(renderer, &queues);
+
+        //log constructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "Device creation finished"
+        });
     }
 
     QueueFamiliesIndices Device::getQueueFamiliesIndices() const

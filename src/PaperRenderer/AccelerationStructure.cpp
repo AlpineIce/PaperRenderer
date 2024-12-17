@@ -57,11 +57,23 @@ namespace PaperRenderer
         uboInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
         uboInfo.size = sizeof(UBOInputData);
         uniformBuffer = std::make_unique<Buffer>(renderer, uboInfo);
+
+        //log constructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "TLASInstanceBuildPipeline constructor finished"
+        });
     }
 
     TLASInstanceBuildPipeline::~TLASInstanceBuildPipeline()
     {
         uniformBuffer.reset();
+
+        //log destructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "TLASInstanceBuildPipeline destructor initialized"
+        });
     }
 
     void TLASInstanceBuildPipeline::submit(VkCommandBuffer cmdBuffer, const TLAS& tlas)
@@ -343,6 +355,12 @@ namespace PaperRenderer
         :renderer(renderer)
     {
         asBuildSemaphore = renderer.getDevice().getCommands().getTimelineSemaphore(finalSemaphoreValue);
+
+        //log constructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "AccelerationStructureBuilder constructor finished"
+        });
     }
 
     AccelerationStructureBuilder::~AccelerationStructureBuilder()
@@ -350,6 +368,12 @@ namespace PaperRenderer
         vkDestroySemaphore(renderer.getDevice().getDevice(), asBuildSemaphore, nullptr);
 
         scratchBuffer.reset();
+
+        //log destructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "AccelerationStructureBuilder destructor initialized"
+        });
     }
 
     AccelerationStructureBuilder::AsBuildData AccelerationStructureBuilder::getAsData(const AccelerationStructureOp& op) const

@@ -18,12 +18,24 @@ namespace PaperRenderer
         :renderer(renderer)
     {
         transferSemaphore = renderer.getDevice().getCommands().getTimelineSemaphore(finalSemaphoreValue);
+
+        //log constructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "A RendererStagingBuffer was created"
+        });
     }
 
     RendererStagingBuffer::~RendererStagingBuffer()
     {
         stagingBuffer.reset();
         vkDestroySemaphore(renderer.getDevice().getDevice(), transferSemaphore, nullptr);
+
+        //log destructor
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = "A RendererStagingBuffer was destroyed"
+        });
     }
 
     void RendererStagingBuffer::queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char> &data)
@@ -166,6 +178,12 @@ namespace PaperRenderer
 
         //finish up
         vkDeviceWaitIdle(device.getDevice());
+
+        //log
+        logger.recordLog({
+            .type = INFO,
+            .text = "----------Renderer initialization finished----------"
+        });
     }
 
     RenderEngine::~RenderEngine()
@@ -175,6 +193,12 @@ namespace PaperRenderer
         //free cmd buffers
         modelDataBuffer.reset();
         instancesDataBuffer.reset();
+
+        //log destructor
+        logger.recordLog({
+            .type = INFO,
+            .text = "----------Renderer destructor initialized----------"
+        });
     }
 
     void RenderEngine::rebuildModelDataBuffer()
