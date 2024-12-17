@@ -1243,7 +1243,7 @@ int main()
             .engineName = "PaperRenderer"
         },
         .windowState = {
-            .windowName = "Paper Renderer Example"
+            .windowName = "PaperRenderer Example"
         }
     };
     PaperRenderer::RenderEngine renderer(rendererInfo);

@@ -49,7 +49,7 @@ namespace PaperRenderer
         VkResult result = glfwCreateWindowSurface(renderer.getDevice().getInstance(), window, nullptr, (VkSurfaceKHR*)(&renderer.getDevice().getSurface()));
         if(result != VK_SUCCESS)
         {
-            throw std::runtime_error("Window surface creation failed");
+            throw std::runtime_error("VkResult: " + std::to_string(result) + " Window surface creation failed");
         }
         renderer.getDevice().createDevice();
 
@@ -171,7 +171,7 @@ namespace PaperRenderer
         VkResult presentResult = vkQueuePresentKHR(renderer.getDevice().getQueues().at(QueueType::PRESENT).queues.at(0)->queue, &presentSubmitInfo);
         renderer.getDevice().getQueues().at(QueueType::PRESENT).queues.at(0)->threadLock.unlock();
 
-        if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) 
+        if(presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) 
         {
             recreate();
         }
@@ -294,14 +294,14 @@ namespace PaperRenderer
         swapchainInfo.oldSwapchain = swapchain;
         
         VkResult result = vkCreateSwapchainKHR(renderer.getDevice().getDevice(), &swapchainInfo, nullptr, &swapchain);
-        if(result != VK_SUCCESS) throw std::runtime_error("Swapchain creation/recreation failed");
+        if(result != VK_SUCCESS) throw std::runtime_error("VkResult: " + std::to_string(result) + "Swapchain creation/recreation failed");
         
         createImageViews();
 
         //log build
         renderer.getLogger().recordLog({
             .type = INFO,
-            .text = "Swapchain built"
+            .text = "Swapchain built using VkFormat " + std::to_string(this->swapchainImageFormat)
         });
     }
 
@@ -332,7 +332,7 @@ namespace PaperRenderer
             };
 
             VkResult result = vkCreateImageView(renderer.getDevice().getDevice(), &creationInfo, nullptr, &imageViews.at(i));
-            if(result != VK_SUCCESS) throw std::runtime_error("Failed to create image views");
+            if(result != VK_SUCCESS) throw std::runtime_error("VkResult: " + std::to_string(result) + "Failed to create image views");
         }
     }
 

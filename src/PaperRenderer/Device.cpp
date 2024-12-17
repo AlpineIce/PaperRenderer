@@ -73,7 +73,7 @@ namespace PaperRenderer
 
         //instance creation
         VkResult result = vkCreateInstance(&instanceInfo, nullptr, &instance);
-        if(result != VK_SUCCESS) throw std::runtime_error("Failed to create Vulkan instance");
+        if(result != VK_SUCCESS) throw std::runtime_error("VkResult: " + std::to_string(result) + "Failed to create Vulkan instance");
 
         volkLoadInstance(instance);
     }
@@ -419,15 +419,7 @@ namespace PaperRenderer
         VkResult result = vkCreateDevice(GPU, &deviceCreateInfo, NULL, &device);
         if(result != VK_SUCCESS)
         {
-            if(result == VK_ERROR_EXTENSION_NOT_PRESENT)
-            {
-                //record log
-                renderer.getLogger().recordLog({
-                    .type = ERROR,
-                    .text = "A required device extension isn't present. Terminating"
-                });
-            }
-            throw std::runtime_error("Failed to create Vulkan device");
+            throw std::runtime_error("VkResult: " + std::to_string(result) + "Failed to create Vulkan device");
         }
 
         //volk
