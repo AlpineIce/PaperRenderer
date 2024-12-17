@@ -9,10 +9,20 @@ namespace PaperRenderer
         :eventCallbackFunction(eventCallbackFunction),
         renderer(renderer)
     {
+        //hello world!
+        recordLog({
+            .type = INFO,
+            .text = "\n\n   ---------- Hello, PaperRenderer! ----------\n"
+        });
     }
 
     Logger::~Logger()
     {
+        //goodbye!
+        recordLog({
+            .type = INFO,
+            .text = "\n\n   ---------- Goodbye, PaperRenderer ----------\n"
+        });
     }
 
     void Logger::recordLog(const LogEvent &event)
@@ -53,10 +63,10 @@ namespace PaperRenderer
     }
 
     // timer definitions
-    Timer::Timer(const std::string& timerName, StatisticsTracker &tracker)
+    Timer::Timer(RenderEngine& renderer, const std::string& timerName)
         :timerName(timerName),
         startTime(std::chrono::high_resolution_clock::now()),
-        tracker(tracker)
+        renderer(renderer)
     {
     }
 
@@ -69,7 +79,7 @@ namespace PaperRenderer
     {
         if(!released)
         {
-            tracker.insertTimeStatistic(timerName, (std::chrono::high_resolution_clock::now() - startTime));
+            renderer.getStatisticsTracker().insertTimeStatistic(timerName, (std::chrono::high_resolution_clock::now() - startTime));
             released = true;
         }
     }

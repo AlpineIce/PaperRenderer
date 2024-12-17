@@ -161,6 +161,12 @@ namespace PaperRenderer
         {
             throw std::runtime_error("Couldn't find suitable GPU");
         }
+
+        //record log
+        renderer.getLogger().recordLog({
+                .type = INFO,
+                .text = std::string("Using GPU: ") + gpuProperties.properties.deviceName
+            });
     }
 
     void Device::findQueueFamilies(uint32_t& queueFamilyCount, std::vector<VkQueueFamilyProperties>& queueFamiliesProperties)
@@ -244,6 +250,12 @@ namespace PaperRenderer
                     .queueCount = queueFamiliesProperties.at(queuesInFamily.queueFamilyIndex).queueCount,
                     .pQueuePriorities = queuePriority
                 };
+
+                //record log
+                renderer.getLogger().recordLog({
+                    .type = INFO,
+                    .text = std::string("Using ") + std::to_string(queuesInFamily.queues.size()) + " Queues on queue family index " + std::to_string(queuesInFamily.queueFamilyIndex)
+                });
             }
         }
     }
@@ -282,7 +294,7 @@ namespace PaperRenderer
         findQueueFamilies(queueFamilyCount, queueFamiliesProperties);
         
         std::unordered_map<uint32_t, VkDeviceQueueCreateInfo> queuesCreationInfo;
-        float queuePriority[16] = {0.5f};
+        float queuePriority[16] = { 0.5f };
         createQueues(queuesCreationInfo, queueFamiliesProperties, queuePriority);
 
         //queues in array form
@@ -300,6 +312,13 @@ namespace PaperRenderer
         };
         if(rtSupport)
         {
+            //record log
+            renderer.getLogger().recordLog({
+                .type = INFO,
+                .text = "RT supported"
+            });
+
+            //insert extension names
             extensionNames.insert(extensionNames.end(), {
                 VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
                 VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
@@ -309,68 +328,99 @@ namespace PaperRenderer
             });
         }
 
-        //RT features
-        VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationFeatures = {};
-        accelerationFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
-        accelerationFeatures.pNext = NULL;
-        accelerationFeatures.accelerationStructure = VK_TRUE;
-
-        VkPhysicalDeviceRayTracingPipelineFeaturesKHR  RTfeatures = {};
-        RTfeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
-        RTfeatures.pNext = &accelerationFeatures;
-        RTfeatures.rayTracingPipeline = VK_TRUE;
+        //log all extension names
+        for(const char* extension : extensionNames)
+        {
+            renderer.getLogger().recordLog({
+                .type = INFO,
+                .text = "Using device extension: " + std::string(extension)
+            });
+        }
         
-        VkPhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures = {};
-        rayQueryFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
-        rayQueryFeatures.pNext = &RTfeatures;
-        rayQueryFeatures.rayQuery = VK_TRUE;
+        //RT features
+        VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationFeatures = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
+            .pNext = NULL,
+            .accelerationStructure = VK_TRUE
+        };
 
-        VkPhysicalDeviceRayTracingMaintenance1FeaturesKHR rtMaintFeatures = {};
-        rtMaintFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_MAINTENANCE_1_FEATURES_KHR;
-        rtMaintFeatures.pNext = &rayQueryFeatures;
-        rtMaintFeatures.rayTracingMaintenance1 = VK_TRUE;
+        VkPhysicalDeviceRayTracingPipelineFeaturesKHR  RTfeatures = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
+            .pNext = &accelerationFeatures,
+            .rayTracingPipeline = VK_TRUE
+        };
+        
+        VkPhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
+            .pNext = &RTfeatures,
+            .rayQuery = VK_TRUE
+        };
+
+        VkPhysicalDeviceRayTracingMaintenance1FeaturesKHR rtMaintFeatures = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_MAINTENANCE_1_FEATURES_KHR,
+            .pNext = &rayQueryFeatures,
+            .rayTracingMaintenance1 = VK_TRUE
+        };
 
         //Core features
-        VkPhysicalDeviceExtendedDynamicState3FeaturesEXT dynamicState3Features = {};
-        dynamicState3Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT;
-        dynamicState3Features.pNext = rtSupport ? &rtMaintFeatures : NULL;
-        dynamicState3Features.extendedDynamicState3RasterizationSamples = VK_TRUE;
+        VkPhysicalDeviceExtendedDynamicState3FeaturesEXT dynamicState3Features = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
+            .pNext = rtSupport ? &rtMaintFeatures : NULL,
+            .extendedDynamicState3RasterizationSamples = VK_TRUE
+        };
 
-        VkPhysicalDeviceVulkan11Features vulkan11Features = {};
-        vulkan11Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
-        vulkan11Features.pNext = &dynamicState3Features;
+        VkPhysicalDeviceVulkan11Features vulkan11Features = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+            .pNext = &dynamicState3Features
+        };
 
-        VkPhysicalDeviceVulkan12Features vulkan12Features = {};
-        vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-        vulkan12Features.pNext = &vulkan11Features;
-        vulkan12Features.bufferDeviceAddress = VK_TRUE;
-        vulkan12Features.timelineSemaphore = VK_TRUE;
-        vulkan12Features.scalarBlockLayout = VK_TRUE;
+        VkPhysicalDeviceVulkan12Features vulkan12Features = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+            .pNext = &vulkan11Features,
+            .scalarBlockLayout = VK_TRUE,
+            .timelineSemaphore = VK_TRUE,
+            .bufferDeviceAddress = VK_TRUE
+        };
         
-        VkPhysicalDeviceVulkan13Features vulkan13Features = {};
-        vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-        vulkan13Features.pNext = &vulkan12Features;
-        vulkan13Features.dynamicRendering = VK_TRUE;
-        vulkan13Features.synchronization2 = VK_TRUE;
+        VkPhysicalDeviceVulkan13Features vulkan13Features = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+            .pNext = &vulkan12Features,
+            .synchronization2 = VK_TRUE,
+            .dynamicRendering = VK_TRUE
+            
+        };
 
-        VkPhysicalDeviceFeatures2 features2 = {};
-        features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        features2.pNext = &vulkan13Features;
+        VkPhysicalDeviceFeatures2 features2 = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+            .pNext = &vulkan13Features
+        };
 
         vkGetPhysicalDeviceFeatures2(GPU, &features2);
 
-        VkDeviceCreateInfo deviceCreateInfo = {};
-        deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        deviceCreateInfo.pNext = &features2;
-        deviceCreateInfo.flags = 0;
-        deviceCreateInfo.queueCreateInfoCount = queueCreateInfoVector.size();
-        deviceCreateInfo.pQueueCreateInfos = queueCreateInfoVector.data();
-        deviceCreateInfo.pEnabledFeatures = NULL;
-        deviceCreateInfo.enabledExtensionCount = extensionNames.size();
-        deviceCreateInfo.ppEnabledExtensionNames = extensionNames.data();
+        const VkDeviceCreateInfo deviceCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+            .pNext = &features2,
+            .flags = 0,
+            .queueCreateInfoCount = (uint32_t)queueCreateInfoVector.size(),
+            .pQueueCreateInfos = queueCreateInfoVector.data(),
+            .enabledExtensionCount = (uint32_t)extensionNames.size(),
+            .ppEnabledExtensionNames = extensionNames.data(),
+            .pEnabledFeatures = NULL
+        };
 
         VkResult result = vkCreateDevice(GPU, &deviceCreateInfo, NULL, &device);
-        if(result != VK_SUCCESS) throw std::runtime_error("Failed to create Vulkan device");
+        if(result != VK_SUCCESS)
+        {
+            if(result == VK_ERROR_EXTENSION_NOT_PRESENT)
+            {
+                //record log
+                renderer.getLogger().recordLog({
+                    .type = ERROR,
+                    .text = "A required device extension isn't present. Terminating"
+                });
+            }
+            throw std::runtime_error("Failed to create Vulkan device");
+        }
 
         //volk
         volkLoadDevice(device);

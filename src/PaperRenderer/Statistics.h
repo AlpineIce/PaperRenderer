@@ -34,6 +34,7 @@ namespace PaperRenderer
     public:
         Logger(class RenderEngine& renderer, const std::function<void(class RenderEngine&, const LogEvent&)>& eventCallbackFunction);
         ~Logger();
+        Logger(const Logger&) = delete;
 
         void recordLog(const LogEvent& event);
     };
@@ -55,6 +56,7 @@ namespace PaperRenderer
     public:
         StatisticsTracker();
         ~StatisticsTracker();
+        StatisticsTracker(const StatisticsTracker&) = delete;
 
         void insertTimeStatistic(const std::string& name, std::chrono::duration<double> duration); //insert time statistic (e.g. time for render pass or AS build)
         void modifyObjectCounter(const std::string& name, int increment); //increment can be positive for incrementing or negative for decrementing
@@ -73,11 +75,12 @@ namespace PaperRenderer
 
         void tryInsertTimeStatistic();
 
-        StatisticsTracker& tracker;
+        class RenderEngine& renderer;
         
     public:
-        Timer(const std::string& timerName, StatisticsTracker& tracker);
+        Timer(class RenderEngine& renderer, const std::string& timerName);
         ~Timer();
+        Timer(const StatisticsTracker&) = delete;
 
         void release(); //Release is typically done when this goes out of scope, but early release can be done to send time statistic now
     };

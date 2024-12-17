@@ -1197,7 +1197,7 @@ int main()
             break;
         }
 
-        std::cout << event.text;
+        std::cout << event.text << std::endl;
     };
 
     //swapchain resize callback
