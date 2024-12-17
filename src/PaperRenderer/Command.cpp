@@ -53,46 +53,25 @@ namespace PaperRenderer
 
     void Commands::createCommandPools()
     {
-        //create pool function
-        auto createPool = [&](QueueType type, uint32_t queueFamilyIndex, VkCommandPool* pool)
-        {
-            VkCommandPoolCreateInfo graphicsPoolInfo = {};
-            graphicsPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-            graphicsPoolInfo.pNext = NULL;
-            graphicsPoolInfo.flags = 0;
-            graphicsPoolInfo.queueFamilyIndex = queueFamilyIndex;
-
-            vkCreateCommandPool(renderer.getDevice().getDevice(), &graphicsPoolInfo, nullptr, pool);
-        };
-
         //create 4 arrays of std::thread::hardware_concurrency length arrays of command pools (honestly presentation doesnt need that many pools but its ok)
         for(auto& [queueType, queues] : *queuesPtr)
         {
-            //async create pools
             commandPools[queueType] = std::vector<CommandPoolData>(coreCount);
-            std::vector<std::future<void>> futures;
-            futures.reserve(coreCount);
-
             for(uint32_t i = 0; i < coreCount; i++)
             {
-                futures.push_back(std::async(std::launch::async, createPool, queueType, queues.queueFamilyIndex, &commandPools[queueType][i].cmdPool));
+                VkCommandPoolCreateInfo commandPoolInfo = {
+                    .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+                    .pNext = NULL,
+                    .flags = 0,
+                    .queueFamilyIndex = queues.queueFamilyIndex
+                };
+                vkCreateCommandPool(renderer.getDevice().getDevice(), &commandPoolInfo, nullptr, &commandPools[queueType][i].cmdPool);
             }
         }
     }
 
     void Commands::resetCommandPools()
     {
-        //reset pool function
-        auto resetPool = [&](CommandPoolData* pool)
-        {
-            //wait for any non-submitted command buffers (potentially a deadlock problem)
-            std::lock_guard<std::recursive_mutex> guard(pool->threadLock);
-
-            //reset pool
-            vkResetCommandPool(renderer.getDevice().getDevice(), pool->cmdPool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
-            pool->cmdBufferStackLocation = 0;
-        };
-
         //reset all pools
         for(auto& [queueType, pools] : commandPools)
         {
@@ -102,7 +81,12 @@ namespace PaperRenderer
 
             for(CommandPoolData& pool : pools)
             {
-                futures.push_back(std::async(std::launch::async, resetPool, &pool));
+                //wait for any non-submitted command buffers (potentially a deadlock problem)
+                std::lock_guard<std::recursive_mutex> guard(pool.threadLock);
+
+                //reset pool
+                vkResetCommandPool(renderer.getDevice().getDevice(), pool.cmdPool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
+                pool.cmdBufferStackLocation = 0;
             }
         }
     }
