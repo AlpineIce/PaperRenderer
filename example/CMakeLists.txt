@@ -26,3 +26,20 @@ include_directories(${PROJECT_SOURCE_DIR})
 add_executable(${PROJECT_NAME} ${example_sources_s} ${example_sources_h} ${gltf_source_dir}json.hpp ${gltf_source_dir}stb_image.h ${gltf_source_dir}stb_image_write.h ${gltf_source_dir}tiny_gltf.h ${imgui_source})
 set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 target_link_libraries(${PROJECT_NAME} PUBLIC PaperRenderer)
+add_dependencies(${PROJECT_NAME} PaperRenderer)
+
+#COMPILE SHADERS
+add_custom_target(
+    example_shader_compile_target ALL
+    COMMENT "Compiling example shaders"
+)
+
+add_custom_command(
+    TARGET example_shader_compile_target
+    POST_BUILD
+    COMMAND python ${CMAKE_CURRENT_SOURCE_DIR}/ShaderCompile.py ${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders/ ${CMAKE_CURRENT_BINARY_DIR}/resources/shaders/
+)
+
+#COPY FILES
+message(STATUS "Copying resource files into ${PROJECT_BINARY_DIR}/resources")
+file(COPY ${PROJECT_SOURCE_DIR}/resources/models DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/resources) #models

@@ -1190,21 +1190,21 @@ int main()
 
     //log event callback
     const auto logCallbackFunction = [&](PaperRenderer::RenderEngine& renderer, const PaperRenderer::LogEvent& event) {
-        std::cout << "PAPER RENDERER LOG --";
+        const char* beginString = "PAPER RENDERER LOG ";
 
         switch(event.type)
         {
             //only print info if in debug
 #ifndef NDEBUG
         case PaperRenderer::LogType::INFO:
-            std::cout << "INFO--: ";
+            std::cout << beginString << "\033[1;37m--INFO--: \033[0m";
             break;
 #endif
         case PaperRenderer::LogType::WARNING:
-            std::cout << "WARNING--: ";
+            std::cout << beginString << "\033[1;33m--WARNING--: \033[0m";
             break;
         case PaperRenderer::LogType::ERROR:
-            std::cout << "ERROR--: ";
+            std::cout << beginString << "\033[1;31m--ERROR--: \033[0m";
             break;
         }
 
@@ -1236,8 +1236,8 @@ int main()
     const PaperRenderer::RendererCreationStruct rendererInfo = {
         .logEventCallbackFunction = logCallbackFunction,
         .swapchainRebuildCallbackFunction = swapchainResizeFunction,
-        .rasterPreprocessSpirv = readFile("resources/shaders/IndirectDrawBuild.spv"),
-        .rtPreprocessSpirv = readFile("resources/shaders/TLASInstBuild.spv"),
+        .rasterPreprocessSpirv = readFile("../resources/shaders/IndirectDrawBuild.spv"),
+        .rtPreprocessSpirv = readFile("../resources/shaders/TLASInstBuild.spv"),
         .deviceInstanceInfo = {
             .appName = "PaperRenderer Example",
             .engineName = "PaperRenderer"
