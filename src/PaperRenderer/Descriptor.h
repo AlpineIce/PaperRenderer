@@ -59,8 +59,8 @@ namespace PaperRenderer
     private:
         struct DescriptorPoolData
         {
-            std::vector<VkDescriptorPool> descriptorPools;
-            VkDescriptorPool currentPool = VK_NULL_HANDLE;
+            std::vector<VkDescriptorPool> descriptorPools = {};
+            uint32_t currentPoolIndex = 0;
             std::recursive_mutex threadLock = {};
         };
         const uint32_t coreCount = std::thread::hardware_concurrency();
