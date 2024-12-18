@@ -10,6 +10,12 @@ namespace PaperRenderer
         :descriptorPoolDatas(coreCount),
         renderer(renderer)
     {
+        //initialize one descriptor pool
+        for(DescriptorPoolData& poolData : descriptorPoolDatas)
+        {
+            poolData.descriptorPools = { allocateDescriptorPool() };
+        }
+
         //log constructor
         renderer.getLogger().recordLog({
             .type = INFO,
@@ -254,9 +260,8 @@ namespace PaperRenderer
             //reset pool
             for(VkDescriptorPool pool : poolData.descriptorPools)
             {
-                vkDestroyDescriptorPool(renderer.getDevice().getDevice(), pool, nullptr);
+                vkResetDescriptorPool(renderer.getDevice().getDevice(), pool, 0);
             }
-            poolData.descriptorPools = { allocateDescriptorPool() };
             poolData.currentPool = poolData.descriptorPools[0];
         }
     }
