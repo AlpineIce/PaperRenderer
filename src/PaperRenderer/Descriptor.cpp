@@ -292,7 +292,7 @@ namespace PaperRenderer
     void DescriptorAllocator::refreshPools()
     {
         //Timer
-        Timer timer(renderer, "Reset Descriptor Pools");
+        Timer timer(renderer, "Reset Descriptor Pools", REGULAR);
 
         //reset pools
         for(DescriptorPoolData& poolData : descriptorPoolDatas)

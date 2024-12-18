@@ -8,8 +8,15 @@
 
 struct GuiContext
 {
+    struct GuiIrregularTimeStatistic
+    {
+        PaperRenderer::TimeStatistic statistic;
+        std::chrono::high_resolution_clock::time_point from;
+    };
+
     PaperRenderer::Queue* imGuiQueue = NULL;
     ImGuiIO* io = NULL;
+    std::deque<GuiIrregularTimeStatistic> irregularTimeEvents;
 };
 
 GuiContext initImGui(PaperRenderer::RenderEngine& renderer);

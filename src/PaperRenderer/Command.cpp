@@ -73,7 +73,7 @@ namespace PaperRenderer
     void Commands::resetCommandPools()
     {
         //Timer
-        Timer timer(renderer, "Reset Command Pools");
+        Timer timer(renderer, "Reset Command Pools", REGULAR);
 
         //give warning if if there are locked command buffers present (from counter)
         if(lockedCmdBufferCount)

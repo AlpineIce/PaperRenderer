@@ -66,15 +66,40 @@ void renderImGui(PaperRenderer::RenderEngine* renderer, PaperRenderer::Statistic
     ImGui::Begin("PaperRenderer Example Statistics");
 
     //list last frame statistics
-    ImGui::Text("Last Frame");
+    ImGui::SeparatorText("Last Frame CPU Statistics");
     for(const PaperRenderer::TimeStatistic& time : lastFrameStatistics->timeStatistics)
     {
-        std::string ms = std::format(": {:.3f}ms", time.getTime() * 1000.0);
-        ImGui::Text((time.name + ms).c_str());
+        if(time.interval == PaperRenderer::TimeStatisticInterval::REGULAR)
+        {
+            std::string ms = std::format(": {:.3f}ms", time.getTime() * 1000.0);
+            ImGui::Text((time.name + ms).c_str());
+        }
+        else
+        {
+            //add irregular event
+            guiContext->irregularTimeEvents.push_back({ time, std::chrono::high_resolution_clock::now() });
+        }
+    }
+
+    //list regular statistics
+    ImGui::SeparatorText("Irregular Event CPU Statistics");
+    for(const GuiContext::GuiIrregularTimeStatistic& time : guiContext->irregularTimeEvents)
+    {
+        //remove event if its old
+        if((std::chrono::high_resolution_clock::now() - time.from).count() > 7000000000.0) //7 seconds
+        {
+            guiContext->irregularTimeEvents.pop_front();
+        }
+        else
+        {
+            std::string ms = std::format(": {:.3f}ms", time.statistic.getTime() * 1000.0);
+            ImGui::Text((time.statistic.name + ms).c_str());
+        }
     }
 
     //list total frame time
-    ImGui::Text("Total Frame Time: %.3fms; (%.1f FPS)", 1000.0f / guiContext->io->Framerate, guiContext->io->Framerate);
+    ImGui::SeparatorText("Total Frame Time (GPU/CPU)");
+    ImGui::Text("%.3fms    (%.1f FPS)", 1000.0f / guiContext->io->Framerate, guiContext->io->Framerate);
 
     //end
     ImGui::End();

@@ -188,7 +188,7 @@ namespace PaperRenderer
     void Swapchain::buildSwapchain()
     {
         //Timer
-        Timer timer(renderer, "Build Swapchain");
+        Timer timer(renderer, "Build Swapchain", IRREGULAR);
 
         //----------COLOR SPACE SELECTION----------//
 

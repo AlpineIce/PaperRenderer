@@ -563,7 +563,7 @@ namespace PaperRenderer
     std::unique_ptr<ComputePipeline> PipelineBuilder::buildComputePipeline(const ComputePipelineBuildInfo& info) const
     {
         //Timer
-        Timer timer(renderer, "Build Compute Pipeline");
+        Timer timer(renderer, "Build Compute Pipeline", IRREGULAR);
 
         ComputePipelineCreationInfo pipelineInfo = {{
                 .renderer = renderer,
@@ -581,7 +581,7 @@ namespace PaperRenderer
     std::unique_ptr<RasterPipeline> PipelineBuilder::buildRasterPipeline(const RasterPipelineBuildInfo& info) const
     {
         //Timer
-        Timer timer(renderer, "Build Raster Pipeline");
+        Timer timer(renderer, "Build Raster Pipeline", IRREGULAR);
 
         //set shaders
         std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<PaperRenderer::Shader>> shaders;
@@ -608,7 +608,7 @@ namespace PaperRenderer
     std::unique_ptr<RTPipeline> PipelineBuilder::buildRTPipeline(const RTPipelineBuildInfo& info) const
     {
         //Timer
-        Timer timer(renderer, "Build RT Pipeline");
+        Timer timer(renderer, "Build RT Pipeline", IRREGULAR);
 
         RTPipelineCreationInfo pipelineInfo = { {
                 .renderer = renderer,

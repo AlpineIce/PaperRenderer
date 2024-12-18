@@ -121,7 +121,7 @@ namespace PaperRenderer
     void RendererStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
     {
         //timer
-        Timer timer(renderer, "Submit Queued Transfers (StagingBuffer)");
+        Timer timer(renderer, "Submit Queued Transfers (StagingBuffer)", REGULAR);
 
         //lock mutex
         std::lock_guard guard(stagingBufferMutex);
@@ -195,7 +195,7 @@ namespace PaperRenderer
     void RenderEngine::rebuildModelDataBuffer()
     {
         //timer
-        Timer timer(*this, "Rebuild Model Data Buffer");
+        Timer timer(*this, "Rebuild Model Data Buffer", IRREGULAR);
 
         //new buffer to replace old
         VkDeviceSize newModelDataSize = 4096;
@@ -238,9 +238,6 @@ namespace PaperRenderer
 
     void RenderEngine::handleModelDataCompaction(std::vector<CompactionResult> results) //UNTESTED FUNCTION
     {
-        //timer
-        Timer timer(*this, "Handle Model Data Compaction");
-
         //fix model data first
         for(const CompactionResult compactionResult : results)
         {
@@ -264,7 +261,7 @@ namespace PaperRenderer
     void RenderEngine::rebuildInstancesbuffer()
     {
         //timer
-        Timer timer(*this, "Rebuild Instances Buffer");
+        Timer timer(*this, "Rebuild Instances Buffer", IRREGULAR);
 
         //new buffer to replace old
         BufferInfo bufferInfo = {};
@@ -375,7 +372,7 @@ namespace PaperRenderer
     void RenderEngine::queueModelsAndInstancesTransfers()
     {
         //timer
-        Timer timer(*this, "Queue Models and Instances Transfers");
+        Timer timer(*this, "Queue Models and Instances Transfers", REGULAR);
 
         //check buffer sizes
         if((instancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128) ||
@@ -421,9 +418,6 @@ namespace PaperRenderer
 
     const VkSemaphore& RenderEngine::beginFrame()
     {
-        //timer
-        Timer timer(*this, "Begin Frame");
-
         //clear previous statistics
         statisticsTracker.clearStatistics();
 
@@ -453,7 +447,7 @@ namespace PaperRenderer
     void RenderEngine::endFrame(const std::vector<VkSemaphore>& waitSemaphores)
     {
         //timer
-        Timer timer(*this, "End Frame");
+        Timer timer(*this, "End Frame", REGULAR);
 
         //presentation
         swapchain.presentImage(waitSemaphores);

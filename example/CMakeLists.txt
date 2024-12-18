@@ -29,6 +29,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC PaperRenderer)
 add_dependencies(${PROJECT_NAME} PaperRenderer)
 
 #COMPILE SHADERS
+#[===[
 add_custom_target(
     example_shader_compile_target ALL
     COMMENT "Compiling example shaders"
@@ -39,6 +40,8 @@ add_custom_command(
     POST_BUILD
     COMMAND python ${CMAKE_CURRENT_SOURCE_DIR}/ShaderCompile.py ${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders/ ${CMAKE_CURRENT_BINARY_DIR}/resources/shaders/
 )
+
+]===]
 
 #COPY FILES
 message(STATUS "Copying resource files into ${PROJECT_BINARY_DIR}/resources")

@@ -45,10 +45,10 @@ namespace PaperRenderer
     {
     }
 
-    void StatisticsTracker::insertTimeStatistic(const std::string &name, std::chrono::duration<double> duration)
+    void StatisticsTracker::insertTimeStatistic(const std::string &name, TimeStatisticInterval interval, std::chrono::duration<double> duration)
     {
         std::lock_guard<std::mutex> guard(statisticsMutex);
-        if(name.size()) statistics.timeStatistics.emplace_front(name, duration);
+        if(name.size()) statistics.timeStatistics.emplace_back(name, interval, duration);
     }
 
     void StatisticsTracker::modifyObjectCounter(const std::string &name, int increment)
@@ -63,8 +63,9 @@ namespace PaperRenderer
     }
 
     // timer definitions
-    Timer::Timer(RenderEngine& renderer, const std::string& timerName)
+    Timer::Timer(RenderEngine& renderer, const std::string& timerName, TimeStatisticInterval interval)
         :timerName(timerName),
+        interval(interval),
         startTime(std::chrono::high_resolution_clock::now()),
         renderer(renderer)
     {
@@ -79,7 +80,7 @@ namespace PaperRenderer
     {
         if(!released)
         {
-            renderer.getStatisticsTracker().insertTimeStatistic(timerName, (std::chrono::high_resolution_clock::now() - startTime));
+            renderer.getStatisticsTracker().insertTimeStatistic(timerName, interval, (std::chrono::high_resolution_clock::now() - startTime));
             released = true;
         }
     }

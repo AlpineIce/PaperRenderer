@@ -14,7 +14,7 @@ namespace PaperRenderer
 		renderer(renderer)
     {
 		//Timer
-        Timer timer(renderer, "Create Model");
+        Timer timer(renderer, "Create Model", IRREGULAR);
 
 		//temporary variables for creating the singular vertex and index buffer
 		std::vector<char> creationVerticesData;
@@ -206,9 +206,6 @@ namespace PaperRenderer
         :renderer(renderer),
         parentModel(parentModel)
     {
-		//Timer
-        Timer timer(renderer, "Create Model Instance");
-
 		renderer.addObject(this);
 		uniqueGeometryData.isUsed = uniqueGeometry;
 		

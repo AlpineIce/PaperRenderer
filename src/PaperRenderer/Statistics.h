@@ -41,9 +41,16 @@ namespace PaperRenderer
 
     //----------PROFILING AND STATE----------//
 
+    enum TimeStatisticInterval
+    {
+        REGULAR, //statistic can be expected to repeat itself (e.g. RenderPass time, beginFrame() time)
+        IRREGULAR //statistic randomly occurs (e.g. resizing a large buffer)
+    };
+
     struct TimeStatistic
     {
         std::string name = {};
+        TimeStatisticInterval interval = REGULAR;
         std::chrono::duration<double> duration = {};
 
         double getTime() const { return duration.count(); }
@@ -66,7 +73,7 @@ namespace PaperRenderer
         ~StatisticsTracker();
         StatisticsTracker(const StatisticsTracker&) = delete;
 
-        void insertTimeStatistic(const std::string& name, std::chrono::duration<double> duration); //insert time statistic (e.g. time for render pass or AS build)
+        void insertTimeStatistic(const std::string& name, TimeStatisticInterval interval, std::chrono::duration<double> duration); //insert time statistic (e.g. time for render pass or AS build)
         void modifyObjectCounter(const std::string& name, int increment); //increment can be positive for incrementing or negative for decrementing
         void clearStatistics(); //clears all statistical values (times, object counters, etc)
 
@@ -78,6 +85,7 @@ namespace PaperRenderer
     {
     private:
         const std::string timerName;
+        const TimeStatisticInterval interval;
         const std::chrono::time_point<std::chrono::high_resolution_clock> startTime;
         bool released = false;
 
@@ -86,7 +94,7 @@ namespace PaperRenderer
         class RenderEngine& renderer;
         
     public:
-        Timer(class RenderEngine& renderer, const std::string& timerName);
+        Timer(class RenderEngine& renderer, const std::string& timerName, TimeStatisticInterval interval);
         ~Timer();
         Timer(const StatisticsTracker&) = delete;
 

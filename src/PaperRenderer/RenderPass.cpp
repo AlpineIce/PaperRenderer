@@ -164,7 +164,7 @@ namespace PaperRenderer
     void RenderPass::rebuildInstancesBuffer()
     {
         //Timer
-        Timer timer(renderer, "Rebuild RenderPass Instances Buffer");
+        Timer timer(renderer, "Rebuild RenderPass Instances Buffer", IRREGULAR);
 
         //create new instance buffer
         VkDeviceSize newInstancesBufferSize = std::max((VkDeviceSize)(renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance) * instancesOverhead), (VkDeviceSize)(sizeof(ModelInstance::RenderPassInstance) * 64));
@@ -201,7 +201,7 @@ namespace PaperRenderer
     void RenderPass::rebuildMaterialDataBuffer()
     {
         //Timer
-        Timer timer(renderer, "Rebuild RenderPass Material Data Buffer");
+        Timer timer(renderer, "Rebuild RenderPass Material Data Buffer", IRREGULAR);
 
         //create new material data buffer
         VkDeviceSize newMaterialDataBufferSize = 4096;
@@ -247,7 +247,7 @@ namespace PaperRenderer
     void RenderPass::queueInstanceTransfers()
     {
         //Timer
-        Timer timer(renderer, "RenderPass Queue instance Transfers");
+        Timer timer(renderer, "RenderPass Queue instance Transfers", REGULAR);
 
         //verify mesh group buffers
         for(const auto& [material, materialInstanceNode] : renderTree) //material
@@ -375,7 +375,7 @@ namespace PaperRenderer
     std::vector<VkCommandBuffer> RenderPass::render(const RenderPassInfo& renderPassInfo)
     {
         //Timer
-        Timer timer(renderer, "RenderPass Render Recording");
+        Timer timer(renderer, "RenderPass Render Recording", REGULAR);
 
         //----------CLEAR DRAW COUNTS----------//
 
