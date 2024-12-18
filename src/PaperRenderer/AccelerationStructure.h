@@ -11,12 +11,6 @@ namespace PaperRenderer
     {
     private:
         const ComputeShader computeShader;
-        std::unique_ptr<Buffer> uniformBuffer;
-
-        struct UBOInputData
-        {
-            uint32_t objectCount;
-        };
 
         class RenderEngine& renderer;
 
@@ -24,6 +18,11 @@ namespace PaperRenderer
         TLASInstanceBuildPipeline(RenderEngine& renderer, const std::vector<uint32_t>& shaderData);
         ~TLASInstanceBuildPipeline();
         TLASInstanceBuildPipeline(const TLASInstanceBuildPipeline&) = delete;
+
+        struct UBOInputData
+        {
+            uint32_t objectCount;
+        };
 
         void submit(VkCommandBuffer cmdBuffer, const TLAS& tlas);
     };
@@ -75,6 +74,7 @@ namespace PaperRenderer
     class TLAS : public AS
     {
     private:
+        Buffer preprocessUniformBuffer;
         std::unique_ptr<Buffer> instancesBuffer;
 
         VkDeviceSize instanceDescriptionsOffset = 0;

@@ -62,7 +62,7 @@ namespace PaperRenderer
         });
     }
 
-    void RasterPreprocessPipeline::submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera, Buffer& uniformBuffer)
+    void RasterPreprocessPipeline::submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera)
     {
         UBOInputData uboInputData = {};
         uboInputData.camPos = glm::vec4(camera.getPosition(), 1.0f);
@@ -78,11 +78,11 @@ namespace PaperRenderer
         write.size = sizeof(UBOInputData);
         write.offset = 0;
 
-        uniformBuffer.writeToBuffer({ write });
+        renderPass.preprocessUniformBuffer.writeToBuffer({ write });
 
         //set0 - binding 0: UBO input data
         VkDescriptorBufferInfo bufferWrite0Info = {};
-        bufferWrite0Info.buffer = uniformBuffer.getBuffer();
+        bufferWrite0Info.buffer = renderPass.preprocessUniformBuffer.getBuffer();
         bufferWrite0Info.offset = 0;
         bufferWrite0Info.range = sizeof(UBOInputData);
 
@@ -123,25 +123,22 @@ namespace PaperRenderer
     //----------RENDER PASS DEFINITIONS----------//
 
     RenderPass::RenderPass(RenderEngine& renderer, MaterialInstance& defaultMaterialInstance)
-        :renderer(renderer),
+        :preprocessUniformBuffer(renderer, {
+            .size = sizeof(RasterPreprocessPipeline::UBOInputData),
+            .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT,
+            .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
+        }),
+        renderer(renderer),
         defaultMaterialInstance(defaultMaterialInstance)
     {
         rebuildMaterialDataBuffer();
         rebuildInstancesBuffer();
-
-        //preprocess uniform buffer
-        BufferInfo preprocessBufferInfo = {};
-        preprocessBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-        preprocessBufferInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT;
-        preprocessBufferInfo.size = sizeof(RasterPreprocessPipeline::UBOInputData);
-        preprocessUniformBuffer = std::make_unique<Buffer>(renderer, preprocessBufferInfo);
 
         renderer.renderPasses.push_back(this);
     }
 
     RenderPass::~RenderPass()
     {
-        preprocessUniformBuffer.reset();
         instancesBuffer.reset();
         instancesDataBuffer.reset();
 
@@ -401,7 +398,7 @@ namespace PaperRenderer
         //----------PRE-PROCESS----------//
 
         //compute shader
-        renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this, renderPassInfo.camera, *preprocessUniformBuffer);
+        renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this, renderPassInfo.camera);
 
         //memory barrier
         VkMemoryBarrier2 preprocessMemBarrier = {};

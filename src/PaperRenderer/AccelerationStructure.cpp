@@ -51,13 +51,6 @@ namespace PaperRenderer
         }),
         renderer(renderer)
     {
-        //uniform buffer
-        BufferInfo uboInfo = {};
-        uboInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-        uboInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR;
-        uboInfo.size = sizeof(UBOInputData);
-        uniformBuffer = std::make_unique<Buffer>(renderer, uboInfo);
-
         //log constructor
         renderer.getLogger().recordLog({
             .type = INFO,
@@ -67,8 +60,6 @@ namespace PaperRenderer
 
     TLASInstanceBuildPipeline::~TLASInstanceBuildPipeline()
     {
-        uniformBuffer.reset();
-
         //log destructor
         renderer.getLogger().recordLog({
             .type = INFO,
@@ -86,11 +77,11 @@ namespace PaperRenderer
         write.size = sizeof(UBOInputData);
         write.offset = 0;
 
-        uniformBuffer->writeToBuffer({ write });
+        tlas.preprocessUniformBuffer.writeToBuffer({ write });
 
         //set0 - binding 0: UBO input data
         VkDescriptorBufferInfo bufferWrite0Info = {};
-        bufferWrite0Info.buffer = uniformBuffer->getBuffer();
+        bufferWrite0Info.buffer = tlas.preprocessUniformBuffer.getBuffer();
         bufferWrite0Info.offset = 0;
         bufferWrite0Info.range = sizeof(UBOInputData);
 
@@ -172,7 +163,12 @@ namespace PaperRenderer
     //----------TLAS DEFINITIONS----------//
     
     TLAS::TLAS(RenderEngine& renderer)
-        :AS(renderer)
+        :AS(renderer),
+        preprocessUniformBuffer(renderer, {
+            .size = sizeof(TLASInstanceBuildPipeline::UBOInputData),
+            .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT,
+            .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
+        })
     {
     }
 

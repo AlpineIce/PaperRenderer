@@ -34,7 +34,7 @@ namespace PaperRenderer
             bool doCulling = true;
         };
 
-        void submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera, Buffer& uniformBuffer);
+        void submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera);
     };
     
     //----------RENDER PASS----------//
@@ -70,7 +70,7 @@ namespace PaperRenderer
         std::deque<ModelInstance*> toUpdateInstances;
 
         //buffers
-        std::unique_ptr<Buffer> preprocessUniformBuffer;
+        Buffer preprocessUniformBuffer;
         std::unique_ptr<Buffer> instancesBuffer;
         std::unique_ptr<FragmentableBuffer> instancesDataBuffer;
 
