@@ -53,7 +53,6 @@ include_directories(${INCLUDE_DIRS})
 add_dependencies(${PROJECT_NAME} glfw)
 
 #SHADER COMPILE
-#[===[
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/resources/shaders/)
 add_custom_target(
     paper_shader_compile_target ALL
@@ -65,8 +64,6 @@ add_custom_command(
     POST_BUILD
     COMMAND python ${CMAKE_CURRENT_SOURCE_DIR}/ShaderCompile.py ${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders/ ${PROJECT_BINARY_DIR}/resources/shaders/
 )
-
-]===]
 
 #EXAMPLE
 if(PAPER_RENDERER_BUILD_EXAMPLE)
