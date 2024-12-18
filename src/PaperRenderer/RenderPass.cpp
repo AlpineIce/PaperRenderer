@@ -163,6 +163,9 @@ namespace PaperRenderer
 
     void RenderPass::rebuildInstancesBuffer()
     {
+        //Timer
+        Timer timer(renderer, "Rebuild RenderPass Instances Buffer");
+
         //create new instance buffer
         VkDeviceSize newInstancesBufferSize = std::max((VkDeviceSize)(renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance) * instancesOverhead), (VkDeviceSize)(sizeof(ModelInstance::RenderPassInstance) * 64));
 
@@ -197,6 +200,9 @@ namespace PaperRenderer
 
     void RenderPass::rebuildMaterialDataBuffer()
     {
+        //Timer
+        Timer timer(renderer, "Rebuild RenderPass Material Data Buffer");
+
         //create new material data buffer
         VkDeviceSize newMaterialDataBufferSize = 4096;
         VkDeviceSize newMaterialDataWriteSize = 0;
@@ -240,6 +246,9 @@ namespace PaperRenderer
 
     void RenderPass::queueInstanceTransfers()
     {
+        //Timer
+        Timer timer(renderer, "RenderPass Queue instance Transfers");
+
         //verify mesh group buffers
         for(const auto& [material, materialInstanceNode] : renderTree) //material
         {
@@ -365,166 +374,113 @@ namespace PaperRenderer
 
     std::vector<VkCommandBuffer> RenderPass::render(const RenderPassInfo& renderPassInfo)
     {
-        if(renderPassInstances.size())
+        //Timer
+        Timer timer(renderer, "RenderPass Render Recording");
+
+        //----------CLEAR DRAW COUNTS----------//
+
+        VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(GRAPHICS);
+
+        VkCommandBufferBeginInfo cmdBufferBeginInfo = {};
+        cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        cmdBufferBeginInfo.pNext = NULL;
+        cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        cmdBufferBeginInfo.pInheritanceInfo = NULL;
+        
+        vkBeginCommandBuffer(cmdBuffer, &cmdBufferBeginInfo);
+
+        //pre-render barriers
+        if(renderPassInfo.preRenderBarriers)
         {
-            //----------CLEAR DRAW COUNTS----------//
-
-            auto drawClearFunction = [&]()
-            {
-                VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(GRAPHICS);
-
-                VkCommandBufferBeginInfo cmdBufferBeginInfo = {};
-                cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-                cmdBufferBeginInfo.pNext = NULL;
-                cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-                cmdBufferBeginInfo.pInheritanceInfo = NULL;
-                
-                vkBeginCommandBuffer(cmdBuffer, &cmdBufferBeginInfo);
-
-                //pre-render barriers
-                if(renderPassInfo.preRenderBarriers)
-                {
-                    vkCmdPipelineBarrier2(cmdBuffer, renderPassInfo.preRenderBarriers);
-                }
-
-                //clear draw counts
-                clearDrawCounts(cmdBuffer);
-
-                //end cmd buffer
-                vkEndCommandBuffer(cmdBuffer);
-                
-
-                renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
-
-                return cmdBuffer;
-            };
-            
-            //----------PRE-PROCESS----------//
-
-            auto preprocessFunction = [&]()
-            {
-                VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(GRAPHICS);
-
-                VkCommandBufferBeginInfo cmdBufferBeginInfo = {};
-                cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-                cmdBufferBeginInfo.pNext = NULL;
-                cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-                cmdBufferBeginInfo.pInheritanceInfo = NULL;
-                
-                vkBeginCommandBuffer(cmdBuffer, &cmdBufferBeginInfo);
-
-                //compute shader
-                renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this, renderPassInfo.camera, *preprocessUniformBuffer);
-
-                //memory barrier
-                VkMemoryBarrier2 preprocessMemBarrier = {};
-                preprocessMemBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
-                preprocessMemBarrier.pNext = NULL;
-                preprocessMemBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-                preprocessMemBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
-                preprocessMemBarrier.dstStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
-                preprocessMemBarrier.dstAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_READ_BIT;
-
-                VkDependencyInfo preprocessDependencyInfo = {};
-                preprocessDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-                preprocessDependencyInfo.pNext = NULL;
-                preprocessDependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-                preprocessDependencyInfo.memoryBarrierCount = 1;
-                preprocessDependencyInfo.pMemoryBarriers = &preprocessMemBarrier;
-                
-                vkCmdPipelineBarrier2(cmdBuffer, &preprocessDependencyInfo);
-
-                //end cmd buffer
-                vkEndCommandBuffer(cmdBuffer);
-
-                renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
-
-                return cmdBuffer;
-            };
-
-            //----------RENDER PASS----------//
-
-            auto renderPassFunction = [&]()
-            {
-                VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(GRAPHICS);
-
-                VkCommandBufferBeginInfo cmdBufferBeginInfo = {};
-                cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-                cmdBufferBeginInfo.pNext = NULL;
-                cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-                cmdBufferBeginInfo.pInheritanceInfo = NULL;
-                
-                vkBeginCommandBuffer(cmdBuffer, &cmdBufferBeginInfo);
-
-                //rendering
-                VkRenderingInfo renderInfo = {};
-                renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR;
-                renderInfo.pNext = NULL;
-                renderInfo.flags = 0;
-                renderInfo.renderArea = renderPassInfo.renderArea;
-                renderInfo.layerCount = 1;
-                renderInfo.viewMask = 0;
-                renderInfo.colorAttachmentCount = renderPassInfo.colorAttachments.size();
-                renderInfo.pColorAttachments = renderPassInfo.colorAttachments.data();
-                renderInfo.pDepthAttachment = renderPassInfo.depthAttachment;
-                renderInfo.pStencilAttachment = renderPassInfo.stencilAttachment;
-
-                vkCmdBeginRendering(cmdBuffer, &renderInfo);
-
-                //scissors (plural) and viewports
-                vkCmdSetViewportWithCount(cmdBuffer, renderPassInfo.viewports.size(), renderPassInfo.viewports.data());
-                vkCmdSetScissorWithCount(cmdBuffer, renderPassInfo.scissors.size(), renderPassInfo.scissors.data());
-
-                //MSAA samples
-                vkCmdSetRasterizationSamplesEXT(cmdBuffer, renderPassInfo.sampleCount);
-
-                //compare op
-                vkCmdSetDepthCompareOp(cmdBuffer, renderPassInfo.depthCompareOp);
-
-                //----------MAIN PASS----------//
-
-                //record draw commands
-                for(const auto& [material, materialInstanceNode] : renderTree) //material
-                {
-                    std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> materialDescriptorWrites;
-                    material->bind(cmdBuffer, renderPassInfo.camera, materialDescriptorWrites);
-                    for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
-                    {
-                        if(meshGroups)
-                        {
-                            std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> instanceDescriptorWrites;
-                            materialInstance->bind(cmdBuffer, instanceDescriptorWrites);
-                            meshGroups->draw(cmdBuffer, *material);
-                        }
-                    }
-                }
-
-                //end rendering
-                vkCmdEndRendering(cmdBuffer);
-
-                //post-render barriers
-                if(renderPassInfo.postRenderBarriers)
-                {
-                    vkCmdPipelineBarrier2(cmdBuffer, renderPassInfo.postRenderBarriers);
-                }
-
-                //end cmd buffer
-                vkEndCommandBuffer(cmdBuffer);
-
-                renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
-
-                return cmdBuffer;
-            };
-
-            //call and return results
-            
-            std::future<VkCommandBuffer> result1 = std::async(std::launch::async, preprocessFunction);
-            std::future<VkCommandBuffer> result2 = std::async(std::launch::async, renderPassFunction);
-            VkCommandBuffer result0 = drawClearFunction(); //yes this is out of order BUT its not that hard to read... really just do this on this thread for increasing CPU "occupancy"
-            
-            return { result0, result1.get(), result2.get() };
+            vkCmdPipelineBarrier2(cmdBuffer, renderPassInfo.preRenderBarriers);
         }
-        return {}; //return nothing if no rendering occured
+
+        //clear draw counts
+        clearDrawCounts(cmdBuffer);
+        
+        //----------PRE-PROCESS----------//
+
+        //compute shader
+        renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this, renderPassInfo.camera, *preprocessUniformBuffer);
+
+        //memory barrier
+        VkMemoryBarrier2 preprocessMemBarrier = {};
+        preprocessMemBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+        preprocessMemBarrier.pNext = NULL;
+        preprocessMemBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+        preprocessMemBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
+        preprocessMemBarrier.dstStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
+        preprocessMemBarrier.dstAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_READ_BIT;
+
+        VkDependencyInfo preprocessDependencyInfo = {};
+        preprocessDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        preprocessDependencyInfo.pNext = NULL;
+        preprocessDependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+        preprocessDependencyInfo.memoryBarrierCount = 1;
+        preprocessDependencyInfo.pMemoryBarriers = &preprocessMemBarrier;
+        
+        vkCmdPipelineBarrier2(cmdBuffer, &preprocessDependencyInfo);
+
+        //----------RENDER PASS----------//
+
+        //rendering
+        VkRenderingInfo renderInfo = {};
+        renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR;
+        renderInfo.pNext = NULL;
+        renderInfo.flags = 0;
+        renderInfo.renderArea = renderPassInfo.renderArea;
+        renderInfo.layerCount = 1;
+        renderInfo.viewMask = 0;
+        renderInfo.colorAttachmentCount = renderPassInfo.colorAttachments.size();
+        renderInfo.pColorAttachments = renderPassInfo.colorAttachments.data();
+        renderInfo.pDepthAttachment = renderPassInfo.depthAttachment;
+        renderInfo.pStencilAttachment = renderPassInfo.stencilAttachment;
+
+        vkCmdBeginRendering(cmdBuffer, &renderInfo);
+
+        //scissors (plural) and viewports
+        vkCmdSetViewportWithCount(cmdBuffer, renderPassInfo.viewports.size(), renderPassInfo.viewports.data());
+        vkCmdSetScissorWithCount(cmdBuffer, renderPassInfo.scissors.size(), renderPassInfo.scissors.data());
+
+        //MSAA samples
+        vkCmdSetRasterizationSamplesEXT(cmdBuffer, renderPassInfo.sampleCount);
+
+        //compare op
+        vkCmdSetDepthCompareOp(cmdBuffer, renderPassInfo.depthCompareOp);
+
+        //----------MAIN PASS----------//
+
+        //record draw commands
+        for(const auto& [material, materialInstanceNode] : renderTree) //material
+        {
+            std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> materialDescriptorWrites;
+            material->bind(cmdBuffer, renderPassInfo.camera, materialDescriptorWrites);
+            for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
+            {
+                if(meshGroups)
+                {
+                    std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> instanceDescriptorWrites;
+                    materialInstance->bind(cmdBuffer, instanceDescriptorWrites);
+                    meshGroups->draw(cmdBuffer, *material);
+                }
+            }
+        }
+
+        //end rendering
+        vkCmdEndRendering(cmdBuffer);
+
+        //post-render barriers
+        if(renderPassInfo.postRenderBarriers)
+        {
+            vkCmdPipelineBarrier2(cmdBuffer, renderPassInfo.postRenderBarriers);
+        }
+
+        //end cmd buffer
+        vkEndCommandBuffer(cmdBuffer);
+
+        renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
+
+        return { cmdBuffer };
     }
 
     void RenderPass::addInstance(ModelInstance& instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials)

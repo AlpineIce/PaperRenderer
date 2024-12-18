@@ -242,28 +242,22 @@ namespace PaperRenderer
 
     void DescriptorAllocator::refreshPools()
     {
-        //reset pool function
-        auto resetPool = [&](DescriptorPoolData* pool)
+        //Timer
+        Timer timer(renderer, "Reset Descriptor Pools");
+
+        //reset pools
+        for(DescriptorPoolData& poolData : descriptorPoolDatas)
         {
             //wait for any non-submitted command buffers (potentially a deadlock problem)
-            std::lock_guard<std::recursive_mutex> guard(pool->threadLock);
+            std::lock_guard<std::recursive_mutex> guard(poolData.threadLock);
 
             //reset pool
-            for(VkDescriptorPool& pool : pool->descriptorPools)
+            for(VkDescriptorPool pool : poolData.descriptorPools)
             {
                 vkDestroyDescriptorPool(renderer.getDevice().getDevice(), pool, nullptr);
             }
-            pool->descriptorPools = { allocateDescriptorPool() };
-            pool->currentPool = pool->descriptorPools[0];
-        };
-
-        //async reset pools
-        std::vector<std::future<void>> futures;
-        futures.reserve(coreCount);
-
-        for(DescriptorPoolData& poolData : descriptorPoolDatas)
-        {
-            futures.push_back(std::async(std::launch::async, resetPool, &poolData));
+            poolData.descriptorPools = { allocateDescriptorPool() };
+            poolData.currentPool = poolData.descriptorPools[0];
         }
     }
 }

@@ -28,6 +28,9 @@ namespace PaperRenderer
 
     void RayTraceRender::render(RayTraceRenderInfo rtRenderInfo, SynchronizationInfo syncInfo)
     {
+        //Timer
+        Timer timer(renderer, "RayTraceRender Record");
+
         //command buffer
         VkCommandBufferBeginInfo commandInfo;
         commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -98,6 +101,9 @@ namespace PaperRenderer
 
     void RayTraceRender::updateTLAS(VkBuildAccelerationStructureModeKHR mode, VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo)
     {
+        //Timer
+        Timer timer(renderer, "RayTraceRender Update TLAS");
+
         //update RT pipeline if needed (required to access SBT offsets for TLAS)
         if(queuePipelineBuild)
         {

@@ -72,6 +72,18 @@ namespace PaperRenderer
 
     void Commands::resetCommandPools()
     {
+        //Timer
+        Timer timer(renderer, "Reset Command Pools");
+
+        //give warning if if there are locked command buffers present (from counter)
+        if(lockedCmdBufferCount)
+        {
+            renderer.getLogger().recordLog({
+                .type = WARNING,
+                .text = std::to_string(lockedCmdBufferCount) + " Locked command buffers present at time of resetting command pools. Imminent deadlock WILL occur"
+            });
+        }
+
         //reset all pools
         for(auto& [queueType, pools] : commandPools)
         {
@@ -320,6 +332,9 @@ namespace PaperRenderer
         std::lock_guard guard(cmdBuffersLockedPoolMutex);
         cmdBuffersLockedPool[returnBuffer] = lockedPool;
 
+        //increment locked counter (protected by mutex)
+        lockedCmdBufferCount++;
+
         //increment stack
         stackLocation++;
 
@@ -337,5 +352,8 @@ namespace PaperRenderer
             cmdBuffersLockedPool[cmdBuffer]->threadLock.unlock();
             cmdBuffersLockedPool.erase(cmdBuffer);
         }
+
+        //decrement locked counter (protected by mutex)
+        lockedCmdBufferCount--;
     }
 }

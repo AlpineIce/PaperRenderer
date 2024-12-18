@@ -31,6 +31,9 @@ namespace PaperRenderer
 
     std::vector<ModelInstance*> CommonMeshGroup::rebuildBuffer()
     {
+        //Timer
+        Timer timer(renderer, "Rebuild Common Mesh Group Buffers");
+
         //get new size
         BufferSizeRequirements bufferSizeRequirements = getBuffersRequirements();
 

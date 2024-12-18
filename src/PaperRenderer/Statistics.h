@@ -3,7 +3,7 @@
 #include <functional>
 #include <mutex>
 #include <chrono>
-#include <unordered_map>
+#include <deque>
 
 namespace PaperRenderer
 {
@@ -41,9 +41,17 @@ namespace PaperRenderer
 
     //----------PROFILING AND STATE----------//
 
+    struct TimeStatistic
+    {
+        std::string name = {};
+        std::chrono::duration<double> duration = {};
+
+        double getTime() const { return duration.count(); }
+    };
+
     struct Statistics
     {
-        std::unordered_map<std::string, std::chrono::duration<double>> timeStatistics = {};
+        std::deque<TimeStatistic> timeStatistics = {};
         std::unordered_map<std::string, uint64_t> objectCounters = {};
     };
 

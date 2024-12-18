@@ -1541,8 +1541,8 @@ int main()
     bool raster = true;
     while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
     {
-        //async wait for last frame and last staging buffer transfer (on this frame, which was incremented on presentation)
-        //std::future waitSemaphoreFuture(std::async(std::launch::async, waitSemaphoreFunction));
+        //get last frame statistics (create copy since it WILL be cleared after renderer.beginFrame())
+        PaperRenderer::Statistics lastFrameStatistics = renderer.getStatisticsTracker().getStatistics();
 
         //block this thread and while waiting for the begin function, no more work to do BIG OL TODO WE ASYNC-ING
         VkSemaphore swapchainSemaphore = waitSemaphoreFunction();//waitSemaphoreFuture.get();
@@ -1611,7 +1611,7 @@ int main()
             .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, finalSemaphoreValue + 4 } },
             .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue + 5 } }
         };
-        renderImGui(&renderer, guiContext, guiSyncInfo); //TODO THIS IS A MASSIVE HOST SYNC VIOLATION WITH QUEUES SINCE GUI DOESNT TAKE OWNERSHIP OF ITS QUEUE
+        renderImGui(&renderer, &lastFrameStatistics, &guiContext, guiSyncInfo); //TODO THIS IS A MASSIVE HOST SYNC VIOLATION WITH QUEUES SINCE GUI DOESNT TAKE OWNERSHIP OF ITS QUEUE
 
         //end frame
         renderer.endFrame({ presentationSemaphore });

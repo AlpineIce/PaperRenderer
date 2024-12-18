@@ -120,6 +120,9 @@ namespace PaperRenderer
 
     void RendererStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
     {
+        //timer
+        Timer timer(renderer, "Submit Queued Transfers (StagingBuffer)");
+
         //lock mutex
         std::lock_guard guard(stagingBufferMutex);
 
@@ -146,18 +149,6 @@ namespace PaperRenderer
         //submit
         syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValue });
         renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
-    }
-
-    void RendererStagingBuffer::submitQueuedTransfers(VkCommandBuffer cmdBuffer)
-    {
-        //lock mutex
-        std::lock_guard guard(stagingBufferMutex);
-        
-        //copy to dst
-        for(const auto& copy : getDataTransfers())
-        {
-            vkCmdCopyBuffer(cmdBuffer, stagingBuffer->getBuffer(), copy.dstBuffer.getBuffer(), 1, &copy.copyInfo);
-        }
     }
 
     //----------RENDER ENGINE DEFINITIONS----------//
@@ -203,6 +194,9 @@ namespace PaperRenderer
 
     void RenderEngine::rebuildModelDataBuffer()
     {
+        //timer
+        Timer timer(*this, "Rebuild Model Data Buffer");
+
         //new buffer to replace old
         VkDeviceSize newModelDataSize = 4096;
         VkDeviceSize newWriteSize = 0;
@@ -244,6 +238,9 @@ namespace PaperRenderer
 
     void RenderEngine::handleModelDataCompaction(std::vector<CompactionResult> results) //UNTESTED FUNCTION
     {
+        //timer
+        Timer timer(*this, "Handle Model Data Compaction");
+
         //fix model data first
         for(const CompactionResult compactionResult : results)
         {
@@ -266,6 +263,9 @@ namespace PaperRenderer
 
     void RenderEngine::rebuildInstancesbuffer()
     {
+        //timer
+        Timer timer(*this, "Rebuild Instances Buffer");
+
         //new buffer to replace old
         BufferInfo bufferInfo = {};
         bufferInfo.allocationFlags = 0;
@@ -374,6 +374,9 @@ namespace PaperRenderer
 
     void RenderEngine::queueModelsAndInstancesTransfers()
     {
+        //timer
+        Timer timer(*this, "Queue Models and Instances Transfers");
+
         //check buffer sizes
         if((instancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128) ||
             (instancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) > renderingModelInstances.size() * 2 && renderingModelInstances.size() > 128))
@@ -418,6 +421,12 @@ namespace PaperRenderer
 
     const VkSemaphore& RenderEngine::beginFrame()
     {
+        //timer
+        Timer timer(*this, "Begin Frame");
+
+        //clear previous statistics
+        statisticsTracker.clearStatistics();
+
         //reset command and descriptor pools
         device.getCommands().resetCommandPools();
         descriptors.refreshPools();
@@ -443,6 +452,9 @@ namespace PaperRenderer
 
     void RenderEngine::endFrame(const std::vector<VkSemaphore>& waitSemaphores)
     {
+        //timer
+        Timer timer(*this, "End Frame");
+
         //presentation
         swapchain.presentImage(waitSemaphores);
 

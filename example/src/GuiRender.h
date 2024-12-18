@@ -14,6 +14,6 @@ struct GuiContext
 
 GuiContext initImGui(PaperRenderer::RenderEngine& renderer);
 
-void renderImGui(PaperRenderer::RenderEngine* renderer, GuiContext guiContext, PaperRenderer::SynchronizationInfo syncInfo);
+void renderImGui(PaperRenderer::RenderEngine* renderer, PaperRenderer::Statistics const* lastFrameStatistics, GuiContext* guiContext, PaperRenderer::SynchronizationInfo syncInfo);
 
 void destroyImGui();

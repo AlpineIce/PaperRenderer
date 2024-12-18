@@ -187,6 +187,9 @@ namespace PaperRenderer
 
     void Swapchain::buildSwapchain()
     {
+        //Timer
+        Timer timer(renderer, "Build Swapchain");
+
         //----------COLOR SPACE SELECTION----------//
 
         uint32_t formatCount;

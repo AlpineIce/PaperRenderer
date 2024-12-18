@@ -79,6 +79,7 @@ namespace PaperRenderer
             uint32_t cmdBufferStackLocation = 0;
         };
         std::mutex cmdBuffersLockedPoolMutex;
+        uint64_t lockedCmdBufferCount = 0; //protected by mutex
         std::unordered_map<QueueType, QueuesInFamily>* queuesPtr;
         std::unordered_map<QueueType, std::vector<CommandPoolData>> commandPools;
         std::unordered_map<VkCommandBuffer, CommandPoolData*> cmdBuffersLockedPool;

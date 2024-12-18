@@ -48,7 +48,7 @@ namespace PaperRenderer
     void StatisticsTracker::insertTimeStatistic(const std::string &name, std::chrono::duration<double> duration)
     {
         std::lock_guard<std::mutex> guard(statisticsMutex);
-        if(name.size()) statistics.timeStatistics[name] = duration;
+        if(name.size()) statistics.timeStatistics.emplace_front(name, duration);
     }
 
     void StatisticsTracker::modifyObjectCounter(const std::string &name, int increment)
