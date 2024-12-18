@@ -1240,7 +1240,7 @@ int main()
             //.orthographic = { .xyScale = glm::vec2(30.0f, 30.0f) }
             .perspective = { .yFov = scene.camera->getCameraInfo().projection.perspective.yFov }
         };
-        scene.camera->updateProjection(newProjection, PaperRenderer::CameraProjectionType::ORTHOGRAPHIC);
+        scene.camera->updateProjection(newProjection, PaperRenderer::CameraProjectionType::PERSPECTIVE);
     };
 
     //initialize renderer
