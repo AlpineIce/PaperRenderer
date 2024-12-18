@@ -174,7 +174,5 @@ namespace PaperRenderer
 
         const VkImage& getImage() const { return image; }
         const VkExtent3D getExtent() const { return imageInfo.extent; }
-
-        
     };
 }

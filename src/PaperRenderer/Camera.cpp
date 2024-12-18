@@ -1,76 +1,118 @@
 #include "Camera.h"
 #include "PaperRenderer.h"
 
+#include <functional>
+
 namespace PaperRenderer
 {
-    Camera::Camera(RenderEngine& renderer, const CameraCreateInfo& creationInfo)
-        :windowPtr(renderer.getSwapchain().getGLFWwindow()),
-        clipNear(creationInfo.clipNear),
-        clipFar(creationInfo.clipFar),
-        fov(creationInfo.fov),
-        translation(creationInfo.initTranslation),
+    Camera::Camera(RenderEngine& renderer, const CameraInfo& cameraInfo)
+        :cameraInfo(cameraInfo),
+        ubo(renderer, {
+            .size = sizeof(UBOData) * 2,
+            .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR,
+            .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
+        }),
         renderer(renderer)
     {
-        BufferInfo uboInfo = {};
-        uboInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-        uboInfo.size = sizeof(glm::mat4) * 2;
-        uboInfo.usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR;
-        ubo = std::make_unique<Buffer>(renderer, uboInfo);
-
-        updateCameraProjection();
-        updateCameraView(translation);
+        updateProjection(cameraInfo.projection, cameraInfo.projectionType);
+        updateView(cameraInfo.transformation, cameraInfo.transformationType);
     }
 
     Camera::~Camera()
     {
-        ubo.reset();
     }
 
-    void Camera::setClipSpace(float near, float far)
+    void Camera::updateClipSpace(float near, float far)
     {
-        clipNear = near;
-        clipFar = far;
-        updateCameraProjection();
+        cameraInfo.clipFar = near;
+        cameraInfo.clipFar = far;
+        updateProjection(cameraInfo.projection, cameraInfo.projectionType);
     }
 
-    void Camera::updateCameraProjection()
+    void Camera::updateProjection(const CameraProjection& newProjection, CameraProjectionType projectionType)
     {
-        glfwGetFramebufferSize(windowPtr, &width, &height);
-        projection = glm::perspective(glm::radians(fov), (float)width / (float)height, clipNear, clipFar);
+        //update camera info
+        cameraInfo.projectionType = projectionType;
+        cameraInfo.projection = newProjection;
 
-        //queue data transfer
-        std::vector<char> uboData(sizeof(glm::mat4));
-        memcpy(uboData.data(), &projection, sizeof(glm::mat4));
+        //get screen ratio
+        const VkExtent2D extent = renderer.getSwapchain().getExtent();
+        const float screenRatio = (float)extent.width / (float)extent.height;
         
-        renderer.getStagingBuffer().queueDataTransfers(*ubo, 0, uboData);
-    }
-
-    void Camera::updateCameraView(const CameraTranslation& newTranslation)
-    {
-        this->translation = newTranslation;
-        this->translation.qRotation = glm::normalize(this->translation.qRotation);
-
-        //calculate rotation from angle axis if not using quaternion
-        if(!this->translation.useQuaternion)
+        //set projection based on projectionType
+        switch(projectionType)
         {
-            glm::quat yawRot = glm::angleAxis(glm::radians(newTranslation.yaw), glm::vec3(0.0f, 0.0f, -1.0f));
-            glm::quat pitchRot = glm::angleAxis(glm::radians(newTranslation.pitch - 90.0f), glm::vec3(-1.0f, 0.0f, 0.0f));
-            glm::quat qRotation =  pitchRot * yawRot;
-
-            glm::quat zUpPitchRot = glm::angleAxis(glm::radians(newTranslation.pitch), glm::vec3(-1.0f, 0.0f, 0.0f));
-            this->translation.qRotation = zUpPitchRot * yawRot;
+        case PERSPECTIVE:
+            projection = glm::perspective(glm::radians(cameraInfo.projection.perspective.yFov), screenRatio, cameraInfo.clipNear, cameraInfo.clipFar);
+            break;
+        case ORTHOGRAPHIC:
+            //TODO FIGURE OUT WHY BROKEN AND SAD
+            const glm::vec2 xyScale = cameraInfo.projection.orthographic.xyScale;
+            projection = glm::ortho(-xyScale.x / 2.0f, xyScale.x / 2.0f, -xyScale.y / 2.0f, xyScale.y / 2.0f);
+            break;
         }
+    }
 
-        glm::mat4 mRotation = glm::mat4_cast(this->translation.qRotation);
-        glm::mat4 mTranslation = glm::mat4(1.0f);
+    void Camera::updateView(const CameraTransformation& newTransform, CameraTransformationType transformType)
+    {
+        //update camera info
+        cameraInfo.transformationType = transformType;
+        cameraInfo.transformation = newTransform;
 
-        mTranslation = glm::translate(mTranslation, glm::vec3(-newTranslation.position.x, -newTranslation.position.y, -newTranslation.position.z));
-        view = mRotation * mTranslation;
+        if(transformType == MATRIX)
+        {
+            view = cameraInfo.transformation.viewMatrix;
+        }
+        else if(transformType == PARAMETERS)
+        {
+            //create copy of transformation parameters
+            CameraTransformationParameters parameters = cameraInfo.transformation.translationParameters; //not a reference
+            
+            //calculate quaternion from euler angles if needed
+            if(parameters.rotationType == EULER)
+            {
+                //TODO VERIFY THIS STUFF IS RIGHT
+
+                //calculate qRotation
+                glm::quat yawRot = glm::angleAxis(glm::radians(parameters.rotation.eRotation.yaw), glm::vec3(0.0f, 0.0f, -1.0f));
+                glm::quat pitchRot = glm::angleAxis(glm::radians(parameters.rotation.eRotation.pitch - 90.0f), glm::vec3(-1.0f, 0.0f, 0.0f));
+                glm::quat zUpPitchRot = glm::angleAxis(glm::radians(parameters.rotation.eRotation.pitch), glm::vec3(-1.0f, 0.0f, 0.0f));
+
+                //set qRotation
+                parameters.rotation.qRotation = zUpPitchRot * yawRot;
+                parameters.rotationType = QUATERNION;
+            }
+
+            //normalize
+            parameters.rotation.qRotation = glm::normalize(parameters.rotation.qRotation);
+
+            glm::mat4 mRotation = glm::mat4_cast(parameters.rotation.qRotation);
+            glm::mat4 mTranslation = glm::mat4(1.0f);
+
+            //add position
+            mTranslation = glm::translate(mTranslation, glm::vec3(-parameters.position.x, -parameters.position.y, -parameters.position.z));
+            view = mRotation * mTranslation;
+        }
+    }
+
+    void Camera::updateUBO()
+    {
+        UBOData uboData = {
+            .projection = projection,
+            .view = view
+        };
+
+        BufferWrite write = {
+            .offset = 0,
+            .size = sizeof(UBOData),
+            .data = &uboData
+        };
+        ubo.writeToBuffer({ write });
 
         //queue data transfer
-        std::vector<char> uboData(sizeof(glm::mat4));
-        memcpy(uboData.data(), &view, sizeof(glm::mat4));
+        /*std::vector<char> uboDataVec(sizeof(UBOData));
+        memcpy(uboDataVec.data(), &uboDataVec, sizeof(sizeof(UBOData)));
         
-        renderer.getStagingBuffer().queueDataTransfers(*ubo, sizeof(glm::mat4), uboData);
+        renderer.getStagingBuffer().queueDataTransfers(ubo, sizeof(glm::mat4), uboDataVec);*/
     }
 }

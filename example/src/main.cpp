@@ -182,20 +182,23 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
         {
             const tinygltf::Camera& camera = gltfModel.cameras[node.camera];
 
-            const PaperRenderer::CameraTranslation cameraTranslationInfo = {
-                .pitch = 0.0f,
-                .yaw = 0.0f,
-                .roll = 0.0f,
-                .position = glm::vec3(node.translation[0], node.translation[1], node.translation[2]),
-                .qRotation = glm::quat(node.rotation[3], node.rotation[0], node.rotation[1], node.rotation[2]),
-                .useQuaternion = true //IMPORTANT TO SET IF USING qRotation FOR ROTATION AND NOT PITCH, YAW, ROLL
+            const glm::vec3 newCameraPosition = glm::vec3(15.0f * sin(glfwGetTime()), 15.0f * cos(glfwGetTime()), 5.0f);
+
+            PaperRenderer::CameraTransformation newTransform = {
+                .translationParameters = {
+                    .rotationType = PaperRenderer::CameraRotationType::QUATERNION,
+                    .rotation = { .qRotation = glm::lookAt(newCameraPosition, glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f)) },
+                    .position = newCameraPosition
+                }
             };
 
-            const PaperRenderer::CameraCreateInfo cameraInfo = {
-                .fov = (float)camera.perspective.yfov * 100.0f,
+            const PaperRenderer::CameraInfo cameraInfo = {
+                .projectionType = PaperRenderer::CameraProjectionType::PERSPECTIVE,
+                .projection = { .perspective = { (float)camera.perspective.yfov * 100.0f } },
+                .transformationType = PaperRenderer::CameraTransformationType::PARAMETERS,
+                .transformation = newTransform,
                 .clipNear = (float)camera.perspective.znear,
-                .clipFar = (float)camera.perspective.zfar,
-                .initTranslation = cameraTranslationInfo
+                .clipFar = (float)camera.perspective.zfar
             };
 
             returnData.camera = std::make_unique<PaperRenderer::Camera>(renderer, cameraInfo);
@@ -1159,7 +1162,7 @@ void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::
     //std::vector<char> rtInfoData(sizeof(RayTraceInfo));
     //memcpy(rtInfoData.data(), &rtInfo, sizeof(RayTraceInfo));
     
-    PaperRenderer::BufferWrite write = {
+    const PaperRenderer::BufferWrite write = {
         .offset = 0,
         .size = sizeof(RayTraceInfo),
         .data = &rtInfo
@@ -1169,10 +1172,17 @@ void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::
     //renderer.getStagingBuffer().queueDataTransfers(rtUBO, 0, rtInfoData);
 
     //update camera
-    PaperRenderer::CameraTranslation newTranslation = camera.getTranslation();
-    newTranslation.position = glm::vec3(15.0f * sin(glfwGetTime()), 15.0f * cos(glfwGetTime()), 5.0f);
-    newTranslation.qRotation = glm::lookAt(newTranslation.position, glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
-    camera.updateCameraView(newTranslation);
+    const glm::vec3 newCameraPosition = glm::vec3(15.0f * sin(glfwGetTime()), 15.0f * cos(glfwGetTime()), 5.0f);
+
+    PaperRenderer::CameraTransformation newTransform = {
+        .translationParameters = {
+            .rotationType = PaperRenderer::CameraRotationType::QUATERNION,
+            .rotation = { .qRotation = glm::lookAt(newCameraPosition, glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f)) },
+            .position = newCameraPosition
+        }
+    };
+    camera.updateView(newTransform, PaperRenderer::CameraTransformationType::PARAMETERS);
+    camera.updateUBO();
 }
 
 
@@ -1194,12 +1204,9 @@ int main()
 
         switch(event.type)
         {
-            //only print info if in debug
-#ifndef NDEBUG
         case PaperRenderer::LogType::INFO:
             std::cout << beginString << "\033[1;37m--INFO--: \033[0m";
             break;
-#endif
         case PaperRenderer::LogType::WARNING:
             std::cout << beginString << "\033[1;33m--WARNING--: \033[0m";
             break;
@@ -1229,7 +1236,11 @@ int main()
         depthBuffer = getDepthBuffer(renderer);
 
         //update camera
-        scene.camera->updateCameraProjection();
+        const PaperRenderer::CameraProjection newProjection = {
+            //.orthographic = { .xyScale = glm::vec2(30.0f, 30.0f) }
+            .perspective = { .yFov = scene.camera->getCameraInfo().projection.perspective.yFov }
+        };
+        scene.camera->updateProjection(newProjection, PaperRenderer::CameraProjectionType::ORTHOGRAPHIC);
     };
 
     //initialize renderer

@@ -65,7 +65,7 @@ namespace PaperRenderer
     void RasterPreprocessPipeline::submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera, Buffer& uniformBuffer)
     {
         UBOInputData uboInputData = {};
-        uboInputData.camPos = glm::vec4(camera.getTranslation().position, 1.0f);
+        uboInputData.camPos = glm::vec4(camera.getPosition(), 1.0f);
         uboInputData.projection = camera.getProjection();
         uboInputData.view = camera.getViewMatrix();
         uboInputData.materialDataPtr = renderPass.instancesDataBuffer->getBuffer().getBufferDeviceAddress();
