@@ -16,7 +16,7 @@ namespace PaperRenderer
     VulkanResource::~VulkanResource()
     {
     }
-    
+
     //----------BUFFER DEFINITIONS----------//
 
     Buffer::Buffer(RenderEngine& renderer, const BufferInfo& bufferInfo)
@@ -134,9 +134,9 @@ namespace PaperRenderer
     //----------FRAGMENTABLE BUFFER DEFINITIONS----------//
 
     FragmentableBuffer::FragmentableBuffer(RenderEngine& renderer, const BufferInfo &bufferInfo)
-        :renderer(renderer)
+        :buffer(renderer, bufferInfo),
+        renderer(renderer)
     {
-        buffer = std::make_unique<Buffer>(renderer, bufferInfo);
     }
 
     FragmentableBuffer::~FragmentableBuffer()
@@ -152,10 +152,10 @@ namespace PaperRenderer
         WriteResult result = SUCCESS;
         desiredLocation += renderer.getDevice().getAlignment(size, minAlignment);
 
-        if(stackLocation + renderer.getDevice().getAlignment(size, minAlignment) > buffer->getSize())
+        if(stackLocation + renderer.getDevice().getAlignment(size, minAlignment) > buffer.getSize())
         {
             //if compaction gives back no results then there's no more available memory
-            if(!compact().size() || stackLocation + size > buffer->getSize())
+            if(!compact().size() || stackLocation + size > buffer.getSize())
             {
                 if(returnLocation) *returnLocation = UINT64_MAX;
 
@@ -169,14 +169,14 @@ namespace PaperRenderer
         }
 
         //write if host visible
-        if(buffer->isWritable() && data)
+        if(buffer.isWritable() && data)
         {
             BufferWrite write = {};
             write.data = data;
             write.offset = renderer.getDevice().getAlignment(stackLocation, minAlignment);
             write.size = size;
             
-            buffer->writeToBuffer({ write });
+            buffer.writeToBuffer({ write });
         }
 
         if(returnLocation) *returnLocation = renderer.getDevice().getAlignment(stackLocation, minAlignment);
@@ -210,7 +210,7 @@ namespace PaperRenderer
 
             //start a command buffer if the buffer isnt writable from CPU (transfer will be done by GPU instead)
             VkCommandBuffer cmdBuffer = VK_NULL_HANDLE;
-            if(!buffer->isWritable())
+            if(!buffer.isWritable())
             {
                 //start command buffer
                 cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(TRANSFER);
@@ -252,14 +252,14 @@ namespace PaperRenderer
                     read.offset = chunk.location + chunk.size;
                     read.size = copySize;
                     read.data = readData.data();
-                    buffer->readFromBuffer({ read });
+                    buffer.readFromBuffer({ read });
 
                     //copy data into buffer location
                     BufferWrite write = {};
                     write.offset = chunk.location;
                     write.size = copySize;
                     write.data = readData.data();
-                    buffer->writeToBuffer({ write });
+                    buffer.writeToBuffer({ write });
                 }
                 //GPU data move     //TODO TEST IF THIS STUFF ACTUALLY WORKS!!!
                 else
@@ -275,7 +275,7 @@ namespace PaperRenderer
                         copyRegion.size = std::min(copySize, maxTransferSize);
                         copyRegion.dstOffset = chunk.location;
                         
-                        vkCmdCopyBuffer(cmdBuffer, buffer->getBuffer(), buffer->getBuffer(), 1, &copyRegion);
+                        vkCmdCopyBuffer(cmdBuffer, buffer.getBuffer(), buffer.getBuffer(), 1, &copyRegion);
 
                         //insert memory barrier at src offset. dst barrier isnt needed since future writes should not read/write from/into previous writes
                         VkBufferMemoryBarrier2 memBarrier = {
@@ -287,7 +287,7 @@ namespace PaperRenderer
                             .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
                             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                            .buffer = buffer->getBuffer(),
+                            .buffer = buffer.getBuffer(),
                             .offset = copyRegion.srcOffset,
                             .size = copyRegion.size
                         };

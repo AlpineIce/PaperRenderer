@@ -153,7 +153,7 @@ namespace PaperRenderer
         }
     }
 
-    void CommonMeshGroup::draw(const VkCommandBuffer &cmdBuffer, const Material& material)
+    void CommonMeshGroup::draw(const VkCommandBuffer &cmdBuffer, const Material& material) const
     {
         for(const auto& [mesh, meshData] : meshesData)
         {
@@ -204,7 +204,7 @@ namespace PaperRenderer
         }
     }
 
-    void CommonMeshGroup::clearDrawCommand(const VkCommandBuffer &cmdBuffer)
+    void CommonMeshGroup::clearDrawCommand(const VkCommandBuffer &cmdBuffer) const
     {
         //clear instance count
         uint32_t drawCountDefaultValue = 0;

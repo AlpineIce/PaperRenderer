@@ -88,7 +88,7 @@ namespace PaperRenderer
     class FragmentableBuffer
     {
     private:
-        std::unique_ptr<Buffer> buffer;
+        Buffer buffer;
         VkDeviceSize desiredLocation = 0;
         VkDeviceSize stackLocation = 0;
 
@@ -118,7 +118,7 @@ namespace PaperRenderer
         FragmentableBuffer(const FragmentableBuffer&) = delete;
 
         //Callback for when a compaction occurs. Extremely useful for re-referencing, with the function taking in a sorted std::vector<CompactionResult>
-        void setCompactionCallback(std::function<void(std::vector<CompactionResult>)> compactionCallback) { this->compactionCallback = compactionCallback; }
+        void setCompactionCallback(const std::function<void(std::vector<CompactionResult>)>& compactionCallback) { this->compactionCallback = compactionCallback; }
 
         enum WriteResult
         {
@@ -133,7 +133,7 @@ namespace PaperRenderer
 
         std::vector<CompactionResult> compact(); //inkoves on demand compaction; useful for when recreating an allocation to get the actual current size requirement. results are sorted
 
-        Buffer& getBuffer() { return *buffer; }
+        Buffer& getBuffer() { return buffer; }
         const VkDeviceSize& getStackLocation() const { return stackLocation; } //returns the location relative to the start of the buffer (always 0) of where unwritten data is
         const VkDeviceSize& getDesiredLocation() const { return desiredLocation; } //useful if write failed to give a the stackLocation + (size of last write)
     };

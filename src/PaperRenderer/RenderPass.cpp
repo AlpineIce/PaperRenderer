@@ -147,14 +147,6 @@ namespace PaperRenderer
             removeInstance(*instance);
         }
 
-        for(auto& [material, materialNode] : renderTree)
-        {
-            for(auto& [materialInstance, instanceNode] : materialNode.instances)
-            {
-                instanceNode.reset();
-            }
-        }
-
         renderer.renderPasses.remove(this);
     }
 
@@ -247,15 +239,12 @@ namespace PaperRenderer
         Timer timer(renderer, "RenderPass Queue instance Transfers", REGULAR);
 
         //verify mesh group buffers
-        for(const auto& [material, materialInstanceNode] : renderTree) //material
+        for(auto& [material, materialInstanceNode] : renderTree) //material
         {
-            for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
+            for(auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
             {
-                if(meshGroups)
-                {
-                    const std::vector<ModelInstance*> meshGroupUpdatedInstances = meshGroups->verifyBufferSize();
-                    toUpdateInstances.insert(toUpdateInstances.end(), meshGroupUpdatedInstances.begin(), meshGroupUpdatedInstances.end());
-                }
+                const std::vector<ModelInstance*> meshGroupUpdatedInstances = meshGroups.verifyBufferSize();
+                toUpdateInstances.insert(toUpdateInstances.end(), meshGroupUpdatedInstances.begin(), meshGroupUpdatedInstances.end());
             }
         }
 
@@ -360,11 +349,8 @@ namespace PaperRenderer
         {
             for(const auto& [materialInstance, meshGroup] : materialInstanceNode.instances) //material instances
             {
-                if(meshGroup)
-                {
-                    //clear
-                    meshGroup->clearDrawCommand(cmdBuffer);
-                }
+                //clear
+                meshGroup.clearDrawCommand(cmdBuffer);
             }
         }
     }
@@ -454,12 +440,9 @@ namespace PaperRenderer
             material->bind(cmdBuffer, renderPassInfo.camera, materialDescriptorWrites);
             for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
             {
-                if(meshGroups)
-                {
-                    std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> instanceDescriptorWrites;
-                    materialInstance->bind(cmdBuffer, instanceDescriptorWrites);
-                    meshGroups->draw(cmdBuffer, *material);
-                }
+                std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> instanceDescriptorWrites;
+                materialInstance->bind(cmdBuffer, instanceDescriptorWrites);
+                meshGroups.draw(cmdBuffer, *material);
             }
         }
 
@@ -507,15 +490,14 @@ namespace PaperRenderer
                 //check if mesh group class is created
                 if(!renderTree[(Material*)&materialInstance->getBaseMaterial()].instances.count(materialInstance))
                 {
-                    renderTree[(Material*)&materialInstance->getBaseMaterial()].instances[materialInstance] = 
-                        std::make_unique<CommonMeshGroup>(renderer, this);
+                    renderTree[(Material*)&materialInstance->getBaseMaterial()].instances.emplace(std::piecewise_construct, std::forward_as_tuple(materialInstance), std::forward_as_tuple(renderer, this));
                 }
 
                 //add references
-                renderTree[(Material*)&materialInstance->getBaseMaterial()].instances[materialInstance]->addInstanceMesh(instance, similarMesh);
+                renderTree[(Material*)&materialInstance->getBaseMaterial()].instances.at(materialInstance).addInstanceMesh(instance, similarMesh);
 
                 instance.renderPassSelfReferences[this].meshGroupReferences[&instance.getParentModel().getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh] = 
-                    renderTree.at((Material*)&materialInstance->getBaseMaterial()).instances.at(materialInstance).get();
+                    &renderTree.at((Material*)&materialInstance->getBaseMaterial()).instances.at(materialInstance);
             }
         }
 

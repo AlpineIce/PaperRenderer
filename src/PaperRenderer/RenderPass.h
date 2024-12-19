@@ -61,7 +61,7 @@ namespace PaperRenderer
         struct MaterialNode
         {
             //objects corresponding to one material instance
-            std::unordered_map<MaterialInstance*, std::unique_ptr<CommonMeshGroup>> instances;
+            std::unordered_map<MaterialInstance*, CommonMeshGroup> instances;
         };
         std::unordered_map<Material*, MaterialNode> renderTree; //render tree
 

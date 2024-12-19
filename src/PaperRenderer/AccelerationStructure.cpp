@@ -262,6 +262,9 @@ namespace PaperRenderer
 
     void TLAS::queueInstanceTransfers(const RayTraceRender& rtRender)
     {
+        //create timer
+        Timer timer(renderer, "TLAS Queue Instance Transfers", REGULAR);
+
         //set next update size to 0
         nextUpdateSize = 0;
 
@@ -293,14 +296,14 @@ namespace PaperRenderer
             instanceShaderData.blasReference = instance->getBLAS()->getAccelerationStructureAddress();
             instanceShaderData.selfIndex = instance->rendererSelfIndex;
             instanceShaderData.modelInstanceIndex = instance->rendererSelfIndex;
-            instanceShaderData.recordOffset = sbtOffset; //TODO
+            instanceShaderData.recordOffset = sbtOffset;
 
             std::vector<char> instanceData(sizeof(ModelInstance::AccelerationStructureInstance));
             memcpy(instanceData.data(), &instanceShaderData, instanceData.size());
 
             //write description data
             InstanceDescription descriptionShaderData = {};
-            descriptionShaderData.modelDataOffset = instance->getParentModel().getShaderDataLocation(); //TODO MODEL DATA COMPACTION ERROR
+            descriptionShaderData.modelDataOffset = instance->getParentModel().getShaderDataLocation();
 
             std::vector<char> descriptionData(sizeof(InstanceDescription));
             memcpy(descriptionData.data(), &descriptionShaderData, descriptionData.size());
@@ -570,6 +573,8 @@ namespace PaperRenderer
 
     void AccelerationStructureBuilder::submitQueuedOps(const SynchronizationInfo& syncInfo, VkAccelerationStructureTypeKHR type)
     {
+        Timer timer(renderer, "Submit Queued AS Ops", REGULAR);
+        
         //set build data
         setBuildData();
 
