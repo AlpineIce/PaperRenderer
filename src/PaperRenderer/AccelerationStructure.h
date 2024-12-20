@@ -71,6 +71,14 @@ namespace PaperRenderer
     };
 
     //top level acceleration structure
+    struct AccelerationStructureInstanceData
+    {
+        class ModelInstance* instancePtr = NULL;
+        uint32_t customIndex:24 = 0;
+        uint32_t mask:8 = 0xAA;
+        VkGeometryInstanceFlagsKHR flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+    };
+
     class TLAS : public AS
     {
     private:
@@ -83,7 +91,7 @@ namespace PaperRenderer
 
         const float instancesOverhead = 1.5;
 
-        std::vector<class ModelInstance*> accelerationStructureInstances;
+        std::vector<AccelerationStructureInstanceData> accelerationStructureInstances;
 
         struct InstanceDescription
         {
@@ -103,7 +111,7 @@ namespace PaperRenderer
         ~TLAS();
         TLAS(const TLAS&) = delete;
 
-        void addInstance(class ModelInstance& instance);
+        void addInstance(AccelerationStructureInstanceData instanceData);
         void removeInstance(class ModelInstance& instance);
 
         const Buffer& getInstancesBuffer() const { return *instancesBuffer; }

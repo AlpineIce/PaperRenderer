@@ -1515,7 +1515,13 @@ int main()
         rtRenderPass.addInstance(*instance, baseRTMaterial);
 
         //add to TLAS
-        tlas.addInstance(*instance);
+        const PaperRenderer::AccelerationStructureInstanceData asInstanceData = {
+            .instancePtr = instance.get(),
+            .customIndex = 0, //TODO
+            .mask = 0xFF,
+            .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
+        };
+        tlas.addInstance(asInstanceData);
     }
 
     //----------MISC----------//
@@ -1549,7 +1555,7 @@ int main()
         return renderer.beginFrame();
     };
 
-    bool raster = true;
+    bool raster = false;
     while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
     {
         //get last frame statistics (create copy since it WILL be cleared after renderer.beginFrame())

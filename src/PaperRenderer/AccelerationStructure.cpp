@@ -176,9 +176,9 @@ namespace PaperRenderer
     {
         instancesBuffer.reset();
 
-        for(ModelInstance* instance : accelerationStructureInstances)
+        for(AccelerationStructureInstanceData& instanceData : accelerationStructureInstances)
         {
-            removeInstance(*instance);
+            removeInstance(*instanceData.instancePtr);
         }
     }
 
@@ -278,10 +278,10 @@ namespace PaperRenderer
         //queue instance data
         uint32_t instanceIndex = 0;
         std::vector<char> newInstancesData(instancesBuffer->getSize());
-        for(ModelInstance* instance : accelerationStructureInstances)
+        for(const AccelerationStructureInstanceData& instance : accelerationStructureInstances)
         {
             //skip if instance is NULL or has invalid BLAS
-            if(!instance || !instance->getBLAS()->getAccelerationStructureAddress())
+            if(!instance.instancePtr || !instance.instancePtr->getBLAS()->getAccelerationStructureAddress())
             {
                 continue;
             }
@@ -294,22 +294,25 @@ namespace PaperRenderer
             //get sbt offset
             uint32_t sbtOffset = 
                 rtRender.getPipeline().getShaderBindingTableData().shaderBindingTableOffsets.
-                materialShaderGroupOffsets.at(instance->rtRenderSelfReferences.at(&rtRender));
+                materialShaderGroupOffsets.at(instance.instancePtr->rtRenderSelfReferences.at(&rtRender));
 
             //write instance data
             ModelInstance::AccelerationStructureInstance instanceShaderData = {
-                .blasReference = instance->getBLAS()->getAccelerationStructureAddress(),
-                .selfIndex = instance->rendererSelfIndex,
-                .modelInstanceIndex = instance->rendererSelfIndex,
-                .recordOffset = sbtOffset
+                .blasReference = instance.instancePtr->getBLAS()->getAccelerationStructureAddress(),
+                .selfIndex = instance.instancePtr->rendererSelfIndex,
+                //.customIndex = instance.customIndex,
+                .modelInstanceIndex = instance.instancePtr->rendererSelfIndex,
+                .mask = instance.mask << 24,
+                .recordOffset = sbtOffset,
+                .flags = instance.flags << 24
             };
             memcpy(newInstancesData.data() + sizeof(ModelInstance::AccelerationStructureInstance) * instanceIndex, &instanceShaderData, sizeof(ModelInstance::AccelerationStructureInstance));
 
             //write description data
             InstanceDescription descriptionShaderData = {
-                .modelDataOffset = (uint32_t)instance->getParentModel().getShaderDataLocation()
+                .modelDataOffset = (uint32_t)instance.instancePtr->getParentModel().getShaderDataLocation()
             };
-            memcpy(newInstancesData.data() + instanceDescriptionsOffset + sizeof(InstanceDescription) * instance->rendererSelfIndex, &descriptionShaderData, sizeof(InstanceDescription));
+            memcpy(newInstancesData.data() + instanceDescriptionsOffset + sizeof(InstanceDescription) * instance.instancePtr->rendererSelfIndex, &descriptionShaderData, sizeof(InstanceDescription));
 
             instanceIndex++;
         }
@@ -323,11 +326,11 @@ namespace PaperRenderer
         renderer.getStagingBuffer().submitQueuedTransfers(syncInfo);
     }
 
-    void TLAS::addInstance(ModelInstance& instance)
+    void TLAS::addInstance(AccelerationStructureInstanceData instanceData)
     {
         //add reference
-        instance.accelerationStructureSelfReferences[this] = accelerationStructureInstances.size();
-        accelerationStructureInstances.push_back(&instance);
+        instanceData.instancePtr->accelerationStructureSelfReferences[this] = accelerationStructureInstances.size();
+        accelerationStructureInstances.push_back(instanceData);
     }
     
     void TLAS::removeInstance(ModelInstance& instance)
@@ -337,7 +340,7 @@ namespace PaperRenderer
         {
             uint32_t& selfReference = instance.accelerationStructureSelfReferences.at(this);
             accelerationStructureInstances.at(selfReference) = accelerationStructureInstances.back();
-            accelerationStructureInstances.at(selfReference)->accelerationStructureSelfReferences.at(this) = selfReference;
+            accelerationStructureInstances.at(selfReference).instancePtr->accelerationStructureSelfReferences.at(this) = selfReference;
             
             accelerationStructureInstances.pop_back();
         }
