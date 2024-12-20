@@ -34,7 +34,7 @@ namespace PaperRenderer
     class RendererStagingBuffer
     {
     private:
-        std::mutex stagingBufferMutex;
+        std::recursive_mutex stagingBufferMutex;
         std::unique_ptr<Buffer> stagingBuffer;
         const float bufferOverhead = 1.5f;
 
@@ -66,8 +66,8 @@ namespace PaperRenderer
         
         void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char>& data); //do not submit more than 1 transfer with the same destination! undefined behavior!
         void submitQueuedTransfers(SynchronizationInfo syncInfo); //Submits all queued transfers and clears the queue. Does not need to be explicitly synced with last transfer
-        void submitQueuedTransfers(VkCommandBuffer cmdBuffer); //submits all queued transfers and clears queue, but takes command buffer as parameter
         TimelineSemaphorePair getTransferSemaphore() const { return { transferSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue }; }
+        std::lock_guard<std::recursive_mutex> getLockGuard() { return std::lock_guard<std::recursive_mutex>(stagingBufferMutex); } //for thread safe operations
     };
 
     //Render engine object. Contains the entire state of the renderer and some important buffers

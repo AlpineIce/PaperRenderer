@@ -128,7 +128,6 @@ namespace PaperRenderer
         //acceleration structure operation queue
         std::deque<AccelerationStructureOp> asQueue;
 
-
         //build semaphore
         VkSemaphore asBuildSemaphore = VK_NULL_HANDLE;
         uint64_t finalSemaphoreValue = 0;

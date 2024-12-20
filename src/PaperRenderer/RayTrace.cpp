@@ -101,8 +101,10 @@ namespace PaperRenderer
 
     void RayTraceRender::updateTLAS(VkBuildAccelerationStructureModeKHR mode, VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo)
     {
+        //THIS FUNCTION HAS ASYNC POTENTIAL
+        
         //Timer
-        Timer timer(renderer, "RayTraceRender Update TLAS", REGULAR);
+        Timer timer(renderer, "RayTraceRender Refit/Update TLAS", REGULAR);
 
         //update RT pipeline if needed (required to access SBT offsets for TLAS)
         if(queuePipelineBuild)
@@ -113,7 +115,7 @@ namespace PaperRenderer
 
         //update TLAS instances (signals transfer semaphore in staging buffer)
         tlas.queueInstanceTransfers(*this);
-
+        
         //build TLAS
         renderer.asBuilder.queueAs({
             .accelerationStructure = tlas,
@@ -122,7 +124,7 @@ namespace PaperRenderer
             .flags = flags
         });
 
-        syncInfo.timelineWaitPairs.push_back({ renderer.getStagingBuffer().getTransferSemaphore() });
+        syncInfo.timelineWaitPairs.push_back(renderer.getStagingBuffer().getTransferSemaphore());
         renderer.asBuilder.submitQueuedOps(syncInfo, VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
     }
 
