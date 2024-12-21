@@ -265,11 +265,6 @@ namespace PaperRenderer
 		{
 			((RayTraceRender*)rtRender)->removeInstance(*this);
 		}
-
-		for(auto& [tlas, data] : accelerationStructureSelfReferences)
-		{
-			((TLAS*)tlas)->removeInstance(*this);
-		}
     }
 
 	void ModelInstance::setRenderPassInstanceData(RenderPass const* renderPass)

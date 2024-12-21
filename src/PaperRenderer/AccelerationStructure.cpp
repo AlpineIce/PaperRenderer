@@ -116,7 +116,7 @@ namespace PaperRenderer
         VkDescriptorBufferInfo bufferWrite3Info = {};
         bufferWrite3Info.buffer = tlas.instancesBuffer->getBuffer();
         bufferWrite3Info.offset = tlas.tlInstancesOffset;
-        bufferWrite3Info.range = tlas.accelerationStructureInstances.size() * sizeof(VkAccelerationStructureInstanceKHR);
+        bufferWrite3Info.range = tlas.nextUpdateSize * sizeof(VkAccelerationStructureInstanceKHR);
 
         BuffersDescriptorWrites bufferWrite3 = {};
         bufferWrite3.binding = 3;
@@ -175,32 +175,27 @@ namespace PaperRenderer
     TLAS::~TLAS()
     {
         instancesBuffer.reset();
-
-        for(AccelerationStructureInstanceData& instanceData : accelerationStructureInstances)
-        {
-            removeInstance(*instanceData.instancePtr);
-        }
     }
 
-    void TLAS::verifyInstancesBuffer()
+    void TLAS::verifyInstancesBuffer(const uint32_t instanceCount)
     {
         //instances
         const VkDeviceSize newInstancesSize = Device::getAlignment(
-            std::max((VkDeviceSize)(accelerationStructureInstances.size() * sizeof(ModelInstance::AccelerationStructureInstance) * instancesOverhead),
+            std::max((VkDeviceSize)(instanceCount * sizeof(ModelInstance::AccelerationStructureInstance) * instancesOverhead),
             (VkDeviceSize)(sizeof(ModelInstance::AccelerationStructureInstance) * 64)),
             renderer.getDevice().getGPUProperties().properties.limits.minStorageBufferOffsetAlignment
         );
 
         //instances description
         const VkDeviceSize newInstanceDescriptionsSize = Device::getAlignment(
-            std::max((VkDeviceSize)(accelerationStructureInstances.size() * sizeof(InstanceDescription) * instancesOverhead),
+            std::max((VkDeviceSize)(instanceCount * sizeof(InstanceDescription) * instancesOverhead),
             (VkDeviceSize)(sizeof(InstanceDescription) * 64)),
             renderer.getDevice().getGPUProperties().properties.limits.minStorageBufferOffsetAlignment
         );
 
         //tl instances
         const VkDeviceSize newTLInstancesSize = Device::getAlignment(
-            std::max((VkDeviceSize)(accelerationStructureInstances.size() * sizeof(VkAccelerationStructureInstanceKHR) * instancesOverhead),
+            std::max((VkDeviceSize)(instanceCount * sizeof(VkAccelerationStructureInstanceKHR) * instancesOverhead),
             (VkDeviceSize)(sizeof(VkAccelerationStructureInstanceKHR) * 64)),
             renderer.getDevice().getGPUProperties().properties.limits.minStorageBufferOffsetAlignment
         );
@@ -208,8 +203,7 @@ namespace PaperRenderer
         const VkDeviceSize totalBufferSize = newInstancesSize + newInstanceDescriptionsSize + newTLInstancesSize;
 
         //rebuild buffer if needed
-        if(!instancesBuffer || instancesBuffer->getSize() < totalBufferSize ||
-            instancesBuffer->getSize() > totalBufferSize * 2)
+        if(!instancesBuffer || instancesBuffer->getSize() < totalBufferSize)
         {
             //create timer
             Timer timer(renderer, "TLAS Rebuild Instances Buffer", IRREGULAR);
@@ -272,13 +266,13 @@ namespace PaperRenderer
         //set next update size to 0
         nextUpdateSize = 0;
 
-        //check buffer sizes
-        verifyInstancesBuffer();
+        //verify buffer sizes before data transfer
+        verifyInstancesBuffer(rtRender.getTLASInstanceData().size());
 
         //queue instance data
         uint32_t instanceIndex = 0;
-        std::vector<char> newInstancesData(instancesBuffer->getSize());
-        for(const AccelerationStructureInstanceData& instance : accelerationStructureInstances)
+        std::vector<char> newInstancesData(tlInstancesOffset); //allocate memory for everything but VkAccelerationStructureInstanceKHRs, which is at the end of the buffer
+        for(const AccelerationStructureInstanceData& instance : rtRender.getTLASInstanceData())
         {
             //skip if instance is NULL or has invalid BLAS
             if(!instance.instancePtr || !instance.instancePtr->getBLAS()->getAccelerationStructureAddress())
@@ -294,13 +288,13 @@ namespace PaperRenderer
             //get sbt offset
             uint32_t sbtOffset = 
                 rtRender.getPipeline().getShaderBindingTableData().shaderBindingTableOffsets.
-                materialShaderGroupOffsets.at(instance.instancePtr->rtRenderSelfReferences.at(&rtRender));
+                materialShaderGroupOffsets.at(instance.instancePtr->rtRenderSelfReferences.at(&rtRender).material);
 
             //write instance data
             ModelInstance::AccelerationStructureInstance instanceShaderData = {
                 .blasReference = instance.instancePtr->getBLAS()->getAccelerationStructureAddress(),
                 .selfIndex = instance.instancePtr->rendererSelfIndex,
-                //.customIndex = instance.customIndex,
+                .customIndex = instance.customIndex,
                 .modelInstanceIndex = instance.instancePtr->rendererSelfIndex,
                 .mask = instance.mask << 24,
                 .recordOffset = sbtOffset,
@@ -312,7 +306,7 @@ namespace PaperRenderer
             InstanceDescription descriptionShaderData = {
                 .modelDataOffset = (uint32_t)instance.instancePtr->getParentModel().getShaderDataLocation()
             };
-            memcpy(newInstancesData.data() + instanceDescriptionsOffset + sizeof(InstanceDescription) * instance.instancePtr->rendererSelfIndex, &descriptionShaderData, sizeof(InstanceDescription));
+            memcpy(newInstancesData.data() + instanceDescriptionsOffset + sizeof(InstanceDescription) * instanceIndex, &descriptionShaderData, sizeof(InstanceDescription));
 
             instanceIndex++;
         }
@@ -324,33 +318,6 @@ namespace PaperRenderer
         SynchronizationInfo syncInfo = {};
         syncInfo.queueType = TRANSFER;
         renderer.getStagingBuffer().submitQueuedTransfers(syncInfo);
-    }
-
-    void TLAS::addInstance(AccelerationStructureInstanceData instanceData)
-    {
-        //add reference
-        instanceData.instancePtr->accelerationStructureSelfReferences[this] = accelerationStructureInstances.size();
-        accelerationStructureInstances.push_back(instanceData);
-    }
-    
-    void TLAS::removeInstance(ModelInstance& instance)
-    {
-        //remove reference
-        if(accelerationStructureInstances.size() > 1)
-        {
-            uint32_t& selfReference = instance.accelerationStructureSelfReferences.at(this);
-            accelerationStructureInstances.at(selfReference) = accelerationStructureInstances.back();
-            accelerationStructureInstances.at(selfReference).instancePtr->accelerationStructureSelfReferences.at(this) = selfReference;
-            
-            accelerationStructureInstances.pop_back();
-        }
-        else
-        {
-            accelerationStructureInstances.clear();
-        }
-
-        //remove reference
-        instance.accelerationStructureSelfReferences.erase(this);
     }
 
     //----------AS BUILDER DEFINITIONS----------//
@@ -452,14 +419,14 @@ namespace PaperRenderer
             structureGeometry.geometry.instances = geoInstances;
 
             VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo;
-            buildRangeInfo.primitiveCount = tlas.accelerationStructureInstances.size();
+            buildRangeInfo.primitiveCount = tlas.nextUpdateSize;
             buildRangeInfo.primitiveOffset = 0;
             buildRangeInfo.firstVertex = 0;
             buildRangeInfo.transformOffset = 0;
 
             returnData.geometries.emplace_back(structureGeometry);
             returnData.buildRangeInfos.emplace_back(buildRangeInfo);
-            primitiveCounts.push_back((uint32_t)tlas.accelerationStructureInstances.size());
+            primitiveCounts.push_back(tlas.nextUpdateSize);
         }
         else
         {

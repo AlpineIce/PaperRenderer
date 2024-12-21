@@ -71,14 +71,6 @@ namespace PaperRenderer
     };
 
     //top level acceleration structure
-    struct AccelerationStructureInstanceData
-    {
-        class ModelInstance* instancePtr = NULL;
-        uint32_t customIndex:24 = 0;
-        uint32_t mask:8 = 0xAA;
-        VkGeometryInstanceFlagsKHR flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-    };
-
     class TLAS : public AS
     {
     private:
@@ -91,14 +83,12 @@ namespace PaperRenderer
 
         const float instancesOverhead = 1.5;
 
-        std::vector<AccelerationStructureInstanceData> accelerationStructureInstances;
-
         struct InstanceDescription
         {
             uint32_t modelDataOffset;
         };
 
-        void verifyInstancesBuffer();
+        void verifyInstancesBuffer(const uint32_t instanceCount);
         void queueInstanceTransfers(const class RayTraceRender& rtRender);
 
         friend RenderEngine;
@@ -111,12 +101,9 @@ namespace PaperRenderer
         ~TLAS();
         TLAS(const TLAS&) = delete;
 
-        void addInstance(AccelerationStructureInstanceData instanceData);
-        void removeInstance(class ModelInstance& instance);
-
         const Buffer& getInstancesBuffer() const { return *instancesBuffer; }
-        const VkDeviceSize getInstanceDescriptionsOffset() const { return instanceDescriptionsOffset; }
-        const VkDeviceSize getInstanceDescriptionsRange() const { return accelerationStructureInstances.size() * sizeof(InstanceDescription); }
+        const VkDeviceSize getInstanceDescriptionsOffset() const { return instanceDescriptionsOffset; } //MAY POSSIBLY CHANGE AFTER UPDATING TLAS IN RayTraceRender::updateTLAS()
+        const VkDeviceSize getInstanceDescriptionsRange() const { return nextUpdateSize * sizeof(InstanceDescription); } //MAY POSSIBLY CHANGE AFTER UPDATING TLAS IN RayTraceRender::updateTLAS()
     };
 
     //AS operation

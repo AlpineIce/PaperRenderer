@@ -15,6 +15,14 @@ namespace PaperRenderer
         DescriptorWrites rtDescriptorWrites = {};
     };
 
+    struct AccelerationStructureInstanceData
+    {
+        class ModelInstance* instancePtr = NULL;
+        uint32_t customIndex:24 = 0;
+        uint32_t mask:8 = 0xAA;
+        VkGeometryInstanceFlagsKHR flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+    };
+
     class RayTraceRender
     {
     private:
@@ -26,6 +34,7 @@ namespace PaperRenderer
         bool queuePipelineBuild = true;
 
         std::unordered_map<RTMaterial const*, uint32_t> materialReferences; //uint32_t is the number of instances using it
+        std::vector<AccelerationStructureInstanceData> asInstances;
         const std::vector<ShaderDescription> generalShaders;
 
         void rebuildPipeline();
@@ -47,10 +56,11 @@ namespace PaperRenderer
         void render(RayTraceRenderInfo rtRenderInfo, SynchronizationInfo syncInfo);
         void updateTLAS(VkBuildAccelerationStructureModeKHR mode, VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo); //MUST CALL BEFORE RENDERING TO REFIT TLAS TO THIS RENDER PASS
 
-        void addInstance(class ModelInstance& instance, const class RTMaterial& material);
+        void addInstance(AccelerationStructureInstanceData instanceData, const class RTMaterial& material);
         void removeInstance(class ModelInstance& instance);
 
         const RTPipeline& getPipeline() const { return *pipeline; }
+        const std::vector<AccelerationStructureInstanceData>& getTLASInstanceData() const { return asInstances; }
         const TLAS& getTLAS() const { return tlas; } //this class doesn't own TLAS, but it can be useful to retrieve which TLAS it is referencing
     };
 }

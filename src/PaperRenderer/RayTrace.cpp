@@ -151,29 +151,48 @@ namespace PaperRenderer
         };
         pipeline = renderer.getPipelineBuilder().buildRTPipeline(pipelineBuildInfo);
     }
-
-    void RayTraceRender::addInstance(ModelInstance& instance, const RTMaterial& material)
+    
+    void RayTraceRender::addInstance(AccelerationStructureInstanceData instanceData, const RTMaterial& material)
     {
-        //add reference
-        instance.rtRenderSelfReferences[this] = &material;
+        //add references
+        instanceData.instancePtr->rtRenderSelfReferences[this] = {
+            .material = &material,
+            .selfIndex = (uint32_t)asInstances.size()
+        };
+        asInstances.push_back(instanceData);
 
         //increment material reference counter and rebuild pipeline if needed
-        if(!materialReferences.count(instance.rtRenderSelfReferences.at(this)))
+        if(!materialReferences.count(instanceData.instancePtr->rtRenderSelfReferences[this].material))
         {
             queuePipelineBuild = true;
         }
-        materialReferences[instance.rtRenderSelfReferences.at(this)]++;
+        materialReferences[instanceData.instancePtr->rtRenderSelfReferences[this].material]++;
     }
     
     void RayTraceRender::removeInstance(ModelInstance& instance)
     {
-        if(instance.rtRenderSelfReferences.count(this) && materialReferences.count(instance.rtRenderSelfReferences.at(this)))
+        //shift AS instances locations
+        if(asInstances.size() > 1)
+        {
+            const uint32_t selfIndex = instance.rtRenderSelfReferences[this].selfIndex;
+            asInstances[selfIndex] = asInstances.back();
+            asInstances[selfIndex].instancePtr->rtRenderSelfReferences[this].selfIndex = selfIndex;
+            
+            asInstances.pop_back();
+        }
+        else
+        {
+            asInstances.clear();
+        }
+
+        //remove reference
+        if(instance.rtRenderSelfReferences.count(this) && materialReferences.count(instance.rtRenderSelfReferences[this].material))
         {
             //decrement material reference and check size to see if material entry should be deleted
-            materialReferences.at(instance.rtRenderSelfReferences.at(this))--;
-            if(!materialReferences.at(instance.rtRenderSelfReferences.at(this)))
+            materialReferences[instance.rtRenderSelfReferences[this].material]--;
+            if(!materialReferences[instance.rtRenderSelfReferences[this].material])
             {
-                materialReferences.erase(instance.rtRenderSelfReferences.at(this));
+                materialReferences.erase(instance.rtRenderSelfReferences[this].material);
                 queuePipelineBuild = true;
             }
 

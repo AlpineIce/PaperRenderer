@@ -1512,16 +1512,13 @@ int main()
         renderPass.addInstance(*instance, { materials });
 
         //rt render pass (just use the base RT material for simplicity)
-        rtRenderPass.addInstance(*instance, baseRTMaterial);
-
-        //add to TLAS
         const PaperRenderer::AccelerationStructureInstanceData asInstanceData = {
             .instancePtr = instance.get(),
             .customIndex = 0, //TODO
             .mask = 0xFF,
             .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
         };
-        tlas.addInstance(asInstanceData);
+        rtRenderPass.addInstance(asInstanceData, baseRTMaterial);
     }
 
     //----------MISC----------//
