@@ -1,3 +1,6 @@
+#ifndef HIT_COMMON_GLSL
+#define HIT_COMMON_GLSL 1
+
 #extension GL_GOOGLE_include_directive : require
 
 #include "raycommon.glsl"
@@ -128,3 +131,5 @@ HitInfo getHitInfo()
 
     return returnInfo;
 }
+
+#endif

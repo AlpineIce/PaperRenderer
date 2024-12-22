@@ -1,4 +1,8 @@
+#ifndef RAY_COMMON_GLSL
+#define RAY_COMMON_GLSL 1
+
 #extension GL_EXT_ray_tracing : require
+#extension GL_EXT_ray_query : require
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
@@ -10,17 +14,22 @@ layout(set = 0, binding = 4) uniform InputData
     mat4 view;
     uint64_t modelDataReference;
     uint64_t frameNumber;
+    uint recursionDepth;
+    uint aoSamples;
+    float aoRadius;
+    uint shadowSamples;
+    uint reflectionSamples;
 } inputData;
 
+//hit payload
 struct HitPayload
 {
-    vec3 worldPosition;
-    vec3 normal;
-    vec3 origin;
-    uint matIndex; //object material slot
-    uint customIndex;
-    bool isMiss;
+    vec3 returnColor;
+    int depth;
 };
+
+//clear value for floats (NaN)
+const int depthClearMagicNumber = 0xFFFFFFFF;
 
 //----------FROM NVIDIA----------//
 
@@ -52,3 +61,5 @@ vec3 OffsetRay(in vec3 p, in vec3 n)
                 abs(p.y) < origin ? p.y + floatScale * n.y : p_i.y,  //
                 abs(p.z) < origin ? p.z + floatScale * n.z : p_i.z);
 }
+
+#endif

@@ -5,9 +5,10 @@
 
 #include "raycommon.glsl"
 
-layout(location = 0) rayPayloadInEXT HitPayload hitPayload;
+//layout(location = 0) rayPayloadInEXT HitPayload hitPayload;
 
 void main()
 {
-    hitPayload.isMiss = true;
+    //using magic numbers dont need
+    return;
 }

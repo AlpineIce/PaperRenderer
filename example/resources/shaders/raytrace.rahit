@@ -1,0 +1,26 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+#include "hitcommon.glsl"
+
+layout(location = 0) rayPayloadInEXT HitPayload hitPayload;
+
+//----------ENTRY POINT----------//
+
+void main()
+{
+    const HitInfo hitInfo = getHitInfo();
+
+    //output
+    globalMaterial.color = vec3(1.0, 1.0, 1.0); //TODO
+    globalMaterial.worldPosition = hitInfo.worldPosition;
+    globalMaterial.normal = hitInfo.normal;
+    globalMaterial.roughness = 1.0; //TODO
+    globalMaterial.metallic = 0.0; //TODO
+    globalMaterial.emissive = vec4(1.0, 1.0, 1.0, 0.0); //TODO
+    //globalMaterial.matIndex = gl_GeometryIndexEXT; //geometry in AS build corresponds to material slot
+    //globalMaterial.customIndex = gl_InstanceCustomIndexEXT;
+
+    if (mat.illum != 4)
+        return;
+}

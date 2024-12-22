@@ -198,17 +198,19 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
 //point light definition
 struct PointLight
 {
-    glm::vec4 position;
-    glm::vec4 color;
+    glm::vec3 position;
+    glm::vec3 color;
+    float radius;
+    bool castShadow;
 };
 
 std::unique_ptr<PaperRenderer::Buffer> createPointLightsBuffer(PaperRenderer::RenderEngine& renderer)
 {
     std::vector<PointLight> pointLightsData = {
-        { glm::vec4(10.0f, 10.0, 5.0f, 1.0f),   glm::vec4(0.6f, 1.0f, 0.8f, 1.0f) },
-        { glm::vec4(10.0f, -10.0, 5.0f, 1.0f),  glm::vec4(1.0f, 0.8f, 0.8f, 1.0f) },
-        { glm::vec4(-10.0f, 10.0, 5.0f, 1.0f),  glm::vec4(0.6f, 0.8f, 1.0f, 1.0f) },
-        { glm::vec4(-10.0f, -10.0, 5.0f, 1.0f), glm::vec4(0.8f, 1.0f, 0.6f, 1.0f) }
+        { glm::vec3(10.0f, 10.0, 5.0f),   glm::vec3(0.6f, 1.0f, 0.8f), 0.1f, true},
+        { glm::vec3(10.0f, -10.0, 5.0f),  glm::vec3(1.0f, 0.8f, 0.8f), 0.1f, true},
+        { glm::vec3(-10.0f, 10.0, 5.0f),  glm::vec3(0.6f, 0.8f, 1.0f), 0.1f, true},
+        { glm::vec3(-10.0f, -10.0, 5.0f), glm::vec3(0.8f, 1.0f, 0.6f), 0.1f, true}
     };
 
     PaperRenderer::BufferInfo pointLightBufferInfo = {

@@ -1,9 +1,14 @@
+#ifndef PBR_GLSL
+#define PBR_GLSL 1
+
 #extension GL_EXT_scalar_block_layout : require
 
 struct PointLight
 {
-    vec4 position;
-    vec4 color;
+    vec3 position;
+    vec3 color;
+    float radius;
+    bool castShadow;
 };
 
 layout(scalar, set = 0, binding = 1) readonly buffer PointLights
@@ -83,7 +88,7 @@ float geometricAttenuation(vec3 N, vec3 L, vec3 V, float roughness)
 }
 
 //specular calculation
-vec3 cookTorance(const vec3 N, const vec3 V, const vec3 L, const vec3 H, const vec3 F, const vec3 baseColor, const float roughness, const float metallic)
+vec3 cookTorance(const vec3 N, const vec3 V, const vec3 L, const vec3 H, const vec3 F, const float roughness)
 {
     const float D = normalDistribution(N, H, roughness);
     const float G = geometricAttenuation(N, L, V, roughness);
@@ -104,7 +109,7 @@ vec3 calculateLight(const vec3 N, const vec3 V, const vec3 L, const vec3 H, BRDF
     kD *= 1.0 - inputValues.metallic;
 
     vec3 diffuse = diffuse(N, L, inputValues.baseColor.xyz);
-    vec3 specular = cookTorance(N, V, L, H, F, inputValues.baseColor.xyz, inputValues.roughness, inputValues.metallic);
+    vec3 specular = cookTorance(N, V, L, H, F, inputValues.roughness);
 
     return max((kD * diffuse) + (specular * dot(N, L) * 2.0), 0.0);
 }
@@ -129,7 +134,7 @@ vec4 calculatePBR(BRDFInput inputValues, vec3 camPos, vec3 worldPosition, vec3 n
         const vec3 L = normalize(light.position.xyz - worldPosition);
         const vec3 H = normalize(V + L);
         
-        totalLight += calculateLight(N, V, L, H, inputValues) * light.color.xyz * light.color.w * attenuate(L);
+        totalLight += calculateLight(N, V, L, H, inputValues) * light.color * attenuate(L);
     }
 
     //emission
@@ -137,3 +142,5 @@ vec4 calculatePBR(BRDFInput inputValues, vec3 camPos, vec3 worldPosition, vec3 n
 
     return vec4(totalLight, 1.0);
 }
+
+#endif
