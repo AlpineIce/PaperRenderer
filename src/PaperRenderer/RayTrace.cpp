@@ -154,7 +154,7 @@ namespace PaperRenderer
     
     void RayTraceRender::addInstance(AccelerationStructureInstanceData instanceData, const RTMaterial& material)
     {
-        //add references
+        //add reference
         instanceData.instancePtr->rtRenderSelfReferences[this] = {
             .material = &material,
             .selfIndex = (uint32_t)asInstances.size()
@@ -162,27 +162,30 @@ namespace PaperRenderer
         asInstances.push_back(instanceData);
 
         //increment material reference counter and rebuild pipeline if needed
-        if(!materialReferences.count(instanceData.instancePtr->rtRenderSelfReferences[this].material))
+        if(!materialReferences.count(&material))
         {
             queuePipelineBuild = true;
         }
-        materialReferences[instanceData.instancePtr->rtRenderSelfReferences[this].material]++;
+        materialReferences[&material]++;
     }
     
     void RayTraceRender::removeInstance(ModelInstance& instance)
     {
         //shift AS instances locations
-        if(asInstances.size() > 1)
+        if(instance.rtRenderSelfReferences.count(this))
         {
-            const uint32_t selfIndex = instance.rtRenderSelfReferences[this].selfIndex;
-            asInstances[selfIndex] = asInstances.back();
-            asInstances[selfIndex].instancePtr->rtRenderSelfReferences[this].selfIndex = selfIndex;
-            
-            asInstances.pop_back();
-        }
-        else
-        {
-            asInstances.clear();
+            if(asInstances.size() > 1)
+            {
+                const uint32_t selfIndex = instance.rtRenderSelfReferences[this].selfIndex;
+                asInstances[selfIndex] = asInstances.back();
+                asInstances[selfIndex].instancePtr->rtRenderSelfReferences[this].selfIndex = selfIndex;
+                
+                asInstances.pop_back();
+            }
+            else
+            {
+                asInstances.clear();
+            }
         }
 
         //remove reference

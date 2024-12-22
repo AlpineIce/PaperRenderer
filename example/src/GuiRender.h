@@ -1,5 +1,5 @@
 #pragma once
-#include "../src/PaperRenderer/PaperRenderer.h"
+#include "Common.h"
 
 //imgui
 #include "lib/imgui/backends/imgui_impl_vulkan.h"

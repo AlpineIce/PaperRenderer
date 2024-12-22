@@ -256,14 +256,14 @@ namespace PaperRenderer
 		renderer.removeObject(this);
 
 		//remove from references
-		for(auto& [renderPass, data] : renderPassSelfReferences)
+		while(renderPassSelfReferences.size())
 		{
-			((RenderPass*)renderPass)->removeInstance(*this);
+			((RenderPass*)renderPassSelfReferences.begin()->first)->removeInstance(*this);
 		}
 
-		for(auto& [rtRender, data] : rtRenderSelfReferences)
+		while(rtRenderSelfReferences.size())
 		{
-			((RayTraceRender*)rtRender)->removeInstance(*this);
+			((RayTraceRender*)rtRenderSelfReferences.begin()->first)->removeInstance(*this);
 		}
     }
 
