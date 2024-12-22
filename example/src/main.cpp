@@ -425,27 +425,56 @@ int main()
 
     //----------ADD MODEL INSTANCES TO RT AND RASTER PASSES----------//
 
-    for(std::unique_ptr<PaperRenderer::ModelInstance>& instance: modelInstances)
+    std::vector<DefaultRTMaterialDefinition> instanceRTMaterialDefinitions;
+    for(uint32_t i = 0; i < modelInstances.size(); i++)
     {
         //raster render pass
         std::unordered_map<uint32_t, PaperRenderer::MaterialInstance*> materials;
         uint32_t matIndex = 0;
-        for(const std::string& matName : scene.instanceMaterials[instance->getParentModel().getModelName()])
+        for(const std::string& matName : scene.instanceMaterials[modelInstances[i]->getParentModel().getModelName()])
         {
             materials[matIndex] = materialInstances[matName].get();
             matIndex++;
         }
-        exampleRaster.getRenderPass().addInstance(*instance, { materials });
+        exampleRaster.getRenderPass().addInstance(*modelInstances[i], { materials });
 
         //rt render pass (just use the base RT material for simplicity)
         const PaperRenderer::AccelerationStructureInstanceData asInstanceData = {
-            .instancePtr = instance.get(),
-            .customIndex = 0, //TODO
+            .instancePtr = modelInstances[i].get(),
+            .customIndex = (uint32_t)instanceRTMaterialDefinitions.size(), //set custom index to the first material index in the buffer
             .mask = 0xFF,
             .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
         };
         exampleRayTrace.getRTRender().addInstance(asInstanceData, baseRTMaterial);
+
+        //RT instance materials
+        for(const std::string& matName : scene.instanceMaterials[modelInstances[i]->getParentModel().getModelName()])
+        {
+            instanceRTMaterialDefinitions.push_back({
+                .albedo = glm::vec3(scene.materialInstancesData[matName].baseColor),
+                .emissive = glm::vec3(scene.materialInstancesData[matName].emission) * scene.materialInstancesData[matName].emission.w,
+                .metallic = scene.materialInstancesData[matName].metallic,
+                .roughness = scene.materialInstancesData[matName].roughness,
+                .transmission = glm::vec3(0.0f),
+                .ior = 1.45f
+            });
+        }
     }
+
+    //custom RT material buffer
+    const PaperRenderer::BufferInfo rtMaterialDefinitionsBufferInfo = {
+        .size = instanceRTMaterialDefinitions.size() * sizeof(DefaultRTMaterialDefinition),
+        .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT,
+        .allocationFlags = 0
+    };
+    PaperRenderer::Buffer rtMaterialDefinitionsBuffer(renderer, rtMaterialDefinitionsBufferInfo);
+
+    //convert material data vector to char vector (honestly there can be a better way around this but im lazy)
+    std::vector<char> instanceRTMaterialDefinitionsData(instanceRTMaterialDefinitions.size() * sizeof(DefaultRTMaterialDefinition));
+    memcpy(instanceRTMaterialDefinitionsData.data(), instanceRTMaterialDefinitions.data(), instanceRTMaterialDefinitionsData.size());
+
+    //queue data transfer for RT material data
+    renderer.getStagingBuffer().queueDataTransfers(rtMaterialDefinitionsBuffer, 0, instanceRTMaterialDefinitionsData);
 
     //----------MISC----------//
 
@@ -521,7 +550,7 @@ int main()
                 .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValue + 2 } },
                 .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue + 3 } }
             };
-            exampleRayTrace.rayTraceRender(rtRenderSync);
+            exampleRayTrace.rayTraceRender(rtRenderSync, rtMaterialDefinitionsBuffer);
         }
         //raster
         else

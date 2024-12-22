@@ -112,3 +112,18 @@ public:
         MaterialInstance::bind(cmdBuffer, descriptorWrites);
     }
 };
+
+//----------RAY TRACE MATERIALS----------//
+
+struct DefaultRTMaterialDefinition
+{
+    //surface
+    glm::vec3 albedo; //normalized vec3
+    glm::vec3 emissive; //non-normalized
+    float metallic; //normalized
+    float roughness; //normalized
+
+    //transmission
+    glm::vec3 transmission;
+    float ior;
+};

@@ -22,6 +22,11 @@ struct Material
     float ior;
 };
 
+layout(scalar, set = 0, binding = 6) readonly buffer MaterialDefinitions
+{
+    Material materials[];
+} materialDefinitions;
+
 //----------ENTRY POINT----------//
 
 void main()
@@ -41,14 +46,8 @@ void main()
     //get random seed
     uint seed = tea(gl_LaunchSizeEXT.x * gl_LaunchIDEXT.x * gl_LaunchIDEXT.y, uint(inputData.frameNumber));
 
-    //TODO GRAB MATERIAL
-    Material materialInfo;
-    materialInfo.albedo = vec3(1.0, 1.0, 1.0);
-    materialInfo.emissive = vec3(0.0);
-    materialInfo.metallic = 0.0;
-    materialInfo.roughness = 0.0;
-    materialInfo.transmission = vec3(0.0);
-    materialInfo.ior = 1.45;
+    ////grab material definition
+    Material materialInfo = materialDefinitions.materials[customIndex + matIndex];
 
     BRDFInput inputValues;
     inputValues.baseColor = vec4(materialInfo.albedo, 1.0);
@@ -253,6 +252,9 @@ void main()
     }
 
     totalLight += lightInfo.ambientLight.xyz * lightInfo.ambientLight.w * ambientOcclusion;
+
+    //add emission
+    totalLight += materialInfo.emissive.xyz;
 
     //set return value
     hitPayload.returnColor = totalLight;

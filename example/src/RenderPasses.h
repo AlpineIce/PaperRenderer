@@ -67,7 +67,7 @@ public:
     ExampleRayTracing(PaperRenderer::RenderEngine& renderer, const PaperRenderer::Camera& camera, const HDRBuffer& hdrBuffer, const PaperRenderer::Buffer& lightBuffer, const PaperRenderer::Buffer& lightInfoUBO);
     ~ExampleRayTracing();
 
-    void rayTraceRender(const PaperRenderer::SynchronizationInfo& syncInfo);
+    void rayTraceRender(const PaperRenderer::SynchronizationInfo& syncInfo, const PaperRenderer::Buffer& materialDefinitionsBuffer);
     void updateUBO();
 
     PaperRenderer::RayTraceRender& getRTRender() { return rtRenderPass; }

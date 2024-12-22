@@ -142,6 +142,12 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
                     .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                     .descriptorCount = 1,
                     .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_INTERSECTION_BIT_KHR
+                },
+                { //material descriptions
+                    .binding = 6,
+                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .descriptorCount = 1,
+                    .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR
                 }
             }}
         },
@@ -175,7 +181,7 @@ ExampleRayTracing::~ExampleRayTracing()
 {
 }
 
-void ExampleRayTracing::rayTraceRender(const PaperRenderer::SynchronizationInfo &syncInfo)
+void ExampleRayTracing::rayTraceRender(const PaperRenderer::SynchronizationInfo &syncInfo, const PaperRenderer::Buffer& materialDefinitionsBuffer)
 {
     //pre-render barriers
     std::vector<VkImageMemoryBarrier2> preRenderImageBarriers;
@@ -242,7 +248,7 @@ void ExampleRayTracing::rayTraceRender(const PaperRenderer::SynchronizationInfo 
                 .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .binding = 4
             },
-            { //TODO THIS CAN CHANGE AND SHOULD BE FIXED
+            {
                 .infos = {{
                     .buffer = rtRenderPass.getTLAS().getInstanceDescriptionsRange() ? rtRenderPass.getTLAS().getInstancesBuffer().getBuffer() : VK_NULL_HANDLE,
                     .offset = rtRenderPass.getTLAS().getInstanceDescriptionsOffset(),
@@ -251,7 +257,15 @@ void ExampleRayTracing::rayTraceRender(const PaperRenderer::SynchronizationInfo 
                 .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 .binding = 5
             },
-
+            {
+                .infos = {{
+                    .buffer = materialDefinitionsBuffer.getBuffer(),
+                    .offset = 0,
+                    .range = VK_WHOLE_SIZE
+                }},
+                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .binding = 6
+            }
         },
         .imageWrites = {
             {
