@@ -99,6 +99,7 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
         { VK_SHADER_STAGE_MISS_BIT_KHR, &rmissShader },
         { VK_SHADER_STAGE_MISS_BIT_KHR, &rshadowShader }
     }),
+    rayRecursionDepth(renderer.getDevice().getRTproperties().maxRayRecursionDepth),
     rtInfoUBO(renderer, {
         .size = sizeof(RayTraceInfo),
         .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT,
@@ -110,19 +111,19 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
                     .binding = 0,
                     .descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
                     .descriptorCount = 1,
-                    .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR
+                    .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR
                 },
                 { //point lights (pbr.glsl)
                     .binding = 1,
                     .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                     .descriptorCount = 1,
-                    .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR
+                    .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR
                 },
                 { //light info (pbr.glsl)
                     .binding = 2,
                     .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                     .descriptorCount = 1,
-                    .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR
+                    .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR
                 },
                 { //hdr buffer
                     .binding = 3,
@@ -143,6 +144,9 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
                     .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_INTERSECTION_BIT_KHR
                 }
             }}
+        },
+        {
+            .maxRecursionDepth = rayRecursionDepth
         },
         {}
     ),
@@ -288,7 +292,12 @@ void ExampleRayTracing::updateUBO()
         .projection = camera.getProjection(),
         .view = camera.getViewMatrix(),
         .modelDataReference = renderer.getModelDataBuffer().getBufferDeviceAddress(),
-        .frameNumber = renderer.getFramesRenderedCount()
+        .frameNumber = renderer.getFramesRenderedCount(),
+        .recursionDepth = rayRecursionDepth,
+        .aoSamples = 1,
+        .aoRadius = 1.0f,
+        .shadowSamples = 1,
+        .reflectionSamples = 1
     };
     
     const PaperRenderer::BufferWrite write = {

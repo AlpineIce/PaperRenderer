@@ -37,6 +37,7 @@ private:
     const PaperRenderer::Shader rmissShader;
     const PaperRenderer::Shader rshadowShader;
     const std::vector<PaperRenderer::ShaderDescription> generalShaders;
+    const uint32_t rayRecursionDepth;
 
     //ubo
     struct RayTraceInfo
@@ -45,6 +46,12 @@ private:
         glm::mat4 view;
         uint64_t modelDataReference;
         uint64_t frameNumber;
+        uint32_t recursionDepth;
+        uint32_t aoSamples;
+        float aoRadius;
+        uint32_t shadowSamples;
+        uint32_t reflectionSamples;
+        
     };
     PaperRenderer::Buffer rtInfoUBO;
     

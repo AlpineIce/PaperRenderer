@@ -27,8 +27,8 @@ namespace PaperRenderer
     {
     private:
         const std::vector<VkPushConstantRange> pcRanges;
-        std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> descriptorSets;
-        const RTPipelineProperties pipelineProperties = {};
+        const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> descriptorSets;
+        const RTPipelineProperties pipelineProperties;
         std::unique_ptr<RTPipeline> pipeline;
         
         bool queuePipelineBuild = true;
@@ -48,6 +48,7 @@ namespace PaperRenderer
             TLAS& accelerationStructure,
             const std::vector<ShaderDescription>& generalShaders,
             const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptors,
+            const RTPipelineProperties& pipelineProperties,
             const std::vector<VkPushConstantRange>& pcRanges
         );
         ~RayTraceRender();

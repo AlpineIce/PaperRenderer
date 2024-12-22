@@ -11,10 +11,12 @@ namespace PaperRenderer
         TLAS& accelerationStructure,
         const std::vector<ShaderDescription>& generalShaders,
         const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptorSets,
+        const RTPipelineProperties& pipelineProperties,
         const std::vector<VkPushConstantRange>& pcRanges
     )
         :pcRanges(pcRanges),
         descriptorSets(descriptorSets),
+        pipelineProperties(pipelineProperties),
         generalShaders(generalShaders),
         renderer(renderer),
         tlas(accelerationStructure)

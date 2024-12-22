@@ -350,7 +350,7 @@ namespace PaperRenderer
         pipelineCreateInfo.pStages = shaderStages.data();
         pipelineCreateInfo.groupCount = rtShaderGroups.size();
         pipelineCreateInfo.pGroups = rtShaderGroups.data();
-        pipelineCreateInfo.maxPipelineRayRecursionDepth = pipelineProperties.MAX_RT_RECURSION_DEPTH;
+        pipelineCreateInfo.maxPipelineRayRecursionDepth = pipelineProperties.maxRecursionDepth;
         pipelineCreateInfo.pLibraryInfo = NULL;
         pipelineCreateInfo.pLibraryInterface = NULL;
         pipelineCreateInfo.pDynamicState = NULL;

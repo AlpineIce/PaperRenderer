@@ -178,7 +178,7 @@ namespace PaperRenderer
 
     struct RTPipelineProperties
     {
-        uint32_t MAX_RT_RECURSION_DEPTH = 1;
+        uint32_t maxRecursionDepth = 1;
     };
 
     struct RTPipelineBuildInfo
