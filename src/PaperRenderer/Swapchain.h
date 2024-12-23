@@ -36,8 +36,8 @@ namespace PaperRenderer
         std::vector<VkImage> swapchainImages;
         std::vector<VkImageView> imageViews;
         std::vector<VkSemaphore> imageSemaphores;
-        uint32_t frameIndex;
-        uint32_t semaphoreIndex;
+        uint32_t frameIndex = 0;
+        uint32_t semaphoreIndex = 0;
         GLFWwindow* window = NULL;
         WindowState currentWindowState;
         bool usingHDR = false;

@@ -471,7 +471,7 @@ int main()
 
     //convert material data vector to char vector (honestly there can be a better way around this but im lazy)
     std::vector<char> instanceRTMaterialDefinitionsData(instanceRTMaterialDefinitions.size() * sizeof(DefaultRTMaterialDefinition));
-    memcpy(instanceRTMaterialDefinitionsData.data(), instanceRTMaterialDefinitions.data(), instanceRTMaterialDefinitionsData.size());
+    memcpy(instanceRTMaterialDefinitionsData.data(), instanceRTMaterialDefinitions.data(), instanceRTMaterialDefinitions.size() * sizeof(DefaultRTMaterialDefinition));
 
     //queue data transfer for RT material data
     renderer.getStagingBuffer().queueDataTransfers(rtMaterialDefinitionsBuffer, 0, instanceRTMaterialDefinitionsData);
