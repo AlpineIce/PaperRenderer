@@ -164,8 +164,8 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
     for(const tinygltf::Material& material : gltfModel.materials)
     {
         const tinygltf::ColorValue baseColor = material.values.count("baseColorFactor") ? material.values.at("baseColorFactor").ColorFactor() : tinygltf::ColorValue({1.0, 1.0, 1.0, 1.0});
-        const float roughness = material.values.at("roughnessFactor").Factor();
-        const float metallic = material.values.at("metallicFactor").Factor();
+        const float roughness = material.values.count("roughnessFactor") ? material.values.at("roughnessFactor").Factor() : 1.0f;
+        const float metallic = material.values.count("metallicFactor") ? material.values.at("metallicFactor").Factor() : 1.0f;
 
         //emissive
         float emissionStrength = 0.0f;
@@ -240,7 +240,7 @@ struct LightInfo
 std::unique_ptr<PaperRenderer::Buffer> createLightInfoUniformBuffer(PaperRenderer::RenderEngine& renderer)
 {
     LightInfo uniformBufferData = {
-        .ambientLight = glm::vec4(0.05f, 0.05f, 0.05f, 1.0f),
+        .ambientLight = glm::vec4(0.1f, 0.1f, 0.1f, 1.0f),
         .pointLightCount = 4
     };
 
@@ -266,7 +266,7 @@ std::unique_ptr<PaperRenderer::Buffer> createLightInfoUniformBuffer(PaperRendere
 void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::Camera& camera, ExampleRayTracing& exampleRayTrace)
 {
     //update camera
-    const glm::vec3 newCameraPosition = glm::vec3(15.0f * sin(glfwGetTime()), 15.0f * cos(glfwGetTime()), 5.0f);
+    const glm::vec3 newCameraPosition = glm::vec3(15.0f * sin(glfwGetTime() * 0.1f), 15.0f * cos(glfwGetTime() * 0.1f), 5.0f);
 
     PaperRenderer::CameraTransformation newTransform = {
         .translationParameters = {
@@ -394,15 +394,161 @@ int main()
     //create 1 instance per model for this example
     for(const auto& [name, model] : scene.models)
     {
-        //unique geometry is false because animation is currently unavailable
-        std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *model, false);
+        //create a ring of suzanne model instances
+        if(name == "Suzanne")
+        {
+            const uint32_t instanceCount = 8;
+            for(uint32_t i = 0; i < instanceCount; i++)
+            {
+                //unique geometry is false because animation is currently unavailable
+                std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *model, false);
 
-        //set transformation
-        instance->setTransformation(scene.instanceTransforms[model.get()]);
-        modelInstances.push_back(std::move(instance));
+                //set transformation
+                PaperRenderer::ModelTransformation newTransform = {
+                    .position = glm::vec3(sin(glm::radians(360.0f / instanceCount) * i) * 5.0f, cos(glm::radians(360.0f / instanceCount) * i) * 5.0f, 0.0f),
+                    .scale = glm::vec3(1.0f),
+                    .rotation = glm::quat(cos(glm::radians(360.0f / instanceCount / 2.0f) * i), 0.0f, 0.0f, sin(glm::radians(360.0f / instanceCount / 2.0f) * i))
+                };
+                instance->setTransformation(newTransform);
+                modelInstances.push_back(std::move(instance));
+            }
+        }
+        //create a ring of trees
+        else if(name == "Tree")
+        {
+            const uint32_t instanceCount = 4;
+            for(uint32_t i = 0; i < instanceCount; i++)
+            {
+                //unique geometry is false because animation is currently unavailable
+                std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *model, false);
+
+                //set transformation
+                PaperRenderer::ModelTransformation newTransform = {
+                    .position = glm::vec3(sin(glm::radians(360.0f / instanceCount) * i + (3.14f / 4.0f)) * 20.0f, cos(glm::radians(360.0f / instanceCount) * i + (3.14f / 4.0f)) * 20.0f , -3.0f),
+                    .scale = glm::vec3(1.0f),
+                    .rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f)
+                };
+                instance->setTransformation(newTransform);
+                modelInstances.push_back(std::move(instance));
+            }
+        }
+        //use scene transform for everything else
+        else
+        {
+            //unique geometry is false because animation is currently unavailable
+            std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *model, false);
+
+            //set transformation
+            instance->setTransformation(scene.instanceTransforms[model.get()]);
+            modelInstances.push_back(std::move(instance));
+        }
+        
     }
 
     //----------MATERIALS----------//
+
+    //leaf raster material
+    LeafMaterial leafMaterial(renderer, {
+            .shaderInfo = {
+                {
+                    .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                    .data = readFromFile("resources/shaders/Default_vert.spv")
+                },
+                {
+                    .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                    .data = readFromFile("resources/shaders/leaf_frag.spv")
+                }
+            },
+            .descriptorSets = {
+                { 0, {
+                    {
+                        .binding = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .descriptorCount = 1,
+                        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+                    },
+                    {
+                        .binding = 2,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .descriptorCount = 1,
+                        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+                    }
+                }},
+                { 2, {
+                    {
+                        .binding = 0,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .descriptorCount = 1,
+                        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+                    }
+                }}
+            },
+            .pcRanges = {}, //no push constants
+            .properties = {
+                .vertexAttributes = {
+                    {
+                        .location = 0,
+                        .binding = 0,
+                        .format = VK_FORMAT_R32G32B32_SFLOAT,
+                        .offset = offsetof(Vertex, position)
+                    },
+                    {
+                        .location = 1,
+                        .binding = 0,
+                        .format = VK_FORMAT_R32G32B32_SFLOAT,
+                        .offset = offsetof(Vertex, normal)
+                    },
+                    {
+                        .location = 2,
+                        .binding = 0,
+                        .format = VK_FORMAT_R32G32_SFLOAT,
+                        .offset = offsetof(Vertex, uv)
+                    }
+                },
+                .vertexDescriptions = {
+                    {
+                        .binding = 0,
+                        .stride = sizeof(Vertex),
+                        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+                    }
+                },
+                .colorAttachments = {
+                    {
+                        .blendEnable = VK_FALSE,
+                        .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+                        .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                        .colorBlendOp = VK_BLEND_OP_ADD,
+                        .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+                        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+                        .alphaBlendOp = VK_BLEND_OP_ADD,
+                        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
+                    }
+                },
+                .colorAttachmentFormats = {
+                    { hdrBuffer.format }
+                },
+                .depthAttachmentFormat = depthBuffer.format,
+                .rasterInfo = {
+                    .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+                    .pNext = NULL,
+                    .flags = 0,
+                    .depthClampEnable = VK_FALSE,
+                    .rasterizerDiscardEnable = VK_FALSE,
+                    .polygonMode = VK_POLYGON_MODE_FILL,
+                    .cullMode = VK_CULL_MODE_NONE, //this is foliage so no backface culling will be used
+                    .frontFace = VK_FRONT_FACE_CLOCKWISE,
+                    .depthBiasEnable = VK_FALSE,
+                    .depthBiasConstantFactor = 0.0f,
+                    .depthBiasClamp = 0.0f,
+                    .depthBiasSlopeFactor = 0.0f,
+                    .lineWidth = 1.0f
+                }
+            },
+            .drawDescriptorIndex = 1
+        },
+        *pointLightsBuffer,
+        *lightingUniformBuffer
+    );
 
     //base RT material
     PaperRenderer::ShaderHitGroup baseMaterialHitGroup = {
@@ -412,15 +558,27 @@ int main()
     };
     PaperRenderer::RTMaterial baseRTMaterial(renderer, baseMaterialHitGroup);
 
+    //leaf RT material
+    PaperRenderer::ShaderHitGroup leafMaterialHitGroup=  {
+        .chitShaderData = readFromFile("resources/shaders/leaf_chit.spv"),
+        .ahitShaderData = readFromFile("resources/shaders/leaf_ahit.spv"),
+        .intShaderData = {}
+    };
+    PaperRenderer::RTMaterial leafRTMaterial(renderer, leafMaterialHitGroup);
+
     //create material instances that "derive" from base material and the loaded scene data parameters
     std::unordered_map<std::string, std::unique_ptr<PaperRenderer::MaterialInstance>> materialInstances;
     materialInstances.reserve(scene.materialInstancesData.size());
     for(const auto& [name, parameters] : scene.materialInstancesData)
     {
-        materialInstances[name] = std::make_unique<DefaultMaterialInstance>(renderer, exampleRaster.getDefaultMaterial(), parameters);
-
-        //TODO RT MATERIAL "INSTANCE" IMPLEMENTATION
-
+        if(name == "Leaves")
+        {
+            materialInstances[name] = std::make_unique<LeafMaterialInstance>(renderer, leafMaterial, parameters);
+        }
+        else
+        {
+            materialInstances[name] = std::make_unique<DefaultMaterialInstance>(renderer, exampleRaster.getDefaultMaterial(), parameters);
+        }
     }
 
     //----------ADD MODEL INSTANCES TO RT AND RASTER PASSES----------//
@@ -445,7 +603,14 @@ int main()
             .mask = 0xFF,
             .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
         };
-        exampleRayTrace.getRTRender().addInstance(asInstanceData, baseRTMaterial);
+        if(modelInstances[i]->getParentModel().getModelName() == "Tree")
+        {
+            exampleRayTrace.getRTRender().addInstance(asInstanceData, leafRTMaterial);
+        }
+        else
+        {
+            exampleRayTrace.getRTRender().addInstance(asInstanceData, baseRTMaterial);
+        }
 
         //RT instance materials
         for(const std::string& matName : scene.instanceMaterials[modelInstances[i]->getParentModel().getModelName()])
@@ -464,7 +629,7 @@ int main()
     //custom RT material buffer
     const PaperRenderer::BufferInfo rtMaterialDefinitionsBufferInfo = {
         .size = instanceRTMaterialDefinitions.size() * sizeof(DefaultRTMaterialDefinition),
-        .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT,
+        .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT,
         .allocationFlags = 0
     };
     PaperRenderer::Buffer rtMaterialDefinitionsBuffer(renderer, rtMaterialDefinitionsBufferInfo);
@@ -507,7 +672,6 @@ int main()
         return renderer.beginFrame();
     };
 
-    bool raster = false;
     while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
     {
         //get last frame statistics (create copy since it WILL be cleared after renderer.beginFrame())
@@ -526,7 +690,7 @@ int main()
         renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
 
         //ray tracing
-        if(!raster)
+        if(!guiContext.raster)
         {
             //build queued BLAS's (wait on transfer, signal rendering semaphore
             const PaperRenderer::SynchronizationInfo blasSyncInfo = {
@@ -571,7 +735,7 @@ int main()
             .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, finalSemaphoreValue + 3 } },
             .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue + 4 } }
         };
-        bufferCopyPass.render(bufferCopySyncInfo, raster);
+        bufferCopyPass.render(bufferCopySyncInfo, guiContext.raster);
 
         //render GUI
         const PaperRenderer::SynchronizationInfo guiSyncInfo = {

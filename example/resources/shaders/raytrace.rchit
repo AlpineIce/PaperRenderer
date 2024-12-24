@@ -8,25 +8,6 @@
 layout(location = 0) rayPayloadInEXT HitPayload hitPayload;
 layout(location = 1) rayPayloadEXT bool isShadowed;
 
-//material for this hit group
-struct Material
-{
-    //surface
-    vec3 albedo; //normalized vec3
-    vec3 emissive; //non-normalized
-    float metallic; //normalized
-    float roughness; //normalized
-
-    //transmission
-    vec3 transmission;
-    float ior;
-};
-
-layout(scalar, set = 0, binding = 6) readonly buffer MaterialDefinitions
-{
-    Material materials[];
-} materialDefinitions;
-
 //----------ENTRY POINT----------//
 
 void main()
@@ -248,7 +229,7 @@ void main()
         }
 
         ambientOcclusion = 1.0 - (ambientOcclusion / float(inputData.aoSamples));
-        ambientOcclusion = clamp(ambientOcclusion, 0, 1);
+        ambientOcclusion = clamp(ambientOcclusion, 0.0, 1.0);
     }
 
     totalLight += lightInfo.ambientLight.xyz * lightInfo.ambientLight.w * ambientOcclusion;

@@ -63,7 +63,14 @@ void renderImGui(PaperRenderer::RenderEngine* renderer, PaperRenderer::Statistic
     static int counter = 0;
 
     //begin statistics window
-    ImGui::Begin("PaperRenderer Example Statistics");
+    ImGui::Begin("PaperRenderer Example GUI");
+
+    //render mode
+    const std::string renderModeSwitchText = std::string("Switch Render Mode to") + std::string(!guiContext->raster ? "Raster" : "Ray Tracing");
+    if(ImGui::Button(renderModeSwitchText.c_str()))
+    {
+        guiContext->raster = !guiContext->raster;
+    }
 
     //list last frame statistics
     ImGui::SeparatorText("Last Frame CPU Statistics");

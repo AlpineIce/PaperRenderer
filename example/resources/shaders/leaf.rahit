@@ -1,0 +1,15 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+#include "hitcommon.glsl"
+#include "leaf.glsl"
+
+void main()
+{
+    HitInfo hitInfo = getHitInfo();
+    
+    if(getAlpha(hitInfo.uv) < 0.5)
+    {
+        ignoreIntersectionEXT;
+    }
+}

@@ -19,6 +19,26 @@ layout(scalar, set = 0, binding = 5) readonly buffer InstanceDescriptions
     InstanceDescription descriptions[];
 } instanceDescriptions;
 
+//----------MATERIAL DESCRIPTIONS----------//
+
+struct Material
+{
+    //surface
+    vec3 albedo; //normalized vec3
+    vec3 emissive; //non-normalized
+    float metallic; //normalized
+    float roughness; //normalized
+
+    //transmission
+    vec3 transmission;
+    float ior;
+};
+
+layout(scalar, set = 0, binding = 6) readonly buffer MaterialDefinitions
+{
+    Material materials[];
+} materialDefinitions;
+
 //----------MODEL DATA----------//
 
 struct AABB
@@ -90,6 +110,7 @@ struct HitInfo
 {
     vec3 worldPosition;
     vec3 normal;
+    vec2 uv;
 };
 
 HitInfo getHitInfo()
@@ -116,7 +137,7 @@ HitInfo getHitInfo()
     const Vertex v1 = vertices.v[ind1];
     const Vertex v2 = vertices.v[ind2];
 
-    //barycentrics, position, and normal
+    //barycentrics, position, normal, and UVs
     const vec3 barycentrics = vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
 
     const vec3 pos = v0.pos * barycentrics.x + v1.pos * barycentrics.y + v2.pos * barycentrics.z;
@@ -125,9 +146,12 @@ HitInfo getHitInfo()
     const vec3 localNormal = v0.normal * barycentrics.x + v1.normal * barycentrics.y + v2.normal * barycentrics.z; //named localNormal to avoid mistakes
     const vec3 worldNormal = normalize(vec3(localNormal * gl_WorldToObjectEXT));
 
+    const vec2 UVs = v0.uv * barycentrics.x + v1.uv * barycentrics.y + v2.uv * barycentrics.z;
+
     HitInfo returnInfo;
     returnInfo.worldPosition = worldPosition;
     returnInfo.normal = worldNormal;
+    returnInfo.uv = UVs;
 
     return returnInfo;
 }

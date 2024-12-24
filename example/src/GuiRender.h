@@ -17,6 +17,7 @@ struct GuiContext
     PaperRenderer::Queue* imGuiQueue = NULL;
     ImGuiIO* io = NULL;
     std::deque<GuiIrregularTimeStatistic> irregularTimeEvents;
+    bool raster = true;
 };
 
 GuiContext initImGui(PaperRenderer::RenderEngine& renderer);
