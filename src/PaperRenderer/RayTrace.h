@@ -35,7 +35,9 @@ namespace PaperRenderer
 
         std::unordered_map<RTMaterial const*, uint32_t> materialReferences; //uint32_t is the number of instances using it
         std::vector<AccelerationStructureInstanceData> asInstances;
-        const std::vector<ShaderDescription> generalShaders;
+        const ShaderDescription raygenShader;
+        const std::vector<ShaderDescription> missShaders;
+        const std::vector<ShaderDescription> callableShaders;
 
         void rebuildPipeline();
         
@@ -46,7 +48,9 @@ namespace PaperRenderer
         RayTraceRender(
             RenderEngine& renderer,
             TLAS& accelerationStructure,
-            const std::vector<ShaderDescription>& generalShaders,
+            const ShaderDescription raygenShader,
+            const std::vector<ShaderDescription> missShaders,
+            const std::vector<ShaderDescription> callableShaders,
             const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptors,
             const RTPipelineProperties& pipelineProperties,
             const std::vector<VkPushConstantRange>& pcRanges

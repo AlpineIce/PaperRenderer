@@ -9,7 +9,9 @@ namespace PaperRenderer
     RayTraceRender::RayTraceRender(
         RenderEngine& renderer,
         TLAS& accelerationStructure,
-        const std::vector<ShaderDescription>& generalShaders,
+        const ShaderDescription raygenShader,
+        const std::vector<ShaderDescription> missShaders,
+        const std::vector<ShaderDescription> callableShaders,
         const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptorSets,
         const RTPipelineProperties& pipelineProperties,
         const std::vector<VkPushConstantRange>& pcRanges
@@ -17,7 +19,9 @@ namespace PaperRenderer
         :pcRanges(pcRanges),
         descriptorSets(descriptorSets),
         pipelineProperties(pipelineProperties),
-        generalShaders(generalShaders),
+        raygenShader(raygenShader),
+        missShaders(missShaders),
+        callableShaders(callableShaders),
         renderer(renderer),
         tlas(accelerationStructure)
     {
@@ -140,13 +144,12 @@ namespace PaperRenderer
             materials.push_back((RTMaterial*)material);
         }
 
-        //add up general shaders
-        std::vector<ShaderDescription> generalShaders{std::begin(this->generalShaders), std::end(this->generalShaders)};
-        
         //rebuild pipeline
         RTPipelineBuildInfo pipelineBuildInfo = {
             .materials = materials,
-            .generalShaders = generalShaders,
+            .raygenShader = raygenShader,
+            .missShaders = missShaders,
+            .callableShaders = callableShaders,
             .descriptorSets = descriptorSets,
             .pcRanges = pcRanges,
             .properties = pipelineProperties

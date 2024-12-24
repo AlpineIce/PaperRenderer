@@ -173,7 +173,9 @@ namespace PaperRenderer
     struct RTPipelineCreationInfo : public PipelineCreationInfo
     {
         const std::vector<class RTMaterial*>& materials;
-        const std::vector<ShaderDescription>& generalShaders; //must include at least one raygen shader
+        const ShaderDescription& raygenShader;
+        const std::vector<ShaderDescription>& missShaders;
+        const std::vector<ShaderDescription>& callableShaders;
     };
 
     struct RTPipelineProperties
@@ -184,7 +186,9 @@ namespace PaperRenderer
     struct RTPipelineBuildInfo
     {
         const std::vector<class RTMaterial*>& materials;
-        const std::vector<ShaderDescription>& generalShaders; //must include at least one raygen shader
+        const ShaderDescription& raygenShader;
+        const std::vector<ShaderDescription>& missShaders;
+        const std::vector<ShaderDescription>& callableShaders;
         const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptorSets;
         const std::vector<VkPushConstantRange>& pcRanges;
         const RTPipelineProperties& properties;
@@ -193,9 +197,9 @@ namespace PaperRenderer
     struct RTShaderBindingTableOffsets
     {
         std::unordered_map<class RTMaterial const*, uint32_t> materialShaderGroupOffsets; //aka hit group offsets
-        std::unordered_map<Shader const*, uint32_t> raygenShaderOffsets;
-        std::unordered_map<Shader const*, uint32_t> missShaderOffsets;
-        std::unordered_map<Shader const*, uint32_t> callableShaderOffsets;
+        std::unordered_map<Shader const*, uint32_t> raygenGroupOffsets;
+        std::unordered_map<Shader const*, uint32_t> missGroupOffsets;
+        std::unordered_map<Shader const*, uint32_t> callableGroupOffsets;
     };
 
     struct RTShaderBindingTableData
@@ -216,6 +220,13 @@ namespace PaperRenderer
         std::vector<char> sbtRawData;
         std::unique_ptr<Buffer> sbtBuffer;
 
+        void enumerateShaders(
+            const std::vector<ShaderDescription>& shaders,
+            std::unordered_map<Shader const*, uint32_t>& offsets,
+            std::vector<VkRayTracingShaderGroupCreateInfoKHR>& shaderGroups,
+            std::vector<VkPipelineShaderStageCreateInfo>& shaderStages,
+            VkShaderStageFlagBits stage);
+        uint32_t insertGroupSBTData(std::vector<char>& toInsertData, uint32_t groupOffset, uint32_t handleCount) const;
         void rebuildSBTBuffer(RenderEngine& renderer);
 
     public:

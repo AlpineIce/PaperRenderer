@@ -92,6 +92,7 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
     rgenShader(renderer, readFromFile("resources/shaders/raytrace_rgen.spv")),
     rmissShader(renderer, readFromFile("resources/shaders/raytrace_rmiss.spv")),
     rshadowShader(renderer, readFromFile("resources/shaders/raytraceShadow_rmiss.spv")),
+
     generalShaders({
         //rgen
         { VK_SHADER_STAGE_RAYGEN_BIT_KHR, &rgenShader },
@@ -105,7 +106,13 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
         .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT,
         .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
     }),
-    rtRenderPass(renderer, tlas, generalShaders, {
+    rtRenderPass(
+        renderer,
+        tlas,
+        generalShaders[0],
+        { generalShaders[1], generalShaders[2] },
+        {},
+        {
             { 0, {
                 { //AS pointer
                     .binding = 0,

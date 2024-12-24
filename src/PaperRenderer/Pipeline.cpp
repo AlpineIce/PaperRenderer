@@ -1,6 +1,7 @@
 #include "PaperRenderer.h"
 
 #include <functional>
+#include "Pipeline.h"
 
 namespace PaperRenderer
 {
@@ -210,72 +211,50 @@ namespace PaperRenderer
         :Pipeline(creationInfo),
         pipelineProperties(properties)
     {
+        //SBT important alignments and sizes
+        const uint32_t handleSize = renderer.getDevice().getRTproperties().shaderGroupHandleSize;
+        const uint32_t handleAlignment = renderer.getDevice().getRTproperties().shaderGroupHandleAlignment;
+        const uint32_t groupBaseAlignment = renderer.getDevice().getRTproperties().shaderGroupBaseAlignment;
+        const uint32_t alignedGroupSize = renderer.getDevice().getAlignment(handleSize, handleAlignment);
+
+        //clear old SBT data
+        sbtRawData.clear();
+
         //shaders
         std::vector<VkRayTracingShaderGroupCreateInfoKHR> rtShaderGroups;
-        rtShaderGroups.reserve(creationInfo.generalShaders.size() + creationInfo.materials.size());
+        rtShaderGroups.reserve(creationInfo.missShaders.size() + creationInfo.callableShaders.size() + creationInfo.materials.size() + 1 /*raygen is 1*/);
         std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-        shaderStages.reserve(creationInfo.generalShaders.size() + (creationInfo.materials.size() * 3)); //up to 3 shaders in a material shader group
+        shaderStages.reserve(creationInfo.missShaders.size() + creationInfo.callableShaders.size() + creationInfo.materials.size() + 1 + (creationInfo.materials.size() * 3));
 
-        //general shaders
-        uint32_t raygenCount = 0;
-        uint32_t missCount = 0;
-        uint32_t callableCount = 0;
-        for(const ShaderDescription& shader : creationInfo.generalShaders)
+        //enumerate raygen shader groups (there should only be one but whatever)
+        enumerateShaders({ creationInfo.raygenShader }, shaderBindingTableData.shaderBindingTableOffsets.raygenGroupOffsets, rtShaderGroups, shaderStages, VK_SHADER_STAGE_RAYGEN_BIT_KHR);
+        shaderBindingTableData.raygenShaderBindingTable.size = groupBaseAlignment; //edge case
+        shaderBindingTableData.raygenShaderBindingTable.stride = groupBaseAlignment; //edge case
+
+        //enumerate miss shader groups
+        enumerateShaders(creationInfo.missShaders, shaderBindingTableData.shaderBindingTableOffsets.missGroupOffsets, rtShaderGroups, shaderStages, VK_SHADER_STAGE_MISS_BIT_KHR);
+        shaderBindingTableData.missShaderBindingTable.size = Device::getAlignment(creationInfo.missShaders.size() * alignedGroupSize, groupBaseAlignment);
+        shaderBindingTableData.missShaderBindingTable.stride = handleAlignment;
+        const uint32_t missOffset = 1;
+        
+        //enumerate callable shader groups
+        enumerateShaders(creationInfo.callableShaders, shaderBindingTableData.shaderBindingTableOffsets.callableGroupOffsets, rtShaderGroups, shaderStages, VK_SHADER_STAGE_CALLABLE_BIT_KHR);
+        shaderBindingTableData.callableShaderBindingTable.size = Device::getAlignment(creationInfo.callableShaders.size() * alignedGroupSize, groupBaseAlignment);
+        shaderBindingTableData.callableShaderBindingTable.stride = handleAlignment;
+        const uint32_t callableOffset = missOffset + creationInfo.missShaders.size();
+
+        //enumerate hit shader groups
+        std::vector<uint32_t> hitGroupCounts(creationInfo.materials.size());
+        const uint32_t hitGroupsStartIndex = rtShaderGroups.size();
+        for(uint32_t i = 0; i < creationInfo.materials.size(); i++)
         {
-            if(!shader.shader)
+            if(!creationInfo.materials[i])
             {
                 continue;
             }
-            
-            switch(shader.stage)
-            {
-            case VK_SHADER_STAGE_RAYGEN_BIT_KHR:
-                shaderBindingTableData.shaderBindingTableOffsets.raygenShaderOffsets.emplace(shader.shader, raygenCount);
-                raygenCount++;
-                break;
-            case VK_SHADER_STAGE_MISS_BIT_KHR:
-                shaderBindingTableData.shaderBindingTableOffsets.missShaderOffsets.emplace(shader.shader, missCount);
-                missCount++;
-                break;
-            case VK_SHADER_STAGE_CALLABLE_BIT_KHR:
-                shaderBindingTableData.shaderBindingTableOffsets.callableShaderOffsets.emplace(shader.shader, callableCount);
-                callableCount++;
-                break;
-            default:
-                throw std::runtime_error("Invalid general shader type");
-            }
 
-            VkRayTracingShaderGroupCreateInfoKHR generalShaderGroup = {};
-            generalShaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-            generalShaderGroup.pNext = NULL;
-            generalShaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-            generalShaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
-            generalShaderGroup.closestHitShader  = VK_SHADER_UNUSED_KHR;
-            generalShaderGroup.generalShader = shaderStages.size();
-            generalShaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
-            generalShaderGroup.pShaderGroupCaptureReplayHandle = NULL;
-            rtShaderGroups.push_back(generalShaderGroup);
-
-            VkPipelineShaderStageCreateInfo shaderStageInfo = {};
-            shaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            shaderStageInfo.pNext = NULL;
-            shaderStageInfo.flags = 0;
-            shaderStageInfo.stage = shader.stage;
-            shaderStageInfo.module = shader.shader->getModule();
-            shaderStageInfo.pName = "main"; //use main() function in shaders
-            shaderStageInfo.pSpecializationInfo = NULL;
-            shaderStages.push_back(shaderStageInfo);
-        }
-
-        //shader groups
-        uint32_t hitCount = 0;
-        uint32_t hitGroupIndex = 0;
-        for(RTMaterial* material : creationInfo.materials)
-        {
-            if(!material)
-            {
-                continue;
-            }
+            //set offset
+            shaderBindingTableData.shaderBindingTableOffsets.materialShaderGroupOffsets.emplace(creationInfo.materials[i], i);
             
             //shader group
             VkRayTracingShaderGroupCreateInfoKHR shaderGroupInfo = {};
@@ -289,7 +268,7 @@ namespace PaperRenderer
             shaderGroupInfo.pShaderGroupCaptureReplayHandle = NULL;
 
             //individual shaders
-            for(auto& [shaderStage, shader] : material->getShaderHitGroup())
+            for(auto& [shaderStage, shader] : creationInfo.materials[i]->getShaderHitGroup())
             {
                 //shader "descriptor"
                 VkPipelineShaderStageCreateInfo shaderStageInfo = {};
@@ -317,30 +296,31 @@ namespace PaperRenderer
                         break;
                     
                 }
-                hitCount++;
+                hitGroupCounts[i]++;
                 shaderStages.push_back(shaderStageInfo);
             }
 
             //set group type based on filled shaders
-            if(shaderGroupInfo.intersectionShader)
+            if(shaderGroupInfo.intersectionShader != VK_SHADER_UNUSED_KHR)
             {
                 shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR;
             }
-            else if(shaderGroupInfo.closestHitShader || shaderGroupInfo.anyHitShader)
+            else if(shaderGroupInfo.closestHitShader != VK_SHADER_UNUSED_KHR || shaderGroupInfo.anyHitShader != VK_SHADER_UNUSED_KHR)
             {
                 shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
             }
             else
             {
-                throw std::runtime_error("Invalid shader group must contain either a closest hit or intersection shader");
+                renderer.getLogger().recordLog({
+                    .type = WARNING,
+                    .text = "Invalid RTMaterial shader group must contain either a closest hit or intersection shader"
+                });
             }
 
-            //add offset location and push back shader group
-            shaderBindingTableData.shaderBindingTableOffsets.materialShaderGroupOffsets.emplace(material, hitGroupIndex);
+            //push shader group
             rtShaderGroups.push_back(shaderGroupInfo);
-
-            hitGroupIndex++;
         }
+        shaderBindingTableData.hitShaderBindingTable.stride = handleAlignment;
 
         VkRayTracingPipelineCreateInfoKHR pipelineCreateInfo = {};
         pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
@@ -368,63 +348,108 @@ namespace PaperRenderer
         //wait for deferred operation 
         while(!isBuilt()) {}
 
-        //setup shader binding table
-        const uint32_t handleCount = rtShaderGroups.size();
-        const uint32_t handleSize  = renderer.getDevice().getRTproperties().shaderGroupHandleSize;
-        const uint32_t handleAlignment = renderer.getDevice().getRTproperties().shaderGroupBaseAlignment;
-        const uint32_t alignedSize = renderer.getDevice().getAlignment(handleSize, handleAlignment);
-        
-        shaderBindingTableData.raygenShaderBindingTable.stride = alignedSize;
-        shaderBindingTableData.raygenShaderBindingTable.size   = renderer.getDevice().getAlignment(raygenCount * alignedSize, handleAlignment);
-        shaderBindingTableData.missShaderBindingTable.stride = alignedSize;
-        shaderBindingTableData.missShaderBindingTable.size   = renderer.getDevice().getAlignment(missCount * alignedSize, handleAlignment);
-        shaderBindingTableData.callableShaderBindingTable.stride  = alignedSize;
-        shaderBindingTableData.callableShaderBindingTable.size    = renderer.getDevice().getAlignment(callableCount * alignedSize, handleAlignment);
-        shaderBindingTableData.hitShaderBindingTable.stride  = alignedSize;
-        shaderBindingTableData.hitShaderBindingTable.size    = renderer.getDevice().getAlignment(hitCount * alignedSize, handleAlignment);
-        
-        //get shader handles
-        std::vector<char> handleData(handleSize * handleCount);
-        VkResult result2 = vkGetRayTracingShaderGroupHandlesKHR(renderer.getDevice().getDevice(), pipeline, 0, handleCount, handleData.size(), handleData.data());
-        if(result2 != VK_SUCCESS)
-        {
-            throw std::runtime_error("Failed to get RT shader group handles");
-        }
+        //get general shader SBT data
+        insertGroupSBTData(sbtRawData, 0, 1); //only 1 raygen, offset is always 0
+        insertGroupSBTData(sbtRawData, missOffset, creationInfo.missShaders.size());
+        insertGroupSBTData(sbtRawData, callableOffset, creationInfo.callableShaders.size());
 
-        VkDeviceSize currentHandleIndex = 0;
-        sbtRawData.resize(alignedSize * handleCount);
-
-        //raygen (always at 0)
-        memcpy(sbtRawData.data(), handleData.data(), handleSize);
-        currentHandleIndex++;
-
-        //set miss data
-        for(uint32_t i = 0; i < missCount; i++)
+        //set material hit groups data
+        const uint32_t hitShaderBindingTableLocation = sbtRawData.size();
+        for(uint32_t i = 0; i < hitGroupCounts.size(); i++)
         {
-            memcpy(sbtRawData.data() + (alignedSize * currentHandleIndex), handleData.data() + (handleSize * currentHandleIndex), handleSize);
-            currentHandleIndex++;
+            insertGroupSBTData(sbtRawData, hitGroupsStartIndex + i, hitGroupCounts[i]);
         }
+        shaderBindingTableData.hitShaderBindingTable.size = sbtRawData.size() - hitShaderBindingTableLocation;
 
-        //set callable data
-        for(uint32_t i = 0; i < callableCount; i++)
-        {
-            memcpy(sbtRawData.data() + (alignedSize * currentHandleIndex), handleData.data() + (handleSize * currentHandleIndex), handleSize);
-            currentHandleIndex++;
-        }
-        
-        //set hit data
-        for(uint32_t i = 0; i < hitCount; i++)
-        {
-            memcpy(sbtRawData.data() + (alignedSize * currentHandleIndex), handleData.data() + (handleSize * currentHandleIndex), handleSize);
-            currentHandleIndex++;
-        }
-        
         //set SBT data
         rebuildSBTBuffer(renderer);
     }
 
     RTPipeline::~RTPipeline()
     {
+    }
+
+    void RTPipeline::enumerateShaders(
+        const std::vector<ShaderDescription>& shaders,
+        std::unordered_map<Shader const*, uint32_t>& offsets,
+        std::vector<VkRayTracingShaderGroupCreateInfoKHR>& shaderGroups,
+        std::vector<VkPipelineShaderStageCreateInfo>& shaderStages,
+        VkShaderStageFlagBits stage
+    )
+    {
+        //general shader groups (easy because there's 1 shader per group)
+        for(uint32_t i = 0; i < shaders.size(); i++)//const ShaderDescription& shader : creationInfo.generalShaders)
+        {
+            if(!shaders[i].shader)
+            {
+                continue;
+            }
+
+            //set offset
+            offsets[shaders[i].shader] = i;
+            
+            //setup group (1 to 1 with shader)
+            VkRayTracingShaderGroupCreateInfoKHR groupInfo = {
+                .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+                .pNext = NULL,
+                .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
+                .generalShader = (uint32_t)shaderStages.size(),
+                .closestHitShader  = VK_SHADER_UNUSED_KHR,
+                .anyHitShader = VK_SHADER_UNUSED_KHR,
+                .intersectionShader = VK_SHADER_UNUSED_KHR,
+                .pShaderGroupCaptureReplayHandle = NULL
+            };
+            shaderGroups.push_back(groupInfo);
+
+            //setup stage (1 to 1 with group)
+            shaderStages.push_back({
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .pNext = NULL,
+                .flags = 0,
+                .stage = shaders[i].stage,
+                .module = shaders[i].shader->getModule(),
+                .pName = "main", //use main() function in shaders
+                .pSpecializationInfo = NULL
+            });
+        }
+    }
+
+    uint32_t RTPipeline::insertGroupSBTData(std::vector<char>& toInsertData, uint32_t groupOffset, uint32_t handleCount) const
+    {
+        const uint32_t handleSize = renderer.getDevice().getRTproperties().shaderGroupHandleSize;
+        const uint32_t handleAlignment = renderer.getDevice().getRTproperties().shaderGroupHandleAlignment;
+        const uint32_t groupBaseAlignment = renderer.getDevice().getRTproperties().shaderGroupBaseAlignment;
+        const uint32_t alignedGroupSize = renderer.getDevice().getAlignment(handleSize, handleAlignment);
+
+        //pad toInsertData to the group base alignment
+        toInsertData.resize(Device::getAlignment(sbtRawData.size(), groupBaseAlignment));
+
+        //initialize group data
+        std::vector<char> groupData(handleAlignment * handleCount); //group data size is equal to the number of handles * the alignment of handles
+
+        //get shader handles
+        std::vector<char> groupHandles(handleSize * handleCount);
+        VkResult result2 = vkGetRayTracingShaderGroupHandlesKHR(renderer.getDevice().getDevice(), pipeline, groupOffset, handleCount, groupHandles.size(), groupHandles.data());
+        if(result2 != VK_SUCCESS)
+        {
+            renderer.getLogger().recordLog({
+                .type = WARNING,
+                .text = "vkGetRayTracingShaderGroupHandlesKHR failed on RT pipeline creation"
+            });
+            return 0;
+        }
+
+        //transfer handle data
+        for(uint32_t i = 0; i < handleCount; i++)
+        {
+            memcpy(groupData.data() + (handleAlignment * i), groupHandles.data() + (handleSize * i), handleSize);
+        }
+
+        //insert data
+        toInsertData.insert(toInsertData.end(), groupData.begin(), groupData.end());
+
+        //return total group size
+        return groupData.size();
     }
 
     void RTPipeline::rebuildSBTBuffer(RenderEngine& renderer)
@@ -446,10 +471,10 @@ namespace PaperRenderer
         dynamicOffset += shaderBindingTableData.raygenShaderBindingTable.size;
         shaderBindingTableData.missShaderBindingTable.deviceAddress = dynamicOffset;
         dynamicOffset += shaderBindingTableData.missShaderBindingTable.size;
-        shaderBindingTableData.hitShaderBindingTable.deviceAddress = dynamicOffset;
-        dynamicOffset += shaderBindingTableData.hitShaderBindingTable.size;
         shaderBindingTableData.callableShaderBindingTable.deviceAddress = dynamicOffset;
         dynamicOffset += shaderBindingTableData.callableShaderBindingTable.size;
+        shaderBindingTableData.hitShaderBindingTable.deviceAddress = dynamicOffset;
+        dynamicOffset += shaderBindingTableData.hitShaderBindingTable.size;
     }
 
     bool RTPipeline::isBuilt()
@@ -618,7 +643,9 @@ namespace PaperRenderer
                 .pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts, info.pcRanges)
             },
             info.materials,
-            info.generalShaders,
+            info.raygenShader,
+            info.missShaders,
+            info.callableShaders
         };
 
         return std::make_unique<RTPipeline>(pipelineInfo, info.properties);
