@@ -46,15 +46,7 @@ layout(std430, set = 0, binding = 3) writeonly buffer ASInstances
 
 AccelerationStructureInstance buildASInstance(InputASInstance inputASInstance, ModelInstance modelInstance)
 {
-    const mat4 modelMatrix = getModelMatrix(modelInstance);
-
-    mat3x4 instTransform;
-    instTransform[0].xyz = modelMatrix[0].xyz;
-    instTransform[1].xyz = modelMatrix[1].xyz;
-    instTransform[2].xyz = modelMatrix[2].xyz;
-    instTransform[0][3] = modelMatrix[3][0];
-    instTransform[1][3] = modelMatrix[3][1];
-    instTransform[2][3] = modelMatrix[3][2];
+    const mat3x4 modelMatrix = getModelMatrix(modelInstance);
 
     //bitmask for combining bits
     const uint bitmask = 0xFF000000;
@@ -70,7 +62,7 @@ AccelerationStructureInstance buildASInstance(InputASInstance inputASInstance, M
     uint instanceShaderBindingTableRecordOffsetAndFlags = instanceShaderBindingTableRecordOffset ^ ((instanceShaderBindingTableRecordOffset ^ flags) & bitmask);
 
     AccelerationStructureInstance structureInstance;
-    structureInstance.transform = instTransform;
+    structureInstance.transform = modelMatrix;
     structureInstance.instanceCustomIndexAndMask = instanceCustomIndexAndMask;
     structureInstance.instanceShaderBindingTableRecordOffsetAndFlags = instanceShaderBindingTableRecordOffsetAndFlags;
     structureInstance.accelerationStructureReference = uint64_t(inputASInstance.blasReference);

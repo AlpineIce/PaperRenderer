@@ -72,7 +72,7 @@ layout(scalar, set = 0, binding = 1) readonly buffer InputInstances
 
 //----------FUNCTIONS----------//
 
-mat4 getModelMatrix(ModelInstance modelInstance)
+mat3x4 getModelMatrix(ModelInstance modelInstance)
 {
     //from the GLM library
     mat3 qMat;
@@ -113,26 +113,15 @@ mat4 getModelMatrix(ModelInstance modelInstance)
     //composition of rotation and scale
     mat3 scaleRotMat = scaleMat * qMat;
 
-    mat4 result;
-    result[0] = vec4(scaleRotMat[0], 0.0);
-    result[1] = vec4(scaleRotMat[1], 0.0);
-    result[2] = vec4(scaleRotMat[2], 0.0);
-    result[3][3] = 1.0;
-
-    //position
-    result[3][0] = modelInstance.position.x;
-    result[3][1] = modelInstance.position.y;
-    result[3][2] = modelInstance.position.z;
-
-    //other
-    result[0][3] = 0.0;
-    result[1][3] = 0.0;
-    result[2][3] = 0.0;
+    mat3x4 result;
+    result[0] = vec4(scaleRotMat[0], modelInstance.position.x);
+    result[1] = vec4(scaleRotMat[1], modelInstance.position.y);
+    result[2] = vec4(scaleRotMat[2], modelInstance.position.z);
     
     return result;
 }
 
-bool isInBounds(ModelInstance modelInstance, Model model, mat4 modelMatrix, mat4 projection, mat4 view)
+bool isInBounds(ModelInstance modelInstance, Model model, mat3x4 modelMatrix, mat4 projection, mat4 view)
 {
     AABB bounds = model.bounds;
                 
@@ -158,7 +147,7 @@ bool isInBounds(ModelInstance modelInstance, Model model, mat4 modelMatrix, mat4
 
     for(int i = 0; i < 8; i++)
     {
-        vertices[i] = (view * modelMatrix * vec4(vertices[i], 1.0)).xyz;
+        vertices[i] = (view * modelMatrix * vertices[i]).xyz;
         aabb.posX = max(vertices[i].x, aabb.posX);
         aabb.negX = min(vertices[i].x, aabb.negX);
         aabb.posY = max(vertices[i].y, aabb.posY);

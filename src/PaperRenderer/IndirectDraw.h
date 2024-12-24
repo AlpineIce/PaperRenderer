@@ -27,7 +27,7 @@ namespace PaperRenderer
 
         struct ShaderOutputObject
         {
-            glm::mat4 modelMatrix;
+            glm::mat3x4 modelMatrix;
         };
 
         struct MeshInstancesData

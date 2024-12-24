@@ -80,7 +80,7 @@ layout(scalar, buffer_reference) buffer DrawCommands
 
 layout(scalar, buffer_reference) writeonly buffer MatricesBuffer
 {
-    mat4 matrices[];
+    mat3x4 matrices[];
 };
 
 //----------ENTRY POINT----------//
@@ -98,7 +98,7 @@ void main()
 
     const Model model = InputModel(inputData.modelDataPtr + modelInstance.modelDataOffset).model; //should be at index 0 with the offset derrived from modelInstance
 
-    const mat4 modelMatrix = getModelMatrix(modelInstance);
+    const mat3x4 modelMatrix = getModelMatrix(modelInstance);
 
     //culling
     bool visible = inputInstance.isVisible;
@@ -108,7 +108,7 @@ void main()
     }
     
     //indirect draw build if visible
-    if(visible)
+    if(true)
     {
         //get LOD
         const uint lodLevel = min(getLODLevel(modelInstance, model, inputData.camPos), model.lodCount - 1);
