@@ -249,10 +249,10 @@ namespace PaperRenderer
         }
 
         //check buffer sizes
-        if(instancesBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderPassInstances.size() ||
-            instancesBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) > (std::max(renderPassInstances.size(), (size_t)(sizeof(ModelInstance::RenderPassInstance) * 64)) / sizeof(ModelInstance::ShaderModelInstance) * 2))
+        if(instancesBuffer->getSize() / sizeof(ModelInstance::RenderPassInstance) < renderPassInstances.size() ||
+            instancesBuffer->getSize() / sizeof(ModelInstance::RenderPassInstance) > std::max(renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance), sizeof(ModelInstance::RenderPassInstance) * 64) * 2)
         {
-            rebuildInstancesBuffer(); //TODO SYNCHRONIZATION
+            rebuildInstancesBuffer();
         }
 
         //sort instances; remove duplicates
