@@ -350,8 +350,8 @@ namespace PaperRenderer
 
         //get general shader SBT data
         insertGroupSBTData(sbtRawData, 0, 1); //only 1 raygen, offset is always 0
-        insertGroupSBTData(sbtRawData, missOffset, creationInfo.missShaders.size());
-        insertGroupSBTData(sbtRawData, callableOffset, creationInfo.callableShaders.size());
+        if(creationInfo.missShaders.size()) insertGroupSBTData(sbtRawData, missOffset, creationInfo.missShaders.size());
+        if(creationInfo.callableShaders.size()) insertGroupSBTData(sbtRawData, callableOffset, creationInfo.callableShaders.size());
 
         //set material hit groups data
         const uint32_t hitShaderBindingTableLocation = sbtRawData.size();

@@ -66,7 +66,7 @@ void renderImGui(PaperRenderer::RenderEngine* renderer, PaperRenderer::Statistic
     ImGui::Begin("PaperRenderer Example GUI");
 
     //render mode
-    const std::string renderModeSwitchText = std::string("Switch Render Mode to") + std::string(!guiContext->raster ? "Raster" : "Ray Tracing");
+    const std::string renderModeSwitchText = std::string("Switch Render Mode to ") + std::string(!guiContext->raster ? "Raster" : "Ray Tracing");
     if(ImGui::Button(renderModeSwitchText.c_str()))
     {
         guiContext->raster = !guiContext->raster;
