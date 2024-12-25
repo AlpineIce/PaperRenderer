@@ -44,5 +44,5 @@ void main()
     brdfInput.metallic = materialParameters.metallic;
 
     //output
-    color = calculatePBR(brdfInput, camPos, worldPosition, normal);
+    color = vec4(calculatePBR(brdfInput, camPos, worldPosition, normal), 1.0);
 }

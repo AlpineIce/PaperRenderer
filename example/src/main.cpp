@@ -386,65 +386,6 @@ int main()
     //HDR buffer copy render pass
     BufferCopyPass bufferCopyPass(renderer, *scene.camera, hdrBuffer);
 
-    //----------MODEL INSTANCES----------//
-
-    std::vector<std::unique_ptr<PaperRenderer::ModelInstance>> modelInstances;
-    modelInstances.reserve(scene.models.size());
-
-    //create 1 instance per model for this example
-    for(const auto& [name, model] : scene.models)
-    {
-        //create a ring of suzanne model instances
-        if(name == "Suzanne")
-        {
-            const uint32_t instanceCount = 8;
-            for(uint32_t i = 0; i < instanceCount; i++)
-            {
-                //unique geometry is false because animation is currently unavailable
-                std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *model, false);
-
-                //set transformation
-                PaperRenderer::ModelTransformation newTransform = {
-                    .position = glm::vec3(sin(glm::radians(360.0f / instanceCount) * i) * 5.0f, cos(glm::radians(360.0f / instanceCount) * i) * 5.0f, 0.0f),
-                    .scale = glm::vec3(1.0f),
-                    .rotation = glm::quat(cos(glm::radians(360.0f / instanceCount / 2.0f) * i), 0.0f, 0.0f, sin(glm::radians(360.0f / instanceCount / 2.0f) * i))
-                };
-                instance->setTransformation(newTransform);
-                modelInstances.push_back(std::move(instance));
-            }
-        }
-        //create a ring of trees
-        else if(name == "Tree")
-        {
-            const uint32_t instanceCount = 4;
-            for(uint32_t i = 0; i < instanceCount; i++)
-            {
-                //unique geometry is false because animation is currently unavailable
-                std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *model, false);
-
-                //set transformation
-                PaperRenderer::ModelTransformation newTransform = {
-                    .position = glm::vec3(sin(glm::radians(360.0f / instanceCount) * i + (3.14f / 4.0f)) * 20.0f, cos(glm::radians(360.0f / instanceCount) * i + (3.14f / 4.0f)) * 20.0f , -3.0f),
-                    .scale = glm::vec3(1.0f),
-                    .rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f)
-                };
-                instance->setTransformation(newTransform);
-                modelInstances.push_back(std::move(instance));
-            }
-        }
-        //use scene transform for everything else
-        else
-        {
-            //unique geometry is false because animation is currently unavailable
-            std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *model, false);
-
-            //set transformation
-            instance->setTransformation(scene.instanceTransforms[model.get()]);
-            modelInstances.push_back(std::move(instance));
-        }
-        
-    }
-
     //----------MATERIALS----------//
 
     //leaf raster material
@@ -566,6 +507,9 @@ int main()
     };
     PaperRenderer::RTMaterial leafRTMaterial(renderer, leafMaterialHitGroup);
 
+    //RT material definitions
+    std::vector<DefaultRTMaterialDefinition> instanceRTMaterialDefinitions;
+
     //create material instances that "derive" from base material and the loaded scene data parameters
     std::unordered_map<std::string, std::unique_ptr<PaperRenderer::MaterialInstance>> materialInstances;
     materialInstances.reserve(scene.materialInstancesData.size());
@@ -581,39 +525,33 @@ int main()
         }
     }
 
-    //----------ADD MODEL INSTANCES TO RT AND RASTER PASSES----------//
+    //----------MODEL INSTANCES----------//
+    
+    std::unordered_map<std::string, std::vector<std::unique_ptr<PaperRenderer::ModelInstance>>> modelInstances;
 
-    std::vector<DefaultRTMaterialDefinition> instanceRTMaterialDefinitions;
-    for(uint32_t i = 0; i < modelInstances.size(); i++)
+    auto addInstanceToRenderPass = [&](PaperRenderer::ModelInstance& instance, const PaperRenderer::RTMaterial& rtMaterial, bool sorted)
     {
-        //raster render pass
+        //raster
         std::unordered_map<uint32_t, PaperRenderer::MaterialInstance*> materials;
         uint32_t matIndex = 0;
-        for(const std::string& matName : scene.instanceMaterials[modelInstances[i]->getParentModel().getModelName()])
+        for(const std::string& matName : scene.instanceMaterials[instance.getParentModel().getModelName()])
         {
             materials[matIndex] = materialInstances[matName].get();
             matIndex++;
         }
-        exampleRaster.getRenderPass().addInstance(*modelInstances[i], { materials }, false);
+        exampleRaster.getRenderPass().addInstance(instance, { materials }, sorted);
 
-        //rt render pass (just use the base RT material for simplicity)
+        //RT
         const PaperRenderer::AccelerationStructureInstanceData asInstanceData = {
-            .instancePtr = modelInstances[i].get(),
+            .instancePtr = &instance,
             .customIndex = (uint32_t)instanceRTMaterialDefinitions.size(), //set custom index to the first material index in the buffer
             .mask = 0xFF,
             .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
         };
-        if(modelInstances[i]->getParentModel().getModelName() == "Tree")
-        {
-            exampleRayTrace.getRTRender().addInstance(asInstanceData, leafRTMaterial);
-        }
-        else
-        {
-            exampleRayTrace.getRTRender().addInstance(asInstanceData, baseRTMaterial);
-        }
+        exampleRayTrace.getRTRender().addInstance(asInstanceData, rtMaterial);
 
         //RT instance materials
-        for(const std::string& matName : scene.instanceMaterials[modelInstances[i]->getParentModel().getModelName()])
+        for(const std::string& matName : scene.instanceMaterials[instance.getParentModel().getModelName()])
         {
             instanceRTMaterialDefinitions.push_back({
                 .albedo = glm::vec3(scene.materialInstancesData[matName].baseColor),
@@ -623,6 +561,97 @@ int main()
                 .transmission = glm::vec3(0.0f),
                 .ior = 1.45f
             });
+        }
+    };
+
+    //create a ring of suzanne model instances
+    if(scene.models.count("Suzanne"))
+    {
+        const uint32_t instanceCount = 8;
+        for(uint32_t i = 0; i < instanceCount; i++)
+        {
+            std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *scene.models["Suzanne"], false);
+
+            //set transformation
+            PaperRenderer::ModelTransformation newTransform = {
+                .position = glm::vec3(sin(glm::radians(360.0f / instanceCount) * i) * 5.0f, cos(glm::radians(360.0f / instanceCount) * i) * 5.0f, 0.0f),
+                .scale = glm::vec3(1.0f),
+                .rotation = glm::quat(cos(glm::radians(360.0f / instanceCount / 2.0f) * i), 0.0f, 0.0f, sin(glm::radians(360.0f / instanceCount / 2.0f) * i))
+            };
+            instance->setTransformation(newTransform);
+
+            //add to render passes
+            addInstanceToRenderPass(*instance, baseRTMaterial, false);
+
+            //push to model instances
+            modelInstances["Suzanne"].push_back(std::move(instance));
+        }
+    }
+
+    //create a ring of trees
+    if(scene.models.count("Tree"))
+    {
+        const uint32_t instanceCount = 4;
+        for(uint32_t i = 0; i < instanceCount; i++)
+        {
+            std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *scene.models["Tree"], false);
+
+            //set transformation
+            PaperRenderer::ModelTransformation newTransform = {
+                .position = glm::vec3(sin(glm::radians(360.0f / instanceCount) * i + (3.14f / 4.0f)) * 20.0f, cos(glm::radians(360.0f / instanceCount) * i + (3.14f / 4.0f)) * 20.0f , -3.0f),
+                .scale = glm::vec3(1.0f),
+                .rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f)
+            };
+            instance->setTransformation(newTransform);
+            
+
+            //add to render passes
+            addInstanceToRenderPass(*instance, leafRTMaterial, false);
+
+            //push to model instances
+            modelInstances["Tree"].push_back(std::move(instance));
+        }
+    }
+
+    //create ring of translucent objects
+    if(scene.models.count("TranslucentObject"))
+    {
+        const uint32_t instanceCount = 4;
+        for(uint32_t i = 0; i < instanceCount; i++)
+        {
+            std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *scene.models["TranslucentObject"], false);
+
+            //set transformation
+            PaperRenderer::ModelTransformation newTransform = {
+                .position = glm::vec3(sin(glm::radians(360.0f / instanceCount) * i) * 0.6f, cos(glm::radians(360.0f / instanceCount) * i) * 0.6f, -2.0f),
+                .scale = glm::vec3(1.0f),
+                .rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f)
+            };
+            instance->setTransformation(newTransform);
+
+            //add to render passes
+            addInstanceToRenderPass(*instance, baseRTMaterial, true); //sort because translucency
+
+            //push to model instances
+            modelInstances["TranslucentObject"].push_back(std::move(instance));
+        }
+    }
+
+    //everything else
+    for(const auto& [name, model] : scene.models)
+    {
+        if(!modelInstances.count(name))
+        {
+            std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *model, false);
+
+            //set transformation
+            instance->setTransformation(scene.instanceTransforms[model.get()]);
+
+            //add to render passes
+            addInstanceToRenderPass(*instance, baseRTMaterial, false);
+
+            //push to model instances
+            modelInstances[name].push_back(std::move(instance));
         }
     }
 
