@@ -147,7 +147,7 @@ bool isInBounds(ModelInstance modelInstance, Model model, mat3x4 modelMatrix, ma
 
     for(int i = 0; i < 8; i++)
     {
-        vertices[i] = (view * modelMatrix * vertices[i]).xyz;
+        vertices[i] = (view * vec4(transpose(modelMatrix) * vec4(vertices[i], 1.0), 1.0)).xyz;
         aabb.posX = max(vertices[i].x, aabb.posX);
         aabb.negX = min(vertices[i].x, aabb.negX);
         aabb.posY = max(vertices[i].y, aabb.posY);

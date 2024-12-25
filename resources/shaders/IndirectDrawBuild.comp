@@ -108,7 +108,7 @@ void main()
     }
     
     //indirect draw build if visible
-    if(true)
+    if(visible)
     {
         //get LOD
         const uint lodLevel = min(getLODLevel(modelInstance, model, inputData.camPos), model.lodCount - 1);
