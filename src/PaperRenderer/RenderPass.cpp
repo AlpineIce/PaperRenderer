@@ -582,7 +582,7 @@ namespace PaperRenderer
                 ModelInstance* instance = vecSortedInstances[i];
 
                 //get LOD level and materials
-                const uint32_t lodIndex = getLODIndex(instance);
+                const uint32_t lodIndex = std::min(getLODIndex(instance), (uint32_t)instance->getParentModel().getLODs().size() - 1);
                 std::unordered_map<uint32_t, PaperRenderer::MaterialInstance*>& materials = sortedInstances[instance][lodIndex];
                 for(auto& [matSlot, materialInstance] : materials)
                 {
