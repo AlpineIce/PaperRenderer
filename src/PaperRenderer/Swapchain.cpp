@@ -262,7 +262,7 @@ namespace PaperRenderer
         this->swapchainExtent.height = std::min(currentWindowState.resY, capabilities.maxImageExtent.height);
 
         //set min image count
-        minImageCount = std::max(capabilities.minImageCount, (uint32_t)2);
+        minImageCount = std::max(capabilities.minImageCount, (uint32_t)3);
 
         VkSwapchainCreateInfoKHR swapchainInfo = {};
         swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
