@@ -594,7 +594,7 @@ int main()
             materials[matIndex] = materialInstances[matName].get();
             matIndex++;
         }
-        exampleRaster.getRenderPass().addInstance(*modelInstances[i], { materials });
+        exampleRaster.getRenderPass().addInstance(*modelInstances[i], { materials }, false);
 
         //rt render pass (just use the base RT material for simplicity)
         const PaperRenderer::AccelerationStructureInstanceData asInstanceData = {

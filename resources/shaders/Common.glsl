@@ -74,7 +74,6 @@ layout(scalar, set = 0, binding = 1) readonly buffer InputInstances
 
 mat3x4 getModelMatrix(ModelInstance modelInstance)
 {
-    //from the GLM library
     mat3 qMat;
 
     //rotation
@@ -90,19 +89,8 @@ mat3x4 getModelMatrix(ModelInstance modelInstance)
     float qwz = q.w * q.z;
 
     qMat[0] = vec3(1.0 - 2.0 * (qyy + qzz), 2.0 * (qxy + qwz), 2.0 * (qxz - qwy));
-    //qMat[0][0] = 1.0 - 2.0 * (qyy + qzz);
-    //qMat[0][1] = 2.0 * (qxy + qwz);
-    //qMat[0][2] = 2.0 * (qxz - qwy);
-
     qMat[1] = vec3(2.0 * (qxy - qwz), 1.0 - 2.0 * (qxx + qzz), 2.0 * (qyz + qwx));
-    //qMat[1][0] = 2.0 * (qxy - qwz);         
-    //qMat[1][1] = 1.0 - 2.0 * (qxx + qzz);
-    //qMat[1][2] = 2.0 * (qyz + qwx);
-    
     qMat[2] = vec3(2.0 * (qxz + qwy), 2.0 * (qyz - qwx), 1.0 - 2.0 * (qxx + qyy));
-    //qMat[2][0] = 2.0 * (qxz + qwy);
-    //qMat[2][1] = 2.0 * (qyz - qwx);
-    //qMat[2][2] = 1.0 - 2.0 * (qxx + qyy);
 
     //scale
     mat3 scaleMat;

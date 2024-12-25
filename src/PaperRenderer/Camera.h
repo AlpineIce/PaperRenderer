@@ -94,7 +94,6 @@ namespace PaperRenderer
         CameraInfo cameraInfo;
         glm::mat4 view = glm::mat4(1.0f);
         glm::mat4 projection = glm::mat4(1.0f);
-        glm::vec3 position = glm::vec3(0.0f);
 
         struct UBOData
         {
@@ -117,7 +116,7 @@ namespace PaperRenderer
         
         const glm::mat4& getViewMatrix() const { return view; }
         const glm::mat4& getProjection() const { return projection; }
-        glm::vec3 getPosition() const { return glm::vec3(view[3][0], view[3][1], view[3][2]); }
+        glm::vec3 getPosition() const;
 
         CameraInfo getCameraInfo() const { return cameraInfo; }
         const class Buffer& getCameraUBO() const { return ubo; }

@@ -39,6 +39,13 @@ namespace PaperRenderer
     
     //----------RENDER PASS----------//
 
+    enum RenderPassSortMode
+    {
+        DONT_CARE,
+        FRONT_FIRST,
+        BACK_FIRST
+    };
+    
     struct RenderPassInfo
     {
         const Camera& camera;
@@ -52,29 +59,28 @@ namespace PaperRenderer
         VkDependencyInfo const* preRenderBarriers = NULL; //applied before data transfers, preprocess and render pass
         VkDependencyInfo const* postRenderBarriers = NULL; //applied after render pass
         VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS;
+        RenderPassSortMode sortMode = BACK_FIRST; //rendering order for instances that were added with the sort set to true
     };
 
     class RenderPass
     {
     private:
-        //node for materials corresponding to one material
-        struct MaterialNode
-        {
-            //objects corresponding to one material instance
-            std::unordered_map<MaterialInstance*, CommonMeshGroup> instances;
-        };
-        std::unordered_map<Material*, MaterialNode> renderTree; //render tree
+        //render tree and sorted instances
+        std::unordered_map<Material*, std::unordered_map<MaterialInstance*, CommonMeshGroup>> renderTree; //render tree
+        std::unordered_map<ModelInstance*, std::vector<std::unordered_map<uint32_t, MaterialInstance*>>> sortedInstances; //unordered map is probably slow but how much translucency you need?
 
         float instancesOverhead = 1.5f;
-        std::vector<ModelInstance*> renderPassInstances;
-        std::deque<ModelInstance*> toUpdateInstances;
+        std::vector<ModelInstance*> renderPassInstances; //doesn't included sorted
+        std::deque<ModelInstance*> toUpdateInstances; //doesn't included sorted
 
         //buffers
         Buffer preprocessUniformBuffer;
         std::unique_ptr<Buffer> instancesBuffer;
+        std::unique_ptr<Buffer> sortedInstancesOutputBuffer;
         std::unique_ptr<FragmentableBuffer> instancesDataBuffer;
 
         void rebuildInstancesBuffer();
+        void rebuildSortedInstancesBuffer();
         void rebuildMaterialDataBuffer();
         void handleMaterialDataCompaction(std::vector<CompactionResult> results);
         void handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances);
@@ -93,7 +99,7 @@ namespace PaperRenderer
         void queueInstanceTransfers();
         std::vector<VkCommandBuffer> render(const RenderPassInfo& renderPassInfo); //returns list of GRAPHICS command buffers, in order, to submit
 
-        void addInstance(ModelInstance& instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials);
+        void addInstance(ModelInstance& instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials, bool sorted=false);
         void removeInstance(ModelInstance& instance);
     };
 }

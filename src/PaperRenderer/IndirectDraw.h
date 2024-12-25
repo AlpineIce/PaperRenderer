@@ -14,6 +14,11 @@ namespace PaperRenderer
         float padding = 0.0f;
     };
 
+    struct ShaderOutputObject
+    {
+        glm::mat3x4 modelMatrix;
+    };
+
     class CommonMeshGroup
     {
     private:
@@ -23,11 +28,6 @@ namespace PaperRenderer
             uint32_t drawCommandsOffset;
             uint32_t outputObjectsOffset;
             uint32_t padding;
-        };
-
-        struct ShaderOutputObject
-        {
-            glm::mat3x4 modelMatrix;
         };
 
         struct MeshInstancesData

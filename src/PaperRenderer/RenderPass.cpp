@@ -184,6 +184,26 @@ namespace PaperRenderer
         instancesBuffer = std::move(newInstancesBuffer);
     }
 
+    void RenderPass::rebuildSortedInstancesBuffer()
+    {
+        //Timer
+        Timer timer(renderer, "Rebuild RenderPass Sorted Instances Buffer", IRREGULAR);
+
+        //create new sorted instance buffer
+        VkDeviceSize newSortedInstancesBufferSize = 
+            std::max((VkDeviceSize)(sortedInstances.size() * sizeof(ShaderOutputObject) * instancesOverhead), (VkDeviceSize)(sizeof(ShaderOutputObject) * 64));
+
+        BufferInfo sortedInstancesBufferInfo = {
+            .size = newSortedInstancesBufferSize,
+            .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR,
+            .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
+        };
+        std::unique_ptr<Buffer> newSortedInstancesBuffer = std::make_unique<Buffer>(renderer, sortedInstancesBufferInfo);
+
+        //replace old buffer
+        sortedInstancesOutputBuffer = std::move(newSortedInstancesBuffer);
+    }
+
     void RenderPass::rebuildMaterialDataBuffer()
     {
         //Timer
@@ -238,7 +258,7 @@ namespace PaperRenderer
         //verify mesh group buffers
         for(auto& [material, materialInstanceNode] : renderTree) //material
         {
-            for(auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
+            for(auto& [materialInstance, meshGroups] : materialInstanceNode) //material instances
             {
                 const std::vector<ModelInstance*> meshGroupUpdatedInstances = meshGroups.verifyBufferSize();
                 toUpdateInstances.insert(toUpdateInstances.end(), meshGroupUpdatedInstances.begin(), meshGroupUpdatedInstances.end());
@@ -249,6 +269,10 @@ namespace PaperRenderer
         if(!instancesBuffer || instancesBuffer->getSize() / sizeof(ModelInstance::RenderPassInstance) < renderPassInstances.size())
         {
             rebuildInstancesBuffer();
+        }
+        if(!sortedInstancesOutputBuffer || sortedInstancesOutputBuffer->getSize() / sizeof(ShaderOutputObject) < sortedInstances.size())
+        {
+            rebuildSortedInstancesBuffer();
         }
         if(!instancesDataBuffer)
         {
@@ -347,7 +371,7 @@ namespace PaperRenderer
         //clear draw counts
         for(const auto& [material, materialInstanceNode] : renderTree) //material
         {
-            for(const auto& [materialInstance, meshGroup] : materialInstanceNode.instances) //material instances
+            for(const auto& [materialInstance, meshGroup] : materialInstanceNode) //material instances
             {
                 //clear
                 meshGroup.clearDrawCommand(cmdBuffer);
@@ -383,26 +407,30 @@ namespace PaperRenderer
         
         //----------PRE-PROCESS----------//
 
-        //compute shader
-        renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this, renderPassInfo.camera);
+        if(renderPassInstances.size())
+        {
+            //compute shader
+            renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this, renderPassInfo.camera);
 
-        //memory barrier
-        VkMemoryBarrier2 preprocessMemBarrier = {};
-        preprocessMemBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
-        preprocessMemBarrier.pNext = NULL;
-        preprocessMemBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-        preprocessMemBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
-        preprocessMemBarrier.dstStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
-        preprocessMemBarrier.dstAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_READ_BIT;
+            //memory barrier
+            VkMemoryBarrier2 preprocessMemBarrier = {};
+            preprocessMemBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+            preprocessMemBarrier.pNext = NULL;
+            preprocessMemBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            preprocessMemBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
+            preprocessMemBarrier.dstStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
+            preprocessMemBarrier.dstAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_READ_BIT;
 
-        VkDependencyInfo preprocessDependencyInfo = {};
-        preprocessDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-        preprocessDependencyInfo.pNext = NULL;
-        preprocessDependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-        preprocessDependencyInfo.memoryBarrierCount = 1;
-        preprocessDependencyInfo.pMemoryBarriers = &preprocessMemBarrier;
+            VkDependencyInfo preprocessDependencyInfo = {};
+            preprocessDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+            preprocessDependencyInfo.pNext = NULL;
+            preprocessDependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+            preprocessDependencyInfo.memoryBarrierCount = 1;
+            preprocessDependencyInfo.pMemoryBarriers = &preprocessMemBarrier;
+            
+            vkCmdPipelineBarrier2(cmdBuffer, &preprocessDependencyInfo);
+        }
         
-        vkCmdPipelineBarrier2(cmdBuffer, &preprocessDependencyInfo);
 
         //----------RENDER PASS----------//
 
@@ -438,11 +466,185 @@ namespace PaperRenderer
         {
             std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> materialDescriptorWrites;
             material->bind(cmdBuffer, renderPassInfo.camera, materialDescriptorWrites);
-            for(const auto& [materialInstance, meshGroups] : materialInstanceNode.instances) //material instances
+            for(const auto& [materialInstance, meshGroups] : materialInstanceNode) //material instances
             {
                 std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> instanceDescriptorWrites;
                 materialInstance->bind(cmdBuffer, instanceDescriptorWrites);
                 meshGroups.draw(cmdBuffer, *material);
+            }
+        }
+
+        //sorted instances
+        if(sortedInstances.size())
+        {
+            //Timer
+            Timer timer(renderer, "RenderPass Render Sorted Instances Recording", REGULAR);
+
+            //sort sorted instances
+            std::vector<ModelInstance*> vecSortedInstances;
+            vecSortedInstances.reserve(sortedInstances.size());
+            for(const auto& [instance, materials] : sortedInstances)
+            {
+                vecSortedInstances.push_back(instance);
+            }
+
+            std::sort(vecSortedInstances.begin(), vecSortedInstances.end(), [&](const ModelInstance* instanceA, const ModelInstance* instanceB)
+            {
+                const float distA = glm::length(instanceA->getTransformation().position - renderPassInfo.camera.getPosition());
+                const float distB = glm::length(instanceB->getTransformation().position - renderPassInfo.camera.getPosition());
+
+                switch(renderPassInfo.sortMode)
+                {
+                case FRONT_FIRST:
+                    return distA < distB;
+                case BACK_FIRST:
+                    return distA > distB;
+                default: //aka DONT_CARE
+                    return distA < distB;
+                }
+            });
+
+            //calculate model matrices and transfer them to the sortedInstancesOutputBuffer
+            std::vector<ShaderOutputObject> sortedInstancesMatricesData(vecSortedInstances.size());
+            for(uint32_t i = 0; i < vecSortedInstances.size(); i++)
+            {
+                ModelInstance* instance = vecSortedInstances[i];
+                ModelTransformation transform = instance->getTransformation();
+
+                glm::mat3 qMat;
+
+                //rotation
+                glm::quat q = transform.rotation;
+                float qxx = q.x * q.x;
+                float qyy = q.y * q.y;
+                float qzz = q.z * q.z;
+                float qxz = q.x * q.z;
+                float qxy = q.x * q.y;
+                float qyz = q.y * q.z;
+                float qwx = q.w * q.x;
+                float qwy = q.w * q.y;
+                float qwz = q.w * q.z;
+
+                qMat[0] = glm::vec3(1.0 - 2.0 * (qyy + qzz), 2.0 * (qxy + qwz), 2.0 * (qxz - qwy));
+                qMat[1] = glm::vec3(2.0 * (qxy - qwz), 1.0 - 2.0 * (qxx + qzz), 2.0 * (qyz + qwx));
+                qMat[2] = glm::vec3(2.0 * (qxz + qwy), 2.0 * (qyz - qwx), 1.0 - 2.0 * (qxx + qyy));
+
+                //scale
+                glm::mat3 scaleMat;
+                scaleMat[0] = glm::vec3(transform.scale.x, 0.0, 0.0);
+                scaleMat[1] = glm::vec3(0.0, transform.scale.y, 0.0);
+                scaleMat[2] = glm::vec3(0.0, 0.0, transform.scale.z);
+
+                //composition of rotation and scale
+                glm::mat3 scaleRotMat = scaleMat * qMat;
+
+                glm::mat3x4 result;
+                result[0] = glm::vec4(scaleRotMat[0], transform.position.x);
+                result[1] = glm::vec4(scaleRotMat[1], transform.position.y);
+                result[2] = glm::vec4(scaleRotMat[2], transform.position.z);
+
+                sortedInstancesMatricesData[i] = { result };
+            }
+
+            //transfer data
+            const BufferWrite matricesWrite = {
+                .offset = 0,
+                .size = sortedInstancesMatricesData.size() * sizeof(ShaderOutputObject),
+                .data = sortedInstancesMatricesData.data()
+            };
+            sortedInstancesOutputBuffer->writeToBuffer({ matricesWrite });
+
+            //LOD index function (tbh i should really change this whole function)
+            auto getLODIndex = [&](ModelInstance* instance)
+            {
+                //get largest OBB extent to be used as size
+                AABB bounds = instance->getParentModel().getAABB();
+                float xLength = bounds.posX - bounds.negX;
+                float yLength = bounds.posY - bounds.negY;
+                float zLength = bounds.posZ - bounds.negZ;
+
+                float worldSize = 0.0;
+                worldSize = std::max(worldSize, xLength);
+                worldSize = std::max(worldSize, yLength);
+                worldSize = std::max(worldSize, zLength);
+
+                float cameraDistance = glm::length(instance->getTransformation().position - renderPassInfo.camera.getPosition());
+                
+                uint32_t lodLevel = floor(1.0 / sqrt(worldSize * 10.0) * sqrt(cameraDistance));
+
+                return lodLevel;
+            };
+
+            //draw sorted instances in order
+            for(uint32_t i = 0; i < vecSortedInstances.size(); i++)
+            {
+                //get model instance
+                ModelInstance* instance = vecSortedInstances[i];
+
+                //get LOD level and materials
+                const uint32_t lodIndex = getLODIndex(instance);
+                std::unordered_map<uint32_t, PaperRenderer::MaterialInstance*>& materials = sortedInstances[instance][lodIndex];
+                for(auto& [matSlot, materialInstance] : materials)
+                {
+                    //get material
+                    Material* material = ((Material*)(&materialInstance->getBaseMaterial()));
+
+                    //bind material
+                    std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> materialDescriptorWrites;
+                    material->bind(cmdBuffer, renderPassInfo.camera, materialDescriptorWrites);
+
+                    //bind material instance
+                    std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> instanceDescriptorWrites;
+                    materialInstance->bind(cmdBuffer, instanceDescriptorWrites);
+
+                    //assign object descriptor if used
+                    if(material->usesDefaultDescriptors())
+                    {
+                        //get new descriptor set
+                        VkDescriptorSet objDescriptorSet = 
+                            renderer.getDescriptorAllocator().allocateDescriptorSet(material->getRasterPipeline().getDescriptorSetLayouts().at(material->getRasterPipeline().getDrawDescriptorIndex()));
+                        
+                        //write uniforms
+                        VkDescriptorBufferInfo descriptorInfo = {
+                            .buffer = sortedInstancesOutputBuffer->getBuffer(),
+                            .offset = 0,
+                            .range = sizeof(ShaderOutputObject) * vecSortedInstances.size()
+                        };
+
+                        BuffersDescriptorWrites write = {};
+                        write.binding = 0;
+                        write.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                        write.infos.push_back(descriptorInfo);
+
+                        DescriptorWrites descriptorWritesInfo = {};
+                        descriptorWritesInfo.bufferWrites = { write };
+                        renderer.getDescriptorAllocator().writeUniforms(objDescriptorSet, descriptorWritesInfo);
+
+                        //bind set
+                        DescriptorBind bindingInfo = {};
+                        bindingInfo.descriptorSetIndex = material->getRasterPipeline().getDrawDescriptorIndex();
+                        bindingInfo.set = objDescriptorSet;
+                        bindingInfo.layout = material->getRasterPipeline().getLayout();
+                        bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+                        renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
+                    }
+
+                    //get mesh data ptr
+                    const LODMesh& meshData = instance->getParentModel().getLODs()[lodIndex].materialMeshes[matSlot].mesh;
+
+                    //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)
+                    instance->getParentModel().bindBuffers(cmdBuffer);
+
+                    //draw
+                    vkCmdDrawIndexed(
+                        cmdBuffer,
+                        meshData.indexCount,
+                        1,
+                        meshData.iboOffset,
+                        meshData.vboOffset,
+                        i //first index at i because we want the same behavior as the normal drawing method
+                    );
+                }
             }
         }
 
@@ -463,92 +665,108 @@ namespace PaperRenderer
         return { cmdBuffer };
     }
 
-    void RenderPass::addInstance(ModelInstance& instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials)
+    void RenderPass::addInstance(ModelInstance& instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials, bool sorted)
     {
-        //material data
-        materials.resize(instance.getParentModel().getLODs().size());
-        for(uint32_t lodIndex = 0; lodIndex < instance.getParentModel().getLODs().size(); lodIndex++)
+        if(sorted)
         {
-            for(uint32_t matIndex = 0; matIndex < instance.getParentModel().getLODs().at(lodIndex).materialMeshes.size(); matIndex++) //iterate materials in LOD
-            {
-                //----------MAIN MATERIALS----------//
-
-                //get material instance
-                MaterialInstance* materialInstance;
-                if(materials.at(lodIndex).count(matIndex) && materials.at(lodIndex).at(matIndex)) //check if slot is initialized and not NULL
-                {
-                    materialInstance = materials.at(lodIndex).at(matIndex);
-                }
-                else //use default material if one isn't selected
-                {
-                    materialInstance = &defaultMaterialInstance;
-                }
-
-                //get mesh using same material
-                const LODMesh& similarMesh = instance.getParentModel().getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh;
-
-                //check if mesh group class is created
-                if(!renderTree[(Material*)&materialInstance->getBaseMaterial()].instances.count(materialInstance))
-                {
-                    renderTree[(Material*)&materialInstance->getBaseMaterial()].instances.emplace(std::piecewise_construct, std::forward_as_tuple(materialInstance), std::forward_as_tuple(renderer, this));
-                }
-
-                //add references
-                renderTree[(Material*)&materialInstance->getBaseMaterial()].instances.at(materialInstance).addInstanceMesh(instance, similarMesh);
-
-                instance.renderPassSelfReferences[this].meshGroupReferences[&instance.getParentModel().getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh] = 
-                    &renderTree.at((Material*)&materialInstance->getBaseMaterial()).instances.at(materialInstance);
-            }
+            sortedInstances[&instance] = materials;
         }
+        else
+        {
+            //material data
+            materials.resize(instance.getParentModel().getLODs().size());
+            for(uint32_t lodIndex = 0; lodIndex < instance.getParentModel().getLODs().size(); lodIndex++)
+            {
+                for(uint32_t matIndex = 0; matIndex < instance.getParentModel().getLODs().at(lodIndex).materialMeshes.size(); matIndex++) //iterate materials in LOD
+                {
+                    //get material instance
+                    MaterialInstance* materialInstance;
+                    if(materials.at(lodIndex).count(matIndex) && materials.at(lodIndex).at(matIndex)) //check if slot is initialized and not NULL
+                    {
+                        materialInstance = materials.at(lodIndex).at(matIndex);
+                    }
+                    else //use default material if one isn't selected
+                    {
+                        materialInstance = &defaultMaterialInstance;
+                    }
 
-        //add reference
-        instance.renderPassSelfReferences.at(this).selfIndex = renderPassInstances.size();
-        renderPassInstances.push_back(&instance);
+                    //get mesh using same material
+                    const LODMesh& similarMesh = instance.getParentModel().getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh;
 
-        //add instance to queue
-        toUpdateInstances.push_front(&instance);
+                    //check if mesh group class is created
+                    if(!renderTree[(Material*)&materialInstance->getBaseMaterial()].count(materialInstance))
+                    {
+                        renderTree[(Material*)&materialInstance->getBaseMaterial()].emplace(std::piecewise_construct, std::forward_as_tuple(materialInstance), std::forward_as_tuple(renderer, this));
+                    }
+
+                    //add references
+                    renderTree[(Material*)&materialInstance->getBaseMaterial()].at(materialInstance).addInstanceMesh(instance, similarMesh);
+
+                    instance.renderPassSelfReferences[this].meshGroupReferences[&instance.getParentModel().getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh] = 
+                        &renderTree.at((Material*)&materialInstance->getBaseMaterial()).at(materialInstance);
+                }
+            }
+
+            //add reference
+            instance.renderPassSelfReferences.at(this).selfIndex = renderPassInstances.size();
+            renderPassInstances.push_back(&instance);
+
+            //add instance to queue
+            toUpdateInstances.push_front(&instance);
+        }
     }
 
     void RenderPass::removeInstance(ModelInstance& instance)
     {
-        for(auto& [mesh, reference] : instance.renderPassSelfReferences.at(this).meshGroupReferences)
+        //remove instance if in sorted collection
+        if(sortedInstances.count(&instance))
         {
-            reference->removeInstanceMeshes(instance);
-        }
-        instance.renderPassSelfReferences.at(this).meshGroupReferences.clear();
-
-        //remove reference
-        if(renderPassInstances.size() > 1)
-        {
-            uint32_t& selfReference = instance.renderPassSelfReferences.at(this).selfIndex;
-            renderPassInstances.at(selfReference) = renderPassInstances.back();
-            renderPassInstances.at(selfReference)->renderPassSelfReferences.at(this).selfIndex = selfReference;
-
-            //queue data transfer
-            toUpdateInstances.push_front(renderPassInstances.at(instance.renderPassSelfReferences.at(this).selfIndex));
-            
-            renderPassInstances.pop_back();
-        }
-        else
-        {
-            renderPassInstances.clear();
+            sortedInstances.erase(&instance);
         }
 
-        //null out any instances that may be queued
-        for(ModelInstance*& thisInstance : toUpdateInstances)
+        //remove from normal if reference exists
+        if(instance.renderPassSelfReferences.count(this))
         {
-            if(thisInstance == &instance)
+            //remove from mesh groups
+            for(auto& [mesh, reference] : instance.renderPassSelfReferences.at(this).meshGroupReferences)
             {
-                thisInstance = NULL;
+                reference->removeInstanceMeshes(instance);
             }
-        }
+            instance.renderPassSelfReferences.at(this).meshGroupReferences.clear();
 
-        //remove data from fragmenable buffer if referenced
-        if(instance.renderPassSelfReferences.at(this).LODsMaterialDataOffset != UINT64_MAX && instancesDataBuffer)
-        {
-            instancesDataBuffer->removeFromRange(instance.renderPassSelfReferences.at(this).LODsMaterialDataOffset, instance.getRenderPassInstanceData(this).size());
-        }
+            //shift instances
+            if(renderPassInstances.size() > 1)
+            {
+                uint32_t& selfReference = instance.renderPassSelfReferences.at(this).selfIndex;
+                renderPassInstances.at(selfReference) = renderPassInstances.back();
+                renderPassInstances.at(selfReference)->renderPassSelfReferences.at(this).selfIndex = selfReference;
 
-        instance.renderPassSelfReferences.erase(this);
+                //queue data transfer
+                toUpdateInstances.push_front(renderPassInstances.at(instance.renderPassSelfReferences.at(this).selfIndex));
+                
+                renderPassInstances.pop_back();
+            }
+            else
+            {
+                renderPassInstances.clear();
+            }
+
+            //null out any instances that may be queued
+            for(ModelInstance*& thisInstance : toUpdateInstances)
+            {
+                if(thisInstance == &instance)
+                {
+                    thisInstance = NULL;
+                }
+            }
+
+            //remove data from fragmenable buffer if referenced
+            if(instance.renderPassSelfReferences.at(this).LODsMaterialDataOffset != UINT64_MAX && instancesDataBuffer)
+            {
+                instancesDataBuffer->removeFromRange(instance.renderPassSelfReferences.at(this).LODsMaterialDataOffset, instance.getRenderPassInstanceData(this).size());
+            }
+
+            instance.renderPassSelfReferences.erase(this);
+        }
     }
 }

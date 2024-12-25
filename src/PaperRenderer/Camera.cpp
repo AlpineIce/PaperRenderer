@@ -115,4 +115,11 @@ namespace PaperRenderer
         
         renderer.getStagingBuffer().queueDataTransfers(ubo, sizeof(glm::mat4), uboDataVec);*/
     }
+
+    glm::vec3 Camera::getPosition() const
+    {
+        glm::mat4 viewInverse = glm::inverse(view);
+
+        return glm::vec3(viewInverse[3][0], viewInverse[3][1], viewInverse[3][2]);
+    }
 }
