@@ -239,12 +239,10 @@ namespace PaperRenderer
         ModelInstance(const ModelInstance&) = delete;
 
         void setTransformation(const ModelTransformation& newTransformation);
-        //void setVisibility(class RenderPass* renderPass, bool newVisibility); //renderPass can be NULL if setting the visibility for all is desired
         
         const Model& getParentModel() const { return parentModel; }
         Buffer const* getUniqueVBO() const { return uniqueGeometryData.isUsed ? uniqueGeometryData.uniqueVBO.get() : NULL; }
-        class BLAS const* getBLAS() const; //Returns unique BLAS if created, else model BLAS. Returns null if either
+        class BLAS* getUniqueBLAS() { return uniqueGeometryData.blas ? uniqueGeometryData.blas.get() : NULL; } //Returns unique BLAS if created, else NULL
         const ModelTransformation& getTransformation() const { return transform; };
-        //bool getVisibility(class RenderPass* renderPass) const;
     };
 }

@@ -244,7 +244,7 @@ namespace PaperRenderer
 					.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
 					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 					//if geometry is unique then allow update, otherwise geometry isn't unique, but a parent copy doesnt exist; assume static
-					.flags = uniqueGeometry ? (VkBuildAccelerationStructureFlagsKHR)VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR : (VkBuildAccelerationStructureFlagsKHR)VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR
+					.flags = uniqueGeometry ? VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR : VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
 				};
 				renderer.getAsBuilder().queueAs(op);
 			}
@@ -330,32 +330,4 @@ namespace PaperRenderer
 		this->transform = newTransformation;
 		renderer.toUpdateModelInstances.push_front(this);
     }
-
-    BLAS const* ModelInstance::getBLAS() const
-    {
-		if(uniqueGeometryData.blas)
-		{
-			return uniqueGeometryData.blas.get();
-		}
-		else if(parentModel.getBlasPtr())
-		{
-			return parentModel.getBlasPtr();
-		}
-		else
-		{
-			return NULL;
-		}
-    }
-
-    /*bool ModelInstance::getVisibility(RenderPass *renderPass) const
-    {
-        const bool& visibility = false;
-
-		return visibility;
-    }
-
-	void ModelInstance::setVisibility(RenderPass *renderPass, bool newVisibility)
-    {
-
-    }*/
 }

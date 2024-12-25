@@ -270,45 +270,40 @@ namespace PaperRenderer
         verifyInstancesBuffer(rtRender.getTLASInstanceData().size());
 
         //queue instance data
-        uint32_t instanceIndex = 0;
         std::vector<char> newInstancesData(tlInstancesOffset); //allocate memory for everything but VkAccelerationStructureInstanceKHRs, which is at the end of the buffer
         for(const AccelerationStructureInstanceData& instance : rtRender.getTLASInstanceData())
         {
+            //get BLAS pointer
+            BLAS* blasPtr = instance.instancePtr->getUniqueBLAS() ? instance.instancePtr->getUniqueBLAS() : (BLAS*)instance.instancePtr->getParentModel().getBlasPtr();
+
             //skip if instance is NULL or has invalid BLAS
-            if(!instance.instancePtr || !instance.instancePtr->getBLAS()->getAccelerationStructureAddress())
+            if(instance.instancePtr && blasPtr)
             {
-                continue;
-            }
-            else
-            {
-                //increment update size if not NULL and has valid BLAS
+                //get sbt offset
+                uint32_t sbtOffset = 
+                    rtRender.getPipeline().getShaderBindingTableData().shaderBindingTableOffsets.
+                    materialShaderGroupOffsets.at(instance.instancePtr->rtRenderSelfReferences.at(&rtRender).material);
+
+                //write instance data
+                ModelInstance::AccelerationStructureInstance instanceShaderData = {
+                    .blasReference = blasPtr->getAccelerationStructureAddress(),
+                    .selfIndex = instance.instancePtr->rendererSelfIndex,
+                    .customIndex = instance.customIndex,
+                    .modelInstanceIndex = instance.instancePtr->rendererSelfIndex,
+                    .mask = instance.mask << 24,
+                    .recordOffset = sbtOffset,
+                    .flags = instance.flags << 24
+                };
+                memcpy(newInstancesData.data() + sizeof(ModelInstance::AccelerationStructureInstance) * nextUpdateSize, &instanceShaderData, sizeof(ModelInstance::AccelerationStructureInstance));
+
+                //write description data
+                InstanceDescription descriptionShaderData = {
+                    .modelDataOffset = (uint32_t)instance.instancePtr->getParentModel().getShaderDataLocation()
+                };
+                memcpy(newInstancesData.data() + instanceDescriptionsOffset + sizeof(InstanceDescription) * nextUpdateSize, &descriptionShaderData, sizeof(InstanceDescription));
+
                 nextUpdateSize++;
             }
-
-            //get sbt offset
-            uint32_t sbtOffset = 
-                rtRender.getPipeline().getShaderBindingTableData().shaderBindingTableOffsets.
-                materialShaderGroupOffsets.at(instance.instancePtr->rtRenderSelfReferences.at(&rtRender).material);
-
-            //write instance data
-            ModelInstance::AccelerationStructureInstance instanceShaderData = {
-                .blasReference = instance.instancePtr->getBLAS()->getAccelerationStructureAddress(),
-                .selfIndex = instance.instancePtr->rendererSelfIndex,
-                .customIndex = instance.customIndex,
-                .modelInstanceIndex = instance.instancePtr->rendererSelfIndex,
-                .mask = instance.mask << 24,
-                .recordOffset = sbtOffset,
-                .flags = instance.flags << 24
-            };
-            memcpy(newInstancesData.data() + sizeof(ModelInstance::AccelerationStructureInstance) * instanceIndex, &instanceShaderData, sizeof(ModelInstance::AccelerationStructureInstance));
-
-            //write description data
-            InstanceDescription descriptionShaderData = {
-                .modelDataOffset = (uint32_t)instance.instancePtr->getParentModel().getShaderDataLocation()
-            };
-            memcpy(newInstancesData.data() + instanceDescriptionsOffset + sizeof(InstanceDescription) * instanceIndex, &descriptionShaderData, sizeof(InstanceDescription));
-
-            instanceIndex++;
         }
 
         //queue data transfers
