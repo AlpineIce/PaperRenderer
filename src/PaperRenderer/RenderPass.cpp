@@ -131,9 +131,6 @@ namespace PaperRenderer
         renderer(renderer),
         defaultMaterialInstance(defaultMaterialInstance)
     {
-        rebuildMaterialDataBuffer();
-        rebuildInstancesBuffer();
-
         renderer.renderPasses.push_back(this);
     }
 
@@ -248,11 +245,14 @@ namespace PaperRenderer
             }
         }
 
-        //check buffer sizes
-        if(instancesBuffer->getSize() / sizeof(ModelInstance::RenderPassInstance) < renderPassInstances.size() ||
-            instancesBuffer->getSize() / sizeof(ModelInstance::RenderPassInstance) > std::max(renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance), sizeof(ModelInstance::RenderPassInstance) * 64) * 2)
+        //verify buffers
+        if(!instancesBuffer || instancesBuffer->getSize() / sizeof(ModelInstance::RenderPassInstance) < renderPassInstances.size())
         {
             rebuildInstancesBuffer();
+        }
+        if(!instancesDataBuffer)
+        {
+            rebuildMaterialDataBuffer();
         }
 
         //sort instances; remove duplicates
