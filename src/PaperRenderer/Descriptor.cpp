@@ -8,13 +8,16 @@
 namespace PaperRenderer
 {
     DescriptorAllocator::DescriptorAllocator(RenderEngine& renderer)
-        :descriptorPoolDatas(coreCount),
+        :descriptorPoolDatas({ std::vector<DescriptorPoolData>(coreCount), std::vector<DescriptorPoolData>(coreCount) }),
         renderer(renderer)
     {
         //initialize one descriptor pool
-        for(DescriptorPoolData& poolData : descriptorPoolDatas)
+        for(std::vector<DescriptorPoolData>& poolDatas : descriptorPoolDatas)
         {
-            poolData.descriptorPools = { allocateDescriptorPool() };
+            for(DescriptorPoolData& poolData : poolDatas)
+            {
+                poolData.descriptorPools = { allocateDescriptorPool() };
+            }
         }
 
         //log constructor
@@ -26,12 +29,15 @@ namespace PaperRenderer
     
     DescriptorAllocator::~DescriptorAllocator()
     {   
-        for(DescriptorPoolData& poolsData : descriptorPoolDatas)
+        for(std::vector<DescriptorPoolData>& poolDatas : descriptorPoolDatas)
         {
-            std::lock_guard<std::recursive_mutex> guard(poolsData.threadLock);
-            for(VkDescriptorPool& pool : poolsData.descriptorPools)
+            for(DescriptorPoolData& poolsData : poolDatas)
             {
-                vkDestroyDescriptorPool(renderer.getDevice().getDevice(), pool, nullptr);
+                std::lock_guard<std::recursive_mutex> guard(poolsData.threadLock);
+                for(VkDescriptorPool& pool : poolsData.descriptorPools)
+                {
+                    vkDestroyDescriptorPool(renderer.getDevice().getDevice(), pool, nullptr);
+                }
             }
         }
 
@@ -122,7 +128,7 @@ namespace PaperRenderer
         DescriptorPoolData* lockedPool = NULL;
         while(!threadLocked)
         {
-            for(DescriptorPoolData& pool : descriptorPoolDatas)
+            for(DescriptorPoolData& pool : descriptorPoolDatas[renderer.getBufferIndex()])
             {
                 if(pool.threadLock.try_lock())
                 {
@@ -295,7 +301,7 @@ namespace PaperRenderer
         Timer timer(renderer, "Reset Descriptor Pools", REGULAR);
 
         //reset pools
-        for(DescriptorPoolData& poolData : descriptorPoolDatas)
+        for(DescriptorPoolData& poolData : descriptorPoolDatas[renderer.getBufferIndex()])
         {
             //wait for any non-submitted command buffers (potentially a deadlock problem)
             std::lock_guard<std::recursive_mutex> guard(poolData.threadLock);

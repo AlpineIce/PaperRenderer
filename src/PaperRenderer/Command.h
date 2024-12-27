@@ -6,6 +6,7 @@
 #include <deque>
 #include <mutex>
 #include <atomic>
+#include <array>
 #include <thread>
 
 namespace PaperRenderer
@@ -81,7 +82,7 @@ namespace PaperRenderer
         std::mutex cmdBuffersLockedPoolMutex;
         uint64_t lockedCmdBufferCount = 0; //protected by mutex
         std::unordered_map<QueueType, QueuesInFamily>* queuesPtr;
-        std::unordered_map<QueueType, std::vector<CommandPoolData>> commandPools;
+        std::array<std::unordered_map<QueueType, std::vector<CommandPoolData>>, 2> commandPools;
         std::unordered_map<VkCommandBuffer, CommandPoolData*> cmdBuffersLockedPool;
         const uint32_t coreCount = std::thread::hardware_concurrency();
 

@@ -28,19 +28,22 @@ namespace PaperRenderer
 
     Commands::~Commands()
     {
-        for(auto& [type, pools] : commandPools)
+        for(std::unordered_map<PaperRenderer::QueueType, std::vector<PaperRenderer::Commands::CommandPoolData>>& frameCommandPool : commandPools)
         {
-            //wait for any remaining queue submissions
-            for(Queue* queue : queuesPtr->at(type).queues)
+            for(auto& [type, pools] : frameCommandPool)
             {
-                std::lock_guard<std::mutex> guard(queue->threadLock);
-            }
+                //wait for any remaining queue submissions
+                for(Queue* queue : queuesPtr->at(type).queues)
+                {
+                    std::lock_guard<std::mutex> guard(queue->threadLock);
+                }
 
-            //wait for and destroy command pools
-            for(CommandPoolData& pool : pools)
-            {
-                std::lock_guard<std::recursive_mutex> guard(pool.threadLock);
-                vkDestroyCommandPool(renderer.getDevice().getDevice(), pool.cmdPool, nullptr);
+                //wait for and destroy command pools
+                for(CommandPoolData& pool : pools)
+                {
+                    std::lock_guard<std::recursive_mutex> guard(pool.threadLock);
+                    vkDestroyCommandPool(renderer.getDevice().getDevice(), pool.cmdPool, nullptr);
+                }
             }
         }
 
@@ -53,19 +56,23 @@ namespace PaperRenderer
 
     void Commands::createCommandPools()
     {
-        //create 4 arrays of std::thread::hardware_concurrency length arrays of command pools (honestly presentation doesnt need that many pools but its ok)
-        for(auto& [queueType, queues] : *queuesPtr)
+        for(std::unordered_map<PaperRenderer::QueueType, std::vector<PaperRenderer::Commands::CommandPoolData>>& queuePoolDatas : commandPools)
         {
-            commandPools[queueType] = std::vector<CommandPoolData>(coreCount);
-            for(uint32_t i = 0; i < coreCount; i++)
+            //create 4 arrays of std::thread::hardware_concurrency length arrays of command pools (honestly presentation doesnt need that many pools but its ok)
+            for(auto& [queueType, queues] : *queuesPtr)
             {
-                VkCommandPoolCreateInfo commandPoolInfo = {
-                    .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-                    .pNext = NULL,
-                    .flags = 0,
-                    .queueFamilyIndex = queues.queueFamilyIndex
-                };
-                vkCreateCommandPool(renderer.getDevice().getDevice(), &commandPoolInfo, nullptr, &commandPools[queueType][i].cmdPool);
+                queuePoolDatas[queueType] = std::vector<CommandPoolData>(coreCount);
+
+                for(uint32_t i = 0; i < coreCount; i++)
+                {
+                    VkCommandPoolCreateInfo commandPoolInfo = {
+                        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+                        .pNext = NULL,
+                        .flags = 0,
+                        .queueFamilyIndex = queues.queueFamilyIndex
+                    };
+                    vkCreateCommandPool(renderer.getDevice().getDevice(), &commandPoolInfo, nullptr, &queuePoolDatas[queueType][i].cmdPool);
+                }
             }
         }
     }
@@ -85,7 +92,7 @@ namespace PaperRenderer
         }
 
         //reset all pools
-        for(auto& [queueType, pools] : commandPools)
+        for(auto& [queueType, pools] : commandPools[renderer.getBufferIndex()])
         {
             //async reset pools
             std::vector<std::future<void>> futures;
@@ -295,7 +302,7 @@ namespace PaperRenderer
         CommandPoolData* lockedPool = NULL;
         while(!threadLocked)
         {
-            for(CommandPoolData& pool : commandPools[type])
+            for(CommandPoolData& pool : commandPools[renderer.getBufferIndex()][type])
             {
                 if(pool.threadLock.try_lock())
                 {

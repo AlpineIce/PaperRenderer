@@ -64,7 +64,7 @@ namespace PaperRenderer
             std::recursive_mutex threadLock = {};
         };
         const uint32_t coreCount = std::thread::hardware_concurrency();
-        std::vector<DescriptorPoolData> descriptorPoolDatas; //collection of pools that can be used async
+        std::array<std::vector<DescriptorPoolData>, 2> descriptorPoolDatas; //collection of pools that can be used async
         
         class RenderEngine& renderer;
 
