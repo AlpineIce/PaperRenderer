@@ -199,6 +199,7 @@ namespace PaperRenderer
             VkDeviceSize LODsMaterialDataOffset = UINT64_MAX;
             std::unordered_map<LODMesh const*, class CommonMeshGroup*> meshGroupReferences;
             uint32_t selfIndex;
+            bool sorted = false;
         };
         std::unordered_map<class RenderPass const*, RenderPassData> renderPassSelfReferences;
 

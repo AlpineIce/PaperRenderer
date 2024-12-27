@@ -67,7 +67,12 @@ namespace PaperRenderer
     private:
         //render tree and sorted instances
         std::unordered_map<Material*, std::unordered_map<MaterialInstance*, CommonMeshGroup>> renderTree; //render tree
-        std::unordered_map<ModelInstance*, std::vector<std::unordered_map<uint32_t, MaterialInstance*>>> sortedInstances; //unordered map is probably slow but how much translucency you need?
+        struct SortedInstance
+        {
+            ModelInstance* instance;
+            std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials;
+        };
+        std::vector<SortedInstance> renderPassSortedInstances; //unordered map is probably slow but how much translucency you need?
 
         float instancesOverhead = 1.5f;
         std::vector<ModelInstance*> renderPassInstances; //doesn't included sorted

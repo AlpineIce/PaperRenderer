@@ -191,7 +191,7 @@ namespace PaperRenderer
 
         //create new sorted instance buffer
         VkDeviceSize newSortedInstancesBufferSize = 
-            std::max((VkDeviceSize)(sortedInstances.size() * sizeof(ShaderOutputObject) * instancesOverhead), (VkDeviceSize)(sizeof(ShaderOutputObject) * 64));
+            std::max((VkDeviceSize)(renderPassSortedInstances.size() * sizeof(ShaderOutputObject) * instancesOverhead), (VkDeviceSize)(sizeof(ShaderOutputObject) * 64));
 
         BufferInfo sortedInstancesBufferInfo = {
             .size = newSortedInstancesBufferSize,
@@ -270,7 +270,7 @@ namespace PaperRenderer
         {
             rebuildInstancesBuffer();
         }
-        if(!sortedInstancesOutputBuffer || sortedInstancesOutputBuffer->getSize() / sizeof(ShaderOutputObject) < sortedInstances.size())
+        if(!sortedInstancesOutputBuffer || sortedInstancesOutputBuffer->getSize() / sizeof(ShaderOutputObject) < renderPassSortedInstances.size())
         {
             rebuildSortedInstancesBuffer();
         }
@@ -475,23 +475,23 @@ namespace PaperRenderer
         }
 
         //sorted instances
-        if(sortedInstances.size())
+        if(renderPassSortedInstances.size())
         {
             //Timer
             Timer timer(renderer, "RenderPass Render Sorted Instances Recording", REGULAR);
 
             //sort sorted instances
-            std::vector<ModelInstance*> vecSortedInstances;
-            vecSortedInstances.reserve(sortedInstances.size());
-            for(const auto& [instance, materials] : sortedInstances)
+            std::vector<SortedInstance*> sortedInstances;
+            sortedInstances.reserve(renderPassSortedInstances.size());
+            for(SortedInstance& instance : renderPassSortedInstances)
             {
-                vecSortedInstances.push_back(instance);
+                sortedInstances.push_back(&instance);
             }
 
-            std::sort(vecSortedInstances.begin(), vecSortedInstances.end(), [&](const ModelInstance* instanceA, const ModelInstance* instanceB)
+            std::sort(sortedInstances.begin(), sortedInstances.end(), [&](const SortedInstance* instanceA, const SortedInstance* instanceB)
             {
-                const float distA = glm::length(instanceA->getTransformation().position - renderPassInfo.camera.getPosition());
-                const float distB = glm::length(instanceB->getTransformation().position - renderPassInfo.camera.getPosition());
+                const float distA = glm::length(instanceA->instance->getTransformation().position - renderPassInfo.camera.getPosition());
+                const float distB = glm::length(instanceB->instance->getTransformation().position - renderPassInfo.camera.getPosition());
 
                 switch(renderPassInfo.sortMode)
                 {
@@ -505,11 +505,10 @@ namespace PaperRenderer
             });
 
             //calculate model matrices and transfer them to the sortedInstancesOutputBuffer
-            std::vector<ShaderOutputObject> sortedInstancesMatricesData(vecSortedInstances.size());
-            for(uint32_t i = 0; i < vecSortedInstances.size(); i++)
+            std::vector<ShaderOutputObject> sortedInstancesMatricesData(sortedInstances.size());
+            for(uint32_t i = 0; i < sortedInstances.size(); i++)
             {
-                ModelInstance* instance = vecSortedInstances[i];
-                ModelTransformation transform = instance->getTransformation();
+                ModelTransformation transform = sortedInstances[i]->instance->getTransformation();
 
                 glm::mat3 qMat;
 
@@ -576,15 +575,11 @@ namespace PaperRenderer
             };
 
             //draw sorted instances in order
-            for(uint32_t i = 0; i < vecSortedInstances.size(); i++)
+            for(uint32_t i = 0; i < sortedInstances.size(); i++)
             {
-                //get model instance
-                ModelInstance* instance = vecSortedInstances[i];
-
-                //get LOD level and materials
-                const uint32_t lodIndex = std::min(getLODIndex(instance), (uint32_t)instance->getParentModel().getLODs().size() - 1);
-                std::unordered_map<uint32_t, PaperRenderer::MaterialInstance*>& materials = sortedInstances[instance][lodIndex];
-                for(auto& [matSlot, materialInstance] : materials)
+                //get LOD level
+                const uint32_t lodIndex = std::min(getLODIndex(sortedInstances[i]->instance), (uint32_t)sortedInstances[i]->instance->getParentModel().getLODs().size() - 1);
+                for(auto& [matSlot, materialInstance] : sortedInstances[i]->materials[lodIndex])
                 {
                     //get material
                     Material* material = ((Material*)(&materialInstance->getBaseMaterial()));
@@ -608,7 +603,7 @@ namespace PaperRenderer
                         VkDescriptorBufferInfo descriptorInfo = {
                             .buffer = sortedInstancesOutputBuffer->getBuffer(),
                             .offset = 0,
-                            .range = sizeof(ShaderOutputObject) * vecSortedInstances.size()
+                            .range = sizeof(ShaderOutputObject) * sortedInstances.size()
                         };
 
                         BuffersDescriptorWrites write = {};
@@ -630,10 +625,10 @@ namespace PaperRenderer
                     }
 
                     //get mesh data ptr
-                    const LODMesh& meshData = instance->getParentModel().getLODs()[lodIndex].materialMeshes[matSlot].mesh;
+                    const LODMesh& meshData = sortedInstances[i]->instance->getParentModel().getLODs()[lodIndex].materialMeshes[matSlot].mesh;
 
                     //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)
-                    instance->getParentModel().bindBuffers(cmdBuffer);
+                    sortedInstances[i]->instance->getParentModel().bindBuffers(cmdBuffer);
 
                     //draw
                     vkCmdDrawIndexed(
@@ -669,7 +664,10 @@ namespace PaperRenderer
     {
         if(sorted)
         {
-            sortedInstances[&instance] = materials;
+            //add reference
+            instance.renderPassSelfReferences[this].selfIndex = renderPassSortedInstances.size();
+            instance.renderPassSelfReferences[this].sorted = true;
+            renderPassSortedInstances.push_back({ &instance, materials });
         }
         else
         {
@@ -708,7 +706,8 @@ namespace PaperRenderer
             }
 
             //add reference
-            instance.renderPassSelfReferences.at(this).selfIndex = renderPassInstances.size();
+            instance.renderPassSelfReferences[this].selfIndex = renderPassInstances.size();
+            instance.renderPassSelfReferences[this].sorted = false;
             renderPassInstances.push_back(&instance);
 
             //add instance to queue
@@ -718,37 +717,48 @@ namespace PaperRenderer
 
     void RenderPass::removeInstance(ModelInstance& instance)
     {
-        //remove instance if in sorted collection
-        if(sortedInstances.count(&instance))
-        {
-            sortedInstances.erase(&instance);
-        }
-
         //remove from normal if reference exists
         if(instance.renderPassSelfReferences.count(this))
         {
             //remove from mesh groups
-            for(auto& [mesh, reference] : instance.renderPassSelfReferences.at(this).meshGroupReferences)
+            for(auto& [mesh, reference] : instance.renderPassSelfReferences[this].meshGroupReferences)
             {
                 reference->removeInstanceMeshes(instance);
             }
-            instance.renderPassSelfReferences.at(this).meshGroupReferences.clear();
+            instance.renderPassSelfReferences[this].meshGroupReferences.clear();
 
             //shift instances
-            if(renderPassInstances.size() > 1)
+            const uint32_t selfReference = instance.renderPassSelfReferences[this].selfIndex;
+            if(instance.renderPassSelfReferences[this].sorted)
             {
-                uint32_t& selfReference = instance.renderPassSelfReferences.at(this).selfIndex;
-                renderPassInstances.at(selfReference) = renderPassInstances.back();
-                renderPassInstances.at(selfReference)->renderPassSelfReferences.at(this).selfIndex = selfReference;
+                if(renderPassSortedInstances.size() > 1)
+                {
+                    renderPassSortedInstances[selfReference] = renderPassSortedInstances.back();
+                    renderPassSortedInstances[selfReference].instance->renderPassSelfReferences[this].selfIndex = selfReference;
 
-                //queue data transfer
-                toUpdateInstances.push_front(renderPassInstances.at(instance.renderPassSelfReferences.at(this).selfIndex));
-                
-                renderPassInstances.pop_back();
+                    renderPassSortedInstances.pop_back();
+                }
+                else
+                {
+                    renderPassSortedInstances.clear();
+                }
             }
             else
             {
-                renderPassInstances.clear();
+                if(renderPassInstances.size() > 1)
+                {
+                    renderPassInstances[selfReference] = renderPassInstances.back();
+                    renderPassInstances[selfReference]->renderPassSelfReferences[this].selfIndex = selfReference;
+
+                    //queue data transfer
+                    toUpdateInstances.push_front(renderPassInstances.at(instance.renderPassSelfReferences[this].selfIndex));
+                    
+                    renderPassInstances.pop_back();
+                }
+                else
+                {
+                    renderPassInstances.clear();
+                }
             }
 
             //null out any instances that may be queued
@@ -761,11 +771,12 @@ namespace PaperRenderer
             }
 
             //remove data from fragmenable buffer if referenced
-            if(instance.renderPassSelfReferences.at(this).LODsMaterialDataOffset != UINT64_MAX && instancesDataBuffer)
+            if(instance.renderPassSelfReferences[this].LODsMaterialDataOffset != UINT64_MAX && instancesDataBuffer)
             {
-                instancesDataBuffer->removeFromRange(instance.renderPassSelfReferences.at(this).LODsMaterialDataOffset, instance.getRenderPassInstanceData(this).size());
+                instancesDataBuffer->removeFromRange(instance.renderPassSelfReferences[this].LODsMaterialDataOffset, instance.getRenderPassInstanceData(this).size());
             }
 
+            //erase this reference
             instance.renderPassSelfReferences.erase(this);
         }
     }
