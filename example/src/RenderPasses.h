@@ -97,7 +97,7 @@ public:
     ExampleRaster(PaperRenderer::RenderEngine& renderer, const PaperRenderer::Camera& camera, const HDRBuffer& hdrBuffer, const DepthBuffer& depthBuffer, const PaperRenderer::Buffer& lightBuffer, const PaperRenderer::Buffer& lightInfoUBO);
     ~ExampleRaster();
 
-    void rasterRender(const PaperRenderer::SynchronizationInfo& syncInfo);
+    void rasterRender(PaperRenderer::SynchronizationInfo syncInfo);
     
     const DefaultMaterial& getDefaultMaterial() const { return baseMaterial; }
     PaperRenderer::RenderPass& getRenderPass() { return renderPass; }

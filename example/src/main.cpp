@@ -223,7 +223,7 @@ std::unique_ptr<PaperRenderer::Buffer> createPointLightsBuffer(PaperRenderer::Re
     PaperRenderer::BufferWrite pointLightsWrite = {
         .offset = 0,
         .size = sizeof(PointLight) * pointLightsData.size(),
-        .data = pointLightsData.data()
+        .readData = pointLightsData.data()
     };
     pointLightBuffer->writeToBuffer({ pointLightsWrite });
 
@@ -254,7 +254,7 @@ std::unique_ptr<PaperRenderer::Buffer> createLightInfoUniformBuffer(PaperRendere
     PaperRenderer::BufferWrite pointLightsWrite = {
         .offset = 0,
         .size = sizeof(LightInfo),
-        .data = &uniformBufferData
+        .readData = &uniformBufferData
     };
     uniformBuffer->writeToBuffer({ pointLightsWrite });
 
@@ -673,7 +673,7 @@ int main()
     //----------MISC----------//
 
     //init GUI
-    GuiContext guiContext = initImGui(renderer);
+    GuiContext guiContext = initImGui(renderer, *dynamic_cast<DefaultMaterialInstance*>(materialInstances.at("MetalBall").get()));
 
     //----------RENDER LOOP----------//
 
@@ -682,11 +682,23 @@ int main()
     VkSemaphore renderingSemaphore = renderer.getDevice().getCommands().getTimelineSemaphore(finalSemaphoreValue);
     VkSemaphore presentationSemaphore = renderer.getDevice().getCommands().getSemaphore();
 
-    //rendering loop functions
-    auto waitSemaphoreFunction = [&]()
+    while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
     {
-        const std::vector<VkSemaphore> toWaitSemaphores = { renderingSemaphore, renderer.getStagingBuffer().getTransferSemaphore().semaphore };
-        const std::vector<uint64_t> toWaitSemaphoreValues = { finalSemaphoreValue, renderer.getStagingBuffer().getTransferSemaphore().value };
+        //get last frame statistics (create copy since it WILL be cleared after renderer.beginFrame())
+        PaperRenderer::Statistics lastFrameStatistics = renderer.getStatisticsTracker().getStatistics();
+
+        //begin frame
+        VkSemaphore swapchainSemaphore = renderer.beginFrame();
+
+        //remember to explicitly submit the staging buffer transfers (do entire submit in this case)
+        const PaperRenderer::SynchronizationInfo transferSyncInfo = {
+            .queueType = PaperRenderer::QueueType::TRANSFER,
+        };
+        renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
+
+        //wait for last frame to finish rendering
+        const std::vector<VkSemaphore> toWaitSemaphores = { renderingSemaphore };
+        const std::vector<uint64_t> toWaitSemaphoreValues = { finalSemaphoreValue };
         VkSemaphoreWaitInfo beginWaitInfo = {
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
             .pNext = NULL,
@@ -696,27 +708,9 @@ int main()
             .pValues = toWaitSemaphoreValues.data()
         };
         vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, UINT64_MAX);
-
-        //begin frame
-        return renderer.beginFrame();
-    };
-
-    while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
-    {
-        //get last frame statistics (create copy since it WILL be cleared after renderer.beginFrame())
-        PaperRenderer::Statistics lastFrameStatistics = renderer.getStatisticsTracker().getStatistics();
-
-        //block this thread and while waiting for the begin function, no more work to do BIG OL TODO WE ASYNC-ING
-        VkSemaphore swapchainSemaphore = waitSemaphoreFunction();//waitSemaphoreFuture.get();
         
         //update uniform buffers
         updateUniformBuffers(renderer, *scene.camera, exampleRayTrace);
-
-        //remember to explicitly submit the staging buffer transfers (do entire submit in this case)
-        const PaperRenderer::SynchronizationInfo transferSyncInfo = {
-            .queueType = PaperRenderer::QueueType::TRANSFER,
-        };
-        renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
 
         //ray tracing
         if(!guiContext.raster)
@@ -745,8 +739,7 @@ int main()
             };
             exampleRayTrace.rayTraceRender(rtRenderSync, rtMaterialDefinitionsBuffer);
         }
-        //raster
-        else
+        else //raster
         {
             //render pass (wait on transfer, signal rendering semaphore)
             const PaperRenderer::SynchronizationInfo rasterSyncInfo = {

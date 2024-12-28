@@ -73,23 +73,23 @@ namespace PaperRenderer
         //write data
         for(const BufferWrite& write : writes)
         {
-            if(write.data && write.size)
+            if(write.readData && write.size)
             {
-                if(vmaCopyMemoryToAllocation(renderer.getDevice().getAllocator(), write.data, allocation, write.offset, write.size) != VK_SUCCESS) return 1;
+                if(vmaCopyMemoryToAllocation(renderer.getDevice().getAllocator(), write.readData, allocation, write.offset, write.size) != VK_SUCCESS) return 1;
             }
         }
 
         return 0;
     }
 
-    int Buffer::readFromBuffer(const std::vector<BufferWrite> &reads) const
+    int Buffer::readFromBuffer(const std::vector<BufferRead> &reads) const
     {
         //read data
-        for(const BufferWrite& read : reads)
+        for(const BufferRead& read : reads)
         {
-            if(read.data && read.size)
+            if(read.writeData && read.size)
             {
-               if(vmaCopyAllocationToMemory(renderer.getDevice().getAllocator(), allocation, read.offset, read.data, read.size) != VK_SUCCESS) return 1;
+               if(vmaCopyAllocationToMemory(renderer.getDevice().getAllocator(), allocation, read.offset, read.writeData, read.size) != VK_SUCCESS) return 1;
             }
         }
 
@@ -172,7 +172,7 @@ namespace PaperRenderer
         if(buffer.isWritable() && data)
         {
             BufferWrite write = {};
-            write.data = data;
+            write.readData = data;
             write.offset = renderer.getDevice().getAlignment(stackLocation, minAlignment);
             write.size = size;
             
@@ -248,17 +248,17 @@ namespace PaperRenderer
                     std::vector<char> readData(stackLocation - (chunk.location + chunk.size));
 
                     //read data
-                    BufferWrite read = {};
+                    BufferRead read = {};
                     read.offset = chunk.location + chunk.size;
                     read.size = copySize;
-                    read.data = readData.data();
+                    read.writeData = readData.data();
                     buffer.readFromBuffer({ read });
 
                     //copy data into buffer location
                     BufferWrite write = {};
                     write.offset = chunk.location;
                     write.size = copySize;
-                    write.data = readData.data();
+                    write.readData = readData.data();
                     buffer.writeToBuffer({ write });
                 }
                 //GPU data move     //TODO TEST IF THIS STUFF ACTUALLY WORKS!!!

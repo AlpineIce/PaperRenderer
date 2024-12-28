@@ -73,7 +73,7 @@ namespace PaperRenderer
         uboInputData.objectCount = tlas.nextUpdateSize;
 
         BufferWrite write = {};
-        write.data = &uboInputData;
+        write.readData = &uboInputData;
         write.size = sizeof(UBOInputData);
         write.offset = 0;
 
@@ -531,13 +531,29 @@ namespace PaperRenderer
 
     void AccelerationStructureBuilder::destroyOldData()
     {
-        //destroy old structures and buffers
-        while(!destructionQueue.empty())
+        if(!destructionQueue.empty())
         {
-            vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), destructionQueue.front().structure, nullptr);
-            destructionQueue.front().buffer.reset();
+            //wait for AS build semaphore
+            const std::vector<VkSemaphore> toWaitSemaphores = { asBuildSemaphore };
+            const std::vector<uint64_t> toWaitSemaphoreValues = { finalSemaphoreValue };
+            VkSemaphoreWaitInfo beginWaitInfo = {
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
+                .pNext = NULL,
+                .flags = 0,
+                .semaphoreCount = (uint32_t)toWaitSemaphores.size(),
+                .pSemaphores = toWaitSemaphores.data(),
+                .pValues = toWaitSemaphoreValues.data()
+            };
+            vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, UINT64_MAX);
 
-            destructionQueue.pop();
+            //destroy old structures and buffers
+            while(!destructionQueue.empty())
+            {
+                vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), destructionQueue.front().structure, nullptr);
+                destructionQueue.front().buffer.reset();
+
+                destructionQueue.pop();
+            }
         }
     }
 

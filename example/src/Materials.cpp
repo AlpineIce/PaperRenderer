@@ -47,14 +47,6 @@ DefaultMaterialInstance::DefaultMaterialInstance(PaperRenderer::RenderEngine &re
         .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
     })
 {
-    //fill UBO data (this can change every frame too, which should be done in the bind() function, but for this example, that is unnecessary)
-    PaperRenderer::BufferWrite uboWrite = {
-        .offset = 0,
-        .size=  sizeof(MaterialParameters),
-        .data = &parameters
-    };
-
-    parametersUBO.writeToBuffer({ uboWrite });
 }
 
 DefaultMaterialInstance::~DefaultMaterialInstance()
@@ -64,6 +56,15 @@ DefaultMaterialInstance::~DefaultMaterialInstance()
 void DefaultMaterialInstance::bind(VkCommandBuffer cmdBuffer, std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> &descriptorWrites)
 {
     //additional non-default descriptor writes can be inserted into descriptorWrites here
+
+    //fill UBO data
+    PaperRenderer::BufferWrite uboWrite = {
+        .offset = 0,
+        .size=  sizeof(MaterialParameters),
+        .readData = &parameters
+    };
+
+    parametersUBO.writeToBuffer({ uboWrite });
 
     //set 2, binding 0 (example material parameters)
     descriptorWrites[2].bufferWrites.push_back({
@@ -75,6 +76,7 @@ void DefaultMaterialInstance::bind(VkCommandBuffer cmdBuffer, std::unordered_map
         .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         .binding = 0
     });
+    
     //remember to call the parent class function!
     MaterialInstance::bind(cmdBuffer, descriptorWrites);
 }

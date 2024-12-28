@@ -28,7 +28,14 @@ namespace PaperRenderer
     {
         VkDeviceSize offset;
         VkDeviceSize size;
-        void* data;
+        void const* readData; //data is read from this pointer and written into the buffer
+    };
+
+    struct BufferRead
+    {
+        VkDeviceSize offset;
+        VkDeviceSize size;
+        void* writeData; //buffer is written to this pointer from the buffer
     };
 
     //----------RESOURCE BASE CLASS DECLARATIONS----------//
@@ -63,7 +70,7 @@ namespace PaperRenderer
         Buffer(const Buffer&) = delete;
 
         int writeToBuffer(const std::vector<BufferWrite>& writes) const; //returns 0 if successful, 1 if unsuccessful (probably because not host visible)
-        int readFromBuffer(const std::vector<BufferWrite>& reads) const;
+        int readFromBuffer(const std::vector<BufferRead>& reads) const;
         void copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const;
 
         const VkBuffer& getBuffer() const { return buffer; }

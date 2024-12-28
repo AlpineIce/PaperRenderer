@@ -1,5 +1,6 @@
 #pragma once
 #include "Common.h"
+#include "Materials.h"
 
 //imgui
 #include "lib/imgui/backends/imgui_impl_vulkan.h"
@@ -17,10 +18,11 @@ struct GuiContext
     PaperRenderer::Queue* imGuiQueue = NULL;
     ImGuiIO* io = NULL;
     std::deque<GuiIrregularTimeStatistic> irregularTimeEvents;
+    DefaultMaterialInstance* adjustableMaterial = NULL;
     bool raster = true;
 };
 
-GuiContext initImGui(PaperRenderer::RenderEngine& renderer);
+GuiContext initImGui(PaperRenderer::RenderEngine& renderer, DefaultMaterialInstance& adjustableMaterial);
 
 void renderImGui(PaperRenderer::RenderEngine* renderer, PaperRenderer::Statistics const* lastFrameStatistics, GuiContext* guiContext, PaperRenderer::SynchronizationInfo syncInfo);
 

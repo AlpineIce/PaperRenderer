@@ -91,7 +91,7 @@ namespace PaperRenderer
                 BufferWrite bufferWrite = {
                     .offset = dynamicSrcOffset,
                     .size = transfer.data.size(),
-                    .data = (char*)transfer.data.data()
+                    .readData = (char const*)transfer.data.data()
                 };
 
                 //fill staging buffer           
@@ -433,12 +433,6 @@ namespace PaperRenderer
 
         //queue data transfers
         queueModelsAndInstancesTransfers();
-
-        //stage transfers for render passes
-        for(RenderPass* renderPass : renderPasses)
-        {
-            renderPass->queueInstanceTransfers();
-        }
 
         //return image acquire semaphore
         return imageAcquireSemaphore;

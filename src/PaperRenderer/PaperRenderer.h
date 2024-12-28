@@ -91,9 +91,6 @@ namespace PaperRenderer
         std::vector<Model*> renderingModels;
         std::deque<Model*> toUpdateModels; //queued model references that need to have their data in GPU buffers updated
 
-        //render passes
-        std::list<RenderPass*> renderPasses;
-
         //----------BUFFERS----------//
 
         const float instancesDataOverhead = 1.4f;

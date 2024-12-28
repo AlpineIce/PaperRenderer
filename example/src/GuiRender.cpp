@@ -2,7 +2,7 @@
 
 #include <format>
 
-GuiContext initImGui(PaperRenderer::RenderEngine& renderer)
+GuiContext initImGui(PaperRenderer::RenderEngine& renderer, DefaultMaterialInstance& adjustableMaterial)
 {
     //get imgui queue (workaround for PaperRenderer)
     PaperRenderer::Queue* imGuiQueue = *renderer.getDevice().getQueues().at(PaperRenderer::QueueType::GRAPHICS).queues.rbegin();
@@ -45,7 +45,7 @@ GuiContext initImGui(PaperRenderer::RenderEngine& renderer)
 
     ImGui_ImplVulkan_CreateFontsTexture();
 
-    return { imGuiQueue, &io };
+    return { imGuiQueue, &io, {}, &adjustableMaterial, true };
 }
 
 void renderImGui(PaperRenderer::RenderEngine* renderer, PaperRenderer::Statistics const* lastFrameStatistics, GuiContext* guiContext, PaperRenderer::SynchronizationInfo syncInfo)

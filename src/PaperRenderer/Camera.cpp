@@ -105,15 +105,9 @@ namespace PaperRenderer
         BufferWrite write = {
             .offset = 0,
             .size = sizeof(UBOData),
-            .data = &uboData
+            .readData = &uboData
         };
         ubo.writeToBuffer({ write });
-
-        //queue data transfer
-        /*std::vector<char> uboDataVec(sizeof(UBOData));
-        memcpy(uboDataVec.data(), &uboDataVec, sizeof(sizeof(UBOData)));
-        
-        renderer.getStagingBuffer().queueDataTransfers(ubo, sizeof(glm::mat4), uboDataVec);*/
     }
 
     glm::vec3 Camera::getPosition() const

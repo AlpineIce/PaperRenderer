@@ -74,7 +74,7 @@ namespace PaperRenderer
         uboInputData.doCulling = true;
 
         BufferWrite write = {};
-        write.data = &uboInputData;
+        write.readData = &uboInputData;
         write.size = sizeof(UBOInputData);
         write.offset = 0;
 
@@ -131,7 +131,6 @@ namespace PaperRenderer
         renderer(renderer),
         defaultMaterialInstance(defaultMaterialInstance)
     {
-        renderer.renderPasses.push_back(this);
     }
 
     RenderPass::~RenderPass()
@@ -143,8 +142,6 @@ namespace PaperRenderer
         {
             removeInstance(*instance);
         }
-
-        renderer.renderPasses.remove(this);
     }
 
     void RenderPass::rebuildInstancesBuffer()
@@ -549,7 +546,7 @@ namespace PaperRenderer
             const BufferWrite matricesWrite = {
                 .offset = 0,
                 .size = sortedInstancesMatricesData.size() * sizeof(ShaderOutputObject),
-                .data = sortedInstancesMatricesData.data()
+                .readData = sortedInstancesMatricesData.data()
             };
             sortedInstancesOutputBuffer->writeToBuffer({ matricesWrite });
 

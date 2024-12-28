@@ -50,7 +50,7 @@ struct BRDFInput
 //lambertian diffuse
 vec3 diffuse(vec3 N, vec3 L, vec3 baseColor)
 {
-    return (max(dot(N, L), 0.0) / PI) * baseColor;
+    return (max(dot(N, L), 0.0)) * baseColor;
 }
 
 //Trowbridge–Reitz(GGX)

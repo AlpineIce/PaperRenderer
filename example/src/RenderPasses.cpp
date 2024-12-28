@@ -179,7 +179,7 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
     PaperRenderer::BufferWrite uboDataWrite = {
         .offset = 0,
         .size = sizeof(RayTraceInfo),
-        .data = &uniformBufferData
+        .readData = &uniformBufferData
     };
     rtInfoUBO.writeToBuffer({ uboDataWrite });
 }
@@ -324,7 +324,7 @@ void ExampleRayTracing::updateUBO()
     const PaperRenderer::BufferWrite write = {
         .offset = 0,
         .size = sizeof(RayTraceInfo),
-        .data = &rtInfo
+        .readData = &rtInfo
     };
     rtInfoUBO.writeToBuffer({ write });
 }
@@ -453,8 +453,15 @@ ExampleRaster::~ExampleRaster()
 {
 }
 
-void ExampleRaster::rasterRender(const PaperRenderer::SynchronizationInfo &syncInfo)
+void ExampleRaster::rasterRender(PaperRenderer::SynchronizationInfo syncInfo)
 {
+    //transfer instance data
+    renderPass.queueInstanceTransfers();
+    PaperRenderer::SynchronizationInfo transferSyncInfo = {
+        .queueType = PaperRenderer::QueueType::TRANSFER
+    };
+    renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
+
     //pre-render barriers
     std::vector<VkImageMemoryBarrier2> preRenderImageBarriers;
     preRenderImageBarriers.push_back({ //HDR buffer undefined -> general layout; required for correct shader access
@@ -556,6 +563,7 @@ void ExampleRaster::rasterRender(const PaperRenderer::SynchronizationInfo &syncI
     };
 
     //render
+    syncInfo.timelineWaitPairs.push_back(renderer.getStagingBuffer().getTransferSemaphore());
     renderer.getDevice().getCommands().submitToQueue(syncInfo, renderPass.render(renderPassInfo));
 }
 
@@ -846,7 +854,7 @@ void BufferCopyPass::BufferCopyMaterial::bind(VkCommandBuffer cmdBuffer, const P
     //----------UBO----------//
 
     UBOInputData uboInputData = {};
-    uboInputData.exposure = 2.0f;
+    uboInputData.exposure = 1.0f;
     uboInputData.WBtemp = 0.0f;
     uboInputData.WBtint = 0.0f;
     uboInputData.contrast = 1.0f;
@@ -856,7 +864,7 @@ void BufferCopyPass::BufferCopyMaterial::bind(VkCommandBuffer cmdBuffer, const P
     uboInputData.gammaCorrection = renderer.getSwapchain().getIsUsingHDR() ? 1.0f : 2.2f;
 
     PaperRenderer::BufferWrite uboWrite;
-    uboWrite.data = &uboInputData;
+    uboWrite.readData = &uboInputData;
     uboWrite.offset = 0;
     uboWrite.size = sizeof(UBOInputData);
     uniformBuffer.writeToBuffer({ uboWrite });

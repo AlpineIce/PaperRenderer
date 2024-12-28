@@ -162,7 +162,7 @@ namespace PaperRenderer
 
 		//fill staging data
 		BufferWrite write = {};
-		write.data = data;
+		write.readData = data;
 		write.size = size;
 		write.offset = 0;
 		vboStaging.writeToBuffer({ write });
