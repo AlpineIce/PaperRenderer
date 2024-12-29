@@ -50,8 +50,6 @@ GuiContext initImGui(PaperRenderer::RenderEngine& renderer, DefaultMaterialInsta
 
 void renderImGui(PaperRenderer::RenderEngine* renderer, PaperRenderer::Statistics const* lastFrameStatistics, GuiContext* guiContext, PaperRenderer::SynchronizationInfo syncInfo)
 {
-    ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 0.5f);
-
     // Start the Dear ImGui frame
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -62,11 +60,25 @@ void renderImGui(PaperRenderer::RenderEngine* renderer, PaperRenderer::Statistic
     static float f = 0.0f;
     static int counter = 0;
 
-    //begin statistics window
+    //begin main window
     ImGui::Begin("PaperRenderer Example GUI");
 
+    //material adjustment
+    ImGui::SeparatorText("Adjust test material");
+
+    MaterialParameters materialParameters = guiContext->adjustableMaterial->getParameters();
+
+    ImGui::ColorEdit3("Base color", (float*)&materialParameters.baseColor); // Edit 3 floats representing a color
+    ImGui::ColorEdit3("Emission", (float*)&materialParameters.emission); // Edit 3 floats representing a color
+    ImGui::SliderFloat("Metallic", &materialParameters.metallic, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+    ImGui::SliderFloat("Roughness", &materialParameters.roughness, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+
+    guiContext->adjustableMaterial->setParameters(materialParameters);
+
     //render mode
-    const std::string renderModeSwitchText = std::string("Switch Render Mode to ") + std::string(!guiContext->raster ? "Raster" : "Ray Tracing");
+    ImGui::SeparatorText("Adjust Render Mode");
+
+    const std::string renderModeSwitchText = std::string("Switch to ") + std::string(!guiContext->raster ? "Raster" : "Ray Tracing");
     if(ImGui::Button(renderModeSwitchText.c_str()))
     {
         guiContext->raster = !guiContext->raster;

@@ -40,7 +40,7 @@ class DefaultMaterialInstance : public PaperRenderer::MaterialInstance
 {
 private:
     //Parameters and corresponding UBO to be used for material instances. Setting uniforms in material instances saves on expensive pipeline binding
-    const MaterialParameters parameters;
+    MaterialParameters parameters;
     PaperRenderer::Buffer parametersUBO;
 
 public:
@@ -48,6 +48,9 @@ public:
     virtual ~DefaultMaterialInstance() override;
 
     virtual void bind(VkCommandBuffer cmdBuffer, std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites>& descriptorWrites) override;
+
+    const MaterialParameters& getParameters() const { return parameters; }
+    void setParameters(const MaterialParameters& newParameters) { this->parameters = newParameters; }
 };
 
 //example leaf material

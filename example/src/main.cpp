@@ -240,7 +240,7 @@ struct LightInfo
 std::unique_ptr<PaperRenderer::Buffer> createLightInfoUniformBuffer(PaperRenderer::RenderEngine& renderer)
 {
     LightInfo uniformBufferData = {
-        .ambientLight = glm::vec4(0.1f, 0.1f, 0.1f, 1.0f),
+        .ambientLight = glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
         .pointLightCount = 4
     };
 
@@ -371,7 +371,7 @@ int main()
 
     //----------UNIFORM AND STORAGE BUFFERS----------//
 
-    //lgihting buffers
+    //lighting buffers
     std::unique_ptr<PaperRenderer::Buffer> pointLightsBuffer = createPointLightsBuffer(renderer);
     std::unique_ptr<PaperRenderer::Buffer> lightingUniformBuffer = createLightInfoUniformBuffer(renderer);
     
@@ -509,6 +509,7 @@ int main()
 
     //RT material definitions
     std::vector<DefaultRTMaterialDefinition> instanceRTMaterialDefinitions;
+    uint32_t adjustableMaterialIndex = 0; //for ImGUI
 
     //create material instances that "derive" from base material and the loaded scene data parameters
     std::unordered_map<std::string, std::unique_ptr<PaperRenderer::MaterialInstance>> materialInstances;
@@ -553,6 +554,9 @@ int main()
         //RT instance materials
         for(const std::string& matName : scene.instanceMaterials[instance.getParentModel().getModelName()])
         {
+            //for ImGUI
+            if(matName == "MetalBall") adjustableMaterialIndex = (uint32_t)instanceRTMaterialDefinitions.size();
+
             instanceRTMaterialDefinitions.push_back({
                 .albedo = glm::vec3(scene.materialInstancesData[matName].baseColor),
                 .emissive = glm::vec3(scene.materialInstancesData[matName].emission) * scene.materialInstancesData[matName].emission.w,
@@ -715,6 +719,20 @@ int main()
         //ray tracing
         if(!guiContext.raster)
         {
+            //queue transfer of GUI adjustable material data
+            DefaultRTMaterialDefinition newData = {
+                .albedo = glm::vec3(guiContext.adjustableMaterial->getParameters().baseColor),
+                .emissive = glm::vec3(guiContext.adjustableMaterial->getParameters().emission) * guiContext.adjustableMaterial->getParameters().emission.w,
+                .metallic = guiContext.adjustableMaterial->getParameters().metallic,
+                .roughness = guiContext.adjustableMaterial->getParameters().roughness,
+                .transmission = glm::vec3(0.0f),
+                .ior = 1.45f
+            };
+
+            std::vector<char> adjustableMaterialNewData(sizeof(DefaultRTMaterialDefinition));
+            memcpy(adjustableMaterialNewData.data(), &newData, sizeof(DefaultRTMaterialDefinition));
+            renderer.getStagingBuffer().queueDataTransfers(rtMaterialDefinitionsBuffer, adjustableMaterialIndex * sizeof(DefaultRTMaterialDefinition), adjustableMaterialNewData);
+
             //build queued BLAS's (wait on transfer, signal rendering semaphore
             const PaperRenderer::SynchronizationInfo blasSyncInfo = {
                 .queueType = PaperRenderer::QueueType::COMPUTE,
