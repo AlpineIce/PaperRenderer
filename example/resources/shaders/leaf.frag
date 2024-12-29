@@ -40,9 +40,10 @@ void main()
     BRDFInput brdfInput;
     brdfInput.baseColor = materialParameters.baseColor * getOcclusion(texCoord);
     brdfInput.emissive = materialParameters.emission;
+    brdfInput.ambientLight = vec4(0.2f, 0.2f, 0.2f, 1.0f);
     brdfInput.roughness = materialParameters.roughness;
     brdfInput.metallic = materialParameters.metallic;
-
+    
     //output
     color = vec4(calculatePBR(brdfInput, camPos, worldPosition, normal), 1.0);
 }

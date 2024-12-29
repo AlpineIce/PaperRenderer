@@ -33,6 +33,7 @@ void main()
     BRDFInput brdfInput;
     brdfInput.baseColor = materialParameters.baseColor;
     brdfInput.emissive = materialParameters.emission;
+    brdfInput.ambientLight = vec4(0.2f, 0.2f, 0.2f, 1.0f);
     brdfInput.roughness = materialParameters.roughness;
     brdfInput.metallic = materialParameters.metallic;
 

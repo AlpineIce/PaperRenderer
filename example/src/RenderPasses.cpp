@@ -316,7 +316,7 @@ void ExampleRayTracing::updateUBO()
         .frameNumber = renderer.getFramesRenderedCount(),
         .recursionDepth = rayRecursionDepth,
         .aoSamples = 1,
-        .aoRadius = 1.0f,
+        .aoRadius = 2.0f,
         .shadowSamples = 1,
         .reflectionSamples = 1
     };

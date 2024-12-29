@@ -4,7 +4,6 @@
 #include "hitcommon.glsl"
 #include "pbr.glsl"
 #include "leaf.glsl"
-#include "random.glsl"
 
 layout(location = 0) rayPayloadInEXT HitPayload hitPayload;
 layout(location = 1) rayPayloadEXT bool isShadowed;
@@ -120,7 +119,7 @@ void main()
 
             if(visibility > 0.0)
             {
-                totalLight += calculateLight(N, V, L, H, inputValues) * light.color * attenuate(L) * visibility;
+                totalLight += calculatePointLight(N, V, hitInfo.worldPosition, inputValues, light) * visibility;
             }
         }
     }
@@ -193,15 +192,7 @@ void main()
         ambientOcclusion = 0.0;
         for(uint i = 0; i < inputData.aoSamples; i++)
         {
-            //initialize random numbers
-            float r1 = rnd(seed);
-            float r2 = rnd(seed);
-
-            // Cosine sampling
-            float sq = sqrt(1.0 - r2);
-            float phi = 2.0 * PI * r1;
-            vec3 direction = vec3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
-            direction = direction.x * tangent + direction.y * bitangent + direction.z * N;
+            vec3 direction = cosineSample(N, tangent, bitangent, seed);
 
             const uint aoFlags = gl_RayFlagsNoneEXT; //gl_RayFlagsTerminateOnFirstHitEXT
             
@@ -233,7 +224,8 @@ void main()
         ambientOcclusion = clamp(ambientOcclusion, 0.0, 1.0);
     }
 
-    totalLight += lightInfo.ambientLight.xyz * lightInfo.ambientLight.w * ambientOcclusion;
+    //ambient
+    totalLight += lightInfo.ambientLight.xyz * lightInfo.ambientLight.w * ambientOcclusion * materialInfo.albedo;
 
     //add emission
     totalLight += materialInfo.emissive.xyz;

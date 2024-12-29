@@ -8,6 +8,7 @@ struct PointLight
     vec3 position;
     vec3 color;
     float radius;
+    float bounds;
     bool castShadow;
 };
 
@@ -39,6 +40,7 @@ struct BRDFInput
 {
     vec4 baseColor; //w holds alpha
     vec4 emissive;
+    vec4 ambientLight;
     float metallic;
     float roughness;
 };
@@ -58,10 +60,9 @@ float normalDistribution(vec3 N, vec3 H, float roughness)
 {
     const float a2 = roughness * roughness;
     const float NdotH = max(dot(N, H), 0.0);
-    const float NdotH2 = NdotH * NdotH;
 
-    const float denominator = (NdotH2 * (a2 - 1.0)) + 1.0;
-    return a2 / (PI * denominator * denominator);
+    const float denominator = ((NdotH * NdotH) * (a2 - 1.0)) + 1.0;
+    return a2 / (denominator * denominator);
 }
 
 //Schlick approximation with Spherical Gaussian approximation as exponent (from ue4 presentation from 2013)
@@ -77,9 +78,8 @@ float shlickGGX(vec3 A, vec3 B, float roughness)
 {
     const float k = ((roughness + 1.0) * (roughness + 1.0)) / 8.0;
     const float AdotB = max(dot(A, B), 0.0);
-    const float denominator = (AdotB * (1.0 - k)) + k;
 
-    return AdotB / denominator;
+    return AdotB / ((AdotB * (1.0 - k)) + k);
 }
 
 float geometricAttenuation(vec3 N, vec3 L, vec3 V, float roughness)
@@ -99,26 +99,41 @@ vec3 cookTorance(const vec3 N, const vec3 V, const vec3 L, const vec3 H, const v
     return numerator / denominator;
 }
 
-vec3 calculateLight(const vec3 N, const vec3 V, const vec3 L, const vec3 H, BRDFInput inputValues)
+//light attenuation
+float attenuate(vec3 L, float bounds)
 {
-    inputValues.roughness = max(inputValues.roughness, 0.001);
-    const vec3 F0 = mix(vec3(0.04), inputValues.baseColor.xyz, inputValues.metallic);
-    const vec3 F = fresnel(V, H, F0);
-
-    vec3 kD = vec3(1.0) - F;
-    kD *= 1.0 - inputValues.metallic;
-
-    vec3 diffuse = diffuse(N, L, inputValues.baseColor.xyz);
-    vec3 specular = cookTorance(N, V, L, H, F, inputValues.roughness);
-
-    return max((kD * diffuse) + (specular * dot(N, L) * 2.0), 0.0);
+    float distance = length(L);
+    return pow(clamp(1.0 - pow((distance / bounds), 4.0), 0.0, 1.0), 2.0) / max(((distance) * (distance)), 0.0001);
 }
 
-float attenuate(vec3 N)
+//bring it all together
+vec3 calculatePointLight(const vec3 N, const vec3 V, const vec3 worldPosition, BRDFInput inputValues, const PointLight light)
 {
-    float distance = length(N);
-    return 1.0 / max(((distance) * (distance)), 0.0001);
+    const vec3 L = normalize(light.position.xyz - worldPosition);
+    const vec3 H = normalize(V + L);
+
+    //only calculate if within its bounds
+    if(length(light.position.xyz - worldPosition) < light.bounds)
+    {
+        inputValues.roughness = max(inputValues.roughness, 0.001);
+        const vec3 F0 = mix(vec3(0.04), inputValues.baseColor.xyz, inputValues.metallic);
+        const vec3 F = fresnel(V, H, F0);
+
+        vec3 kD = vec3(1.0) - F;
+        kD *= 1.0 - inputValues.metallic;
+
+        vec3 diffuse = diffuse(N, L, inputValues.baseColor.xyz);
+        vec3 specular = cookTorance(N, V, L, H, F, inputValues.roughness);
+
+        return max((kD * diffuse) + (specular * dot(N, L) * 2.0), 0.0) * attenuate(light.position.xyz - worldPosition, light.bounds) * light.color;
+    }
+    else
+    {
+        return vec3(0.0);
+    }
 }
+
+
 
 //take inputs and output a vec4 color to be directly drawn on screen before post-processing
 vec3 calculatePBR(BRDFInput inputValues, vec3 camPos, vec3 worldPosition, vec3 normal)
@@ -131,14 +146,15 @@ vec3 calculatePBR(BRDFInput inputValues, vec3 camPos, vec3 worldPosition, vec3 n
         const PointLight light = pointLights.lights[i];
         const vec3 N = normalize(normal);
         const vec3 V = normalize(camPos - worldPosition);
-        const vec3 L = normalize(light.position.xyz - worldPosition);
-        const vec3 H = normalize(V + L);
         
-        totalLight += calculateLight(N, V, L, H, inputValues) * light.color * attenuate(L);
+        totalLight += calculatePointLight(N, V, worldPosition, inputValues, light);
     }
 
     //emission
     totalLight += inputValues.emissive.xyz * inputValues.emissive.w;
+
+    //ambient
+    totalLight += inputValues.ambientLight.xyz * inputValues.ambientLight.w * inputValues.baseColor.xyz;
 
     return totalLight;
 }

@@ -1,12 +1,17 @@
 #ifndef RAY_COMMON_GLSL
 #define RAY_COMMON_GLSL 1
 
+#extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_ray_tracing : require
 #extension GL_EXT_ray_query : require
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 #extension GL_EXT_nonuniform_qualifier : enable
+
+#include "random.glsl"
+
+#define PI 3.14159265359
 
 layout(set = 0, binding = 4) uniform InputData
 {
@@ -30,6 +35,21 @@ struct HitPayload
 
 //clear value for floats (NaN)
 const int depthClearMagicNumber = 0xFFFFFFFF;
+
+vec3 cosineSample(const vec3 N, const vec3 x, const vec3 y, inout uint seed)
+{    
+    //initialize random numbers
+    float r1 = rnd(seed);
+    float r2 = rnd(seed);
+
+    // Cosine sampling
+    float sq = sqrt(1.0 - r2);
+    float phi = 2.0 * PI * r1;
+    vec3 direction = vec3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
+    direction = direction.x * x + direction.y * y + direction.z * N;
+
+    return vec3(direction);
+}
 
 //----------FROM NVIDIA----------//
 

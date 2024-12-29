@@ -201,16 +201,17 @@ struct PointLight
     glm::vec3 position;
     glm::vec3 color;
     float radius;
+    float bounds;
     bool castShadow;
 };
 
 std::unique_ptr<PaperRenderer::Buffer> createPointLightsBuffer(PaperRenderer::RenderEngine& renderer)
 {
     std::vector<PointLight> pointLightsData = {
-        { glm::vec3(10.0f, 10.0, 5.0f),   glm::vec3(0.6f, 1.0f, 0.8f), 0.1f, true},
-        { glm::vec3(10.0f, -10.0, 5.0f),  glm::vec3(1.0f, 0.8f, 0.8f), 0.1f, true},
-        { glm::vec3(-10.0f, 10.0, 5.0f),  glm::vec3(0.6f, 0.8f, 1.0f), 0.1f, true},
-        { glm::vec3(-10.0f, -10.0, 5.0f), glm::vec3(0.8f, 1.0f, 0.6f), 0.1f, true}
+        { glm::vec3(10.0f, 10.0, 5.0f),   glm::vec3(100.0f, 100.0f, 100.0f), 0.1f, 100.0f, true},
+        { glm::vec3(10.0f, -10.0, 5.0f),  glm::vec3(100.0f, 100.0f, 100.0f), 0.1f, 100.0f, true},
+        { glm::vec3(-10.0f, 10.0, 5.0f),  glm::vec3(100.0f, 100.0f, 100.0f), 0.1f, 100.0f, true},
+        { glm::vec3(-10.0f, -10.0, 5.0f), glm::vec3(100.0f, 100.0f, 100.0f), 0.1f, 100.0f, true}
     };
 
     PaperRenderer::BufferInfo pointLightBufferInfo = {
