@@ -129,25 +129,16 @@ void main()
     vec3 reflectionValue = vec3(0.0);
     if(hitPayload.depth <= 1)
     {
-        const vec3 N = reflect(gl_WorldRayDirectionEXT, hitInfo.normal);
+        const vec3 reflectN = reflect(gl_WorldRayDirectionEXT, hitInfo.normal);
         vec3 tangent;
         vec3 bitangent;
-        ComputeDefaultBasis(N, tangent, bitangent);
+        ComputeDefaultBasis(reflectN, tangent, bitangent);
 
         for(uint i = 0; i < inputData.reflectionSamples; i++)
         {
-            //initialize random numbers
-            float r1 = rnd(seed);
-            float r2 = rnd(seed);
-
-            // Cosine sampling
-            float sq = sqrt(1.0 - r2) * max(materialInfo.roughness, 0.0001);
-            float phi = 2.0 * PI * r1;
-            vec3 direction = normalize(vec3(cos(phi) * sq, sin(phi) * sq, sqrt(r2)));
-            direction = direction.x * tangent + direction.y * bitangent + direction.z * N;
-
             //calculate ray direction
-            const vec3 rayDirection = direction;//reflect(gl_WorldRayDirectionEXT, hitInfo.normal);
+            const float maxAngle = materialInfo.roughness * (1.0 - fresnel(N, V, vec3(0.0), 5.0).x);
+            const vec3 direction = cosineSample(hitInfo.normal, tangent, bitangent, maxAngle, seed);
 
             //trace rays
             traceRayEXT(topLevelAS,         // acceleration structure
@@ -158,7 +149,7 @@ void main()
                 0,                  // missIndex
                 hitInfo.worldPosition,             // ray origin
                 0.1,                // ray min range
-                rayDirection,             // ray direction
+                direction,             // ray direction
                 1000.0,           // ray max range
                 0                   // payload (location = 0)
             );
@@ -191,7 +182,7 @@ void main()
         ambientOcclusion = 0.0;
         for(uint i = 0; i < inputData.aoSamples; i++)
         {
-            vec3 direction = cosineSample(hitInfo.normal, tangent, bitangent, seed);
+            const vec3 direction = cosineSample(hitInfo.normal, tangent, bitangent, 1.0, seed);
 
             const uint aoFlags = gl_RayFlagsNoneEXT; //gl_RayFlagsTerminateOnFirstHitEXT
             
@@ -219,8 +210,11 @@ void main()
             }
         }
 
+        //factor in roughness and metallic
+        const float ambientLightInfluence = mix(1.0, materialInfo.roughness, materialInfo.metallic);
+
         ambientOcclusion = 1.0 - (ambientOcclusion / float(inputData.aoSamples));
-        ambientOcclusion = clamp(ambientOcclusion, 0.0, 1.0);
+        ambientOcclusion = clamp(ambientOcclusion, 0.0, 1.0) * ambientLightInfluence;
     }
 
     //ambient

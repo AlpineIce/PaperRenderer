@@ -65,13 +65,14 @@ float normalDistribution(vec3 N, vec3 H, float roughness)
     return a2 / (denominator * denominator);
 }
 
-//Schlick approximation with Spherical Gaussian approximation as exponent (from ue4 presentation from 2013)
-vec3 fresnel(vec3 V, vec3 H, vec3 F0)
+//Schlick approximation (strength should be 5 for normal fresnel approximation)
+vec3 fresnel(vec3 V, vec3 H, vec3 F0, float strength)
 {
-    const float cosTheta = max(dot(V, H), 0.0);
-    const float exponent = (-5.55473 * cosTheta) - (6.98316 * cosTheta);
+    const float cosTheta = dot(V, H);
+    //const float exponent = (-5.55473 * cosTheta) - (6.98316 * cosTheta);
 
-    return F0 + ((1.0 - F0) * pow(2.0, exponent));
+    return F0 + ((1.0 - F0) * pow(1.0 - cosTheta, strength));
+    //return F0 + ((1.0 - F0) * pow(2.0, exponent));
 }
 
 float shlickGGX(vec3 A, vec3 B, float roughness)
@@ -115,9 +116,10 @@ vec3 calculatePointLight(const vec3 N, const vec3 V, const vec3 worldPosition, B
     //only calculate if within its bounds
     if(length(light.position.xyz - worldPosition) < light.bounds)
     {
-        inputValues.roughness = max(inputValues.roughness, 0.001);
+        //clamp the roughness value to either 0.001 (non-metal) or 0.0 (metal, allows for pure mirror)
+        inputValues.roughness = clamp(inputValues.roughness, mix(0.001, 0.0, inputValues.metallic), 1.0);
         const vec3 F0 = mix(vec3(0.04), inputValues.baseColor.xyz, inputValues.metallic);
-        const vec3 F = fresnel(V, H, F0);
+        const vec3 F = fresnel(V, H, F0, 5.0);
 
         vec3 kD = vec3(1.0) - F;
         kD *= 1.0 - inputValues.metallic;
@@ -131,32 +133,6 @@ vec3 calculatePointLight(const vec3 N, const vec3 V, const vec3 worldPosition, B
     {
         return vec3(0.0);
     }
-}
-
-
-
-//take inputs and output a vec4 color to be directly drawn on screen before post-processing
-vec3 calculatePBR(BRDFInput inputValues, vec3 camPos, vec3 worldPosition, vec3 normal)
-{
-    vec3 totalLight = lightInfo.ambientLight.xyz * lightInfo.ambientLight.w; //ambient light
-
-    //point lights
-    for(uint i = 0; i < lightInfo.pointLightCount; i++)
-    {
-        const PointLight light = pointLights.lights[i];
-        const vec3 N = normalize(normal);
-        const vec3 V = normalize(camPos - worldPosition);
-        
-        totalLight += calculatePointLight(N, V, worldPosition, inputValues, light);
-    }
-
-    //emission
-    totalLight += inputValues.emissive.xyz * inputValues.emissive.w;
-
-    //ambient
-    totalLight += inputValues.ambientLight.xyz * inputValues.ambientLight.w * inputValues.baseColor.xyz;
-
-    return totalLight;
 }
 
 #endif

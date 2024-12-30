@@ -36,19 +36,19 @@ struct HitPayload
 //clear value for floats (NaN)
 const int depthClearMagicNumber = 0xFFFFFFFF;
 
-vec3 cosineSample(const vec3 N, const vec3 x, const vec3 y, inout uint seed)
+vec3 cosineSample(const vec3 N, const vec3 x, const vec3 y, float maxOffset, inout uint seed)
 {    
     //initialize random numbers
     float r1 = rnd(seed);
     float r2 = rnd(seed);
 
     // Cosine sampling
-    float sq = sqrt(1.0 - r2);
+    float sq = sqrt(1.0 - r2) * clamp(maxOffset, 0.0, 1.0);
     float phi = 2.0 * PI * r1;
-    vec3 direction = vec3(cos(phi) * sq, sin(phi) * sq, sqrt(r2));
+    vec3 direction = normalize(vec3(cos(phi) * sq, sin(phi) * sq, max(sqrt(r2), 0.0001)));
     direction = direction.x * x + direction.y * y + direction.z * N;
 
-    return vec3(direction);
+    return normalize(direction);
 }
 
 //----------FROM NVIDIA----------//

@@ -36,7 +36,26 @@ void main()
     brdfInput.ambientLight = vec4(0.2f, 0.2f, 0.2f, 1.0f);
     brdfInput.roughness = materialParameters.roughness;
     brdfInput.metallic = materialParameters.metallic;
+    
+    //calculate light
+    vec3 totalLight = vec3(0.0);
 
+    //point lights
+    for(uint i = 0; i < lightInfo.pointLightCount; i++)
+    {
+        const PointLight light = pointLights.lights[i];
+        const vec3 N = normalize(normal);
+        const vec3 V = normalize(camPos - worldPosition);
+        
+        totalLight += calculatePointLight(N, V, worldPosition, brdfInput, light);
+    }
+
+    //emission
+    totalLight += brdfInput.emissive.xyz * brdfInput.emissive.w;
+
+    //ambient
+    totalLight += brdfInput.ambientLight.xyz * brdfInput.ambientLight.w * brdfInput.baseColor.xyz;
+    
     //output
-    color = vec4(calculatePBR(brdfInput, camPos, worldPosition, normal), materialParameters.baseColor.w);
+    color = vec4(totalLight, 1.0);
 }
