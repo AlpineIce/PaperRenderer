@@ -72,7 +72,7 @@ namespace PaperRenderer
             ModelInstance* instance;
             std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials;
         };
-        std::vector<SortedInstance> renderPassSortedInstances; //unordered map is probably slow but how much translucency you need?
+        std::vector<SortedInstance> renderPassSortedInstances;
 
         float instancesOverhead = 1.5f;
         std::vector<ModelInstance*> renderPassInstances; //doesn't included sorted

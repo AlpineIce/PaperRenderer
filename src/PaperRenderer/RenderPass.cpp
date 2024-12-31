@@ -685,6 +685,16 @@ namespace PaperRenderer
                         materialInstance = &defaultMaterialInstance;
                     }
 
+                    //unique geometry or not
+                    if(instance.getUniqueGeometryData().isUsed)
+                    {
+                        //sorry excuse for me being too lazy to implement unique geometry for now
+                        renderer.getLogger().recordLog({
+                            .type = WARNING,
+                            .text = "Unique VBOs aren't yet supported in raster render passes. Parent model VBO will be used"
+                        });
+                    }
+
                     //get mesh using same material
                     const LODMesh& similarMesh = instance.getParentModel().getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh;
 

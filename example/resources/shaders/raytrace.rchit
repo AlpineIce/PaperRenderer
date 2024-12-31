@@ -148,8 +148,8 @@ void main()
                 0,                  // sbtRecordStride
                 0,                  // missIndex
                 hitInfo.worldPosition,             // ray origin
-                0.1,                // ray min range
-                direction,             // ray direction
+                0.001,                // ray min range
+                OffsetRay(direction, N),             // ray direction
                 1000.0,           // ray max range
                 0                   // payload (location = 0)
             );
@@ -192,7 +192,7 @@ void main()
                 aoFlags,
                 0xFF,
                 OffsetRay(hitInfo.worldPosition, N),
-                0.001f,
+                0.001,
                 direction,
                 inputData.aoRadius
             );

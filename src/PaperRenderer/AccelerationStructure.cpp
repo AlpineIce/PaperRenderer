@@ -274,7 +274,7 @@ namespace PaperRenderer
         for(const AccelerationStructureInstanceData& instance : rtRender.getTLASInstanceData())
         {
             //get BLAS pointer
-            BLAS* blasPtr = instance.instancePtr->getUniqueBLAS() ? instance.instancePtr->getUniqueBLAS() : (BLAS*)instance.instancePtr->getParentModel().getBlasPtr();
+            BLAS const* blasPtr = instance.instancePtr->getUniqueGeometryData().blas ? instance.instancePtr->getUniqueGeometryData().blas.get() : (BLAS*)instance.instancePtr->getParentModel().getBlasPtr();
 
             //skip if instance is NULL or has invalid BLAS
             if(instance.instancePtr && blasPtr)

@@ -142,6 +142,13 @@ namespace PaperRenderer
 
     //----------MODEL INSTANCE DECLARATIONS----------//
 
+    struct InstanceUniqueGeometry
+    {
+        bool isUsed = false;
+        std::unique_ptr<Buffer> uniqueVBO = NULL;
+        std::unique_ptr<class BLAS> blas = NULL;
+    };
+
     class ModelInstance
     {
     private:
@@ -212,12 +219,7 @@ namespace PaperRenderer
         std::unordered_map<class RayTraceRender const*, RayTraceRenderPassData> rtRenderSelfReferences;
 
         //unique instance acceleration structure and VBO (only used if uniqueGeometry is set to true on instance creation)
-        struct UniqueGeometryData
-        {
-            bool isUsed = false;
-            std::unique_ptr<Buffer> uniqueVBO;
-            std::unique_ptr<class BLAS> blas;
-        } uniqueGeometryData;
+        InstanceUniqueGeometry uniqueGeometryData;
         
         ModelTransformation transform = {};
 
@@ -242,8 +244,7 @@ namespace PaperRenderer
         void setTransformation(const ModelTransformation& newTransformation);
         
         const Model& getParentModel() const { return parentModel; }
-        Buffer const* getUniqueVBO() const { return uniqueGeometryData.isUsed ? uniqueGeometryData.uniqueVBO.get() : NULL; }
-        class BLAS* getUniqueBLAS() { return uniqueGeometryData.blas ? uniqueGeometryData.blas.get() : NULL; } //Returns unique BLAS if created, else NULL
+        const InstanceUniqueGeometry& getUniqueGeometryData() const { return uniqueGeometryData; }
         const ModelTransformation& getTransformation() const { return transform; };
     };
 }

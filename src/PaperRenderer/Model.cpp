@@ -203,11 +203,11 @@ namespace PaperRenderer
 	//----------MODEL INSTANCE DEFINITIONS----------//
 
     ModelInstance::ModelInstance(RenderEngine& renderer, const Model& parentModel, bool uniqueGeometry)
-        :renderer(renderer),
+        :uniqueGeometryData({ .isUsed = uniqueGeometry }),
+		renderer(renderer),
         parentModel(parentModel)
     {
 		renderer.addObject(this);
-		uniqueGeometryData.isUsed = uniqueGeometry;
 		
 		//create unique VBO and BLAS if requested
 		if((uniqueGeometry || !parentModel.defaultBLAS) && renderer.getDevice().getRTSupport())
