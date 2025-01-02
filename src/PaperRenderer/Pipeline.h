@@ -215,7 +215,6 @@ namespace PaperRenderer
     {
     private:
         const RTPipelineProperties pipelineProperties;
-        VkDeferredOperationKHR deferredOperation = VK_NULL_HANDLE;
         RTShaderBindingTableData shaderBindingTableData = {};
         std::vector<char> sbtRawData;
         std::unique_ptr<Buffer> sbtBuffer;
@@ -236,8 +235,6 @@ namespace PaperRenderer
 
         const RTPipelineProperties& getPipelineProperties() const { return pipelineProperties; }
         const RTShaderBindingTableData& getShaderBindingTableData() const { return shaderBindingTableData; }
-
-        bool isBuilt();
     };
 
     //----------PIPELINE BUILDER DECLARATIONS----------//
@@ -245,7 +242,7 @@ namespace PaperRenderer
     class PipelineBuilder
     {
     private:
-        VkPipelineCache cache;
+        VkPipelineCache cache = VK_NULL_HANDLE;
 
         std::unordered_map<uint32_t, VkDescriptorSetLayout> createDescriptorLayouts(const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptorSets) const;
         VkPipelineLayout createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, const std::vector<VkPushConstantRange>& pcRanges) const;

@@ -338,15 +338,12 @@ namespace PaperRenderer
         pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
         pipelineCreateInfo.basePipelineIndex = -1;
 
-        vkCreateDeferredOperationKHR(renderer.getDevice().getDevice(), nullptr, &deferredOperation);
-        VkResult result = vkCreateRayTracingPipelinesKHR(renderer.getDevice().getDevice(), deferredOperation, creationInfo.cache, 1, &pipelineCreateInfo, nullptr, &pipeline);
-        if(result != VK_SUCCESS && result != VK_OPERATION_DEFERRED_KHR && result != VK_OPERATION_NOT_DEFERRED_KHR)
+        VkResult result = vkCreateRayTracingPipelinesKHR(renderer.getDevice().getDevice(), VK_NULL_HANDLE, creationInfo.cache, 1, &pipelineCreateInfo, nullptr, &pipeline);
+        if(result != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to create a ray tracing pipeline");
         }
 
-        //wait for deferred operation 
-        while(!isBuilt()) {}
 
         //get general shader SBT data
         insertGroupSBTData(sbtRawData, 0, 1); //only 1 raygen, offset is always 0
@@ -477,30 +474,6 @@ namespace PaperRenderer
         dynamicOffset += shaderBindingTableData.hitShaderBindingTable.size;
     }
 
-    bool RTPipeline::isBuilt()
-    {
-        VkResult result = vkDeferredOperationJoinKHR(renderer.getDevice().getDevice(), deferredOperation);
-        if(result == VK_SUCCESS || result == VK_THREAD_DONE_KHR)
-        {
-            VkResult result2 = vkGetDeferredOperationResultKHR(renderer.getDevice().getDevice(), deferredOperation);
-            if(result2 != VK_SUCCESS)
-            {
-                throw std::runtime_error("Failed to create a ray tracing pipeline");
-            }
-            vkDestroyDeferredOperationKHR(renderer.getDevice().getDevice(), deferredOperation, nullptr);
-
-            return true;
-        }
-        else if(result == VK_THREAD_IDLE_KHR)
-        {
-            return false;
-        }
-        else //VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY
-        {
-            throw std::runtime_error("Failed to create a ray tracing pipeline (likely out of vram)");
-        }
-    }
-
     //----------PIPELINE BUILDER DEFINITIONS----------//
 
     PipelineBuilder::PipelineBuilder(RenderEngine& renderer)
@@ -512,7 +485,7 @@ namespace PaperRenderer
         creationInfo.flags = 0;
         creationInfo.initialDataSize = 0;
         creationInfo.pInitialData = NULL;
-        vkCreatePipelineCache(renderer.getDevice().getDevice(), &creationInfo, nullptr, &cache);
+        //vkCreatePipelineCache(renderer.getDevice().getDevice(), &creationInfo, nullptr, &cache); //use driver cache instead of this cache
 
         //log constructor
         renderer.getLogger().recordLog({
@@ -523,7 +496,7 @@ namespace PaperRenderer
 
     PipelineBuilder::~PipelineBuilder()
     {
-        vkDestroyPipelineCache(renderer.getDevice().getDevice(), cache, nullptr);
+        if(cache) vkDestroyPipelineCache(renderer.getDevice().getDevice(), cache, nullptr);
 
         //log destructor
         renderer.getLogger().recordLog({
