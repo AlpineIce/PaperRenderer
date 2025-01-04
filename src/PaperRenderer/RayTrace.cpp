@@ -85,7 +85,7 @@ namespace PaperRenderer
                 &pipeline->getShaderBindingTableData().callableShaderBindingTable,
                 rtRenderInfo.image.getExtent().width,
                 rtRenderInfo.image.getExtent().height,
-                1
+                rtRenderInfo.image.getExtent().depth
             );
         }
 
