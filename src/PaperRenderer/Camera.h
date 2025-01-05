@@ -88,18 +88,19 @@ namespace PaperRenderer
 
     //----------CAMERA CLASS----------//
 
+    struct CameraUBOData
+    {
+        glm::mat4 projection;
+        glm::mat4 view;
+    };
+
     class Camera
     {
     private:
         CameraInfo cameraInfo;
         glm::mat4 view = glm::mat4(1.0f);
         glm::mat4 projection = glm::mat4(1.0f);
-
-        struct UBOData
-        {
-            glm::mat4 projection;
-            glm::mat4 view;
-        };
+        
         Buffer ubo;
 
         class RenderEngine& renderer;

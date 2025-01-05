@@ -51,7 +51,7 @@ private:
         float aoRadius;
         uint32_t shadowSamples;
         uint32_t reflectionSamples;
-        
+        float padding[6];
     };
     PaperRenderer::Buffer rtInfoUBO;
     

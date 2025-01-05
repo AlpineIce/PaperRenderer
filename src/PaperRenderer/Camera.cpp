@@ -8,7 +8,7 @@ namespace PaperRenderer
     Camera::Camera(RenderEngine& renderer, const CameraInfo& cameraInfo)
         :cameraInfo(cameraInfo),
         ubo(renderer, {
-            .size = sizeof(UBOData) * 2,
+            .size = sizeof(CameraUBOData) * 2,
             .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR,
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
         }),
@@ -97,14 +97,14 @@ namespace PaperRenderer
 
     void Camera::updateUBO()
     {
-        UBOData uboData = {
+        CameraUBOData uboData = {
             .projection = projection,
             .view = view
         };
 
         BufferWrite write = {
-            .offset = 0,
-            .size = sizeof(UBOData),
+            .offset = sizeof(CameraUBOData) * renderer.getBufferIndex(),
+            .size = sizeof(CameraUBOData),
             .readData = &uboData
         };
         ubo.writeToBuffer({ write });

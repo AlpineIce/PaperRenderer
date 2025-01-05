@@ -32,6 +32,7 @@ namespace PaperRenderer
             VkDeviceAddress modelDataPtr = 0;
             uint32_t objectCount = 0;
             bool doCulling = true;
+            float padding[6] = {};
         };
 
         void submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera);

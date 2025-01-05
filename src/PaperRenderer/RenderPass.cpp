@@ -76,14 +76,14 @@ namespace PaperRenderer
         BufferWrite write = {};
         write.readData = &uboInputData;
         write.size = sizeof(UBOInputData);
-        write.offset = 0;
+        write.offset = sizeof(UBOInputData) * renderer.getBufferIndex();
 
         renderPass.preprocessUniformBuffer.writeToBuffer({ write });
 
         //set0 - binding 0: UBO input data
         VkDescriptorBufferInfo bufferWrite0Info = {};
         bufferWrite0Info.buffer = renderPass.preprocessUniformBuffer.getBuffer();
-        bufferWrite0Info.offset = 0;
+        bufferWrite0Info.offset = sizeof(UBOInputData) * renderer.getBufferIndex();
         bufferWrite0Info.range = sizeof(UBOInputData);
 
         BuffersDescriptorWrites bufferWrite0 = {};
@@ -124,8 +124,8 @@ namespace PaperRenderer
 
     RenderPass::RenderPass(RenderEngine& renderer, MaterialInstance& defaultMaterialInstance)
         :preprocessUniformBuffer(renderer, {
-            .size = sizeof(RasterPreprocessPipeline::UBOInputData),
-            .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT,
+            .size = sizeof(RasterPreprocessPipeline::UBOInputData) * 2,
+            .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
         }),
         renderer(renderer),

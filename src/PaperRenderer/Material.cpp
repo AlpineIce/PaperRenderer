@@ -53,8 +53,8 @@ namespace PaperRenderer
             descriptorWrites[0].bufferWrites.push_back({
                 .infos = { {
                     .buffer = camera.getCameraUBO().getBuffer(),
-                    .offset = 0,
-                    .range = VK_WHOLE_SIZE
+                    .offset = renderer.getBufferIndex() * sizeof(CameraUBOData),
+                    .range = sizeof(CameraUBOData)
                 } },
                 .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .binding = 0

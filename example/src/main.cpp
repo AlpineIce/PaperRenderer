@@ -683,12 +683,16 @@ int main()
     //----------RENDER LOOP----------//
 
     //synchronization
+    uint64_t lastSemaphoreValue = 0;
     uint64_t finalSemaphoreValue = 0;
     VkSemaphore renderingSemaphore = renderer.getDevice().getCommands().getTimelineSemaphore(finalSemaphoreValue);
     VkSemaphore presentationSemaphore = renderer.getDevice().getCommands().getSemaphore();
 
     while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
     {
+        //set last final semaphore value
+        lastSemaphoreValue = finalSemaphoreValue;
+
         //get last frame statistics (create copy since it WILL be cleared after renderer.beginFrame())
         PaperRenderer::Statistics lastFrameStatistics = renderer.getStatisticsTracker().getStatistics();
 
@@ -701,9 +705,12 @@ int main()
         };
         renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
 
-        //wait for last frame to finish rendering
+        //update uniform buffers
+        updateUniformBuffers(renderer, *scene.camera, exampleRayTrace);
+
+        //wait for last frame to finish rendering (last semaphore value)
         const std::vector<VkSemaphore> toWaitSemaphores = { renderingSemaphore };
-        const std::vector<uint64_t> toWaitSemaphoreValues = { finalSemaphoreValue };
+        const std::vector<uint64_t> toWaitSemaphoreValues = { lastSemaphoreValue };
         VkSemaphoreWaitInfo beginWaitInfo = {
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
             .pNext = NULL,
@@ -713,9 +720,6 @@ int main()
             .pValues = toWaitSemaphoreValues.data()
         };
         vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, UINT64_MAX);
-        
-        //update uniform buffers
-        updateUniformBuffers(renderer, *scene.camera, exampleRayTrace);
 
         //ray tracing
         if(!guiContext.raster)

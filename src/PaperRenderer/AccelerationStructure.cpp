@@ -69,20 +69,21 @@ namespace PaperRenderer
 
     void TLASInstanceBuildPipeline::submit(VkCommandBuffer cmdBuffer, const TLAS& tlas)
     {
+        //update UBO
         UBOInputData uboInputData = {};
         uboInputData.objectCount = tlas.nextUpdateSize;
 
         BufferWrite write = {};
         write.readData = &uboInputData;
         write.size = sizeof(UBOInputData);
-        write.offset = 0;
+        write.offset = sizeof(UBOInputData) * renderer.getBufferIndex();
 
         tlas.preprocessUniformBuffer.writeToBuffer({ write });
 
         //set0 - binding 0: UBO input data
         VkDescriptorBufferInfo bufferWrite0Info = {};
         bufferWrite0Info.buffer = tlas.preprocessUniformBuffer.getBuffer();
-        bufferWrite0Info.offset = 0;
+        bufferWrite0Info.offset = sizeof(UBOInputData) * renderer.getBufferIndex();
         bufferWrite0Info.range = sizeof(UBOInputData);
 
         BuffersDescriptorWrites bufferWrite0 = {};
@@ -165,8 +166,8 @@ namespace PaperRenderer
     TLAS::TLAS(RenderEngine& renderer)
         :AS(renderer),
         preprocessUniformBuffer(renderer, {
-            .size = sizeof(TLASInstanceBuildPipeline::UBOInputData),
-            .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT,
+            .size = sizeof(TLASInstanceBuildPipeline::UBOInputData) * 2,
+            .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
         })
     {

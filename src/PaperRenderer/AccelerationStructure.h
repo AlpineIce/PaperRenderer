@@ -22,6 +22,7 @@ namespace PaperRenderer
         struct UBOInputData
         {
             uint32_t objectCount;
+            float padding[15];
         };
 
         void submit(VkCommandBuffer cmdBuffer, const TLAS& tlas);

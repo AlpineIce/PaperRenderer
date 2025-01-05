@@ -102,8 +102,8 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
     }),
     rayRecursionDepth(renderer.getDevice().getRTproperties().maxRayRecursionDepth),
     rtInfoUBO(renderer, {
-        .size = sizeof(RayTraceInfo),
-        .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT,
+        .size = sizeof(RayTraceInfo) * 2,
+        .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
         .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
     }),
     rtRenderPass(
@@ -169,19 +169,6 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
     lightBuffer(lightBuffer),
     lightInfoUBO(lightInfoUBO)
 {
-    //write to RT UBO
-    RayTraceInfo uniformBufferData = {
-        .projection = camera.getProjection(),
-        .view = camera.getViewMatrix(),
-        .modelDataReference = renderer.getModelDataBuffer().getBufferDeviceAddress(),
-        .frameNumber = 0
-    };
-    PaperRenderer::BufferWrite uboDataWrite = {
-        .offset = 0,
-        .size = sizeof(RayTraceInfo),
-        .readData = &uniformBufferData
-    };
-    rtInfoUBO.writeToBuffer({ uboDataWrite });
 }
 
 ExampleRayTracing::~ExampleRayTracing()
@@ -249,8 +236,8 @@ void ExampleRayTracing::rayTraceRender(const PaperRenderer::SynchronizationInfo 
             {
                 .infos = {{
                     .buffer = rtInfoUBO.getBuffer(),
-                    .offset = 0,
-                    .range = VK_WHOLE_SIZE
+                    .offset = sizeof(RayTraceInfo) * renderer.getBufferIndex(),
+                    .range = sizeof(RayTraceInfo)
                 }},
                 .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .binding = 4
@@ -322,7 +309,7 @@ void ExampleRayTracing::updateUBO()
     };
     
     const PaperRenderer::BufferWrite write = {
-        .offset = 0,
+        .offset = sizeof(RayTraceInfo) * renderer.getBufferIndex(),
         .size = sizeof(RayTraceInfo),
         .readData = &rtInfo
     };
