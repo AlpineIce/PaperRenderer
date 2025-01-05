@@ -180,6 +180,9 @@ namespace PaperRenderer
 
     void TLAS::verifyInstancesBuffer(const uint32_t instanceCount)
     {
+        //clear destruction queue
+        destructionQueue[renderer.getBufferIndex()].clear();
+
         //instances
         const VkDeviceSize newInstancesSize = Device::getAlignment(
             std::max((VkDeviceSize)(instanceCount * sizeof(ModelInstance::AccelerationStructureInstance) * instancesOverhead),
@@ -214,20 +217,22 @@ namespace PaperRenderer
             tlInstancesOffset = newInstancesSize + newInstanceDescriptionsSize;
 
             //buffer
-            BufferInfo instancesBufferInfo = {};
-            instancesBufferInfo.allocationFlags = 0;
-            instancesBufferInfo.size = totalBufferSize;
-            instancesBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-                VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+            const BufferInfo instancesBufferInfo = {
+                .size = totalBufferSize,
+                .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+                    VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+                .allocationFlags = 0
+            };
             std::unique_ptr<Buffer> newInstancesBuffer = std::make_unique<Buffer>(renderer, instancesBufferInfo);
 
             //copy old data into new if old existed
             if(instancesBuffer)
             {
-                VkBufferCopy instancesCopyRegion = {};
-                instancesCopyRegion.srcOffset = 0;
-                instancesCopyRegion.dstOffset = 0;
-                instancesCopyRegion.size = instancesBuffer->getSize();
+                const VkBufferCopy instancesCopyRegion = {
+                    .srcOffset = 0,
+                    .dstOffset = 0,
+                    .size = instancesBuffer->getSize()
+                };
 
                 SynchronizationInfo syncInfo = {};
                 syncInfo.queueType = TRANSFER;
@@ -252,6 +257,9 @@ namespace PaperRenderer
 
                 vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
                 vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
+
+                //move old buffer to destruction queue
+                destructionQueue[renderer.getBufferIndex()].emplace_front(std::move(instancesBuffer));
             }
             
             //replace old buffers
@@ -343,7 +351,7 @@ namespace PaperRenderer
         });
     }
 
-    AccelerationStructureBuilder::AsBuildData AccelerationStructureBuilder::getAsData(const AccelerationStructureOp& op) const
+    AccelerationStructureBuilder::AsBuildData AccelerationStructureBuilder::getAsData(const AccelerationStructureOp& op)
     {
         AsBuildData returnData = {
             .as = op.accelerationStructure,
@@ -426,7 +434,7 @@ namespace PaperRenderer
         }
         else
         {
-            throw std::runtime_error("Ambiguous acceleration structure type tried to be built. Please specify build type");
+            return returnData;
         }
 
         //build information
@@ -454,17 +462,18 @@ namespace PaperRenderer
         //destroy buffer if compaction is requested since final size will be unknown
         if(returnData.compact)
         {
-            op.accelerationStructure.asBuffer.reset();
+            if(op.accelerationStructure.asBuffer) bufferDestructionQueue[renderer.getBufferIndex()].emplace_front(std::move(op.accelerationStructure.asBuffer));
         }
         //otherwise update buffer if needed
         else if(!op.accelerationStructure.asBuffer || op.accelerationStructure.asBuffer->getSize() < returnData.buildSizeInfo.accelerationStructureSize)
         {
-            op.accelerationStructure.asBuffer.reset();
+            if(op.accelerationStructure.asBuffer) bufferDestructionQueue[renderer.getBufferIndex()].emplace_front(std::move(op.accelerationStructure.asBuffer));
 
-            BufferInfo bufferInfo = {};
-            bufferInfo.allocationFlags = 0;
-            bufferInfo.size = returnData.buildSizeInfo.accelerationStructureSize;
-            bufferInfo.usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
+            const BufferInfo bufferInfo = {
+                .size = returnData.buildSizeInfo.accelerationStructureSize,
+                .usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
+                .allocationFlags = 0
+            };
             op.accelerationStructure.asBuffer = std::make_unique<Buffer>(renderer, bufferInfo);
         }
 
@@ -532,7 +541,8 @@ namespace PaperRenderer
 
     void AccelerationStructureBuilder::destroyOldData()
     {
-        if(!destructionQueue.empty())
+        //destroy old acceleration structures
+        if(!asDestructionQueue.empty())
         {
             //wait for AS build semaphore
             const std::vector<VkSemaphore> toWaitSemaphores = { asBuildSemaphore };
@@ -548,14 +558,17 @@ namespace PaperRenderer
             vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, UINT64_MAX);
 
             //destroy old structures and buffers
-            while(!destructionQueue.empty())
+            while(!asDestructionQueue.empty())
             {
-                vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), destructionQueue.front().structure, nullptr);
-                destructionQueue.front().buffer.reset();
+                vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), asDestructionQueue.front().structure, nullptr);
+                asDestructionQueue.front().buffer.reset();
 
-                destructionQueue.pop();
+                asDestructionQueue.pop_front();
             }
         }
+
+        //destroy old buffers
+        bufferDestructionQueue[renderer.getBufferIndex()].clear();
     }
 
     void AccelerationStructureBuilder::submitQueuedOps(const SynchronizationInfo& syncInfo, VkAccelerationStructureTypeKHR type)
@@ -569,7 +582,8 @@ namespace PaperRenderer
         const VkDeviceSize requiredScratchSize = getScratchSize(buildData.blasDatas, buildData.tlasDatas);
         if(!scratchBuffer || scratchBuffer->getSize() < requiredScratchSize)
         {
-            scratchBuffer.reset();
+            //move old to destruction queue
+            if(scratchBuffer) bufferDestructionQueue[renderer.getBufferIndex()].emplace_front(std::move(scratchBuffer));
 
             const BufferInfo bufferInfo = {
                 .size = requiredScratchSize,
@@ -690,11 +704,11 @@ namespace PaperRenderer
                 VkBuffer buffer = VK_NULL_HANDLE;
                 if(data.compact)
                 { 
-                    BufferInfo tempBufferInfo = {};
-                    tempBufferInfo.allocationFlags = 0;
-                    tempBufferInfo.size = data.buildSizeInfo.accelerationStructureSize;
-                    tempBufferInfo.usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
-                    
+                    const BufferInfo tempBufferInfo = {
+                        .size = data.buildSizeInfo.accelerationStructureSize,
+                        .usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
+                        .allocationFlags = 0
+                    };
                     preCompactBuffers.emplace(std::make_unique<Buffer>(renderer, tempBufferInfo), data.as);
                     buffer = preCompactBuffers.back().tempBuffer->getBuffer();
                 }
@@ -833,10 +847,11 @@ namespace PaperRenderer
                 const VkDeviceSize& newSize = compactionResults.at(index);
 
                 //create new buffer
-                BufferInfo bufferInfo = {};
-                bufferInfo.allocationFlags = 0;
-                bufferInfo.size = newSize;
-                bufferInfo.usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
+                const BufferInfo bufferInfo = {
+                    .size = newSize,
+                    .usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
+                    .allocationFlags = 0
+                };
                 std::unique_ptr<Buffer> newBuffer = std::make_unique<Buffer>(renderer, bufferInfo);
 
                 //create new acceleration structure
@@ -865,7 +880,7 @@ namespace PaperRenderer
                 vkCmdCopyAccelerationStructureKHR(cmdBuffer, &copyInfo);
 
                 //queue destruction of old
-                destructionQueue.push({oldStructure, std::move(tempBuffer.tempBuffer)});
+                asDestructionQueue.push_front({oldStructure, std::move(tempBuffer.tempBuffer)});
 
                 //set new buffer
                 tempBuffer.as.asBuffer = std::move(newBuffer);

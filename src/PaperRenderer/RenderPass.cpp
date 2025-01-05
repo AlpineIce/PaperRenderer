@@ -152,19 +152,21 @@ namespace PaperRenderer
         //create new instance buffer
         VkDeviceSize newInstancesBufferSize = std::max((VkDeviceSize)(renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance) * instancesOverhead), (VkDeviceSize)(sizeof(ModelInstance::RenderPassInstance) * 64));
 
-        BufferInfo instancesBufferInfo = {};
-        instancesBufferInfo.allocationFlags = 0;
-        instancesBufferInfo.size = newInstancesBufferSize;
-        instancesBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
+        const BufferInfo instancesBufferInfo = {
+            .size = newInstancesBufferSize,
+            .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR,
+            .allocationFlags = 0
+        };
         std::unique_ptr<Buffer> newInstancesBuffer = std::make_unique<Buffer>(renderer, instancesBufferInfo);
 
         //copy old data into new if old existed
         if(instancesBuffer)
         {
-            VkBufferCopy instancesCopyRegion = {};
-            instancesCopyRegion.srcOffset = 0;
-            instancesCopyRegion.dstOffset = 0;
-            instancesCopyRegion.size = std::min(renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance), instancesBuffer->getSize());
+            const VkBufferCopy instancesCopyRegion = {
+                .srcOffset = 0,
+                .dstOffset = 0,
+                .size = std::min(renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance), instancesBuffer->getSize())
+            };
 
             if(instancesCopyRegion.size)
             {
@@ -175,6 +177,9 @@ namespace PaperRenderer
                 vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
                 vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
             }
+
+            //move old buffer to destruction queue
+            destructionQueue[renderer.getBufferIndex()].emplace_front(std::move(instancesBuffer));
         }
 
         //replace old buffer
@@ -197,6 +202,9 @@ namespace PaperRenderer
         };
         std::unique_ptr<Buffer> newSortedInstancesBuffer = std::make_unique<Buffer>(renderer, sortedInstancesBufferInfo);
 
+        //add old to destruction queue if exists
+        if(sortedInstancesOutputBuffer) destructionQueue[renderer.getBufferIndex()].emplace_front(std::move(sortedInstancesOutputBuffer));
+
         //replace old buffer
         sortedInstancesOutputBuffer = std::move(newSortedInstancesBuffer);
     }
@@ -216,10 +224,11 @@ namespace PaperRenderer
             newMaterialDataWriteSize = instancesDataBuffer->getStackLocation();
         }
 
-        BufferInfo instancesMaterialDataBufferInfo = {};
-        instancesMaterialDataBufferInfo.allocationFlags = 0;
-        instancesMaterialDataBufferInfo.size = newMaterialDataBufferSize * instancesOverhead;
-        instancesMaterialDataBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
+        const BufferInfo instancesMaterialDataBufferInfo = {
+            .size = (VkDeviceSize)((float)newMaterialDataBufferSize * instancesOverhead),
+            .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
+            .allocationFlags = 0
+        };
         std::unique_ptr<FragmentableBuffer> newInstancesDataBuffer = std::make_unique<FragmentableBuffer>(renderer, instancesMaterialDataBufferInfo);
         newInstancesDataBuffer->setCompactionCallback([this](std::vector<CompactionResult> results){ handleMaterialDataCompaction(results); });
 
@@ -241,6 +250,9 @@ namespace PaperRenderer
 
             vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
             vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
+
+            //move old buffer to destruction queue
+            destructionQueue[renderer.getBufferIndex()].emplace_front(std::move(instancesDataBuffer));
         }
         
         //replace old buffer
@@ -261,6 +273,9 @@ namespace PaperRenderer
                 toUpdateInstances.insert(toUpdateInstances.end(), meshGroupUpdatedInstances.begin(), meshGroupUpdatedInstances.end());
             }
         }
+
+        //clear old buffer data
+        destructionQueue[renderer.getBufferIndex()].clear();
 
         //verify buffers
         if(!instancesBuffer || instancesBuffer->getSize() / sizeof(ModelInstance::RenderPassInstance) < renderPassInstances.size())

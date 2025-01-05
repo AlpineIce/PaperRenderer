@@ -7,6 +7,8 @@
 #include "Material.h"
 #include "Model.h"
 
+#include <variant>
+
 namespace PaperRenderer
 {
     //----------PREPROCESS COMPUTE PIPELINE----------//
@@ -84,6 +86,7 @@ namespace PaperRenderer
         std::unique_ptr<Buffer> instancesBuffer;
         std::unique_ptr<Buffer> sortedInstancesOutputBuffer;
         std::unique_ptr<FragmentableBuffer> instancesDataBuffer;
+        std::array<std::deque<std::variant<std::unique_ptr<Buffer>, std::unique_ptr<FragmentableBuffer>>>, 2> destructionQueue; //old buffers need to be destroyed on their corresponding frame and not immediately
 
         void rebuildInstancesBuffer();
         void rebuildSortedInstancesBuffer();

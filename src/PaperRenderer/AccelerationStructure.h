@@ -1,8 +1,6 @@
 #pragma once
 #include "ComputeShader.h"
 
-#include <queue>
-
 namespace PaperRenderer
 {
     //----------TLAS INSTANCE BUILD PIPELINE DECLARATIONS----------//
@@ -75,9 +73,12 @@ namespace PaperRenderer
     class TLAS : public AS
     {
     private:
+        //buffers
         Buffer preprocessUniformBuffer;
         std::unique_ptr<Buffer> instancesBuffer;
+        std::array<std::deque<std::unique_ptr<Buffer>>, 2> destructionQueue; //old buffers need to be destroyed on their corresponding frame and not immediately
 
+        //instances data offsets/sizes
         VkDeviceSize instanceDescriptionsOffset = 0;
         VkDeviceSize tlInstancesOffset = 0;
         uint32_t nextUpdateSize = 0;
@@ -140,7 +141,7 @@ namespace PaperRenderer
             VkAccelerationStructureTypeKHR type = VK_ACCELERATION_STRUCTURE_TYPE_MAX_ENUM_KHR;
             bool compact = false;
         };
-        AsBuildData getAsData(const AccelerationStructureOp& op) const;
+        AsBuildData getAsData(const AccelerationStructureOp& op);
 
         //all build data
         struct BuildData
@@ -157,13 +158,14 @@ namespace PaperRenderer
         //set build data (happens on submission)
         void setBuildData();
         
-        //for keeping structures to derrive compaction from in scope
+        //for keeping structures to derrive compaction from and buffers in scope
         struct OldStructureData
         {
             VkAccelerationStructureKHR structure;
             std::unique_ptr<Buffer> buffer;
         };
-        std::queue<OldStructureData> destructionQueue;
+        std::deque<OldStructureData> asDestructionQueue;
+        std::array<std::deque<std::unique_ptr<Buffer>>, 2> bufferDestructionQueue;
 
         class RenderEngine& renderer;
     public:
