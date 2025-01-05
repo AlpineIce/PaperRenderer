@@ -72,10 +72,8 @@ namespace PaperRenderer
 			LODs.push_back(returnLOD);
 		}
 		
-		vbo = createDeviceLocalBuffer(creationVerticesData.size(), creationVerticesData.data(), 
-			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
-		ibo = createDeviceLocalBuffer(sizeof(uint32_t) * creationIndices.size(), creationIndices.data(), 
-			VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
+		vbo = createDeviceLocalBuffer(creationVerticesData.size(), creationVerticesData.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+		ibo = createDeviceLocalBuffer(sizeof(uint32_t) * creationIndices.size(), creationIndices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
 
 		//set shader data and add to renderer
 		setShaderData();
@@ -157,7 +155,7 @@ namespace PaperRenderer
 		BufferInfo stagingBufferInfo = {};
 		stagingBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 		stagingBufferInfo.size = size;
-		stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+		stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT;
 		Buffer vboStaging(renderer, stagingBufferInfo);
 
 		//fill staging data
@@ -171,7 +169,8 @@ namespace PaperRenderer
 		BufferInfo bufferInfo = {};
 		bufferInfo.allocationFlags = 0;
 		bufferInfo.size = size;
-		bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | usageFlags;
+		bufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT | usageFlags;
+		if(renderer.getDevice().getRTSupport()) bufferInfo.usageFlags = bufferInfo.usageFlags | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
 		std::unique_ptr<Buffer> buffer = std::make_unique<Buffer>(renderer, bufferInfo);
 
 		//copy

@@ -97,7 +97,7 @@ namespace PaperRenderer
                 .type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
                 .descriptorCount = descriptorCount
             },
-            {
+            { //IMPORTANT THAT THIS IS LAST
                 .type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
                 .descriptorCount = descriptorCount
             }
@@ -108,7 +108,7 @@ namespace PaperRenderer
         poolInfo.pNext = NULL;
         poolInfo.flags = 0;
         poolInfo.maxSets = descriptorCount;
-        poolInfo.poolSizeCount = poolSizes.size();
+        poolInfo.poolSizeCount = renderer.getDevice().getRTSupport() ? poolSizes.size() : poolSizes.size() - 1;
         poolInfo.pPoolSizes = poolSizes.data();
 
         VkDescriptorPool returnPool;

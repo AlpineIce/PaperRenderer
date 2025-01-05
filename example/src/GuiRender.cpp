@@ -76,14 +76,17 @@ void renderImGui(PaperRenderer::RenderEngine* renderer, PaperRenderer::Statistic
     guiContext->adjustableMaterial->setParameters(materialParameters);
 
     //render mode
-    ImGui::SeparatorText("Adjust Render Mode");
-
-    const std::string renderModeSwitchText = std::string("Switch to ") + std::string(!guiContext->raster ? "Raster" : "Ray Tracing");
-    if(ImGui::Button(renderModeSwitchText.c_str()))
+    if(renderer->getDevice().getRTSupport())
     {
-        guiContext->raster = !guiContext->raster;
-    }
+        ImGui::SeparatorText("Adjust Render Mode");
 
+        const std::string renderModeSwitchText = std::string("Switch to ") + std::string(!guiContext->raster ? "Raster" : "Ray Tracing");
+        if(ImGui::Button(renderModeSwitchText.c_str()))
+        {
+            guiContext->raster = !guiContext->raster;
+        }
+    }
+    
     //list last frame statistics
     ImGui::SeparatorText("Last Frame CPU Statistics");
     for(const PaperRenderer::TimeStatistic& time : lastFrameStatistics->timeStatistics)
