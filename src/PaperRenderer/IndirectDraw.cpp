@@ -19,7 +19,11 @@ namespace PaperRenderer
 
     std::vector<ModelInstance*> CommonMeshGroup::verifyBufferSize()
     {
-        std::vector<ModelInstance *> returnInstances;
+        //clear destruction queue
+        destructionQueue[renderer.getBufferIndex()].clear();
+
+        //verify
+        std::vector<ModelInstance*> returnInstances;
         if(rebuild)
         {
             returnInstances = rebuildBuffer();
@@ -37,18 +41,24 @@ namespace PaperRenderer
         //get new size
         BufferSizeRequirements bufferSizeRequirements = getBuffersRequirements();
 
+        //move old buffers to destruction queue
+        if(modelMatricesBuffer) destructionQueue[renderer.getBufferIndex()].push_front(std::move(modelMatricesBuffer));
+        if(drawCommandsBuffer) destructionQueue[renderer.getBufferIndex()].push_front(std::move(drawCommandsBuffer));
+
         //rebuild buffers
-        BufferInfo matricesBufferInfo = {};
-        matricesBufferInfo.allocationFlags = 0;
-        matricesBufferInfo.size = bufferSizeRequirements.matricesCount * sizeof(ShaderOutputObject);
-        matricesBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
+        const BufferInfo matricesBufferInfo = {
+            .size = bufferSizeRequirements.matricesCount * sizeof(ShaderOutputObject),
+            .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
+            .allocationFlags = 0
+        };
         modelMatricesBuffer = std::make_unique<Buffer>(renderer, matricesBufferInfo);
 
-        BufferInfo drawCommandsBufferInfo = {};
-        drawCommandsBufferInfo.allocationFlags = 0;
-        drawCommandsBufferInfo.size = bufferSizeRequirements.drawCommandCount * sizeof(DrawCommand);
-        drawCommandsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | 
-            VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
+        const BufferInfo drawCommandsBufferInfo = {
+            .size = bufferSizeRequirements.drawCommandCount * sizeof(DrawCommand),
+            .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | 
+                VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR,
+            .allocationFlags = 0
+        };
         drawCommandsBuffer = std::make_unique<Buffer>(renderer, drawCommandsBufferInfo);
 
         //queue transfer of draw command data
@@ -210,7 +220,34 @@ namespace PaperRenderer
         uint32_t drawCountDefaultValue = 0;
         for(const auto& [mesh, meshData] : meshesData)
         {
-            uint32_t instanceCountLocation = (sizeof(DrawCommand) * meshData.drawCommandIndex) + offsetof(VkDrawIndexedIndirectCommand, instanceCount);
+            //location
+            const uint32_t instanceCountLocation = (sizeof(DrawCommand) * meshData.drawCommandIndex) + offsetof(VkDrawIndexedIndirectCommand, instanceCount);
+            
+            //pre-transfer memory barrier
+            const VkBufferMemoryBarrier2 preMemBarrier = {
+                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                .pNext = NULL,
+                .srcStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
+                .srcAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .buffer = drawCommandsBuffer->getBuffer(),
+                .offset = instanceCountLocation,
+                .size = sizeof(VkDrawIndexedIndirectCommand::instanceCount)
+            };
+
+            const VkDependencyInfo preDependency = {
+                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                .pNext = NULL,
+                .bufferMemoryBarrierCount = 1,
+                .pBufferMemoryBarriers = &preMemBarrier
+            };
+
+            vkCmdPipelineBarrier2(cmdBuffer, &preDependency);
+
+            //zero out instance count
             vkCmdFillBuffer(
                 cmdBuffer,
                 drawCommandsBuffer->getBuffer(),
@@ -219,8 +256,8 @@ namespace PaperRenderer
                 drawCountDefaultValue
             );
 
-            //memory barrier
-            VkBufferMemoryBarrier2 memBarrier = {
+            //post memory barrier
+            const VkBufferMemoryBarrier2 postMemBarrier = {
                 .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
                 .pNext = NULL,
                 .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
@@ -234,13 +271,14 @@ namespace PaperRenderer
                 .size = sizeof(VkDrawIndexedIndirectCommand::instanceCount)
             };
 
-            VkDependencyInfo dependency = {};
-            dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-            dependency.pNext = NULL;
-            dependency.bufferMemoryBarrierCount = 1;
-            dependency.pBufferMemoryBarriers = &memBarrier;
+            const VkDependencyInfo postDependency = {
+                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                .pNext = NULL,
+                .bufferMemoryBarrierCount = 1,
+                .pBufferMemoryBarriers = &postMemBarrier
+            };
 
-            vkCmdPipelineBarrier2(cmdBuffer, &dependency);
+            vkCmdPipelineBarrier2(cmdBuffer, &postDependency);
         }
     }
 

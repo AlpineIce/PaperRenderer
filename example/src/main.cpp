@@ -708,19 +708,6 @@ int main()
         //update uniform buffers
         updateUniformBuffers(renderer, *scene.camera, exampleRayTrace);
 
-        //wait for last frame to finish rendering (last semaphore value)
-        const std::vector<VkSemaphore> toWaitSemaphores = { renderingSemaphore };
-        const std::vector<uint64_t> toWaitSemaphoreValues = { lastSemaphoreValue };
-        VkSemaphoreWaitInfo beginWaitInfo = {
-            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .semaphoreCount = (uint32_t)toWaitSemaphores.size(),
-            .pSemaphores = toWaitSemaphores.data(),
-            .pValues = toWaitSemaphoreValues.data()
-        };
-        vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, UINT64_MAX);
-
         //ray tracing
         if(!guiContext.raster)
         {
@@ -772,6 +759,19 @@ int main()
             };
             exampleRaster.rasterRender(rasterSyncInfo);
         }
+
+        //wait for last frame to finish rendering (last semaphore value)
+        const std::vector<VkSemaphore> toWaitSemaphores = { renderingSemaphore };
+        const std::vector<uint64_t> toWaitSemaphoreValues = { lastSemaphoreValue };
+        VkSemaphoreWaitInfo beginWaitInfo = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .semaphoreCount = (uint32_t)toWaitSemaphores.size(),
+            .pSemaphores = toWaitSemaphores.data(),
+            .pValues = toWaitSemaphoreValues.data()
+        };
+        vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, UINT64_MAX);
 
         //copy HDR buffer to swapchain (wait for render pass and swapchain, signal rendering and presentation semaphores)
         const PaperRenderer::SynchronizationInfo bufferCopySyncInfo = {

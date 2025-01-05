@@ -454,7 +454,7 @@ void ExampleRaster::rasterRender(PaperRenderer::SynchronizationInfo syncInfo)
     preRenderImageBarriers.push_back({ //HDR buffer undefined -> general layout; required for correct shader access
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
         .pNext = NULL,
-        .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
+        .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
         .srcAccessMask = VK_ACCESS_2_NONE,
         .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
         .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,

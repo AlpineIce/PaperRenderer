@@ -42,6 +42,7 @@ namespace PaperRenderer
         //buffers and allocation
         std::unique_ptr<Buffer> modelMatricesBuffer;
         std::unique_ptr<Buffer> drawCommandsBuffer;
+        std::array<std::deque<std::unique_ptr<Buffer>>, 2> destructionQueue;
 
         struct BufferSizeRequirements
         {
