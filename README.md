@@ -17,6 +17,7 @@ PaperRenderer is a (mostly complete) renderer abstraction which aims to integrat
 
 ## Dependencies
 * CMake
+* Python
 * VulkanSDK
 * Either Windows or Linux (X11 or Wayland)
 ## Build Instructions
