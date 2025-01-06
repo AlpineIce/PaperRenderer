@@ -162,7 +162,7 @@ namespace PaperRenderer
         rasterPreprocessPipeline(*this, creationInfo.rasterPreprocessSpirv),
         tlasInstanceBuildPipeline(*this, creationInfo.rtPreprocessSpirv),
         asBuilder(*this),
-        stagingBuffer({ *this, *this })
+        stagingBuffer({ std::make_unique<RendererStagingBuffer>(*this), std::make_unique<RendererStagingBuffer>(*this) })
     {
         rebuildModelDataBuffer();
         rebuildInstancesbuffer();

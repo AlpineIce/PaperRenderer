@@ -83,7 +83,7 @@ namespace PaperRenderer
         RasterPreprocessPipeline rasterPreprocessPipeline;
         TLASInstanceBuildPipeline tlasInstanceBuildPipeline;
         AccelerationStructureBuilder asBuilder;
-        std::array<RendererStagingBuffer, 2> stagingBuffer; //double buffered
+        std::array<std::unique_ptr<RendererStagingBuffer>, 2> stagingBuffer; //double buffered
 
         //frame rendering stuff
         std::vector<ModelInstance*> renderingModelInstances;
@@ -140,7 +140,7 @@ namespace PaperRenderer
         DescriptorAllocator& getDescriptorAllocator() { return descriptors; }
         PipelineBuilder& getPipelineBuilder() { return pipelineBuilder; }
         Swapchain& getSwapchain() { return swapchain; }
-        RendererStagingBuffer& getStagingBuffer() { return stagingBuffer[getBufferIndex()]; }
+        RendererStagingBuffer& getStagingBuffer() { return *stagingBuffer[getBufferIndex()]; }
         AccelerationStructureBuilder& getAsBuilder() { return asBuilder; }
         const std::vector<Model*>& getModelReferences() const { return renderingModels; }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }

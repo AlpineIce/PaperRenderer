@@ -1,9 +1,9 @@
 #include "Model.h"
 #include "RenderPass.h"
-#include "PaperRenderer.h"
 #include "Material.h"
 #include "AccelerationStructure.h"
 #include "IndirectDraw.h"
+#include "PaperRenderer.h"
 
 namespace PaperRenderer
 {
@@ -243,7 +243,7 @@ namespace PaperRenderer
 					.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
 					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 					//if geometry is unique then allow update, otherwise geometry isn't unique, but a parent copy doesnt exist; assume static
-					.flags = uniqueGeometry ? VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR : VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
+					.flags = uniqueGeometry ? (uint32_t)VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR : (uint32_t)(VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR)
 				};
 				renderer.getAsBuilder().queueAs(op);
 			}
