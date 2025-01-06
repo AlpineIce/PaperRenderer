@@ -155,7 +155,7 @@ namespace PaperRenderer
 		BufferInfo stagingBufferInfo = {};
 		stagingBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 		stagingBufferInfo.size = size;
-		stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT;
+		stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 		Buffer vboStaging(renderer, stagingBufferInfo);
 
 		//fill staging data
@@ -169,7 +169,7 @@ namespace PaperRenderer
 		BufferInfo bufferInfo = {};
 		bufferInfo.allocationFlags = 0;
 		bufferInfo.size = size;
-		bufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT | usageFlags;
+		bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | usageFlags;
 		if(renderer.getDevice().getRTSupport()) bufferInfo.usageFlags = bufferInfo.usageFlags | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
 		std::unique_ptr<Buffer> buffer = std::make_unique<Buffer>(renderer, bufferInfo);
 
