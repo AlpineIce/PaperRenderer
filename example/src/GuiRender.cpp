@@ -83,6 +83,7 @@ void renderImGui(PaperRenderer::RenderEngine* renderer, PaperRenderer::Statistic
         const std::string renderModeSwitchText = std::string("Switch to ") + std::string(!guiContext->raster ? "Raster" : "Ray Tracing");
         if(ImGui::Button(renderModeSwitchText.c_str()))
         {
+            vkDeviceWaitIdle(renderer->getDevice().getDevice());
             guiContext->raster = !guiContext->raster;
         }
     }

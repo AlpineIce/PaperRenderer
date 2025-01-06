@@ -107,8 +107,6 @@ namespace PaperRenderer
 
     void RayTraceRender::updateTLAS(VkBuildAccelerationStructureModeKHR mode, VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo)
     {
-        //THIS FUNCTION HAS ASYNC POTENTIAL
-        
         //Timer
         Timer timer(renderer, "RayTraceRender Refit/Update TLAS", REGULAR);
 

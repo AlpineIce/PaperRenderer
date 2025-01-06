@@ -760,6 +760,15 @@ int main()
             exampleRaster.rasterRender(rasterSyncInfo);
         }
 
+        //copy HDR buffer to swapchain (wait for render pass and swapchain, signal rendering and presentation semaphores)
+        const PaperRenderer::SynchronizationInfo bufferCopySyncInfo = {
+            .queueType = PaperRenderer::QueueType::GRAPHICS,
+            .binaryWaitPairs = { { swapchainSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT } },
+            .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, finalSemaphoreValue + 3 } },
+            .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue + 4 } }
+        };
+        bufferCopyPass.render(bufferCopySyncInfo, guiContext.raster);
+
         //wait for last frame to finish rendering (last semaphore value)
         const std::vector<VkSemaphore> toWaitSemaphores = { renderingSemaphore };
         const std::vector<uint64_t> toWaitSemaphoreValues = { lastSemaphoreValue };
@@ -772,15 +781,6 @@ int main()
             .pValues = toWaitSemaphoreValues.data()
         };
         vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, UINT64_MAX);
-
-        //copy HDR buffer to swapchain (wait for render pass and swapchain, signal rendering and presentation semaphores)
-        const PaperRenderer::SynchronizationInfo bufferCopySyncInfo = {
-            .queueType = PaperRenderer::QueueType::GRAPHICS,
-            .binaryWaitPairs = { { swapchainSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT } },
-            .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, finalSemaphoreValue + 3 } },
-            .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue + 4 } }
-        };
-        bufferCopyPass.render(bufferCopySyncInfo, guiContext.raster);
 
         //render GUI
         const PaperRenderer::SynchronizationInfo guiSyncInfo = {

@@ -178,27 +178,28 @@ ExampleRayTracing::~ExampleRayTracing()
 void ExampleRayTracing::rayTraceRender(const PaperRenderer::SynchronizationInfo &syncInfo, const PaperRenderer::Buffer& materialDefinitionsBuffer)
 {
     //pre-render barriers
-    std::vector<VkImageMemoryBarrier2> preRenderImageBarriers;
-    preRenderImageBarriers.push_back({ //HDR buffer undefined -> general layout; required for correct shader access
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .pNext = NULL,
-        .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
-        .srcAccessMask = VK_ACCESS_2_NONE,
-        .dstStageMask = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-        .dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .newLayout = VK_IMAGE_LAYOUT_GENERAL,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = hdrBuffer.image->getImage(),
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1
+    std::vector<VkImageMemoryBarrier2> preRenderImageBarriers = {
+        { //HDR buffer undefined -> general layout; required for correct shader access
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+            .pNext = NULL,
+            .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
+            .srcAccessMask = VK_ACCESS_2_NONE,
+            .dstStageMask = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+            .dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = hdrBuffer.image->getImage(),
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
         }
-    });
+    };
     
     const VkDependencyInfo preRenderDependency = {
         .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,

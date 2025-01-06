@@ -542,7 +542,7 @@ namespace PaperRenderer
     void AccelerationStructureBuilder::destroyOldData()
     {
         //destroy old acceleration structures
-        if(!asDestructionQueue.empty())
+        if(!asDestructionQueue[renderer.getBufferIndex()].empty())
         {
             //wait for AS build semaphore
             const std::vector<VkSemaphore> toWaitSemaphores = { asBuildSemaphore };
@@ -558,12 +558,12 @@ namespace PaperRenderer
             vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, UINT64_MAX);
 
             //destroy old structures and buffers
-            while(!asDestructionQueue.empty())
+            while(!asDestructionQueue[renderer.getBufferIndex()].empty())
             {
-                vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), asDestructionQueue.front().structure, nullptr);
-                asDestructionQueue.front().buffer.reset();
+                vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), asDestructionQueue[renderer.getBufferIndex()].front().structure, nullptr);
+                asDestructionQueue[renderer.getBufferIndex()].front().buffer.reset();
 
-                asDestructionQueue.pop_front();
+                asDestructionQueue[renderer.getBufferIndex()].pop_front();
             }
         }
 
@@ -880,7 +880,7 @@ namespace PaperRenderer
                 vkCmdCopyAccelerationStructureKHR(cmdBuffer, &copyInfo);
 
                 //queue destruction of old
-                asDestructionQueue.push_front({oldStructure, std::move(tempBuffer.tempBuffer)});
+                asDestructionQueue[renderer.getBufferIndex()].push_front({oldStructure, std::move(tempBuffer.tempBuffer)});
 
                 //set new buffer
                 tempBuffer.as.asBuffer = std::move(newBuffer);

@@ -164,7 +164,7 @@ namespace PaperRenderer
             VkAccelerationStructureKHR structure;
             std::unique_ptr<Buffer> buffer;
         };
-        std::deque<OldStructureData> asDestructionQueue;
+        std::array<std::deque<OldStructureData>, 2> asDestructionQueue;
         std::array<std::deque<std::unique_ptr<Buffer>>, 2> bufferDestructionQueue;
 
         class RenderEngine& renderer;
