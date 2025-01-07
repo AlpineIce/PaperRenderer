@@ -40,6 +40,14 @@ namespace PaperRenderer
         friend class AccelerationStructureBuilder;
 
     protected:
+        struct AsGeometryBuildData
+        {
+            std::vector<VkAccelerationStructureGeometryKHR> geometries = {};
+            std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRangeInfos = {};
+            std::vector<uint32_t> primitiveCounts = {};
+        };
+        virtual AsGeometryBuildData getGeometryData() const = 0;
+
         class RenderEngine& renderer;
 
     public:
@@ -57,6 +65,10 @@ namespace PaperRenderer
     private:
         const class Model& parentModel;
         Buffer const* vboPtr = NULL;
+
+        AsGeometryBuildData getGeometryData() const override;
+
+        friend class AccelerationStructureBuilder;
 
     public:
         //If vbo is null, BLAS will instead use those directly from the model. Model is needed
@@ -90,12 +102,13 @@ namespace PaperRenderer
             uint32_t modelDataOffset;
         };
 
+        AsGeometryBuildData getGeometryData() const override;
         void verifyInstancesBuffer(const uint32_t instanceCount);
         void queueInstanceTransfers(const class RayTraceRender& rtRender);
 
         friend RenderEngine;
-        friend class ModelInstance;
         friend class AccelerationStructureBuilder;
+        friend class ModelInstance;
         friend class RayTraceRender;
         friend TLASInstanceBuildPipeline;
     public:
@@ -133,8 +146,7 @@ namespace PaperRenderer
         struct AsBuildData
         {
             AS& as;
-            std::vector<VkAccelerationStructureGeometryKHR> geometries;
-            std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRangeInfos;
+            AS::AsGeometryBuildData geometryBuildData = {};
             VkAccelerationStructureBuildGeometryInfoKHR buildGeoInfo = {};
             VkAccelerationStructureBuildSizesInfoKHR buildSizeInfo = {};
             VkDeviceSize scratchDataOffset = 0;

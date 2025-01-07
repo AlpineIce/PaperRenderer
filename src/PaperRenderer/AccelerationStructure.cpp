@@ -149,16 +149,62 @@ namespace PaperRenderer
 
     //----------BLAS DEFINITIONS----------//
 
-    BLAS::BLAS(RenderEngine& renderer, const Model& model, Buffer const* vbo)
-        :AS(renderer),
-        parentModel(model),
-        vboPtr(vbo)
+    BLAS::BLAS(RenderEngine &renderer, const Model &model, Buffer const *vbo)
+        : AS(renderer),
+          parentModel(model),
+          vboPtr(vbo)
 
     {
     }
 
     BLAS::~BLAS()
     {
+    }
+
+    AS::AsGeometryBuildData BLAS::getGeometryData() const
+    {
+        AsGeometryBuildData returnData = {};
+
+        //get per material group geometry data
+        for(const MaterialMesh& materialMesh : parentModel.getLODs()[0].materialMeshes) //use LOD 0 for BLAS
+        {
+            //mesh data
+            VkDeviceSize vertexCount = materialMesh.mesh.vertexCount;
+            VkDeviceSize indexCount = materialMesh.mesh.indexCount;
+            VkDeviceAddress vertexOffset = materialMesh.mesh.vboOffset;
+            VkDeviceAddress indexOffset = materialMesh.mesh.iboOffset;
+
+            //buffer information
+            VkAccelerationStructureGeometryTrianglesDataKHR trianglesGeometry = {};
+            trianglesGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+            trianglesGeometry.pNext = NULL;
+            trianglesGeometry.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+            trianglesGeometry.vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = vboPtr->getBufferDeviceAddress()};
+            trianglesGeometry.maxVertex = vertexCount;
+            trianglesGeometry.vertexStride = parentModel.getVertexDescription().stride;
+            trianglesGeometry.indexType = VK_INDEX_TYPE_UINT32;
+            trianglesGeometry.indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = parentModel.getIBOAddress()};
+
+            //geometries
+            VkAccelerationStructureGeometryKHR structureGeometry = {};
+            structureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+            structureGeometry.pNext = NULL;
+            structureGeometry.flags = materialMesh.invokeAnyHit ? VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR : VK_GEOMETRY_OPAQUE_BIT_KHR; 
+            structureGeometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+            structureGeometry.geometry.triangles = trianglesGeometry;
+            
+            VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo;
+            buildRangeInfo.primitiveCount = indexCount / 3;
+            buildRangeInfo.primitiveOffset = indexOffset * sizeof(uint32_t);
+            buildRangeInfo.firstVertex = vertexOffset;
+            buildRangeInfo.transformOffset = 0;
+
+            returnData.geometries.emplace_back(structureGeometry);
+            returnData.buildRangeInfos.emplace_back(buildRangeInfo);
+            returnData.primitiveCounts.emplace_back(buildRangeInfo.primitiveCount);
+        }
+
+        return returnData;
     }
 
     //----------TLAS DEFINITIONS----------//
@@ -176,6 +222,37 @@ namespace PaperRenderer
     TLAS::~TLAS()
     {
         instancesBuffer.reset();
+    }
+
+    AS::AsGeometryBuildData TLAS::getGeometryData() const
+    {
+        AsGeometryBuildData returnData = {};
+
+        //geometries
+        VkAccelerationStructureGeometryInstancesDataKHR geoInstances = {};
+        geoInstances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+        geoInstances.pNext = NULL;
+        geoInstances.arrayOfPointers = VK_FALSE;
+        geoInstances.data = VkDeviceOrHostAddressConstKHR{ .deviceAddress = instancesBuffer->getBufferDeviceAddress() + tlInstancesOffset };
+
+        VkAccelerationStructureGeometryKHR structureGeometry = {};
+        structureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+        structureGeometry.pNext = NULL;
+        structureGeometry.flags = VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
+        structureGeometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+        structureGeometry.geometry.instances = geoInstances;
+
+        VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo;
+        buildRangeInfo.primitiveCount = nextUpdateSize;
+        buildRangeInfo.primitiveOffset = 0;
+        buildRangeInfo.firstVertex = 0;
+        buildRangeInfo.transformOffset = 0;
+
+        returnData.geometries.emplace_back(structureGeometry);
+        returnData.buildRangeInfos.emplace_back(buildRangeInfo);
+        returnData.primitiveCounts.push_back(nextUpdateSize);
+
+        return returnData;
     }
 
     void TLAS::verifyInstancesBuffer(const uint32_t instanceCount)
@@ -299,7 +376,7 @@ namespace PaperRenderer
                     .selfIndex = instance.instancePtr->rendererSelfIndex,
                     .customIndex = instance.customIndex,
                     .modelInstanceIndex = instance.instancePtr->rendererSelfIndex,
-                    .mask = instance.mask << 24,
+                    .mask = (uint32_t)instance.mask << 24,
                     .recordOffset = sbtOffset,
                     .flags = instance.flags << 24
                 };
@@ -360,82 +437,8 @@ namespace PaperRenderer
         };
         std::vector<uint32_t> primitiveCounts;
 
-        //geometry type
-        if(op.type == VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR)
-        {
-            BLAS& blas = (BLAS&)(op.accelerationStructure);
-
-            //get per material group geometry data
-            for(const MaterialMesh& materialMesh : blas.getParentModel().getLODs().at(0).materialMeshes) //use LOD 0 for BLAS
-            {
-                //mesh data
-                VkDeviceSize vertexCount = materialMesh.mesh.vertexCount;
-                VkDeviceSize indexCount = materialMesh.mesh.indexCount;
-                VkDeviceAddress vertexOffset = materialMesh.mesh.vboOffset;
-                VkDeviceAddress indexOffset = materialMesh.mesh.iboOffset;
-
-                //buffer information
-                VkAccelerationStructureGeometryTrianglesDataKHR trianglesGeometry = {};
-                trianglesGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
-                trianglesGeometry.pNext = NULL;
-                trianglesGeometry.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-                trianglesGeometry.vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = blas.getVBOAddress()};
-                trianglesGeometry.maxVertex = vertexCount;
-                trianglesGeometry.vertexStride = blas.getParentModel().getVertexDescription().stride;
-                trianglesGeometry.indexType = VK_INDEX_TYPE_UINT32;
-                trianglesGeometry.indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = blas.getParentModel().getIBOAddress()};
-
-                //geometries
-                VkAccelerationStructureGeometryKHR structureGeometry = {};
-                structureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
-                structureGeometry.pNext = NULL;
-                structureGeometry.flags = materialMesh.invokeAnyHit ? VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR : VK_GEOMETRY_OPAQUE_BIT_KHR; 
-                structureGeometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
-                structureGeometry.geometry.triangles = trianglesGeometry;
-                
-                VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo;
-                buildRangeInfo.primitiveCount = indexCount / 3;
-                buildRangeInfo.primitiveOffset = indexOffset * sizeof(uint32_t);
-                buildRangeInfo.firstVertex = vertexOffset;
-                buildRangeInfo.transformOffset = 0;
-
-                returnData.geometries.emplace_back(structureGeometry);
-                returnData.buildRangeInfos.emplace_back(buildRangeInfo);
-                primitiveCounts.emplace_back(buildRangeInfo.primitiveCount);
-            }
-        }
-        else if(op.type == VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR)
-        {
-            TLAS& tlas = (TLAS&)(op.accelerationStructure);
-
-            //geometries
-            VkAccelerationStructureGeometryInstancesDataKHR geoInstances = {};
-            geoInstances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
-            geoInstances.pNext = NULL;
-            geoInstances.arrayOfPointers = VK_FALSE;
-            geoInstances.data = VkDeviceOrHostAddressConstKHR{ .deviceAddress = tlas.instancesBuffer->getBufferDeviceAddress() + tlas.tlInstancesOffset };
-
-            VkAccelerationStructureGeometryKHR structureGeometry = {};
-            structureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
-            structureGeometry.pNext = NULL;
-            structureGeometry.flags = VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
-            structureGeometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
-            structureGeometry.geometry.instances = geoInstances;
-
-            VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo;
-            buildRangeInfo.primitiveCount = tlas.nextUpdateSize;
-            buildRangeInfo.primitiveOffset = 0;
-            buildRangeInfo.firstVertex = 0;
-            buildRangeInfo.transformOffset = 0;
-
-            returnData.geometries.emplace_back(structureGeometry);
-            returnData.buildRangeInfos.emplace_back(buildRangeInfo);
-            primitiveCounts.push_back(tlas.nextUpdateSize);
-        }
-        else
-        {
-            return returnData;
-        }
+        //get geometry data
+        returnData.geometryBuildData = op.accelerationStructure.getGeometryData();
 
         //build information
         returnData.buildGeoInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
@@ -445,8 +448,8 @@ namespace PaperRenderer
         returnData.buildGeoInfo.mode = op.mode;
         returnData.buildGeoInfo.srcAccelerationStructure = returnData.compact ? op.accelerationStructure.accelerationStructure : VK_NULL_HANDLE;
         returnData.buildGeoInfo.dstAccelerationStructure = op.accelerationStructure.accelerationStructure; //probably overwritten by code after
-        returnData.buildGeoInfo.geometryCount = returnData.geometries.size();
-        returnData.buildGeoInfo.pGeometries = returnData.geometries.data();
+        returnData.buildGeoInfo.geometryCount = returnData.geometryBuildData.geometries.size();
+        returnData.buildGeoInfo.pGeometries = returnData.geometryBuildData.geometries.data();
         returnData.buildGeoInfo.ppGeometries = NULL;
 
         returnData.buildSizeInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
@@ -456,7 +459,7 @@ namespace PaperRenderer
             renderer.getDevice().getDevice(),
             VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
             &returnData.buildGeoInfo,
-            primitiveCounts.data(),
+            returnData.geometryBuildData.primitiveCounts.data(),
             &returnData.buildSizeInfo);
 
         //destroy buffer if compaction is requested since final size will be unknown
@@ -560,9 +563,10 @@ namespace PaperRenderer
             //destroy old structures and buffers
             while(!asDestructionQueue[renderer.getBufferIndex()].empty())
             {
-                vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), asDestructionQueue[renderer.getBufferIndex()].front().structure, nullptr);
-                asDestructionQueue[renderer.getBufferIndex()].front().buffer.reset();
-
+                if(asDestructionQueue[renderer.getBufferIndex()].front().structure)
+                {
+                    vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), asDestructionQueue[renderer.getBufferIndex()].front().structure, nullptr);
+                }
                 asDestructionQueue[renderer.getBufferIndex()].pop_front();
             }
         }
@@ -697,7 +701,7 @@ namespace PaperRenderer
                 //destroy old structure if being built and is valid
                 if(data.as.accelerationStructure && data.buildGeoInfo.mode == VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR)
                 {
-                    vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), data.as.accelerationStructure, nullptr);
+                    asDestructionQueue[renderer.getBufferIndex()].push_front({ data.as.accelerationStructure, NULL });
                 }
 
                 //create a temporary buffer if needed
@@ -737,7 +741,7 @@ namespace PaperRenderer
 
                 //convert format of build ranges
                 std::vector<VkAccelerationStructureBuildRangeInfoKHR const*> buildRangesPtrArray;
-                for(const VkAccelerationStructureBuildRangeInfoKHR& buildRange : data.buildRangeInfos)
+                for(const VkAccelerationStructureBuildRangeInfoKHR& buildRange : data.geometryBuildData.buildRangeInfos)
                 {
                     buildRangesPtrArray.emplace_back(&buildRange);
                 }

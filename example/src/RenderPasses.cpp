@@ -182,8 +182,8 @@ void ExampleRayTracing::rayTraceRender(const PaperRenderer::SynchronizationInfo 
         { //HDR buffer undefined -> general layout; required for correct shader access
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .pNext = NULL,
-            .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
-            .srcAccessMask = VK_ACCESS_2_NONE,
+            .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
             .dstStageMask = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
             .dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
             .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
