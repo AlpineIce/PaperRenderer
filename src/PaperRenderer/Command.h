@@ -96,7 +96,7 @@ namespace PaperRenderer
         Commands(const Commands&) = delete;
 
         void resetCommandPools();
-        void submitToQueue(const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers);
+        const Queue& submitToQueue(const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers);
 
         VkSemaphore getSemaphore();
         VkSemaphore getTimelineSemaphore(uint64_t initialValue);

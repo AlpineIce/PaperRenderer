@@ -110,20 +110,19 @@ namespace PaperRenderer
         }
     }
 
-    void Commands::submitToQueue(const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers)
+    const Queue& Commands::submitToQueue(const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers)
     {
         //command buffers
         std::vector<VkCommandBufferSubmitInfo> cmdBufferSubmitInfos = {};
         for(const VkCommandBuffer& cmdBuffer : commandBuffers)
         {
             //add to submit info
-            VkCommandBufferSubmitInfo cmdBufferSubmitInfo = {};
-            cmdBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-            cmdBufferSubmitInfo.pNext = NULL;
-            cmdBufferSubmitInfo.commandBuffer = cmdBuffer;
-            cmdBufferSubmitInfo.deviceMask = 0;
-
-            cmdBufferSubmitInfos.push_back(cmdBufferSubmitInfo);
+            cmdBufferSubmitInfos.push_back({
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+                .pNext = NULL,
+                .commandBuffer = cmdBuffer,
+                .deviceMask = 0
+            });
 
             //verify command buffer is unlocked, throw error if it isnt
             if(cmdBuffersLockedPool.count(cmdBuffer)) throw std::runtime_error("Command buffer submitted never had its mutex unlocked. Please call unlockCommandBuffer(cmdBuffer) on same thread recorded on");
@@ -135,68 +134,65 @@ namespace PaperRenderer
         //binary wait semaphores
         for(const BinarySemaphorePair& pair : synchronizationInfo.binaryWaitPairs)
         {
-            VkSemaphoreSubmitInfo semaphoreInfo = {};
-            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-            semaphoreInfo.pNext = NULL;
-            semaphoreInfo.semaphore = pair.semaphore;
-            semaphoreInfo.stageMask = pair.stage;
-            semaphoreInfo.deviceIndex = 0;
-
-            semaphoreWaitInfos.push_back(semaphoreInfo);
+            semaphoreWaitInfos.push_back({
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .pNext = NULL,
+                .semaphore = pair.semaphore,
+                .stageMask = pair.stage,
+                .deviceIndex = 0
+            });
         }
 
         //binary signal semaphores
         for(const BinarySemaphorePair& pair : synchronizationInfo.binarySignalPairs)
         {
-            VkSemaphoreSubmitInfo semaphoreInfo = {};
-            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-            semaphoreInfo.pNext = NULL;
-            semaphoreInfo.semaphore = pair.semaphore;
-            semaphoreInfo.stageMask = pair.stage;
-            semaphoreInfo.deviceIndex = 0;
-
-            semaphoreSignalInfos.push_back(semaphoreInfo);
+            semaphoreSignalInfos.push_back({
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .pNext = NULL,
+                .semaphore = pair.semaphore,
+                .stageMask = pair.stage,
+                .deviceIndex = 0
+            });
         }
 
         //timeline wait semaphores
         for(const TimelineSemaphorePair& pair : synchronizationInfo.timelineWaitPairs)
         {
-            VkSemaphoreSubmitInfo semaphoreInfo = {};
-            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-            semaphoreInfo.pNext = NULL;
-            semaphoreInfo.semaphore = pair.semaphore;
-            semaphoreInfo.value = pair.value;
-            semaphoreInfo.stageMask = pair.stage;
-            semaphoreInfo.deviceIndex = 0;
-
-            semaphoreWaitInfos.push_back(semaphoreInfo);
+            semaphoreWaitInfos.push_back({
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .pNext = NULL,
+                .semaphore = pair.semaphore,
+                .value = pair.value,
+                .stageMask = pair.stage,
+                .deviceIndex = 0
+            });
         }
 
         //timeline signal semaphores
         for(const TimelineSemaphorePair& pair : synchronizationInfo.timelineSignalPairs)
         {
-            VkSemaphoreSubmitInfo semaphoreInfo = {};
-            semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-            semaphoreInfo.pNext = NULL;
-            semaphoreInfo.semaphore = pair.semaphore;
-            semaphoreInfo.value = pair.value;
-            semaphoreInfo.stageMask = pair.stage;
-            semaphoreInfo.deviceIndex = 0;
-
-            semaphoreSignalInfos.push_back(semaphoreInfo);
+            semaphoreSignalInfos.push_back({
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .pNext = NULL,
+                .semaphore = pair.semaphore,
+                .value = pair.value,
+                .stageMask = pair.stage,
+                .deviceIndex = 0
+            });
         }
         
         //fill in the submit info
-        VkSubmitInfo2 submitInfo = {};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-        submitInfo.pNext = NULL;
-        submitInfo.flags = 0;
-        submitInfo.waitSemaphoreInfoCount = semaphoreWaitInfos.size();
-        submitInfo.pWaitSemaphoreInfos = semaphoreWaitInfos.data();
-        submitInfo.commandBufferInfoCount = cmdBufferSubmitInfos.size();
-        submitInfo.pCommandBufferInfos = cmdBufferSubmitInfos.data();
-        submitInfo.signalSemaphoreInfoCount = semaphoreSignalInfos.size();
-        submitInfo.pSignalSemaphoreInfos = semaphoreSignalInfos.data();
+        const VkSubmitInfo2 submitInfo = {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .pNext = NULL,
+            .flags = 0,
+            .waitSemaphoreInfoCount = (uint32_t)semaphoreWaitInfos.size(),
+            .pWaitSemaphoreInfos = semaphoreWaitInfos.data(),
+            .commandBufferInfoCount = (uint32_t)cmdBufferSubmitInfos.size(),
+            .pCommandBufferInfos = cmdBufferSubmitInfos.data(),
+            .signalSemaphoreInfoCount = (uint32_t)semaphoreSignalInfos.size(),
+            .pSignalSemaphoreInfos = semaphoreSignalInfos.data()
+        };
 
         //find an "unlocked" queue with the specified type (also nested hell I know)
         Queue* lockedQueue = NULL;
@@ -233,6 +229,8 @@ namespace PaperRenderer
         }
         
         lockedQueue->threadLock.unlock();
+
+        return(*lockedQueue);
     }
 
     VkSemaphore Commands::getSemaphore()
