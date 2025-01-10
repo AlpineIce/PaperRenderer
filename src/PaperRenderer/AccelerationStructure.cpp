@@ -158,19 +158,19 @@ namespace PaperRenderer
 
     AS::AsBuildData AS::getAsData(const VkAccelerationStructureTypeKHR type, const VkBuildAccelerationStructureFlagsKHR flags, const VkBuildAccelerationStructureModeKHR mode)
     {
-        //destroy old structure
-        if(accelerationStructure && mode != VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR)
-        {
-            asDestructionQueue[renderer.getBufferIndex()].push_front(accelerationStructure);
-            accelerationStructure = VK_NULL_HANDLE;
-        }
-
         //delete AS in destruction queue
         for(VkAccelerationStructureKHR structure : asDestructionQueue[renderer.getBufferIndex()])
         {
             vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), structure, nullptr);
         }
         asDestructionQueue[renderer.getBufferIndex()].clear();
+
+        //queue destruciton of old structure
+        if(accelerationStructure && mode != VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR)
+        {
+            asDestructionQueue[renderer.getBufferIndex()].push_front(accelerationStructure);
+            accelerationStructure = VK_NULL_HANDLE;
+        }
 
         //get compaction flag
         const bool compact = flags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR ? true : false;
