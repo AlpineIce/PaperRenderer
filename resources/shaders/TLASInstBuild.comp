@@ -17,11 +17,9 @@ struct InputASInstance
 {
     uint64_t blasReference;
     uint selfIndex;
-    uint customIndex;
     uint modelInstanceIndex;
-    uint mask;
-    uint recordOffset;
-    uint flags;
+    uint customIndexAndMask;
+    uint recordOffsetAndFlags;
 };
 
 layout(scalar, set = 0, binding = 2) readonly buffer InputASInstances
@@ -46,25 +44,14 @@ layout(std430, set = 0, binding = 3) writeonly buffer ASInstances
 
 AccelerationStructureInstance buildASInstance(InputASInstance inputASInstance, ModelInstance modelInstance)
 {
+    //model matrix
     const mat3x4 modelMatrix = getModelMatrix(modelInstance);
-
-    //bitmask for combining bits
-    const uint bitmask = 0xFF000000;
-
-    //custom index and mask
-    uint instanceCustomIndex = inputASInstance.customIndex;    // value to merge in non-masked bits
-    uint mask = inputASInstance.mask;    // value to merge in masked bits
-    uint instanceCustomIndexAndMask = instanceCustomIndex ^ ((instanceCustomIndex ^ mask) & bitmask);
-
-    //binding table record offset and flags
-    uint instanceShaderBindingTableRecordOffset = inputASInstance.recordOffset;    // value to merge in non-masked bits
-    uint flags = inputASInstance.flags;    // value to merge in masked bits
-    uint instanceShaderBindingTableRecordOffsetAndFlags = instanceShaderBindingTableRecordOffset ^ ((instanceShaderBindingTableRecordOffset ^ flags) & bitmask);
-
+    
+    //AS instance
     AccelerationStructureInstance structureInstance;
     structureInstance.transform = modelMatrix;
-    structureInstance.instanceCustomIndexAndMask = instanceCustomIndexAndMask;
-    structureInstance.instanceShaderBindingTableRecordOffsetAndFlags = instanceShaderBindingTableRecordOffsetAndFlags;
+    structureInstance.instanceCustomIndexAndMask = inputASInstance.customIndexAndMask;
+    structureInstance.instanceShaderBindingTableRecordOffsetAndFlags = inputASInstance.recordOffsetAndFlags;
     structureInstance.accelerationStructureReference = uint64_t(inputASInstance.blasReference);
 
     return structureInstance;

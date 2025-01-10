@@ -606,11 +606,11 @@ namespace PaperRenderer
                 ModelInstance::AccelerationStructureInstance instanceShaderData = {
                     .blasReference = blasPtr->getAccelerationStructureAddress(),
                     .selfIndex = instance.instancePtr->rendererSelfIndex,
-                    .customIndex = instance.customIndex,
                     .modelInstanceIndex = instance.instancePtr->rendererSelfIndex,
-                    .mask = (uint32_t)instance.mask << 24,
+                    .customIndex = instance.customIndex,
+                    .mask = instance.mask,
                     .recordOffset = sbtOffset,
-                    .flags = instance.flags << 24
+                    .flags = instance.flags
                 };
                 memcpy(newInstancesData.data() + sizeof(ModelInstance::AccelerationStructureInstance) * nextUpdateSize, &instanceShaderData, sizeof(ModelInstance::AccelerationStructureInstance));
 
