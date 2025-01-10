@@ -83,13 +83,12 @@ namespace PaperRenderer
 		if(creationInfo.createBLAS && renderer.getDevice().getRTSupport())
 		{
 			defaultBLAS = std::make_unique<BLAS>(renderer, *this, vbo.get());
-			AccelerationStructureOp op = {
+			BLASBuildOp op = {
 				.accelerationStructure = *defaultBLAS.get(),
-                .type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
 				.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 				.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
 			};
-			renderer.getAsBuilder().queueAs(op);
+			renderer.getAsBuilder().queueBLAS(op);
 		}
 	}
 
@@ -238,14 +237,13 @@ namespace PaperRenderer
 			if(renderer.getDevice().getRTSupport())
 			{
 				uniqueGeometryData.blas = std::make_unique<BLAS>(renderer, parentModel, uniqueGeometryData.uniqueVBO.get());
-				AccelerationStructureOp op = {
+				BLASBuildOp op = {
 					.accelerationStructure = *uniqueGeometryData.blas.get(),
-					.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR,
 					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 					//if geometry is unique then allow update, otherwise geometry isn't unique, but a parent copy doesnt exist; assume static
 					.flags = uniqueGeometry ? (uint32_t)VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR : (uint32_t)(VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR)
 				};
-				renderer.getAsBuilder().queueAs(op);
+				renderer.getAsBuilder().queueBLAS(op);
 			}
 		}
     }

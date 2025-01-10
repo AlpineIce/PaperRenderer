@@ -425,9 +425,6 @@ namespace PaperRenderer
         device.getCommands().resetCommandPools();
         descriptors.refreshPools();
 
-        //destroy old acceleration structure data
-        asBuilder.destroyOldData();
-
         //acquire next image
         const VkSemaphore& imageAcquireSemaphore = swapchain.acquireNextImage();
 

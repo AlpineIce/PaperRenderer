@@ -32,27 +32,55 @@ namespace PaperRenderer
     class AS
     {
     private:
-        VkAccelerationStructureKHR accelerationStructure = VK_NULL_HANDLE;
-        VkBuildAccelerationStructureFlagsKHR enabledFlags = 0;
-
+        //buffers
         std::unique_ptr<Buffer> asBuffer;
+        std::unique_ptr<Buffer> scratchBuffer;
+
+        //structure
+        VkAccelerationStructureKHR accelerationStructure = VK_NULL_HANDLE;
 
         friend class AccelerationStructureBuilder;
 
     protected:
+        //geometry build data
         struct AsGeometryBuildData
         {
             std::vector<VkAccelerationStructureGeometryKHR> geometries = {};
             std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRangeInfos = {};
             std::vector<uint32_t> primitiveCounts = {};
         };
-        virtual AsGeometryBuildData getGeometryData() const = 0;
+        virtual std::unique_ptr<AsGeometryBuildData> getGeometryData() const = 0;
+
+        //combined build data
+        struct AsBuildData
+        {
+            std::unique_ptr<AsGeometryBuildData> geometryBuildData = NULL;
+            VkAccelerationStructureBuildGeometryInfoKHR buildGeoInfo = {};
+            VkAccelerationStructureBuildSizesInfoKHR buildSizeInfo = {};
+            bool compact = false;
+        };
+        AS::AsBuildData getAsData(const VkAccelerationStructureTypeKHR type, const VkBuildAccelerationStructureFlagsKHR flags, const VkBuildAccelerationStructureModeKHR mode);
+
+        //build
+        struct CompactionQuery
+        {
+            VkQueryPool pool = VK_NULL_HANDLE;
+            VkDeviceSize compactionIndex = 0;
+        };
+        virtual void buildStructure(VkCommandBuffer cmdBuffer, const AsBuildData& data, const CompactionQuery compactionQuery);
+
+        //compaction operation
+        void compactStructure(VkCommandBuffer cmdBuffer, const VkAccelerationStructureTypeKHR type, const VkDeviceSize newSize);
+
+        //destruction queues
+        std::array<std::deque<std::unique_ptr<Buffer>>, 2> bufferDestructionQueue;
+        std::array<std::deque<VkAccelerationStructureKHR>, 2> asDestructionQueue;
 
         class RenderEngine& renderer;
 
     public:
         AS(RenderEngine& renderer);
-        ~AS();
+        virtual ~AS();
         AS(const AS&) = delete;
 
         VkAccelerationStructureKHR getAccelerationStructure() const { return accelerationStructure; }
@@ -66,7 +94,8 @@ namespace PaperRenderer
         const class Model& parentModel;
         Buffer const* vboPtr = NULL;
 
-        AsGeometryBuildData getGeometryData() const override;
+        std::unique_ptr<AsGeometryBuildData> getGeometryData() const override;
+        void buildStructure(VkCommandBuffer cmdBuffer, const AsBuildData& data, const CompactionQuery compactionQuery) override;
 
         friend class AccelerationStructureBuilder;
 
@@ -74,7 +103,7 @@ namespace PaperRenderer
         //If vbo is null, BLAS will instead use those directly from the model. Model is needed
         //for data describing different geometries
         BLAS(RenderEngine& renderer, const Model& model, Buffer const* vbo);
-        ~BLAS();
+        ~BLAS() override;
         BLAS(const BLAS&) = delete;
 
         VkDeviceAddress getVBOAddress() const { return vboPtr->getBufferDeviceAddress(); }
@@ -88,7 +117,6 @@ namespace PaperRenderer
         //buffers
         Buffer preprocessUniformBuffer;
         std::unique_ptr<Buffer> instancesBuffer;
-        std::array<std::deque<std::unique_ptr<Buffer>>, 2> destructionQueue; //old buffers need to be destroyed on their corresponding frame and not immediately
 
         //instances data offsets/sizes
         VkDeviceSize instanceDescriptionsOffset = 0;
@@ -102,30 +130,30 @@ namespace PaperRenderer
             uint32_t modelDataOffset;
         };
 
-        AsGeometryBuildData getGeometryData() const override;
+        std::unique_ptr<AsGeometryBuildData> getGeometryData() const override;
         void verifyInstancesBuffer(const uint32_t instanceCount);
-        void queueInstanceTransfers(const class RayTraceRender& rtRender);
+        void buildStructure(VkCommandBuffer cmdBuffer, const AsBuildData& data, const CompactionQuery compactionQuery) override;
 
-        friend RenderEngine;
-        friend class AccelerationStructureBuilder;
         friend class ModelInstance;
-        friend class RayTraceRender;
         friend TLASInstanceBuildPipeline;
+
     public:
         TLAS(RenderEngine& renderer);
-        ~TLAS();
+        ~TLAS() override;
         TLAS(const TLAS&) = delete;
 
+        //Updates the TLAS to the RayTraceRender instances according to the mode (either rebuild or update). Note that compaction is ignored for a TLAS
+        void updateTLAS(const class RayTraceRender& rtRender, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, const SynchronizationInfo& syncInfo);
+
         const Buffer& getInstancesBuffer() const { return *instancesBuffer; }
-        const VkDeviceSize getInstanceDescriptionsOffset() const { return instanceDescriptionsOffset; } //MAY POSSIBLY CHANGE AFTER UPDATING TLAS IN RayTraceRender::updateTLAS()
-        const VkDeviceSize getInstanceDescriptionsRange() const { return nextUpdateSize * sizeof(InstanceDescription); } //MAY POSSIBLY CHANGE AFTER UPDATING TLAS IN RayTraceRender::updateTLAS()
+        const VkDeviceSize getInstanceDescriptionsOffset() const { return instanceDescriptionsOffset; } //MAY POSSIBLY CHANGE AFTER UPDATING TLAS
+        const VkDeviceSize getInstanceDescriptionsRange() const { return nextUpdateSize * sizeof(InstanceDescription); } //MAY POSSIBLY CHANGE AFTER UPDATING TLAS
     };
 
-    //AS operation
-    struct AccelerationStructureOp
+    //BLAS operation
+    struct BLASBuildOp
     {
-        AS& accelerationStructure;
-        VkAccelerationStructureTypeKHR type = VK_ACCELERATION_STRUCTURE_TYPE_MAX_ENUM_KHR; //MUST BE DEFINED AS TOP OR BOTTOM LEVEL
+        BLAS& accelerationStructure;
         VkBuildAccelerationStructureModeKHR mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
         VkBuildAccelerationStructureFlagsKHR flags = 0;
     };
@@ -133,63 +161,21 @@ namespace PaperRenderer
     class AccelerationStructureBuilder
     {
     private:
-        std::unique_ptr<Buffer> scratchBuffer;
-
         //acceleration structure operation queue
-        std::deque<AccelerationStructureOp> asQueue;
+        std::deque<BLASBuildOp> blasQueue;
 
-        //build semaphore
-        VkSemaphore asBuildSemaphore = VK_NULL_HANDLE;
-        uint64_t finalSemaphoreValue = 0;
+        //BLAS' that request compaction
+        std::unordered_map<BLAS*, VkDeviceSize> getCompactions() const;
         
-        //acceleration structure build data
-        struct AsBuildData
-        {
-            AS& as;
-            AS::AsGeometryBuildData geometryBuildData = {};
-            VkAccelerationStructureBuildGeometryInfoKHR buildGeoInfo = {};
-            VkAccelerationStructureBuildSizesInfoKHR buildSizeInfo = {};
-            VkDeviceSize scratchDataOffset = 0;
-            VkAccelerationStructureTypeKHR type = VK_ACCELERATION_STRUCTURE_TYPE_MAX_ENUM_KHR;
-            bool compact = false;
-        };
-        AsBuildData getAsData(const AccelerationStructureOp& op);
-
-        //all build data
-        struct BuildData
-        {
-            std::vector<AsBuildData> blasDatas;
-            uint32_t numBlasCompactions = 0;
-            std::vector<AsBuildData> tlasDatas;
-            uint32_t numTlasCompactions = 0;
-        } buildData;
-
-        //scratch size
-        VkDeviceSize getScratchSize(std::vector<AsBuildData>& blasDatas, std::vector<AsBuildData>& tlasDatas) const;
-
-        //set build data (happens on submission)
-        void setBuildData();
-        
-        //for keeping structures to derrive compaction from and buffers in scope
-        struct OldStructureData
-        {
-            VkAccelerationStructureKHR structure;
-            std::unique_ptr<Buffer> buffer;
-        };
-        std::array<std::deque<OldStructureData>, 2> asDestructionQueue;
-        std::array<std::deque<std::unique_ptr<Buffer>>, 2> bufferDestructionQueue;
-
         class RenderEngine& renderer;
+
     public:
         AccelerationStructureBuilder(RenderEngine& renderer);
         ~AccelerationStructureBuilder();
         AccelerationStructureBuilder(const AccelerationStructureBuilder&) = delete;
         
-        void queueAs(const AccelerationStructureOp& op) { asQueue.emplace_back(op); }
-        void destroyOldData();
+        void queueBLAS(const BLASBuildOp& op) { blasQueue.emplace_back(op); }
 
-        TimelineSemaphorePair getBuildSemaphore() const { return { asBuildSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue }; }
-
-        void submitQueuedOps(const SynchronizationInfo& syncInfo, VkAccelerationStructureTypeKHR type); //may block thread if compaction is used for any threads
+        void submitQueuedOps(const SynchronizationInfo& syncInfo); //may block thread if compaction is used
     };
 }
