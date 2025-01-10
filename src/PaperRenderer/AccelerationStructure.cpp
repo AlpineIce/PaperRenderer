@@ -71,7 +71,7 @@ namespace PaperRenderer
     {
         //update UBO
         UBOInputData uboInputData = {};
-        uboInputData.objectCount = 1;
+        uboInputData.objectCount = tlas.nextUpdateSize;
 
         BufferWrite write = {};
         write.readData = &uboInputData;
@@ -151,11 +151,7 @@ namespace PaperRenderer
     AS::AsBuildData AS::getAsData(const VkAccelerationStructureTypeKHR type, const VkBuildAccelerationStructureFlagsKHR flags, const VkBuildAccelerationStructureModeKHR mode)
     {
         //destroy old structure
-        if(accelerationStructure && mode == VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR)
-        {
-            vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), accelerationStructure, nullptr);
-        }
-        else if(accelerationStructure)
+        if(accelerationStructure)
         {
             asDestructionQueue[renderer.getBufferIndex()].push_front(accelerationStructure);
         }
@@ -427,18 +423,16 @@ namespace PaperRenderer
         std::unique_ptr<AsGeometryBuildData> returnData = std::make_unique<AsGeometryBuildData>();
 
         //geometries
-        const VkAccelerationStructureGeometryInstancesDataKHR geoInstances = {
-            .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR,
-            .pNext = NULL,
-            .arrayOfPointers = VK_FALSE,
-            .data = VkDeviceOrHostAddressConstKHR{ .deviceAddress = instancesBuffer->getBufferDeviceAddress() + tlInstancesOffset }
-        };
-
         const VkAccelerationStructureGeometryKHR structureGeometry = {
             .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
             .pNext = NULL,
             .geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR,
-            .geometry = { .instances = geoInstances },
+            .geometry = { .instances = {
+                .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR,
+                .pNext = NULL,
+                .arrayOfPointers = VK_FALSE,
+                .data = VkDeviceOrHostAddressConstKHR{ .deviceAddress = instancesBuffer->getBufferDeviceAddress() + tlInstancesOffset }
+            }},
             .flags = VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR
         };
 
@@ -582,7 +576,7 @@ namespace PaperRenderer
         AS::buildStructure(cmdBuffer, data, compactionQuery);
     }
 
-    void TLAS::updateTLAS(const class RayTraceRender& rtRender, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, const SynchronizationInfo& syncInfo)
+    const Queue& TLAS::updateTLAS(const class RayTraceRender& rtRender, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, const SynchronizationInfo& syncInfo)
     {
         //----------QUEUE INSTANCE TRANSFERS----------//
 
@@ -672,7 +666,7 @@ namespace PaperRenderer
             .fence = VK_NULL_HANDLE
         };
         buildSyncInfo.timelineWaitPairs.push_back(renderer.getStagingBuffer().getTransferSemaphore());
-        renderer.getDevice().getCommands().submitToQueue(buildSyncInfo, { cmdBuffer });
+        return renderer.getDevice().getCommands().submitToQueue(buildSyncInfo, { cmdBuffer });
     }
 
     //----------AS BUILDER DEFINITIONS----------//
@@ -715,11 +709,14 @@ namespace PaperRenderer
         return returnData;
     }
 
-    void AccelerationStructureBuilder::submitQueuedOps(const SynchronizationInfo& syncInfo)
+    const Queue& AccelerationStructureBuilder::submitQueuedOps(const SynchronizationInfo& syncInfo)
     {
         Timer timer(renderer, "Submit Queued BLAS Ops", REGULAR);
 
         //----------AS BUILDS----------//
+
+        //return queue
+        Queue const* returnQueue = NULL;
         
         //get BLAS' that are to be compacted
         std::unordered_map<BLAS*, VkDeviceSize> compactions = getCompactions();
@@ -785,7 +782,7 @@ namespace PaperRenderer
             buildSyncInfo.fence = syncInfo.fence;
         }
 
-        renderer.getDevice().getCommands().submitToQueue(buildSyncInfo, { cmdBuffer });
+        returnQueue = &renderer.getDevice().getCommands().submitToQueue(buildSyncInfo, { cmdBuffer });
 
         //----------AS COMPACTION----------//
         
@@ -833,7 +830,7 @@ namespace PaperRenderer
                 .timelineSignalPairs = syncInfo.timelineSignalPairs,
                 .fence = syncInfo.fence
             };
-            renderer.getDevice().getCommands().submitToQueue(compactionSyncInfo, { cmdBuffer });
+            returnQueue = &renderer.getDevice().getCommands().submitToQueue(compactionSyncInfo, { cmdBuffer });
 
             //destroy query pool
             vkDestroyQueryPool(renderer.getDevice().getDevice(), queryPool, nullptr);
@@ -841,5 +838,8 @@ namespace PaperRenderer
 
         //clear build queue
         blasQueue.clear();
+
+        //return
+        return *returnQueue;
     }
 }

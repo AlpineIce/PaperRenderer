@@ -143,7 +143,7 @@ namespace PaperRenderer
         TLAS(const TLAS&) = delete;
 
         //Updates the TLAS to the RayTraceRender instances according to the mode (either rebuild or update). Note that compaction is ignored for a TLAS
-        void updateTLAS(const class RayTraceRender& rtRender, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, const SynchronizationInfo& syncInfo);
+        const Queue& updateTLAS(const class RayTraceRender& rtRender, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, const SynchronizationInfo& syncInfo);
 
         const Buffer& getInstancesBuffer() const { return *instancesBuffer; }
         const VkDeviceSize getInstanceDescriptionsOffset() const { return instanceDescriptionsOffset; } //MAY POSSIBLY CHANGE AFTER UPDATING TLAS
@@ -176,6 +176,6 @@ namespace PaperRenderer
         
         void queueBLAS(const BLASBuildOp& op) { blasQueue.emplace_back(op); }
 
-        void submitQueuedOps(const SynchronizationInfo& syncInfo); //may block thread if compaction is used
+        const Queue& submitQueuedOps(const SynchronizationInfo& syncInfo); //may block thread if compaction is used
     };
 }

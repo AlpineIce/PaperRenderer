@@ -175,15 +175,15 @@ ExampleRayTracing::~ExampleRayTracing()
 {
 }
 
-void ExampleRayTracing::rayTraceRender(const PaperRenderer::SynchronizationInfo &syncInfo, const PaperRenderer::Buffer& materialDefinitionsBuffer)
+const PaperRenderer::Queue& ExampleRayTracing::rayTraceRender(const PaperRenderer::SynchronizationInfo &syncInfo, const PaperRenderer::Buffer& materialDefinitionsBuffer)
 {
     //pre-render barriers
     std::vector<VkImageMemoryBarrier2> preRenderImageBarriers = {
         { //HDR buffer undefined -> general layout; required for correct shader access
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .pNext = NULL,
-            .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
+            .srcAccessMask = VK_ACCESS_2_NONE,
             .dstStageMask = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
             .dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
             .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
@@ -291,7 +291,7 @@ void ExampleRayTracing::rayTraceRender(const PaperRenderer::SynchronizationInfo 
         .rtDescriptorWrites = descriptorWrites
     };
     
-    rtRenderPass.render(rtRenderInfo, syncInfo);
+    return rtRenderPass.render(rtRenderInfo, syncInfo);
 }
 
 void ExampleRayTracing::updateUBO()
@@ -441,7 +441,7 @@ ExampleRaster::~ExampleRaster()
 {
 }
 
-void ExampleRaster::rasterRender(PaperRenderer::SynchronizationInfo syncInfo)
+const PaperRenderer::Queue& ExampleRaster::rasterRender(PaperRenderer::SynchronizationInfo syncInfo)
 {
     //transfer instance data
     renderPass.queueInstanceTransfers();
@@ -552,7 +552,7 @@ void ExampleRaster::rasterRender(PaperRenderer::SynchronizationInfo syncInfo)
 
     //render
     syncInfo.timelineWaitPairs.push_back(renderer.getStagingBuffer().getTransferSemaphore());
-    renderer.getDevice().getCommands().submitToQueue(syncInfo, renderPass.render(renderPassInfo));
+    return renderer.getDevice().getCommands().submitToQueue(syncInfo, renderPass.render(renderPassInfo));
 }
 
 //----------BUFFER COPY PASS----------//
@@ -569,7 +569,7 @@ BufferCopyPass::~BufferCopyPass()
 {
 }
 
-void BufferCopyPass::render(const PaperRenderer::SynchronizationInfo &syncInfo, bool fromRaster)
+const PaperRenderer::Queue& BufferCopyPass::render(const PaperRenderer::SynchronizationInfo &syncInfo, bool fromRaster)
 {
     //----------PRE-RENDER BARRIER----------//
 
@@ -753,7 +753,7 @@ void BufferCopyPass::render(const PaperRenderer::SynchronizationInfo &syncInfo, 
 
     renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
-    renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+    return renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
 }
 
 BufferCopyPass::BufferCopyMaterial::BufferCopyMaterial(PaperRenderer::RenderEngine &renderer, const HDRBuffer &hdrBuffer)

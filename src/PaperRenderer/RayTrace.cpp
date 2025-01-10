@@ -32,7 +32,7 @@ namespace PaperRenderer
         pipeline.reset();
     }
 
-    void RayTraceRender::render(RayTraceRenderInfo rtRenderInfo, SynchronizationInfo syncInfo)
+    const Queue& RayTraceRender::render(RayTraceRenderInfo rtRenderInfo, SynchronizationInfo syncInfo)
     {
         //Timer
         Timer timer(renderer, "RayTraceRender Record", REGULAR);
@@ -58,7 +58,7 @@ namespace PaperRenderer
         if(tlas.getAccelerationStructure())
         {
             //bind pipeline
-            vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline->getPipeline());
+            /*vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline->getPipeline());
 
             //descriptor writes
             if(rtRenderInfo.rtDescriptorWrites.bufferViewWrites.size() || rtRenderInfo.rtDescriptorWrites.bufferWrites.size() || 
@@ -86,7 +86,7 @@ namespace PaperRenderer
                 rtRenderInfo.image.getExtent().width,
                 rtRenderInfo.image.getExtent().height,
                 rtRenderInfo.image.getExtent().depth
-            );
+            );*/
         }
 
         //post-render barriers
@@ -101,10 +101,10 @@ namespace PaperRenderer
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
         
         //submit
-        renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+        return renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
     }
 
-    void RayTraceRender::updateTLAS(VkBuildAccelerationStructureModeKHR mode, VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo)
+    const Queue& RayTraceRender::updateTLAS(VkBuildAccelerationStructureModeKHR mode, VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo)
     {
         //update RT pipeline if needed (required to access SBT offsets for TLAS)
         if(queuePipelineBuild)
@@ -114,7 +114,7 @@ namespace PaperRenderer
         }
 
         //update TLAS
-        tlas.updateTLAS(*this, mode, flags, syncInfo);
+        return tlas.updateTLAS(*this, mode, flags, syncInfo);
     }
 
     void RayTraceRender::rebuildPipeline()

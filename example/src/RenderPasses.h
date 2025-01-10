@@ -67,7 +67,7 @@ public:
     ExampleRayTracing(PaperRenderer::RenderEngine& renderer, const PaperRenderer::Camera& camera, const HDRBuffer& hdrBuffer, const PaperRenderer::Buffer& lightBuffer, const PaperRenderer::Buffer& lightInfoUBO);
     ~ExampleRayTracing();
 
-    void rayTraceRender(const PaperRenderer::SynchronizationInfo& syncInfo, const PaperRenderer::Buffer& materialDefinitionsBuffer);
+    const PaperRenderer::Queue& rayTraceRender(const PaperRenderer::SynchronizationInfo& syncInfo, const PaperRenderer::Buffer& materialDefinitionsBuffer);
     void updateUBO();
 
     PaperRenderer::RayTraceRender& getRTRender() { return rtRenderPass; }
@@ -97,7 +97,7 @@ public:
     ExampleRaster(PaperRenderer::RenderEngine& renderer, const PaperRenderer::Camera& camera, const HDRBuffer& hdrBuffer, const DepthBuffer& depthBuffer, const PaperRenderer::Buffer& lightBuffer, const PaperRenderer::Buffer& lightInfoUBO);
     ~ExampleRaster();
 
-    void rasterRender(PaperRenderer::SynchronizationInfo syncInfo);
+    const PaperRenderer::Queue& rasterRender(PaperRenderer::SynchronizationInfo syncInfo);
     
     const DefaultMaterial& getDefaultMaterial() const { return baseMaterial; }
     PaperRenderer::RenderPass& getRenderPass() { return renderPass; }
@@ -145,5 +145,5 @@ public:
     ~BufferCopyPass();
 
     //to render function
-    void render(const PaperRenderer::SynchronizationInfo &syncInfo, bool fromRaster);
+    const PaperRenderer::Queue& render(const PaperRenderer::SynchronizationInfo &syncInfo, bool fromRaster);
 };
