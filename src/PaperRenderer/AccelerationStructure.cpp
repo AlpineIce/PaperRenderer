@@ -151,9 +151,10 @@ namespace PaperRenderer
     AS::AsBuildData AS::getAsData(const VkAccelerationStructureTypeKHR type, const VkBuildAccelerationStructureFlagsKHR flags, const VkBuildAccelerationStructureModeKHR mode)
     {
         //destroy old structure
-        if(accelerationStructure)
+        if(accelerationStructure && mode != VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR)
         {
             asDestructionQueue[renderer.getBufferIndex()].push_front(accelerationStructure);
+            accelerationStructure = VK_NULL_HANDLE;
         }
 
         //get compaction flag
@@ -452,9 +453,6 @@ namespace PaperRenderer
 
     void TLAS::verifyInstancesBuffer(const uint32_t instanceCount)
     {
-        //clear destruction queue
-        bufferDestructionQueue[renderer.getBufferIndex()].clear();
-
         //instances
         const VkDeviceSize newInstancesSize = Device::getAlignment(
             std::max((VkDeviceSize)(instanceCount * sizeof(ModelInstance::AccelerationStructureInstance) * instancesOverhead),
@@ -659,14 +657,7 @@ namespace PaperRenderer
 
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
-        SynchronizationInfo buildSyncInfo = {
-            .queueType = COMPUTE,
-            .binaryWaitPairs = syncInfo.binaryWaitPairs,
-            .timelineWaitPairs = syncInfo.timelineWaitPairs,
-            .fence = VK_NULL_HANDLE
-        };
-        buildSyncInfo.timelineWaitPairs.push_back(renderer.getStagingBuffer().getTransferSemaphore());
-        return renderer.getDevice().getCommands().submitToQueue(buildSyncInfo, { cmdBuffer });
+        return renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
     }
 
     //----------AS BUILDER DEFINITIONS----------//

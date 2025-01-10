@@ -58,7 +58,7 @@ namespace PaperRenderer
         if(tlas.getAccelerationStructure())
         {
             //bind pipeline
-            /*vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline->getPipeline());
+            vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline->getPipeline());
 
             //descriptor writes
             if(rtRenderInfo.rtDescriptorWrites.bufferViewWrites.size() || rtRenderInfo.rtDescriptorWrites.bufferWrites.size() || 
@@ -86,7 +86,7 @@ namespace PaperRenderer
                 rtRenderInfo.image.getExtent().width,
                 rtRenderInfo.image.getExtent().height,
                 rtRenderInfo.image.getExtent().depth
-            );*/
+            );
         }
 
         //post-render barriers

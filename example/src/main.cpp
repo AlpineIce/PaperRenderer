@@ -719,22 +719,7 @@ int main()
             .pSemaphores = toWaitSemaphores.data(),
             .pValues = toWaitSemaphoreValues.data()
         };
-        vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, 1000000000);
-
-        //build queued BLAS's (wait on transfer, signal rendering semaphore
-        if(finalSemaphoreValue == 0)
-        {
-            const PaperRenderer::SynchronizationInfo blasSyncInfo = {
-                .queueType = PaperRenderer::QueueType::COMPUTE
-            };
-            vkQueueWaitIdle(renderer.getAsBuilder().submitQueuedOps(blasSyncInfo).queue);
-
-            //update tlas (wait for BLAS build, signal rendering semaphore)
-            const PaperRenderer::SynchronizationInfo tlasSyncInfo = {
-                .queueType = PaperRenderer::QueueType::COMPUTE
-            };
-            vkQueueWaitIdle(exampleRayTrace.getRTRender().updateTLAS(VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR, tlasSyncInfo).queue);
-        }
+        vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, UINT64_MAX);
 
         //ray tracing
         if(!guiContext.raster)
@@ -758,7 +743,7 @@ int main()
                 .queueType = PaperRenderer::QueueType::COMPUTE,
                 .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue + 1 } }
             };
-            vkQueueWaitIdle(renderer.getAsBuilder().submitQueuedOps(blasSyncInfo).queue);
+            renderer.getAsBuilder().submitQueuedOps(blasSyncInfo);
 
             //update tlas (wait for BLAS build, signal rendering semaphore)
             const PaperRenderer::SynchronizationInfo tlasSyncInfo = {
@@ -766,15 +751,15 @@ int main()
                 .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue + 1 } },
                 .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue + 2 } }
             };
-            vkQueueWaitIdle(exampleRayTrace.getRTRender().updateTLAS(VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR, tlasSyncInfo).queue);
+            exampleRayTrace.getRTRender().updateTLAS(VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR, tlasSyncInfo);
 
             //render pass (wait for TLAS build, signal rendering semaphore)
             PaperRenderer::SynchronizationInfo rtRenderSync = {
                 .queueType = PaperRenderer::QueueType::COMPUTE,
-                .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValue + 2 } },
-                .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue + 3 } }
+                .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValue + 2} },
+                .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValue + 3 } }
             };
-            vkQueueWaitIdle(exampleRayTrace.rayTraceRender(rtRenderSync, rtMaterialDefinitionsBuffer).queue);
+            exampleRayTrace.rayTraceRender(rtRenderSync, rtMaterialDefinitionsBuffer);
         }
         else //raster
         {
@@ -791,7 +776,7 @@ int main()
         const PaperRenderer::SynchronizationInfo bufferCopySyncInfo = {
             .queueType = PaperRenderer::QueueType::GRAPHICS,
             .binaryWaitPairs = { { swapchainSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT } },
-            .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValue + 3 } },
+            .timelineWaitPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, finalSemaphoreValue + 3 } },
             .timelineSignalPairs = { { renderingSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue + 4 } }
         };
         bufferCopyPass.render(bufferCopySyncInfo, guiContext.raster);
