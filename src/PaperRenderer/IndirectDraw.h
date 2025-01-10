@@ -42,7 +42,6 @@ namespace PaperRenderer
         //buffers and allocation
         std::unique_ptr<Buffer> modelMatricesBuffer;
         std::unique_ptr<Buffer> drawCommandsBuffer;
-        std::array<std::deque<std::unique_ptr<Buffer>>, 2> destructionQueue;
 
         struct BufferSizeRequirements
         {
@@ -81,7 +80,7 @@ namespace PaperRenderer
 
         void draw(const VkCommandBuffer& cmdBuffer, const class Material& material) const;
         void clearDrawCommand(const VkCommandBuffer& cmdBuffer) const;
-        void readInstanceCounts(VkCommandBuffer cmdBuffer, Buffer& buffer, uint32_t startIndex) const;
+        void addOwner(const Queue& queue);
 
         //const Buffer& getModelMatricesBuffer() { return *modelMatricesBuffer; }
         const Buffer& getDrawCommandsBuffer() const { return *drawCommandsBuffer; }

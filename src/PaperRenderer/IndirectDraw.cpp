@@ -19,9 +19,6 @@ namespace PaperRenderer
 
     std::vector<ModelInstance*> CommonMeshGroup::verifyBufferSize()
     {
-        //clear destruction queue
-        destructionQueue[renderer.getBufferIndex()].clear();
-
         //verify
         std::vector<ModelInstance*> returnInstances;
         if(rebuild)
@@ -40,10 +37,6 @@ namespace PaperRenderer
 
         //get new size
         BufferSizeRequirements bufferSizeRequirements = getBuffersRequirements();
-
-        //move old buffers to destruction queue
-        if(modelMatricesBuffer) destructionQueue[renderer.getBufferIndex()].push_front(std::move(modelMatricesBuffer));
-        if(drawCommandsBuffer) destructionQueue[renderer.getBufferIndex()].push_front(std::move(drawCommandsBuffer));
 
         //rebuild buffers
         const BufferInfo matricesBufferInfo = {
@@ -282,19 +275,9 @@ namespace PaperRenderer
         }
     }
 
-    void CommonMeshGroup::readInstanceCounts(VkCommandBuffer cmdBuffer, Buffer& buffer, uint32_t startIndex) const
+    void CommonMeshGroup::addOwner(const Queue &queue)
     {
-        for(const auto& [mesh, meshData] : meshesData)
-        {
-            uint32_t instanceCountLocation = (sizeof(DrawCommand) * meshData.drawCommandIndex) + offsetof(VkDrawIndexedIndirectCommand, instanceCount);
-
-            VkBufferCopy copy = {};
-            copy.dstOffset = startIndex * sizeof(uint32_t);
-            copy.size = sizeof(uint32_t);
-            copy.srcOffset = instanceCountLocation;
-            vkCmdCopyBuffer(cmdBuffer, drawCommandsBuffer->getBuffer(), buffer.getBuffer(), 1, &copy);
-
-            startIndex++;
-        }
+        modelMatricesBuffer->addOwner(queue);
+        drawCommandsBuffer->addOwner(queue);
     }
 }

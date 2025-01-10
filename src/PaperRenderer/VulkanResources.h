@@ -145,6 +145,8 @@ namespace PaperRenderer
         void removeFromRange(VkDeviceSize offset, VkDeviceSize size);
 
         std::vector<CompactionResult> compact(); //inkoves on demand compaction; useful for when recreating an allocation to get the actual current size requirement. results are sorted
+        void addOwner(const Queue& queue) { buffer.addOwner(queue); }
+        void removeOwner(const Queue& queue) { buffer.removeOwner(queue); };
 
         Buffer& getBuffer() { return buffer; }
         const VkDeviceSize& getStackLocation() const { return stackLocation; } //returns the location relative to the start of the buffer (always 0) of where unwritten data is

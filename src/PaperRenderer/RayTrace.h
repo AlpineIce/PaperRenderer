@@ -40,6 +40,7 @@ namespace PaperRenderer
         const std::vector<ShaderDescription> callableShaders;
 
         void rebuildPipeline();
+        void assignResourceOwner(const Queue& queue);
         
         class RenderEngine& renderer;
         TLAS& tlas;

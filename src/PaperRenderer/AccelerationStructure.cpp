@@ -140,12 +140,20 @@ namespace PaperRenderer
 
     AS::~AS()
     {
+        scratchBuffer.reset();
+        asBuffer.reset();
+
         if(accelerationStructure)
         {
             vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), accelerationStructure, nullptr);
         }
-        scratchBuffer.reset();
-        asBuffer.reset();
+        for(const std::deque<VkAccelerationStructureKHR>& queue : asDestructionQueue)
+        {
+            for(VkAccelerationStructureKHR structure : queue)
+            {
+                vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), structure, nullptr);
+            }
+        }
     }
 
     AS::AsBuildData AS::getAsData(const VkAccelerationStructureTypeKHR type, const VkBuildAccelerationStructureFlagsKHR flags, const VkBuildAccelerationStructureModeKHR mode)
@@ -156,6 +164,13 @@ namespace PaperRenderer
             asDestructionQueue[renderer.getBufferIndex()].push_front(accelerationStructure);
             accelerationStructure = VK_NULL_HANDLE;
         }
+
+        //delete AS in destruction queue
+        for(VkAccelerationStructureKHR structure : asDestructionQueue[renderer.getBufferIndex()])
+        {
+            vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), structure, nullptr);
+        }
+        asDestructionQueue[renderer.getBufferIndex()].clear();
 
         //get compaction flag
         const bool compact = flags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR ? true : false;
@@ -193,9 +208,6 @@ namespace PaperRenderer
         //update buffer if needed
         if(!asBuffer || asBuffer->getSize() < buildSizeInfo.accelerationStructureSize)
         {
-            //queue destruction if old existed
-            if(asBuffer) bufferDestructionQueue[renderer.getBufferIndex()].emplace_front(std::move(asBuffer));
-
             const BufferInfo bufferInfo = {
                 .size = buildSizeInfo.accelerationStructureSize,
                 .usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
@@ -225,9 +237,6 @@ namespace PaperRenderer
         //rebuild scratch buffer if needed
         if(!scratchBuffer || scratchBuffer->getSize() < requiredScratchSize)
         {
-            //move old to destruction queue
-            if(scratchBuffer) bufferDestructionQueue[renderer.getBufferIndex()].emplace_front(std::move(scratchBuffer));
-
             const BufferInfo bufferInfo = {
                 .size = requiredScratchSize,
                 .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
@@ -294,7 +303,7 @@ namespace PaperRenderer
         }
     }
 
-    void AS::compactStructure(VkCommandBuffer cmdBuffer, const VkAccelerationStructureTypeKHR type, const VkDeviceSize newSize)
+    std::unique_ptr<Buffer> AS::compactStructure(VkCommandBuffer cmdBuffer, const VkAccelerationStructureTypeKHR type, const VkDeviceSize newSize)
     {
         //create new buffer
         const BufferInfo bufferInfo = {
@@ -333,8 +342,16 @@ namespace PaperRenderer
         asDestructionQueue[renderer.getBufferIndex()].push_front(oldStructure);
 
         //set new buffer
-        bufferDestructionQueue[renderer.getBufferIndex()].push_front(std::move(asBuffer));
+        std::unique_ptr<Buffer> oldBuffer = std::move(asBuffer);
         asBuffer = std::move(newBuffer);
+
+        return oldBuffer;
+    }
+
+    void AS::assignResourceOwner(const Queue &queue)
+    {
+        asBuffer->addOwner(queue);
+        scratchBuffer->addOwner(queue);
     }
 
     //----------BLAS DEFINITIONS----------//
@@ -527,9 +544,6 @@ namespace PaperRenderer
 
                 vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
                 vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
-
-                //move old buffer to destruction queue
-                bufferDestructionQueue[renderer.getBufferIndex()].emplace_front(std::move(instancesBuffer));
             }
             
             //replace old buffers
@@ -574,7 +588,14 @@ namespace PaperRenderer
         AS::buildStructure(cmdBuffer, data, compactionQuery);
     }
 
-    const Queue& TLAS::updateTLAS(const class RayTraceRender& rtRender, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, const SynchronizationInfo& syncInfo)
+    void TLAS::assignResourceOwner(const Queue &queue)
+    {
+        instancesBuffer->addOwner(queue);
+
+        AS::assignResourceOwner(queue);
+    }
+
+    const Queue& TLAS::updateTLAS(const class RayTraceRender& rtRender, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo)
     {
         //----------QUEUE INSTANCE TRANSFERS----------//
 
@@ -656,8 +677,16 @@ namespace PaperRenderer
         vkEndCommandBuffer(cmdBuffer);
 
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
+        
+        //submit
+        syncInfo.timelineWaitPairs.push_back(renderer.getStagingBuffer().getTransferSemaphore());
+        const Queue& queue = renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
 
-        return renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+        //assign ownership
+        assignResourceOwner(queue);
+
+        //return
+        return queue;
     }
 
     //----------AS BUILDER DEFINITIONS----------//
@@ -804,9 +833,11 @@ namespace PaperRenderer
             vkBeginCommandBuffer(cmdBuffer, &cmdBufferInfo);
 
             //perform compactions
+            std::vector<std::unique_ptr<Buffer>> oldBuffers;
+            oldBuffers.reserve(compactions.size());
             for(auto& [blas, index] : compactions)
             {
-                blas->compactStructure(cmdBuffer, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR, compactionResults[index]);
+                oldBuffers.push_back(blas->compactStructure(cmdBuffer, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR, compactionResults[index]));
             }
 
             //end cmd buffer
@@ -825,6 +856,18 @@ namespace PaperRenderer
 
             //destroy query pool
             vkDestroyQueryPool(renderer.getDevice().getDevice(), queryPool, nullptr);
+
+            //assign owners to old resources before they go out of scope (this essentially blocks this thread until compaction is completed)
+            for(std::unique_ptr<Buffer>& buffer : oldBuffers)
+            {
+                buffer->addOwner(*returnQueue);
+            }
+        }
+
+        //assign owners (there are potentially 2 queues used, but the latest one requires waiting on the last so it should be fine)
+        for(BLASBuildOp& op : blasQueue)
+        {
+            op.accelerationStructure.assignResourceOwner(*returnQueue);
         }
 
         //clear build queue

@@ -101,7 +101,13 @@ namespace PaperRenderer
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
         
         //submit
-        return renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+        const Queue& queue = renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+        
+        //assign ownership
+        assignResourceOwner(queue);
+
+        //return queue
+        return  queue;
     }
 
     const Queue& RayTraceRender::updateTLAS(VkBuildAccelerationStructureModeKHR mode, VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo)
@@ -139,7 +145,12 @@ namespace PaperRenderer
         };
         pipeline = renderer.getPipelineBuilder().buildRTPipeline(pipelineBuildInfo);
     }
-    
+
+    void RayTraceRender::assignResourceOwner(const Queue &queue)
+    {
+        pipeline->assignOwner(queue);
+    }
+
     void RayTraceRender::addInstance(AccelerationStructureInstanceData instanceData, const RTMaterial& material)
     {
         //add reference

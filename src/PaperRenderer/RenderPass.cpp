@@ -177,9 +177,6 @@ namespace PaperRenderer
                 vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
                 vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
             }
-
-            //move old buffer to destruction queue
-            destructionQueue[renderer.getBufferIndex()].emplace_front(std::move(instancesBuffer));
         }
 
         //replace old buffer
@@ -201,9 +198,6 @@ namespace PaperRenderer
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
         };
         std::unique_ptr<Buffer> newSortedInstancesBuffer = std::make_unique<Buffer>(renderer, sortedInstancesBufferInfo);
-
-        //add old to destruction queue if exists
-        if(sortedInstancesOutputBuffer) destructionQueue[renderer.getBufferIndex()].emplace_front(std::move(sortedInstancesOutputBuffer));
 
         //replace old buffer
         sortedInstancesOutputBuffer = std::move(newSortedInstancesBuffer);
@@ -250,9 +244,6 @@ namespace PaperRenderer
 
             vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
             vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
-
-            //move old buffer to destruction queue
-            destructionQueue[renderer.getBufferIndex()].emplace_front(std::move(instancesDataBuffer));
         }
         
         //replace old buffer
@@ -273,9 +264,6 @@ namespace PaperRenderer
                 toUpdateInstances.insert(toUpdateInstances.end(), meshGroupUpdatedInstances.begin(), meshGroupUpdatedInstances.end());
             }
         }
-
-        //clear old buffer data
-        destructionQueue[renderer.getBufferIndex()].clear();
 
         //verify buffers
         if(!instancesBuffer || instancesBuffer->getSize() / sizeof(ModelInstance::RenderPassInstance) < renderPassInstances.size())
@@ -391,10 +379,28 @@ namespace PaperRenderer
         }
     }
 
-    std::vector<VkCommandBuffer> RenderPass::render(const RenderPassInfo& renderPassInfo)
+    void RenderPass::assignResourceOwner(const Queue &queue)
+    {
+        //this
+        instancesBuffer->addOwner(queue);
+        sortedInstancesOutputBuffer->addOwner(queue);
+        instancesDataBuffer->addOwner(queue);
+
+        //common mesh groups
+        for(auto& [material, materialInstanceNode] : renderTree) //material
+        {
+            for(auto& [materialInstance, meshGroup] : materialInstanceNode) //material instances
+            {
+                //clear
+                meshGroup.addOwner(queue);
+            }
+        }
+    }
+
+    const Queue& RenderPass::render(const RenderPassInfo& renderPassInfo, const SynchronizationInfo& syncInfo)
     {
         //Timer
-        Timer timer(renderer, "RenderPass Render Recording", REGULAR);
+        Timer timer(renderer, "RenderPass Submission", REGULAR);
 
         //----------CLEAR DRAW COUNTS----------//
 
@@ -669,7 +675,13 @@ namespace PaperRenderer
 
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
-        return { cmdBuffer };
+        //submit
+        const Queue& queue = renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+
+        //assign owner to resources in case destruction is required
+        assignResourceOwner(queue);
+
+        return queue;
     }
 
     void RenderPass::addInstance(ModelInstance& instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials, bool sorted)

@@ -552,7 +552,7 @@ const PaperRenderer::Queue& ExampleRaster::rasterRender(PaperRenderer::Synchroni
 
     //render
     syncInfo.timelineWaitPairs.push_back(renderer.getStagingBuffer().getTransferSemaphore());
-    return renderer.getDevice().getCommands().submitToQueue(syncInfo, renderPass.render(renderPassInfo));
+    return renderPass.render(renderPassInfo, syncInfo);
 }
 
 //----------BUFFER COPY PASS----------//

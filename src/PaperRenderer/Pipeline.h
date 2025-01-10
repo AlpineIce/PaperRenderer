@@ -233,6 +233,8 @@ namespace PaperRenderer
         ~RTPipeline() override;
         RTPipeline(const RTPipeline&) = delete;
 
+        void assignOwner(const Queue& queue) { sbtBuffer->addOwner(queue); }
+
         const RTPipelineProperties& getPipelineProperties() const { return pipelineProperties; }
         const RTShaderBindingTableData& getShaderBindingTableData() const { return shaderBindingTableData; }
     };

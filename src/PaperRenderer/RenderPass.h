@@ -86,7 +86,6 @@ namespace PaperRenderer
         std::unique_ptr<Buffer> instancesBuffer;
         std::unique_ptr<Buffer> sortedInstancesOutputBuffer;
         std::unique_ptr<FragmentableBuffer> instancesDataBuffer;
-        std::array<std::deque<std::variant<std::unique_ptr<Buffer>, std::unique_ptr<FragmentableBuffer>>>, 2> destructionQueue; //old buffers need to be destroyed on their corresponding frame and not immediately
 
         void rebuildInstancesBuffer();
         void rebuildSortedInstancesBuffer();
@@ -94,6 +93,7 @@ namespace PaperRenderer
         void handleMaterialDataCompaction(std::vector<CompactionResult> results);
         void handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances);
         void clearDrawCounts(VkCommandBuffer cmdBuffer);
+        void assignResourceOwner(const Queue& queue);
 
         RenderEngine& renderer;
         MaterialInstance& defaultMaterialInstance;
@@ -106,7 +106,7 @@ namespace PaperRenderer
         RenderPass(const RenderPass&) = delete;
 
         void queueInstanceTransfers();
-        std::vector<VkCommandBuffer> render(const RenderPassInfo& renderPassInfo); //returns list of GRAPHICS command buffers, in order, to submit
+        const Queue& render(const RenderPassInfo& renderPassInfo, const SynchronizationInfo& syncInfo);
 
         void addInstance(ModelInstance& instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials, bool sorted=false);
         void removeInstance(ModelInstance& instance);

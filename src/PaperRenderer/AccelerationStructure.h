@@ -69,11 +69,11 @@ namespace PaperRenderer
         };
         virtual void buildStructure(VkCommandBuffer cmdBuffer, const AsBuildData& data, const CompactionQuery compactionQuery);
 
-        //compaction operation
-        void compactStructure(VkCommandBuffer cmdBuffer, const VkAccelerationStructureTypeKHR type, const VkDeviceSize newSize);
+        //compaction operation; returns old buffer which must stay in scope until completion
+        std::unique_ptr<Buffer> compactStructure(VkCommandBuffer cmdBuffer, const VkAccelerationStructureTypeKHR type, const VkDeviceSize newSize);
 
-        //destruction queues
-        std::array<std::deque<std::unique_ptr<Buffer>>, 2> bufferDestructionQueue;
+        //resource ownership
+        virtual void assignResourceOwner(const Queue& queue);
         std::array<std::deque<VkAccelerationStructureKHR>, 2> asDestructionQueue;
 
         class RenderEngine& renderer;
@@ -134,6 +134,9 @@ namespace PaperRenderer
         void verifyInstancesBuffer(const uint32_t instanceCount);
         void buildStructure(VkCommandBuffer cmdBuffer, const AsBuildData& data, const CompactionQuery compactionQuery) override;
 
+        //ownership
+        void assignResourceOwner(const Queue& queue) override;
+
         friend class ModelInstance;
         friend TLASInstanceBuildPipeline;
 
@@ -143,7 +146,7 @@ namespace PaperRenderer
         TLAS(const TLAS&) = delete;
 
         //Updates the TLAS to the RayTraceRender instances according to the mode (either rebuild or update). Note that compaction is ignored for a TLAS
-        const Queue& updateTLAS(const class RayTraceRender& rtRender, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, const SynchronizationInfo& syncInfo);
+        const Queue& updateTLAS(const class RayTraceRender& rtRender, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo);
 
         const Buffer& getInstancesBuffer() const { return *instancesBuffer; }
         const VkDeviceSize getInstanceDescriptionsOffset() const { return instanceDescriptionsOffset; } //MAY POSSIBLY CHANGE AFTER UPDATING TLAS
