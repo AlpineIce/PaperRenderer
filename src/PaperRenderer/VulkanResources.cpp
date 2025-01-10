@@ -3,6 +3,7 @@
 
 #include <stdexcept>
 #include <algorithm>
+#include <mutex>
 
 namespace PaperRenderer
 {
@@ -15,6 +16,19 @@ namespace PaperRenderer
 
     VulkanResource::~VulkanResource()
     {
+    }
+
+    void VulkanResource::clearOwnership()
+    {
+        //clear ownership before deletion
+        for(Queue const* queue : owners)
+        {
+            //thread lock
+            std::lock_guard<std::mutex> lock(const_cast<Queue*>(queue)->threadLock);
+
+            //idle queue
+            vkQueueWaitIdle(queue->queue);
+        }
     }
 
     //----------BUFFER DEFINITIONS----------//
@@ -65,6 +79,7 @@ namespace PaperRenderer
 
     Buffer::~Buffer()
     {
+        clearOwnership();
         vmaDestroyBuffer(renderer.getDevice().getAllocator(), buffer, allocation);
     }
 
@@ -397,6 +412,7 @@ namespace PaperRenderer
 
     Image::~Image()
     {
+        clearOwnership();
         vmaDestroyImage(renderer.getDevice().getAllocator(), image, allocation);
     }
 
@@ -426,50 +442,56 @@ namespace PaperRenderer
 
     void Image::setImageData(const Buffer &imageStagingBuffer)
     {
-        //get synchronization stuff
-        VkSemaphore copySemaphore = renderer.getDevice().getCommands().getSemaphore();
-        VkFence blitFence = renderer.getDevice().getCommands().getUnsignaledFence();
+        //command buffer
+        VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(QueueType::GRAPHICS);
 
-        //copy staging buffer into image
-        SynchronizationInfo copySynchronizationInfo = {
-            .queueType = QueueType::TRANSFER,
-            .binaryWaitPairs = {},
-            .binarySignalPairs = { { copySemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT } },
-            .timelineWaitPairs = {},
-            .timelineSignalPairs = {},
-            .fence = VK_NULL_HANDLE
+        const VkCommandBufferBeginInfo beginInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .pNext = NULL,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            .pInheritanceInfo = NULL
         };
-        copyBufferToImage(imageStagingBuffer.getBuffer(), image, copySynchronizationInfo);
 
-        //generate mipmaps
-        SynchronizationInfo blitSynchronization = {
-            .queueType = QueueType::GRAPHICS,
-            .binaryWaitPairs = { { copySemaphore, VK_PIPELINE_STAGE_2_BLIT_BIT } },
-            .binarySignalPairs = {},
-            .timelineWaitPairs = {},
-            .timelineSignalPairs = {},
-            .fence = blitFence
-        };
-        generateMipmaps(blitSynchronization);
+        vkBeginCommandBuffer(cmdBuffer, &beginInfo); 
         
-        //destroy synchronization stuff
-        vkWaitForFences(renderer.getDevice().getDevice(), 1, &blitFence, VK_TRUE, UINT64_MAX);
-        vkDestroySemaphore(renderer.getDevice().getDevice(), copySemaphore, nullptr);
-        vkDestroyFence(renderer.getDevice().getDevice(), blitSynchronization.fence, nullptr);
+        //copy
+        copyBufferToImage(imageStagingBuffer.getBuffer(), image, cmdBuffer);
+
+        //memory barrier
+        const VkMemoryBarrier2 memBarrier = {
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+            .pNext = NULL,
+            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT,
+            .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT
+        };
+
+        const VkDependencyInfo dependencyInfo = {
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .pNext = NULL,
+            .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+            .memoryBarrierCount = 1,
+            .pMemoryBarriers = &memBarrier
+        };
+
+        vkCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
+
+        //blit
+        generateMipmaps(cmdBuffer);
+
+        vkEndCommandBuffer(cmdBuffer);
+
+        renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
+
+        const SynchronizationInfo syncInfo = {
+            .queueType = GRAPHICS
+        };
+        vkQueueWaitIdle(renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer }).queue);
     }
 
     VkSampler Image::getNewSampler()
     {
-        VkPhysicalDeviceFeatures2 features = {};
-        features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        features.pNext = NULL;
-        vkGetPhysicalDeviceFeatures2(renderer.getDevice().getGPU(), &features);
-
-        VkPhysicalDeviceProperties2 properties = {};
-        properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-        properties.pNext = NULL;
-        vkGetPhysicalDeviceProperties2(renderer.getDevice().getGPU(), &properties);
-
         VkSamplerCreateInfo samplerInfo = {};
         samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
         samplerInfo.pNext = 0;
@@ -481,8 +503,8 @@ namespace PaperRenderer
         samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         samplerInfo.mipLodBias = 0.0f;
-        samplerInfo.anisotropyEnable = features.features.samplerAnisotropy;
-        samplerInfo.maxAnisotropy = properties.properties.limits.maxSamplerAnisotropy;
+        samplerInfo.anisotropyEnable = renderer.getDevice().getGPUFeatures().samplerAnisotropy;
+        samplerInfo.maxAnisotropy = renderer.getDevice().getGPUProperties().properties.limits.maxSamplerAnisotropy;
         samplerInfo.compareEnable = VK_FALSE;
         samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
         samplerInfo.minLod = 0.0f;
@@ -496,33 +518,10 @@ namespace PaperRenderer
         return sampler;
     }
 
-    void Image::copyBufferToImage(VkBuffer src, VkImage dst, const SynchronizationInfo& synchronizationInfo)
+    void Image::copyBufferToImage(VkBuffer src, VkImage dst, VkCommandBuffer cmdBuffer)
     {
-        VkCommandBuffer transferBuffer = renderer.getDevice().getCommands().getCommandBuffer(QueueType::TRANSFER);
-
-        VkCommandBufferBeginInfo beginInfo = {};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.pNext = NULL;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-        VkImageSubresourceLayers subresource = {};
-        subresource.aspectMask = imageInfo.imageAspect;
-        subresource.mipLevel = 0;
-        subresource.baseArrayLayer = 0;
-        subresource.layerCount = 1;
-
-        VkBufferImageCopy copyRegion = {};
-        copyRegion.bufferOffset = 0;
-        copyRegion.bufferRowLength = 0;
-        copyRegion.bufferImageHeight = 0;
-        copyRegion.imageSubresource = subresource;
-        copyRegion.imageOffset = {0};
-        copyRegion.imageExtent = imageInfo.extent;
-
-        vkBeginCommandBuffer(transferBuffer, &beginInfo);
-
         //layout transition memory barrier
-        VkImageMemoryBarrier2 imageBarrier = {
+        const VkImageMemoryBarrier2 imageBarrier = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .pNext = NULL,
             .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
@@ -543,7 +542,7 @@ namespace PaperRenderer
             }
         };
 
-        VkDependencyInfo dependencyInfo = {
+        const VkDependencyInfo dependencyInfo = {
             .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
             .pNext = NULL,
             .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
@@ -555,82 +554,76 @@ namespace PaperRenderer
             .pImageMemoryBarriers = &imageBarrier
         };
 
-        vkCmdPipelineBarrier2(transferBuffer, &dependencyInfo);
+        vkCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);
 
         //copy image
-        vkCmdCopyBufferToImage(transferBuffer, src, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
-
-        vkEndCommandBuffer(transferBuffer);
-
-        renderer.getDevice().getCommands().unlockCommandBuffer(transferBuffer);
-
-        renderer.getDevice().getCommands().submitToQueue(synchronizationInfo, { transferBuffer });
+        const VkBufferImageCopy copyRegion = {
+            .bufferOffset = 0,
+            .bufferRowLength = 0,
+            .bufferImageHeight = 0,
+            .imageSubresource = {
+                .aspectMask = imageInfo.imageAspect,
+                .mipLevel = 0,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            },
+            .imageOffset = {0},
+            .imageExtent = imageInfo.extent
+        };
+        vkCmdCopyBufferToImage(cmdBuffer, src, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
     }
     
-    void Image::generateMipmaps(const SynchronizationInfo& synchronizationInfo)
+    void Image::generateMipmaps(VkCommandBuffer cmdBuffer)
     {
-        //command buffer
-        VkCommandBuffer blitBuffer = renderer.getDevice().getCommands().getCommandBuffer(QueueType::GRAPHICS);
-
-        VkCommandBufferBeginInfo beginInfo = {};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.pNext = NULL;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-        vkBeginCommandBuffer(blitBuffer, &beginInfo); 
-
         //mipmap blit process
         for(uint32_t i = 1; i < mipmapLevels; i++)
         {
             //----------INITIAL IMAGE BARRIERS----------//
 
-            VkImageMemoryBarrier2 initialImageBarriers[2];
-
-            //source mip level
-            initialImageBarriers[0] = {
-                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-                .pNext = NULL,
-                .srcStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT,
-                .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-                .dstStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT,
-                .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-                .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .image = image,
-                .subresourceRange = {
-                    .aspectMask = imageInfo.imageAspect,
-                    .baseMipLevel = i - 1,
-                    .levelCount = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1,
+            const VkImageMemoryBarrier2 initialImageBarriers[2] = {
+                { //source mip level
+                    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                    .pNext = NULL,
+                    .srcStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT,
+                    .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+                    .dstStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT,
+                    .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+                    .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .image = image,
+                    .subresourceRange = {
+                        .aspectMask = imageInfo.imageAspect,
+                        .baseMipLevel = i - 1,
+                        .levelCount = 1,
+                        .baseArrayLayer = 0,
+                        .layerCount = 1,
+                    }
+                },
+                { //destination mip level
+                    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                    .pNext = NULL,
+                    .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
+                    .srcAccessMask = VK_ACCESS_NONE,
+                    .dstStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT,
+                    .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+                    .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                    .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .image = image,
+                    .subresourceRange = {
+                        .aspectMask = imageInfo.imageAspect,
+                        .baseMipLevel = i,
+                        .levelCount = 1,
+                        .baseArrayLayer = 0,
+                        .layerCount = 1,
+                    }
                 }
             };
 
-            //destination mip level
-            initialImageBarriers[1] = {
-                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-                .pNext = NULL,
-                .srcStageMask = VK_PIPELINE_STAGE_2_NONE,
-                .srcAccessMask = VK_ACCESS_NONE,
-                .dstStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT,
-                .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-                .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-                .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .image = image,
-                .subresourceRange = {
-                    .aspectMask = imageInfo.imageAspect,
-                    .baseMipLevel = i,
-                    .levelCount = 1,
-                    .baseArrayLayer = 0,
-                    .layerCount = 1,
-                }
-            };
-
-            VkDependencyInfo initialDependencyInfo = {
+            const VkDependencyInfo initialDependencyInfo = {
                 .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
                 .pNext = NULL,
                 .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
@@ -642,46 +635,48 @@ namespace PaperRenderer
                 .pImageMemoryBarriers = initialImageBarriers
             };
 
-            vkCmdPipelineBarrier2(blitBuffer, &initialDependencyInfo);
+            vkCmdPipelineBarrier2(cmdBuffer, &initialDependencyInfo);
 
             //----------IMAGE BLIT----------//
 
-            VkImageBlit2 imageBlit = {};
-            imageBlit.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2;
-            imageBlit.pNext = NULL;
-            imageBlit.srcSubresource = {
-                .aspectMask = imageInfo.imageAspect,
-                .mipLevel = i - 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1
+            VkImageBlit2 imageBlit = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2,
+                .pNext = NULL,
+                .srcSubresource = {
+                    .aspectMask = imageInfo.imageAspect,
+                    .mipLevel = i - 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                },
+                .srcOffsets = { {}, int32_t(imageInfo.extent.width >> (i - 1)), int32_t(imageInfo.extent.height >> (i - 1)), 1 },
+                .dstSubresource = {
+                    .aspectMask = imageInfo.imageAspect,
+                    .mipLevel = i,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                },
+                .dstOffsets = { {}, int32_t(imageInfo.extent.width >> i), int32_t(imageInfo.extent.height >> i), 1 }
             };
-            imageBlit.srcOffsets[1] = { int32_t(imageInfo.extent.width >> (i - 1)), int32_t(imageInfo.extent.height >> (i - 1)), 1 };
-            imageBlit.dstSubresource = {
-                .aspectMask = imageInfo.imageAspect,
-                .mipLevel = i,
-                .baseArrayLayer = 0,
-                .layerCount = 1
+
+            const VkBlitImageInfo2 blitInfo = {
+                .sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
+                .pNext = NULL,
+                .srcImage = image,
+                .srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                .dstImage = image,
+                .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                .regionCount = 1,
+                .pRegions = &imageBlit,
+                .filter = VK_FILTER_LINEAR
             };
-            imageBlit.dstOffsets[1] = { int32_t(imageInfo.extent.width >> i), int32_t(imageInfo.extent.height >> i), 1 };
 
-            VkBlitImageInfo2 blitInfo = {};
-            blitInfo.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2;
-            blitInfo.pNext = NULL;
-            blitInfo.filter = VK_FILTER_LINEAR;
-            blitInfo.srcImage = image;
-            blitInfo.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            blitInfo.dstImage = image;
-            blitInfo.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            blitInfo.regionCount = 1;
-            blitInfo.pRegions = &imageBlit;
-
-            vkCmdBlitImage2(blitBuffer, &blitInfo);
+            vkCmdBlitImage2(cmdBuffer, &blitInfo);
         }
 
         //final image layout transitions
         for(uint32_t i = 0; i < mipmapLevels; i++)
         {
-            VkImageMemoryBarrier2 finalImageBarrier = {
+            const VkImageMemoryBarrier2 finalImageBarrier = {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
                 .pNext = NULL,
                 .srcStageMask = VK_PIPELINE_STAGE_2_BLIT_BIT,
@@ -702,7 +697,7 @@ namespace PaperRenderer
                 }
             };
 
-            VkDependencyInfo finalDependencyInfo = {
+            const VkDependencyInfo finalDependencyInfo = {
                 .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
                 .pNext = NULL,
                 .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
@@ -714,13 +709,7 @@ namespace PaperRenderer
                 .pImageMemoryBarriers = &finalImageBarrier
             };
 
-            vkCmdPipelineBarrier2(blitBuffer, &finalDependencyInfo);
+            vkCmdPipelineBarrier2(cmdBuffer, &finalDependencyInfo);
         }
-        
-        vkEndCommandBuffer(blitBuffer);
-
-        renderer.getDevice().getCommands().unlockCommandBuffer(blitBuffer);
-
-        renderer.getDevice().getCommands().submitToQueue(synchronizationInfo, { blitBuffer });
     }
 }

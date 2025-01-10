@@ -44,6 +44,9 @@ namespace PaperRenderer
     {
     protected:
         VkDeviceSize size = 0;
+        std::set<Queue const*> owners;
+
+        void clearOwnership();
 
         class RenderEngine& renderer;
         VmaAllocation allocation = VK_NULL_HANDLE;
@@ -52,6 +55,9 @@ namespace PaperRenderer
         VulkanResource(class RenderEngine& renderer);
         virtual ~VulkanResource();
         VulkanResource(const VulkanResource&) = delete;
+
+        void addOwner(const Queue& queue) { owners.insert(&queue); }
+        void removeOwner(const Queue& queue) { owners.erase(&queue); };
 
         VkDeviceSize getSize() const { return size; }
     };
@@ -166,8 +172,8 @@ namespace PaperRenderer
         const ImageInfo imageInfo;
         uint32_t mipmapLevels;
 
-        void copyBufferToImage(VkBuffer src, VkImage dst, const SynchronizationInfo& synchronizationInfo);
-        void generateMipmaps(const SynchronizationInfo& synchronizationInfo);
+        void copyBufferToImage(VkBuffer src, VkImage dst, VkCommandBuffer cmdBuffer);
+        void generateMipmaps(VkCommandBuffer cmdBuffer);
 
     public:
         Image(class RenderEngine& renderer, const ImageInfo& imageInfo);
