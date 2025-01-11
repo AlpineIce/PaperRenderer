@@ -3,7 +3,6 @@
 
 #include <cstring> //linux bs
 #include <functional>
-#include <deque>
 #include <set>
 
 namespace PaperRenderer
@@ -95,26 +94,32 @@ namespace PaperRenderer
         VkDeviceSize desiredLocation = 0;
         VkDeviceSize stackLocation = 0;
         VkDeviceSize totalDataSize = 0;
+        const VkDeviceSize minAlignment;
 
         struct Chunk
         {
             VkDeviceSize location;
             VkDeviceSize size;
 
-            static bool compareByLocation(const Chunk &a, const Chunk &b)
+            static bool compareByLocation(const Chunk &a, const Chunk& b)
             {
                 return a.location < b.location;
             }
-        };
-        std::deque<Chunk> memoryFragments;
 
-        std::function<void(std::vector<CompactionResult>)> compactionCallback = NULL;
+            bool operator<(const Chunk& other) const
+            {
+                return size < other.size;
+            }
+        };
+        std::set<Chunk> memoryFragments;
+
+        std::function<void(const std::vector<CompactionResult>&)> compactionCallback = NULL;
 
         class RenderEngine& renderer;
         VmaAllocation allocation;
 
     public:
-        FragmentableBuffer(class RenderEngine& renderer, const BufferInfo& bufferInfo);
+        FragmentableBuffer(class RenderEngine& renderer, const BufferInfo& bufferInfo, VkDeviceSize minAlignment);
         ~FragmentableBuffer();
         FragmentableBuffer(const FragmentableBuffer&) = delete;
 
@@ -129,7 +134,7 @@ namespace PaperRenderer
         };
 
         //Return location is a pointer to a variable where the write location relative to buffer will be returned. Returns UINT64_MAX into that variable if write failed
-        WriteResult newWrite(void* data, VkDeviceSize size, VkDeviceSize minAlignment, VkDeviceSize* returnLocation); 
+        WriteResult newWrite(void* data, VkDeviceSize size, VkDeviceSize* returnLocation); 
         void removeFromRange(VkDeviceSize offset, VkDeviceSize size);
 
         std::vector<CompactionResult> compact(); //inkoves on demand compaction; useful for when recreating an allocation to get the actual current size requirement. results are sorted

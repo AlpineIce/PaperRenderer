@@ -143,8 +143,9 @@ namespace PaperRenderer
 
     //----------FRAGMENTABLE BUFFER DEFINITIONS----------//
 
-    FragmentableBuffer::FragmentableBuffer(RenderEngine& renderer, const BufferInfo &bufferInfo)
+    FragmentableBuffer::FragmentableBuffer(RenderEngine& renderer, const BufferInfo &bufferInfo, VkDeviceSize minAlignment)
         :buffer(renderer, bufferInfo),
+        minAlignment(minAlignment),
         renderer(renderer)
     {
     }
@@ -153,45 +154,71 @@ namespace PaperRenderer
     {
     }
 
-    FragmentableBuffer::WriteResult FragmentableBuffer::newWrite(void* data, VkDeviceSize size, VkDeviceSize minAlignment, VkDeviceSize* returnLocation)
+    FragmentableBuffer::WriteResult FragmentableBuffer::newWrite(void* data, VkDeviceSize size, VkDeviceSize* returnLocation)
     {
         WriteResult result = SUCCESS;
-        desiredLocation += renderer.getDevice().getAlignment(size, minAlignment);
+        VkDeviceSize writeLocation = UINT64_MAX;
 
-        if(stackLocation + renderer.getDevice().getAlignment(size, minAlignment) > buffer.getSize())
+        //pad size
+        size = renderer.getDevice().getAlignment(size, minAlignment);
+
+        //attempt to find a chunk first
+        auto lower = memoryFragments.lower_bound({ 0, size });
+        if(lower != memoryFragments.end())
         {
-            //if compaction gives back no results then there's no more available memory
-            if(!compact().size() || stackLocation + size > buffer.getSize())
-            {
-                if(returnLocation) *returnLocation = UINT64_MAX;
+            //set write location to the start of the fragment
+            writeLocation = lower->location;
 
-                result = OUT_OF_MEMORY;
-                return result;
+            //add new fragment if size is > 0
+            if(lower->size - size > 0)
+            {
+                memoryFragments.insert({ lower->location + size, lower->size - size});
             }
 
-            //otherwise the compaction succeeded and enough available memory was created;
-            desiredLocation = stackLocation;
-            result = COMPACTED;
+            //remove old fragment
+            memoryFragments.erase(lower);
+        }
+        //or just add to the stack if there is no good fragment
+        else
+        {
+            desiredLocation += size;
+            if(stackLocation + size > buffer.getSize())
+            {
+                //if compaction gives back no results then there's no more available memory
+                if(!compact().size() || stackLocation + size > buffer.getSize())
+                {
+                    if(returnLocation) *returnLocation = UINT64_MAX;
+
+                    result = OUT_OF_MEMORY;
+                    return result;
+                }
+
+                //otherwise the compaction succeeded and enough available memory was created;
+                result = COMPACTED;
+            }
+
+            //set write location to the stack pointer
+            writeLocation = stackLocation;
+
+            //change stack location to desired location
+            stackLocation = desiredLocation;
         }
 
         //write if host visible
         if(buffer.isWritable() && data)
         {
-            BufferWrite write = {};
-            write.readData = data;
-            write.offset = renderer.getDevice().getAlignment(stackLocation, minAlignment);
-            write.size = size;
-            
+            const BufferWrite write = {
+                .offset = writeLocation,
+                .size = size,
+                .readData = data
+            };
             buffer.writeToBuffer({ write });
         }
 
-        if(returnLocation) *returnLocation = renderer.getDevice().getAlignment(stackLocation, minAlignment);
+        //enumerate write location to ptr if provided
+        if(returnLocation) *returnLocation = writeLocation;
 
-        if(result == SUCCESS)
-        {
-            stackLocation = desiredLocation;
-        }
-
+        //increment total data size
         totalDataSize += size;
         
         return result;
@@ -203,7 +230,7 @@ namespace PaperRenderer
             .location = offset,
             .size = size
         };
-        memoryFragments.push_back(memoryFragment);
+        memoryFragments.insert(memoryFragment);
 
         totalDataSize -= size;
     }
@@ -218,7 +245,9 @@ namespace PaperRenderer
             Timer timer(renderer, "Fragmentable Buffer Compaction", IRREGULAR);
             
             //sort memory fragments by their location
-            std::sort(memoryFragments.begin(), memoryFragments.end(), FragmentableBuffer::Chunk::compareByLocation);
+            std::vector<Chunk> vectorMemoryFragments;
+            vectorMemoryFragments.insert(vectorMemoryFragments.end(), memoryFragments.begin(), memoryFragments.end());
+            std::sort(vectorMemoryFragments.begin(), vectorMemoryFragments.end(), FragmentableBuffer::Chunk::compareByLocation);
 
             //start a command buffer
             VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(TRANSFER);
@@ -235,11 +264,11 @@ namespace PaperRenderer
             VkDeviceSize sizeReduction = 0;
 
             //shift data into memory fragment gaps
-            for(uint32_t i = 0; i < memoryFragments.size(); i++)
+            for(uint32_t i = 0; i < vectorMemoryFragments.size(); i++)
             {
                 //get current and next chunks
-                const Chunk chunk = memoryFragments[i];
-                const Chunk nextChunk = i < memoryFragments.size() - 1 ? memoryFragments[i + 1] : Chunk({ stackLocation, 0 });
+                const Chunk chunk = vectorMemoryFragments[i];
+                const Chunk nextChunk = i < vectorMemoryFragments.size() - 1 ? vectorMemoryFragments[i + 1] : Chunk({ stackLocation, 0 });
 
                 //get important sizes
                 const VkDeviceSize totalCopySize = nextChunk.location - std::min(nextChunk.location, (chunk.location + chunk.size)); //copy the size of this chunks location + size all the way to the next chunks location
@@ -298,7 +327,7 @@ namespace PaperRenderer
                     //create compaction result
                     compactionLocations.push_back({
                         .location = chunk.location,
-                        .shiftSize = srcOffset - dstOffset
+                        .shiftSize = chunk.size
                     });
                 }
             }
