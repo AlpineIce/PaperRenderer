@@ -212,7 +212,7 @@ namespace PaperRenderer
         modelsBufferInfo.allocationFlags = 0;
         modelsBufferInfo.size = newModelDataSize * modelsDataOverhead;
         modelsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
-        std::unique_ptr<FragmentableBuffer> newBuffer = std::make_unique<FragmentableBuffer>(*this, modelsBufferInfo);
+        std::unique_ptr<FragmentableBuffer> newBuffer = std::make_unique<FragmentableBuffer>(*this, modelsBufferInfo, 8);
         newBuffer->setCompactionCallback([this](std::vector<CompactionResult> results){ handleModelDataCompaction(results); });
 
         //copy old data into new if old buffer existed
@@ -230,14 +230,14 @@ namespace PaperRenderer
             vkDestroyFence(device.getDevice(), syncInfo.fence, nullptr);
 
             //pseudo write
-            newBuffer->newWrite(NULL, newWriteSize, 1, NULL);
+            newBuffer->newWrite(NULL, newWriteSize, NULL);
         }
 
         //replace old buffer
         modelDataBuffer = std::move(newBuffer);
     }
 
-    void RenderEngine::handleModelDataCompaction(std::vector<CompactionResult> results) //UNTESTED FUNCTION
+    void RenderEngine::handleModelDataCompaction(const std::vector<CompactionResult>& results)
     {
         //fix model data first
         for(const CompactionResult compactionResult : results)
@@ -298,7 +298,7 @@ namespace PaperRenderer
         renderingModels.push_back(model);
         
         //"write"
-        if(modelDataBuffer->newWrite(NULL, model->getShaderData().size(), 8, &model->shaderDataLocation) == FragmentableBuffer::WriteResult::OUT_OF_MEMORY)
+        if(modelDataBuffer->newWrite(NULL, model->getShaderData().size(), &model->shaderDataLocation) == FragmentableBuffer::WriteResult::OUT_OF_MEMORY)
         {
             rebuildModelDataBuffer();
         }
@@ -376,8 +376,7 @@ namespace PaperRenderer
         Timer timer(*this, "Queue Models and Instances Transfers", REGULAR);
 
         //check buffer sizes
-        if((instancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128) ||
-            (instancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) > renderingModelInstances.size() * 2 && renderingModelInstances.size() > 128))
+        if(instancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128)
         {
             rebuildInstancesbuffer(); //TODO SYNCHRONIZATION
         }

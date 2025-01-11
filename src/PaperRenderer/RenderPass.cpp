@@ -223,14 +223,14 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
             .allocationFlags = 0
         };
-        std::unique_ptr<FragmentableBuffer> newInstancesDataBuffer = std::make_unique<FragmentableBuffer>(renderer, instancesMaterialDataBufferInfo);
+        std::unique_ptr<FragmentableBuffer> newInstancesDataBuffer = std::make_unique<FragmentableBuffer>(renderer, instancesMaterialDataBufferInfo, 8);
         newInstancesDataBuffer->setCompactionCallback([this](std::vector<CompactionResult> results){ handleMaterialDataCompaction(results); });
 
         //copy old data into new if old existed
         if(instancesDataBuffer)
         {
             //pseudo write for material data
-            newInstancesDataBuffer->newWrite(NULL, newMaterialDataWriteSize, 1, NULL);
+            newInstancesDataBuffer->newWrite(NULL, newMaterialDataWriteSize, NULL);
 
             VkBufferCopy materialDataCopyRegion = {};
             materialDataCopyRegion.srcOffset = 0;
@@ -290,19 +290,28 @@ namespace PaperRenderer
             //skip if instance is NULL
             if(!instance) continue;
 
+            //remove old if exists
+            if(instance->renderPassSelfReferences.count(this) && instance->renderPassSelfReferences[this].LODsMaterialDataOffset != UINT64_MAX)
+            {
+                const std::vector<char>& oldMaterialData = instance->getRenderPassInstanceData(this);
+                if(oldMaterialData.size()) instancesDataBuffer->removeFromRange(instance->renderPassSelfReferences[this].LODsMaterialDataOffset, oldMaterialData.size());
+            }
+
+            //set and get material data
             instance->setRenderPassInstanceData(this);
             const std::vector<char>& materialData = instance->getRenderPassInstanceData(this);
-            FragmentableBuffer::WriteResult writeResult = instancesDataBuffer->newWrite(NULL, materialData.size(), 8, &(instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset));
+
+            //write new
+            FragmentableBuffer::WriteResult writeResult = instancesDataBuffer->newWrite(NULL, materialData.size(), &(instance->renderPassSelfReferences[this].LODsMaterialDataOffset));
             if(writeResult == FragmentableBuffer::OUT_OF_MEMORY)
             {
                 rebuildMaterialDataBuffer();
-                instancesDataBuffer->newWrite(NULL, materialData.size(), 8, &(instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset));
+                instancesDataBuffer->newWrite(NULL, materialData.size(), &(instance->renderPassSelfReferences[this].LODsMaterialDataOffset));
             }
             else if(writeResult == FragmentableBuffer::COMPACTED)
             {
-                //recursive redo
+                //recursive redo (handling compaction resets the instances)
                 queueInstanceTransfers();
-
                 return;
             }
         }
@@ -315,45 +324,39 @@ namespace PaperRenderer
 
             //queue material data write
             const std::vector<char>& materialData = instance->getRenderPassInstanceData(this);
-            renderer.getStagingBuffer().queueDataTransfers(instancesDataBuffer->getBuffer(), instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset, materialData);
+            renderer.getStagingBuffer().queueDataTransfers(instancesDataBuffer->getBuffer(), instance->renderPassSelfReferences[this].LODsMaterialDataOffset, materialData);
 
             //write instance data
             ModelInstance::RenderPassInstance instanceShaderData = {};
             instanceShaderData.modelInstanceIndex = instance->rendererSelfIndex;
-            instanceShaderData.LODsMaterialDataOffset = instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset;
+            instanceShaderData.LODsMaterialDataOffset = instance->renderPassSelfReferences[this].LODsMaterialDataOffset;
             instanceShaderData.isVisible = true;
 
             std::vector<char> instanceData(sizeof(ModelInstance::RenderPassInstance));
             memcpy(instanceData.data(), &instanceShaderData, instanceData.size());
             
             //queue data transfer
-            renderer.getStagingBuffer().queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::RenderPassInstance) * instance->renderPassSelfReferences.at(this).selfIndex, instanceData);
+            renderer.getStagingBuffer().queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::RenderPassInstance) * instance->renderPassSelfReferences[this].selfIndex, instanceData);
         }
 
         //clear deques
         toUpdateInstances.clear();
     }
 
-    void RenderPass::handleMaterialDataCompaction(std::vector<CompactionResult> results) //UNTESTED
+    void RenderPass::handleMaterialDataCompaction(const std::vector<CompactionResult>& results)
     {
         //fix material data offsets
         for(const CompactionResult compactionResult : results)
         {
             for(ModelInstance* instance : renderPassInstances)
             {
-                VkDeviceSize& materialDataOffset = instance->renderPassSelfReferences.at(this).LODsMaterialDataOffset;
-                if(materialDataOffset > compactionResult.location)
+                VkDeviceSize& materialDataOffset = instance->renderPassSelfReferences[this].LODsMaterialDataOffset;
+                if(materialDataOffset != UINT64_MAX && materialDataOffset > compactionResult.location)
                 {
                     //shift stored location
                     materialDataOffset -= compactionResult.shiftSize;
                 }
             }
-        }
-
-        //then queue data transfers
-        for(ModelInstance* instance : renderPassInstances)
-        {
-            toUpdateInstances.push_front(instance);
         }
     }
 

@@ -100,7 +100,7 @@ namespace PaperRenderer
         
         void rebuildInstancesbuffer();
         void rebuildModelDataBuffer();
-        void handleModelDataCompaction(std::vector<CompactionResult> results);
+        void handleModelDataCompaction(const std::vector<CompactionResult>& results);
 
         //----------MODEL AND INSTANCE FUNCTIONS----------//
 

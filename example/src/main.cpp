@@ -511,6 +511,7 @@ int main()
     //RT material definitions
     std::vector<DefaultRTMaterialDefinition> instanceRTMaterialDefinitions;
     uint32_t adjustableMaterialIndex = 0; //for ImGUI
+    uint32_t raindropMaterialIndex = 0; //for raindrops test
 
     //create material instances that "derive" from base material and the loaded scene data parameters
     std::unordered_map<std::string, std::unique_ptr<PaperRenderer::MaterialInstance>> materialInstances;
@@ -531,7 +532,7 @@ int main()
     
     std::unordered_map<std::string, std::vector<std::unique_ptr<PaperRenderer::ModelInstance>>> modelInstances;
 
-    auto addInstanceToRenderPass = [&](PaperRenderer::ModelInstance& instance, const PaperRenderer::RTMaterial& rtMaterial, bool sorted)
+    auto addInstanceToRenderPass = [&](PaperRenderer::ModelInstance& instance, const PaperRenderer::RTMaterial& rtMaterial, bool sorted, uint32_t customIndexOverride=UINT32_MAX)
     {
         //raster
         std::unordered_map<uint32_t, PaperRenderer::MaterialInstance*> materials;
@@ -546,26 +547,32 @@ int main()
         //RT
         const PaperRenderer::AccelerationStructureInstanceData asInstanceData = {
             .instancePtr = &instance,
-            .customIndex = (uint32_t)instanceRTMaterialDefinitions.size(), //set custom index to the first material index in the buffer
+            .customIndex = customIndexOverride == UINT32_MAX ? (uint32_t)instanceRTMaterialDefinitions.size() : customIndexOverride, //set custom index to the first material index in the buffer
             .mask = 0xFF,
             .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
         };
         exampleRayTrace.getRTRender().addInstance(asInstanceData, rtMaterial);
 
         //RT instance materials
-        for(const std::string& matName : scene.instanceMaterials[instance.getParentModel().getModelName()])
+        if(customIndexOverride == UINT32_MAX)
         {
-            //for ImGUI
-            if(matName == "MetalBall") adjustableMaterialIndex = (uint32_t)instanceRTMaterialDefinitions.size();
+            for(const std::string& matName : scene.instanceMaterials[instance.getParentModel().getModelName()])
+            {
+                //for raindrop
+                if(instance.getParentModel().getModelName() == "Drop") raindropMaterialIndex = (uint32_t)instanceRTMaterialDefinitions.size();
 
-            instanceRTMaterialDefinitions.push_back({
-                .albedo = glm::vec3(scene.materialInstancesData[matName].baseColor),
-                .emissive = glm::vec3(scene.materialInstancesData[matName].emission) * scene.materialInstancesData[matName].emission.w,
-                .metallic = scene.materialInstancesData[matName].metallic,
-                .roughness = scene.materialInstancesData[matName].roughness,
-                .transmission = glm::vec3(0.0f),
-                .ior = 1.45f
-            });
+                //for ImGUI
+                if(matName == "MetalBall") adjustableMaterialIndex = (uint32_t)instanceRTMaterialDefinitions.size();
+
+                instanceRTMaterialDefinitions.push_back({
+                    .albedo = glm::vec3(scene.materialInstancesData[matName].baseColor),
+                    .emissive = glm::vec3(scene.materialInstancesData[matName].emission) * scene.materialInstancesData[matName].emission.w,
+                    .metallic = scene.materialInstancesData[matName].metallic,
+                    .roughness = scene.materialInstancesData[matName].roughness,
+                    .transmission = glm::vec3(0.0f),
+                    .ior = 1.45f
+                });
+            }
         }
     };
 
@@ -731,7 +738,7 @@ int main()
             newInstance->setTransformation({ .position = glm::vec3(xFloatDist(mt), yFloatDist(mt), 10.0f) });
 
             //add to render passes
-            addInstanceToRenderPass(*newInstance, baseRTMaterial, false);
+            addInstanceToRenderPass(*newInstance, baseRTMaterial, false, raindropMaterialIndex);
 
             //add to deque
             rainDrops.push_back(std::move(newInstance));

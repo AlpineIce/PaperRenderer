@@ -111,7 +111,7 @@ namespace PaperRenderer
                 return size < other.size;
             }
         };
-        std::set<Chunk> memoryFragments;
+        std::multiset<Chunk> memoryFragments;
 
         std::function<void(const std::vector<CompactionResult>&)> compactionCallback = NULL;
 
