@@ -9,6 +9,8 @@
 
 #include "lib/tinygltf/tiny_gltf.h"
 
+#include <random>
+
 //loaded scene data from glTF
 struct SceneData
 {
@@ -283,9 +285,7 @@ void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::
     exampleRayTrace.updateUBO();
 }
 
-
-
-
+//----------MAIN----------//
 
 int main()
 {
@@ -642,7 +642,7 @@ int main()
         }
     }
 
-    //everything else
+    //everything else (including one drop lol)
     for(const auto& [name, model] : scene.models)
     {
         if(!modelInstances.count(name))
@@ -680,6 +680,64 @@ int main()
     //init GUI
     GuiContext guiContext = initImGui(renderer, *dynamic_cast<DefaultMaterialInstance*>(materialInstances.at("MetalBall").get()));
 
+    //raindrops deque
+    std::deque<std::unique_ptr<PaperRenderer::ModelInstance>> rainDrops;
+
+    auto frameEvents = [&]()
+    {
+        const float heightThreshold = -5.0f;
+        const float dropSpeed = 1.0f;
+        const float deltaTime = renderer.getDeltaTime();
+
+        //make drops fall
+        for(std::unique_ptr<PaperRenderer::ModelInstance>& instance : rainDrops)
+        {
+            PaperRenderer::ModelTransformation transformation = instance->getTransformation();
+            transformation.position.z -= dropSpeed * deltaTime;
+
+            instance->setTransformation(transformation);
+        }
+
+        //remove any fallen past threshold (will all be in front because math)
+        auto it = rainDrops.begin();
+        while(it != rainDrops.end())
+        {
+            if(it->get()->getTransformation().position.z < heightThreshold)
+            {
+                it++;
+                rainDrops.pop_front();
+            }
+            else
+            {
+                //stop when next drop isn't below threshold because it should all be in order
+                break;
+            }
+        }
+
+        //RNG
+        std::random_device rd;
+        std::mt19937 mt(rd());
+        std::uniform_int_distribution<uint32_t> intDist(0.0, 0.05 / deltaTime);
+        
+        //populate new raindrop if RNG is happy
+        if(intDist(mt) == 0)
+        {
+            //create new instance
+            std::unique_ptr<PaperRenderer::ModelInstance> newInstance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *scene.models["Drop"], false);
+
+            //set transformation from RNG
+            std::uniform_real_distribution<float> xFloatDist(-20.0f, 20.0f);
+            std::uniform_real_distribution<float> yFloatDist(-20.0f, 20.0f);
+            newInstance->setTransformation({ .position = glm::vec3(xFloatDist(mt), yFloatDist(mt), 10.0f) });
+
+            //add to render passes
+            addInstanceToRenderPass(*newInstance, baseRTMaterial, false);
+
+            //add to deque
+            rainDrops.push_back(std::move(newInstance));
+        }
+    };
+
     //----------RENDER LOOP----------//
 
     //synchronization
@@ -695,6 +753,9 @@ int main()
 
     while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
     {
+        //pre-frame events
+        frameEvents();
+
         //get last frame statistics (create copy since it WILL be cleared after renderer.beginFrame())
         PaperRenderer::Statistics lastFrameStatistics = renderer.getStatisticsTracker().getStatistics();
 
