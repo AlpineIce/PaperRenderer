@@ -1,10 +1,6 @@
 #include "VulkanResources.h"
 #include "PaperRenderer.h"
 
-#include <stdexcept>
-#include <algorithm>
-#include <mutex>
-
 namespace PaperRenderer
 {
     //----------RESOURCE BASE CLASS DEFINITIONS----------//
