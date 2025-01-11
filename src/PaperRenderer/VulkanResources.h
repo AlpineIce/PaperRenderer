@@ -8,15 +8,6 @@
 
 namespace PaperRenderer
 {
-    //MISC RESOURCES 
-
-    struct ImageData
-    {
-        void* data = NULL;
-        VkDeviceSize size = 0;
-        int width, height, channels = 0;
-    };
-
     struct BufferInfo
     {
         VkDeviceSize size = 0;
@@ -46,8 +37,6 @@ namespace PaperRenderer
         VkDeviceSize size = 0;
         std::set<Queue const*> owners;
 
-        void clearOwnership();
-
         class RenderEngine& renderer;
         VmaAllocation allocation = VK_NULL_HANDLE;
 
@@ -58,6 +47,7 @@ namespace PaperRenderer
 
         void addOwner(const Queue& queue) { owners.insert(&queue); }
         void removeOwner(const Queue& queue) { owners.erase(&queue); };
+        void idleOwners() const;
 
         VkDeviceSize getSize() const { return size; }
     };
@@ -104,6 +94,7 @@ namespace PaperRenderer
         Buffer buffer;
         VkDeviceSize desiredLocation = 0;
         VkDeviceSize stackLocation = 0;
+        VkDeviceSize totalDataSize = 0;
 
         struct Chunk
         {
@@ -116,9 +107,6 @@ namespace PaperRenderer
             }
         };
         std::deque<Chunk> memoryFragments;
-        std::set<VkDeviceSize> memoryWriteLocations; //mainly used to redefine old pointers for when compaction occurs
-
-        void verifyFragmentation();
 
         std::function<void(std::vector<CompactionResult>)> compactionCallback = NULL;
 

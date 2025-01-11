@@ -308,6 +308,9 @@ namespace PaperRenderer
 			}
 		}
 
+		//pad to 8 byte alignment
+		newData.resize(Device::getAlignment(newData.size(), 8));
+
 		renderPassSelfReferences.at(renderPass).renderPassInstanceData = newData;
     }
 
