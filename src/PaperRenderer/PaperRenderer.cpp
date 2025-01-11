@@ -169,6 +169,7 @@ namespace PaperRenderer
 
         //finish up
         vkDeviceWaitIdle(device.getDevice());
+        lastFrameTimePoint = std::chrono::high_resolution_clock::now();
 
         //log
         logger.recordLog({
@@ -445,6 +446,10 @@ namespace PaperRenderer
 
         //increment frame counter so next frame can be prepared early
         frameNumber++;
+
+        //change delta time
+        deltaTime = (std::chrono::high_resolution_clock::now() - lastFrameTimePoint).count() / (1000.0 * 1000.0 * 1000.0);
+        lastFrameTimePoint = std::chrono::high_resolution_clock::now();
 
         glfwPollEvents();
     }

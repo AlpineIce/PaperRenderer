@@ -122,6 +122,8 @@ namespace PaperRenderer
         friend TLASInstanceBuildPipeline;
 
         uint64_t frameNumber = 0;
+        std::chrono::time_point<std::chrono::high_resolution_clock> lastFrameTimePoint;
+        float deltaTime = 0.0000000000001f;
     public:
         RenderEngine(const RendererCreationStruct& creationInfo);
         ~RenderEngine();
@@ -133,6 +135,7 @@ namespace PaperRenderer
 
         uint32_t getBufferIndex() const { return frameNumber % 2; }
         uint64_t getFramesRenderedCount() const { return frameNumber; }
+        float getDeltaTime() const { return deltaTime; } //returns in seconds
         Logger& getLogger() { return logger; }
         StatisticsTracker& getStatisticsTracker() { return statisticsTracker; }
         Device& getDevice() { return device; }
