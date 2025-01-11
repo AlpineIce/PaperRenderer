@@ -505,7 +505,7 @@ namespace PaperRenderer
 
             //buffer
             const BufferInfo instancesBufferInfo = {
-                .size = totalBufferSize,
+                .size = (VkDeviceSize)((double)totalBufferSize * instancesOverhead),
                 .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
                     VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
                 .allocationFlags = 0
