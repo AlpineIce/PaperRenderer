@@ -124,52 +124,7 @@ void main()
         }
     }
 
-    //----------REFLECTIONS----------//
-
-    //iteratively do reflections (just 1 deep)
-    vec3 reflectionValue = vec3(0.0);
-    if(hitPayload.depth <= 1)
-    {
-        const vec3 reflectN = reflect(gl_WorldRayDirectionEXT, hitInfo.normal);
-        vec3 tangent;
-        vec3 bitangent;
-        ComputeDefaultBasis(reflectN, tangent, bitangent);
-
-        for(uint i = 0; i < inputData.reflectionSamples; i++)
-        {
-            //calculate ray direction
-            const float maxAngle = materialInfo.roughness * (1.0 - fresnel(N, V, vec3(0.0), 5.0).x);
-            const vec3 direction = cosineSample(hitInfo.normal, tangent, bitangent, maxAngle, seed);
-
-            //trace rays
-            traceRayEXT(topLevelAS,         // acceleration structure
-                gl_RayFlagsNoneEXT,  // rayFlags
-                0xFF,               // cullMask
-                0,                  // sbtRecordOffset
-                0,                  // sbtRecordStride
-                0,                  // missIndex
-                hitInfo.worldPosition,             // ray origin
-                0.1,                // ray min range
-                direction,             // ray direction
-                1000.0,           // ray max range
-                0                   // payload (location = 0)
-            );
-
-            //add returned color
-            reflectionValue += hitPayload.returnColor;
-        }
-
-        //average
-        reflectionValue = reflectionValue / float(inputData.reflectionSamples);
-
-        //add reflection value to total light
-        const float reflecionInfluence = clamp(materialInfo.metallic, 0.04, 1.0);
-        totalLight += reflectionValue * reflecionInfluence;
-    }
-
-    //----------TRANSLUCENCY----------//
-
-    //TODO
+    //dont do reflections or translucency because its expensive
 
     //----------AMBIENT LIGHT----------//
 

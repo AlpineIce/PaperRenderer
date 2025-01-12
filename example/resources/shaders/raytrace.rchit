@@ -129,16 +129,17 @@ void main()
     vec3 reflectionValue = vec3(0.0);
     if(hitPayload.depth <= 1)
     {
-        const vec3 reflectN = reflect(gl_WorldRayDirectionEXT, hitInfo.normal);
+        //calculate tangents and bitangents
         vec3 tangent;
         vec3 bitangent;
-        ComputeDefaultBasis(reflectN, tangent, bitangent);
+        ComputeDefaultBasis(hitInfo.normal, tangent, bitangent);
 
         for(uint i = 0; i < inputData.reflectionSamples; i++)
         {
             //calculate ray direction
             const float maxAngle = materialInfo.roughness * (1.0 - fresnel(N, V, vec3(0.0), 5.0).x);
             const vec3 direction = cosineSample(hitInfo.normal, tangent, bitangent, maxAngle, seed);
+            const vec3 reflectN = reflect(-V, direction);
 
             //trace rays
             traceRayEXT(topLevelAS,         // acceleration structure
@@ -149,7 +150,7 @@ void main()
                 0,                  // missIndex
                 hitInfo.worldPosition,             // ray origin
                 0.001,                // ray min range
-                OffsetRay(direction, N),             // ray direction
+                OffsetRay(reflectN, N),             // ray direction
                 1000.0,           // ray max range
                 0                   // payload (location = 0)
             );
