@@ -226,12 +226,17 @@ namespace PaperRenderer
 
     void FragmentableBuffer::removeFromRange(VkDeviceSize offset, VkDeviceSize size)
     {
+        //pad size
+        size = renderer.getDevice().getAlignment(size, minAlignment);
+        
+        //add fragment
         Chunk memoryFragment = {
             .location = offset,
             .size = size
         };
         memoryFragments.insert(memoryFragment);
 
+        //decrement total data size
         totalDataSize -= size;
     }
 

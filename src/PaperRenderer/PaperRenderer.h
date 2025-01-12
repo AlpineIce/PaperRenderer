@@ -45,11 +45,8 @@ namespace PaperRenderer
         };
 
         std::unordered_map<Buffer const*, std::deque<QueuedTransfer>> transferQueues;
-        
-
-        VkSemaphore transferSemaphore;
         VkDeviceSize queueSize = 0;
-        uint64_t finalSemaphoreValue = 0;
+        VkDeviceSize stackLocation = 0;
 
         struct DstCopy
         {
@@ -64,10 +61,11 @@ namespace PaperRenderer
         RendererStagingBuffer(RenderEngine& renderer);
         ~RendererStagingBuffer();
         
+        void idleBuffer();
         void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char>& data); //do not submit more than 1 transfer with the same destination! undefined behavior!
-        void submitQueuedTransfers(SynchronizationInfo syncInfo); //Submits all queued transfers and clears the queue. Does not need to be explicitly synced with last transfer
-        TimelineSemaphorePair getTransferSemaphore() const { return { transferSemaphore, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValue }; }
-        std::lock_guard<std::recursive_mutex> getLockGuard() { return std::lock_guard<std::recursive_mutex>(stagingBufferMutex); } //for thread safe operations
+        void submitQueuedTransfers(VkCommandBuffer cmdBuffer); //records all queued transfers and clears the queue
+        const Queue& submitQueuedTransfers(SynchronizationInfo syncInfo); //Submits all queued transfers and clears the queue
+        void addOwner(const Queue& queue) { if(stagingBuffer) stagingBuffer->addOwner(queue); }
     };
 
     //Render engine object. Contains the entire state of the renderer and some important buffers

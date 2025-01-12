@@ -250,7 +250,7 @@ namespace PaperRenderer
         instancesDataBuffer = std::move(newInstancesDataBuffer);
     }
 
-    void RenderPass::queueInstanceTransfers()
+    void RenderPass::queueInstanceTransfers(VkCommandBuffer cmdBuffer)
     {
         //Timer
         Timer timer(renderer, "RenderPass Queue instance Transfers", REGULAR);
@@ -284,7 +284,7 @@ namespace PaperRenderer
         auto sortedInstances = std::unique(toUpdateInstances.begin(), toUpdateInstances.end());
         toUpdateInstances.erase(sortedInstances, toUpdateInstances.end());
 
-        //material data pseudo writes
+        //material data pseudo writes (this doesn't actually write anything its just to setup the fragmentable buffer)
         for(ModelInstance* instance : toUpdateInstances)
         {
             //skip if instance is NULL
@@ -311,7 +311,7 @@ namespace PaperRenderer
             else if(writeResult == FragmentableBuffer::COMPACTED)
             {
                 //recursive redo (handling compaction resets the instances)
-                queueInstanceTransfers();
+                queueInstanceTransfers(cmdBuffer);
                 return;
             }
         }
@@ -327,10 +327,11 @@ namespace PaperRenderer
             renderer.getStagingBuffer().queueDataTransfers(instancesDataBuffer->getBuffer(), instance->renderPassSelfReferences[this].LODsMaterialDataOffset, materialData);
 
             //write instance data
-            ModelInstance::RenderPassInstance instanceShaderData = {};
-            instanceShaderData.modelInstanceIndex = instance->rendererSelfIndex;
-            instanceShaderData.LODsMaterialDataOffset = instance->renderPassSelfReferences[this].LODsMaterialDataOffset;
-            instanceShaderData.isVisible = true;
+            const ModelInstance::RenderPassInstance instanceShaderData = {
+                .modelInstanceIndex = instance->rendererSelfIndex,
+                .LODsMaterialDataOffset = (uint32_t)instance->renderPassSelfReferences[this].LODsMaterialDataOffset,
+                .isVisible = true
+            };
 
             std::vector<char> instanceData(sizeof(ModelInstance::RenderPassInstance));
             memcpy(instanceData.data(), &instanceShaderData, instanceData.size());
@@ -343,10 +344,43 @@ namespace PaperRenderer
         toUpdateInstances.clear();
 
         //submit
-        PaperRenderer::SynchronizationInfo transferSyncInfo = {
-            .queueType = PaperRenderer::QueueType::TRANSFER
+        renderer.getStagingBuffer().submitQueuedTransfers(cmdBuffer);
+
+        //memory barriers
+        const std::array<VkBufferMemoryBarrier2, 2> transferMemBarriers = {
+            VkBufferMemoryBarrier2({
+                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                .pNext = NULL,
+                .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
+                .buffer = instancesBuffer->getBuffer(),
+                .offset = 0,
+                .size = VK_WHOLE_SIZE
+            }),
+            VkBufferMemoryBarrier2({
+                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                .pNext = NULL,
+                .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
+                .buffer = instancesDataBuffer->getBuffer().getBuffer(),
+                .offset = 0,
+                .size = VK_WHOLE_SIZE
+            })
         };
-        renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
+
+        const VkDependencyInfo transferDependencyInfo = {
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .pNext = NULL,
+            .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+            .bufferMemoryBarrierCount = transferMemBarriers.size(),
+            .pBufferMemoryBarriers = transferMemBarriers.data()
+        };
+
+        vkCmdPipelineBarrier2(cmdBuffer, &transferDependencyInfo);
     }
 
     void RenderPass::handleMaterialDataCompaction(const std::vector<CompactionResult>& results)
@@ -410,20 +444,15 @@ namespace PaperRenderer
     {
         //Timer
         Timer timer(renderer, "RenderPass Submission", REGULAR);
-
-        //instance transfers
-        queueInstanceTransfers();
-
-        //----------CLEAR DRAW COUNTS----------//
-
+        
         VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(GRAPHICS);
 
-        VkCommandBufferBeginInfo cmdBufferBeginInfo = {};
-        cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        cmdBufferBeginInfo.pNext = NULL;
-        cmdBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        cmdBufferBeginInfo.pInheritanceInfo = NULL;
-        
+        const VkCommandBufferBeginInfo cmdBufferBeginInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .pNext = NULL,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            .pInheritanceInfo = NULL
+        };
         vkBeginCommandBuffer(cmdBuffer, &cmdBufferBeginInfo);
 
         //pre-render barriers
@@ -432,53 +461,57 @@ namespace PaperRenderer
             vkCmdPipelineBarrier2(cmdBuffer, renderPassInfo.preRenderBarriers);
         }
 
+        //instance transfers
+        queueInstanceTransfers(cmdBuffer);
+
         //clear draw counts
         clearDrawCounts(cmdBuffer);
         
-        //----------PRE-PROCESS----------//
-
+        //preprocess
         if(renderPassInstances.size())
         {
             //compute shader
             renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this, renderPassInfo.camera);
 
             //memory barrier
-            VkMemoryBarrier2 preprocessMemBarrier = {};
-            preprocessMemBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
-            preprocessMemBarrier.pNext = NULL;
-            preprocessMemBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-            preprocessMemBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
-            preprocessMemBarrier.dstStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
-            preprocessMemBarrier.dstAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_READ_BIT;
+            const VkMemoryBarrier2 preprocessMemBarrier = {
+                .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+                .pNext = NULL,
+                .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+                .srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+                .dstAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_SHADER_READ_BIT
+            };
 
-            VkDependencyInfo preprocessDependencyInfo = {};
-            preprocessDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-            preprocessDependencyInfo.pNext = NULL;
-            preprocessDependencyInfo.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-            preprocessDependencyInfo.memoryBarrierCount = 1;
-            preprocessDependencyInfo.pMemoryBarriers = &preprocessMemBarrier;
-            
+            const VkDependencyInfo preprocessDependencyInfo = {
+                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                .pNext = NULL,
+                .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+                .memoryBarrierCount = 1,
+                .pMemoryBarriers = &preprocessMemBarrier
+            };
+
             vkCmdPipelineBarrier2(cmdBuffer, &preprocessDependencyInfo);
         }
         
         //----------RENDER PASS----------//
 
         //rendering
-        VkRenderingInfo renderInfo = {};
-        renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR;
-        renderInfo.pNext = NULL;
-        renderInfo.flags = 0;
-        renderInfo.renderArea = renderPassInfo.renderArea;
-        renderInfo.layerCount = 1;
-        renderInfo.viewMask = 0;
-        renderInfo.colorAttachmentCount = renderPassInfo.colorAttachments.size();
-        renderInfo.pColorAttachments = renderPassInfo.colorAttachments.data();
-        renderInfo.pDepthAttachment = renderPassInfo.depthAttachment;
-        renderInfo.pStencilAttachment = renderPassInfo.stencilAttachment;
-
+        VkRenderingInfo renderInfo = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
+            .pNext = NULL,
+            .flags = 0,
+            .renderArea = renderPassInfo.renderArea,
+            .layerCount = 1,
+            .viewMask = 0,
+            .colorAttachmentCount = (uint32_t)renderPassInfo.colorAttachments.size(),
+            .pColorAttachments = renderPassInfo.colorAttachments.data(),
+            .pDepthAttachment = renderPassInfo.depthAttachment,
+            .pStencilAttachment = renderPassInfo.stencilAttachment
+        };
         vkCmdBeginRendering(cmdBuffer, &renderInfo);
 
-        //scissors (plural) and viewports
+        //scissors and viewports
         vkCmdSetViewportWithCount(cmdBuffer, renderPassInfo.viewports.size(), renderPassInfo.viewports.data());
         vkCmdSetScissorWithCount(cmdBuffer, renderPassInfo.scissors.size(), renderPassInfo.scissors.data());
 
@@ -687,11 +720,11 @@ namespace PaperRenderer
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
         //submit
-        syncInfo.timelineWaitPairs.push_back(renderer.getStagingBuffer().getTransferSemaphore());
         const Queue& queue = renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
 
         //assign owner to resources in case destruction is required
         assignResourceOwner(queue);
+        renderer.getStagingBuffer().addOwner(queue);
 
         return queue;
     }

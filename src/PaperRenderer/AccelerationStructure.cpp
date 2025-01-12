@@ -648,17 +648,6 @@ namespace PaperRenderer
         //queue data transfers
         renderer.getStagingBuffer().queueDataTransfers(*instancesBuffer, 0, newInstancesData);
 
-        //record transfers
-        const SynchronizationInfo transferSyncInfo = {
-            .queueType = TRANSFER
-        };
-        renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
-
-        //----------TLAS BUILD----------//
-
-        //set build data
-        const AsBuildData buildData = getAsData(VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR, flags, mode);
-
         //start command buffer
         VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(COMPUTE);
 
@@ -670,6 +659,37 @@ namespace PaperRenderer
         };
         vkBeginCommandBuffer(cmdBuffer, &cmdBufferInfo);
 
+        //record transfers
+        renderer.getStagingBuffer().submitQueuedTransfers(cmdBuffer);
+
+         //memory barriers
+        const VkBufferMemoryBarrier2 transferMemBarrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+            .pNext = NULL,
+            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
+            .buffer = instancesBuffer->getBuffer(),
+            .offset = 0,
+            .size = VK_WHOLE_SIZE
+        };
+
+        const VkDependencyInfo transferDependencyInfo = {
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .pNext = NULL,
+            .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+            .bufferMemoryBarrierCount = 1,
+            .pBufferMemoryBarriers = &transferMemBarrier
+        };
+
+        vkCmdPipelineBarrier2(cmdBuffer, &transferDependencyInfo);
+
+        //----------TLAS BUILD----------//
+
+        //set build data
+        const AsBuildData buildData = getAsData(VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR, flags, mode);
+
         //build TLAS; note that compaction is ignored for TLAS
         buildStructure(cmdBuffer, buildData, {});
 
@@ -679,11 +699,11 @@ namespace PaperRenderer
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
         
         //submit
-        syncInfo.timelineWaitPairs.push_back(renderer.getStagingBuffer().getTransferSemaphore());
         const Queue& queue = renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
 
         //assign ownership
         assignResourceOwner(queue);
+        renderer.getStagingBuffer().addOwner(queue);
 
         //return
         return queue;

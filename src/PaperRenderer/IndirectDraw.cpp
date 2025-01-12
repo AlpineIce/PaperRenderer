@@ -214,21 +214,21 @@ namespace PaperRenderer
         for(const auto& [mesh, meshData] : meshesData)
         {
             //location
-            const uint32_t instanceCountLocation = (sizeof(DrawCommand) * meshData.drawCommandIndex) + offsetof(VkDrawIndexedIndirectCommand, instanceCount);
+            const uint32_t instanceCountLocation = (sizeof(DrawCommand) * meshData.drawCommandIndex);
             
             //pre-transfer memory barrier
             const VkBufferMemoryBarrier2 preMemBarrier = {
                 .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
                 .pNext = NULL,
-                .srcStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
-                .srcAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
+                .srcStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                .srcAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT,
                 .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
                 .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .buffer = drawCommandsBuffer->getBuffer(),
                 .offset = instanceCountLocation,
-                .size = sizeof(VkDrawIndexedIndirectCommand::instanceCount)
+                .size = sizeof(DrawCommand)
             };
 
             const VkDependencyInfo preDependency = {
@@ -244,7 +244,7 @@ namespace PaperRenderer
             vkCmdFillBuffer(
                 cmdBuffer,
                 drawCommandsBuffer->getBuffer(),
-                instanceCountLocation,
+                instanceCountLocation + offsetof(VkDrawIndexedIndirectCommand, instanceCount),
                 sizeof(VkDrawIndexedIndirectCommand::instanceCount),
                 drawCountDefaultValue
             );
@@ -255,13 +255,13 @@ namespace PaperRenderer
                 .pNext = NULL,
                 .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
                 .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
+                .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
+                .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .buffer = drawCommandsBuffer->getBuffer(),
                 .offset = instanceCountLocation,
-                .size = sizeof(VkDrawIndexedIndirectCommand::instanceCount)
+                .size = sizeof(VkDrawIndexedIndirectCommand)
             };
 
             const VkDependencyInfo postDependency = {

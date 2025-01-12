@@ -544,7 +544,6 @@ const PaperRenderer::Queue& ExampleRaster::rasterRender(PaperRenderer::Synchroni
     };
 
     //render
-    syncInfo.timelineWaitPairs.push_back(renderer.getStagingBuffer().getTransferSemaphore());
     return renderPass.render(renderPassInfo, syncInfo);
 }
 

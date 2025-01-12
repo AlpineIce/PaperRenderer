@@ -90,7 +90,7 @@ namespace PaperRenderer
         void rebuildInstancesBuffer();
         void rebuildSortedInstancesBuffer();
         void rebuildMaterialDataBuffer();
-        void queueInstanceTransfers();
+        void queueInstanceTransfers(VkCommandBuffer cmdBuffer);
         void handleMaterialDataCompaction(const std::vector<CompactionResult>&);
         void handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances);
         void clearDrawCounts(VkCommandBuffer cmdBuffer);

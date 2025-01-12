@@ -17,8 +17,6 @@ namespace PaperRenderer
     RendererStagingBuffer::RendererStagingBuffer(RenderEngine& renderer)
         :renderer(renderer)
     {
-        transferSemaphore = renderer.getDevice().getCommands().getTimelineSemaphore(finalSemaphoreValue);
-
         //log constructor
         renderer.getLogger().recordLog({
             .type = INFO,
@@ -29,7 +27,6 @@ namespace PaperRenderer
     RendererStagingBuffer::~RendererStagingBuffer()
     {
         stagingBuffer.reset();
-        vkDestroySemaphore(renderer.getDevice().getDevice(), transferSemaphore, nullptr);
 
         //log destructor
         renderer.getLogger().recordLog({
@@ -38,7 +35,13 @@ namespace PaperRenderer
         });
     }
 
-    void RendererStagingBuffer::queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char> &data)
+    void RendererStagingBuffer::idleBuffer()
+    {
+        if(stagingBuffer) stagingBuffer->idleOwners();
+        stackLocation = 0;
+    }
+
+    void RendererStagingBuffer::queueDataTransfers(const Buffer &dstBuffer, VkDeviceSize dstOffset, const std::vector<char> &data)
     {
         //lock mutex
         std::lock_guard guard(stagingBufferMutex);
@@ -53,35 +56,24 @@ namespace PaperRenderer
 
     std::vector<RendererStagingBuffer::DstCopy> RendererStagingBuffer::getDataTransfers()
     {
-        //wait for transfer to complete
-        VkSemaphoreWaitInfo waitInfo = {};
-        waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
-        waitInfo.pNext = NULL;
-        waitInfo.flags = 0;
-        waitInfo.semaphoreCount = 1;
-        waitInfo.pSemaphores = &transferSemaphore;
-        waitInfo.pValues = &finalSemaphoreValue;
-
-        vkWaitSemaphores(renderer.getDevice().getDevice(), &waitInfo, UINT64_MAX);
+        //lock mutex
+        std::lock_guard guard(stagingBufferMutex);
 
         //rebuild buffer if needed
         VkDeviceSize availableSize = stagingBuffer ? stagingBuffer->getSize() : 0;
-        if(queueSize > availableSize)
+        if(stackLocation + queueSize > availableSize)
         {
-            BufferInfo bufferInfo = {};
-            bufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-            bufferInfo.size = queueSize * bufferOverhead;
-            bufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR;
+            const BufferInfo bufferInfo = {
+                .size = (VkDeviceSize)((stackLocation + queueSize) * bufferOverhead),
+                .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR,
+                .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
+            };
             stagingBuffer = std::make_unique<Buffer>(renderer, bufferInfo);
 
             availableSize = bufferInfo.size;
         }
 
-        //modify semaphore values
-        finalSemaphoreValue++;
-
         //fill in the staging buffer with queued transfers
-        VkDeviceSize dynamicSrcOffset = 0;
         std::vector<DstCopy> dstCopies;
         for(auto& [buffer, transfers] : transferQueues)
         {
@@ -89,7 +81,7 @@ namespace PaperRenderer
             {
                 //buffer write
                 BufferWrite bufferWrite = {
-                    .offset = dynamicSrcOffset,
+                    .offset = stackLocation,
                     .size = transfer.data.size(),
                     .readData = (char const*)transfer.data.data()
                 };
@@ -109,7 +101,7 @@ namespace PaperRenderer
                     bufferCopyInfo
                 );
 
-                dynamicSrcOffset += bufferWrite.size;
+                stackLocation += bufferWrite.size;
             }
             transfers.clear();
         }
@@ -118,37 +110,48 @@ namespace PaperRenderer
         return dstCopies;
     }
 
-    void RendererStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
+    void RendererStagingBuffer::submitQueuedTransfers(VkCommandBuffer cmdBuffer)
     {
         //timer
-        Timer timer(renderer, "Submit Queued Transfers (StagingBuffer)", REGULAR);
-
-        //lock mutex
-        std::lock_guard guard(stagingBufferMutex);
-
-        //start command buffer
-        VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(syncInfo.queueType);
-
-        VkCommandBufferBeginInfo beginInfo = {};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.pNext = NULL;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+        Timer timer(renderer, "Record Queued Transfers (StagingBuffer)", REGULAR);
 
         //copy to dst
         for(const auto& copy : getDataTransfers())
         {
             vkCmdCopyBuffer(cmdBuffer, stagingBuffer->getBuffer(), copy.dstBuffer.getBuffer(), 1, &copy.copyInfo);
         }
+    }
 
+    const Queue& RendererStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
+    {
+        //timer
+        Timer timer(renderer, "Submit Queued Transfers (StagingBuffer)", REGULAR);
+
+        //start command buffer
+        VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(syncInfo.queueType);
+
+        const VkCommandBufferBeginInfo beginInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .pNext = NULL,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            .pInheritanceInfo = NULL
+        };
+        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+
+        submitQueuedTransfers(cmdBuffer);
+
+        //end command buffer
         vkEndCommandBuffer(cmdBuffer);
 
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
         //submit
-        syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValue });
-        renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+        const Queue& queue = renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+
+        //add owner
+        if(stagingBuffer) stagingBuffer->addOwner(queue);
+
+        return queue;
     }
 
     //----------RENDER ENGINE DEFINITIONS----------//
@@ -420,6 +423,9 @@ namespace PaperRenderer
     {
         //clear previous statistics
         statisticsTracker.clearStatistics();
+
+        //idle staging buffer
+        stagingBuffer[getBufferIndex()]->idleBuffer();
 
         //reset command and descriptor pools
         device.getCommands().resetCommandPools();
