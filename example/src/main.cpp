@@ -779,12 +779,16 @@ int main()
         };
         vkWaitSemaphores(renderer.getDevice().getDevice(), &beginWaitInfo, UINT64_MAX);
 
+        //get opposite buffer index (i didnt even know this was legal until i tried it)
+        const uint32_t otherBufferIndex = !renderer.getBufferIndex();
+
         //begin frame
         VkSemaphore swapchainSemaphore = renderer.beginFrame();
 
         //remember to explicitly submit the staging buffer transfers (do entire submit in this case)
         const PaperRenderer::SynchronizationInfo transferSyncInfo = {
             .queueType = PaperRenderer::QueueType::TRANSFER,
+            .timelineWaitPairs = { { renderingSemaphore[otherBufferIndex], VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValue[otherBufferIndex] } }, //make GPU wait on last frame at this point forward
             .timelineSignalPairs = { { renderingSemaphore[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValue[renderer.getBufferIndex()] + 1 } }
         };
         renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
