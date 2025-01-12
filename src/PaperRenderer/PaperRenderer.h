@@ -65,7 +65,7 @@ namespace PaperRenderer
         void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char>& data); //do not submit more than 1 transfer with the same destination! undefined behavior!
         void submitQueuedTransfers(VkCommandBuffer cmdBuffer); //records all queued transfers and clears the queue
         const Queue& submitQueuedTransfers(SynchronizationInfo syncInfo); //Submits all queued transfers and clears the queue
-        void addOwner(const Queue& queue) { if(stagingBuffer) stagingBuffer->addOwner(queue); }
+        void addOwner(const Queue& queue);
     };
 
     //Render engine object. Contains the entire state of the renderer and some important buffers

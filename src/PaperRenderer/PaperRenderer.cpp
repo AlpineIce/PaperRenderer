@@ -154,6 +154,12 @@ namespace PaperRenderer
         return queue;
     }
 
+    void RendererStagingBuffer::addOwner(const Queue &queue)
+    {
+        std::lock_guard guard(stagingBufferMutex);
+        if(stagingBuffer) stagingBuffer->addOwner(queue);
+    }
+
     //----------RENDER ENGINE DEFINITIONS----------//
 
     RenderEngine::RenderEngine(const RendererCreationStruct& creationInfo)
