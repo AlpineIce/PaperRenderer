@@ -443,13 +443,6 @@ ExampleRaster::~ExampleRaster()
 
 const PaperRenderer::Queue& ExampleRaster::rasterRender(PaperRenderer::SynchronizationInfo syncInfo)
 {
-    //transfer instance data
-    renderPass.queueInstanceTransfers();
-    PaperRenderer::SynchronizationInfo transferSyncInfo = {
-        .queueType = PaperRenderer::QueueType::TRANSFER
-    };
-    renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
-
     //pre-render barriers
     std::vector<VkImageMemoryBarrier2> preRenderImageBarriers;
     preRenderImageBarriers.push_back({ //HDR buffer undefined -> general layout; required for correct shader access

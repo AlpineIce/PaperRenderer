@@ -341,6 +341,12 @@ namespace PaperRenderer
 
         //clear deques
         toUpdateInstances.clear();
+
+        //submit
+        PaperRenderer::SynchronizationInfo transferSyncInfo = {
+            .queueType = PaperRenderer::QueueType::TRANSFER
+        };
+        renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
     }
 
     void RenderPass::handleMaterialDataCompaction(const std::vector<CompactionResult>& results)
@@ -400,10 +406,13 @@ namespace PaperRenderer
         }
     }
 
-    const Queue& RenderPass::render(const RenderPassInfo& renderPassInfo, const SynchronizationInfo& syncInfo)
+    const Queue& RenderPass::render(const RenderPassInfo& renderPassInfo, SynchronizationInfo syncInfo)
     {
         //Timer
         Timer timer(renderer, "RenderPass Submission", REGULAR);
+
+        //instance transfers
+        queueInstanceTransfers();
 
         //----------CLEAR DRAW COUNTS----------//
 
@@ -452,7 +461,6 @@ namespace PaperRenderer
             vkCmdPipelineBarrier2(cmdBuffer, &preprocessDependencyInfo);
         }
         
-
         //----------RENDER PASS----------//
 
         //rendering
@@ -679,6 +687,7 @@ namespace PaperRenderer
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
         //submit
+        syncInfo.timelineWaitPairs.push_back(renderer.getStagingBuffer().getTransferSemaphore());
         const Queue& queue = renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
 
         //assign owner to resources in case destruction is required

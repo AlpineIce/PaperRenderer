@@ -90,6 +90,7 @@ namespace PaperRenderer
         void rebuildInstancesBuffer();
         void rebuildSortedInstancesBuffer();
         void rebuildMaterialDataBuffer();
+        void queueInstanceTransfers();
         void handleMaterialDataCompaction(const std::vector<CompactionResult>&);
         void handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances);
         void clearDrawCounts(VkCommandBuffer cmdBuffer);
@@ -105,8 +106,7 @@ namespace PaperRenderer
         ~RenderPass();
         RenderPass(const RenderPass&) = delete;
 
-        void queueInstanceTransfers();
-        const Queue& render(const RenderPassInfo& renderPassInfo, const SynchronizationInfo& syncInfo);
+        const Queue& render(const RenderPassInfo& renderPassInfo, SynchronizationInfo syncInfo);
 
         void addInstance(ModelInstance& instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials, bool sorted=false);
         void removeInstance(ModelInstance& instance);
