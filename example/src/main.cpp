@@ -761,7 +761,7 @@ int main()
     while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
     {
         //pre-frame events
-        //frameEvents();
+        frameEvents();
 
         //get last frame statistics (create copy since it WILL be cleared after renderer.beginFrame())
         PaperRenderer::Statistics lastFrameStatistics = renderer.getStatisticsTracker().getStatistics();
@@ -807,7 +807,7 @@ int main()
 
             std::vector<char> adjustableMaterialNewData(sizeof(DefaultRTMaterialDefinition));
             memcpy(adjustableMaterialNewData.data(), &newData, sizeof(DefaultRTMaterialDefinition));
-            //renderer.getStagingBuffer().queueDataTransfers(rtMaterialDefinitionsBuffer, adjustableMaterialIndex * sizeof(DefaultRTMaterialDefinition), adjustableMaterialNewData);
+            renderer.getStagingBuffer().queueDataTransfers(rtMaterialDefinitionsBuffer, adjustableMaterialIndex * sizeof(DefaultRTMaterialDefinition), adjustableMaterialNewData);
 
             //build queued BLAS's (wait on transfer, signal rendering semaphore
             const PaperRenderer::SynchronizationInfo blasSyncInfo = {
