@@ -100,7 +100,7 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
         { VK_SHADER_STAGE_MISS_BIT_KHR, &rmissShader },
         { VK_SHADER_STAGE_MISS_BIT_KHR, &rshadowShader }
     }),
-    rayRecursionDepth(renderer.getDevice().getRTproperties().maxRayRecursionDepth),
+    rayRecursionDepth(std::min((uint32_t)2, renderer.getDevice().getRTproperties().maxRayRecursionDepth)),
     rtInfoUBO(renderer, {
         .size = sizeof(RayTraceInfo) * 2,
         .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
