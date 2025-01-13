@@ -342,7 +342,7 @@ int main()
     };
 
     //initialize renderer
-    const PaperRenderer::RendererCreationStruct rendererInfo = {
+    const PaperRenderer::PaperRendererInfo rendererInfo = {
         .logEventCallbackFunction = logCallbackFunction,
         .swapchainRebuildCallbackFunction = swapchainResizeFunction,
         .rasterPreprocessSpirv = readFromFile("../resources/shaders/IndirectDrawBuild.spv"),
