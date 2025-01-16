@@ -57,5 +57,5 @@ void main()
     totalLight += brdfInput.ambientLight.xyz * brdfInput.ambientLight.w * brdfInput.baseColor.xyz;
     
     //output
-    color = vec4(totalLight, 1.0);
+    color = vec4(totalLight, materialParameters.baseColor.w);
 }
