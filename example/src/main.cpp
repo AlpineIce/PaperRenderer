@@ -141,18 +141,13 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
 
             const glm::vec3 newCameraPosition = glm::vec3(15.0f * sin(glfwGetTime()), 15.0f * cos(glfwGetTime()), 5.0f);
 
-            PaperRenderer::CameraTransformation newTransform = {
-                .translationParameters = {
-                    .rotationType = PaperRenderer::CameraRotationType::QUATERNION,
-                    .rotation = { .qRotation = glm::lookAt(newCameraPosition, glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f)) },
-                    .position = newCameraPosition
-                }
+            PaperRenderer::CameraTransformationParameters newTransform = {
+                .rotation = glm::lookAt(newCameraPosition, glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f)),
+                .position = newCameraPosition
             };
 
             const PaperRenderer::CameraInfo cameraInfo = {
-                .projectionType = PaperRenderer::CameraProjectionType::PERSPECTIVE,
-                .projection = { .perspective = { (float)camera.perspective.yfov * 100.0f } },
-                .transformationType = PaperRenderer::CameraTransformationType::PARAMETERS,
+                .projection = PaperRenderer::PerspectiveCamera((float)camera.perspective.yfov * 100.0f),
                 .transformation = newTransform,
                 .clipNear = (float)camera.perspective.znear,
                 .clipFar = (float)camera.perspective.zfar
@@ -271,14 +266,11 @@ void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::
     //update camera
     const glm::vec3 newCameraPosition = glm::vec3(15.0f * sin(glfwGetTime() * 0.1f), 15.0f * cos(glfwGetTime() * 0.1f), 5.0f);
 
-    PaperRenderer::CameraTransformation newTransform = {
-        .translationParameters = {
-            .rotationType = PaperRenderer::CameraRotationType::QUATERNION,
-            .rotation = { .qRotation = glm::lookAt(newCameraPosition, glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f)) },
-            .position = newCameraPosition
-        }
+    PaperRenderer::CameraTransformationParameters newTransform = {
+        .rotation = glm::lookAt(newCameraPosition, glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f)),
+        .position = newCameraPosition
     };
-    camera.updateView(newTransform, PaperRenderer::CameraTransformationType::PARAMETERS);
+    camera.updateView(newTransform);
     camera.updateUBO();
 
     //update RT
@@ -334,11 +326,11 @@ int main()
         depthBuffer = getDepthBuffer(renderer);
 
         //update camera
-        const PaperRenderer::CameraProjection newProjection = {
-            //.orthographic = { .xyScale = glm::vec2(30.0f, 30.0f) }
-            .perspective = { .yFov = scene.camera->getCameraInfo().projection.perspective.yFov }
+        const PaperRenderer::PerspectiveCamera newProjection = {
+            //.xyScale = glm::vec2(30.0f, 30.0f)
+            .yFov = std::get<PaperRenderer::PerspectiveCamera>(scene.camera->getCameraInfo().projection).yFov
         };
-        scene.camera->updateProjection(newProjection, PaperRenderer::CameraProjectionType::PERSPECTIVE);
+        scene.camera->updateProjection(newProjection);
     };
 
     //initialize renderer

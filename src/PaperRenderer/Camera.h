@@ -7,17 +7,11 @@
 #include "VulkanResources.h"
 
 #include <memory>
+#include <variant>
 
 namespace PaperRenderer
 {
     //----------CAMERA TRANSFORMATION----------//
-
-    //rotation types
-    enum CameraRotationType
-    {
-        EULER,
-        QUATERNION
-    };
 
     struct EulerRotation
     {
@@ -26,37 +20,10 @@ namespace PaperRenderer
         float roll = 0.0f;
     };
 
-    union CameraRotation
-    {
-        EulerRotation eRotation;
-        glm::quat qRotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f); //default initialize to quaternion
-    };
-    
-    //transformation types
-    enum CameraTransformationType
-    {
-        MATRIX,
-        PARAMETERS
-    };
-
     struct CameraTransformationParameters
     {
-        CameraRotationType rotationType = QUATERNION; //default rotation is quaternion, also default initializer
-        CameraRotation rotation = {};
+        std::variant<EulerRotation, glm::quat> rotation = {};
         glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f);
-    };
-
-    union CameraTransformation
-    {
-        glm::mat4 viewMatrix; //raw matrix input
-        CameraTransformationParameters translationParameters = {}; //default initialize to use parameters for view construction
-    };
-
-    //camera projection
-    enum CameraProjectionType
-    {
-        PERSPECTIVE,
-        ORTHOGRAPHIC
     };
 
     struct PerspectiveCamera //WILL update to uneven image screen size
@@ -69,19 +36,11 @@ namespace PaperRenderer
         glm::vec2 xyScale;
     };
 
-    union CameraProjection
-    {
-        PerspectiveCamera perspective = {}; //default initialize to use perspective
-        OrthographicCamera orthographic;
-    };
-
     //creation info
     struct CameraInfo
     {
-        CameraProjectionType projectionType = PERSPECTIVE;
-        CameraProjection projection = {};
-        CameraTransformationType transformationType = PARAMETERS;
-        CameraTransformation transformation = {};
+        std::variant<PerspectiveCamera, OrthographicCamera> projection = {};
+        std::variant<glm::mat4, CameraTransformationParameters> transformation = {};
         float clipNear = 0.1f;
         float clipFar = 1000.0f;
     };
@@ -111,8 +70,8 @@ namespace PaperRenderer
         Camera(const Camera&) = delete;
 
         void updateClipSpace(float near, float far); //implicitly updates projection after
-        void updateProjection(const CameraProjection& newProjection, CameraProjectionType projectionType); //updates projection to match window extent (doesn't apply to orthographic)
-        void updateView(const CameraTransformation& newTransform, CameraTransformationType transformType);
+        void updateProjection(const std::variant<PerspectiveCamera, OrthographicCamera>& newProjection); //updates projection to match window extent (doesn't apply to orthographic)
+        void updateView(const std::variant<glm::mat4, CameraTransformationParameters>& newTransform);
         void updateUBO(); //MUST be called to update the camera UBO
         
         const glm::mat4& getViewMatrix() const { return view; }

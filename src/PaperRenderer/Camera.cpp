@@ -14,8 +14,8 @@ namespace PaperRenderer
         }),
         renderer(renderer)
     {
-        updateProjection(cameraInfo.projection, cameraInfo.projectionType);
-        updateView(cameraInfo.transformation, cameraInfo.transformationType);
+        updateProjection(cameraInfo.projection);
+        updateView(cameraInfo.transformation);
     }
 
     Camera::~Camera()
@@ -26,13 +26,12 @@ namespace PaperRenderer
     {
         cameraInfo.clipFar = near;
         cameraInfo.clipFar = far;
-        updateProjection(cameraInfo.projection, cameraInfo.projectionType);
+        updateProjection(cameraInfo.projection);
     }
 
-    void Camera::updateProjection(const CameraProjection& newProjection, CameraProjectionType projectionType)
+    void Camera::updateProjection(const std::variant<PerspectiveCamera, OrthographicCamera>& newProjection)
     {
         //update camera info
-        cameraInfo.projectionType = projectionType;
         cameraInfo.projection = newProjection;
 
         //get screen ratio
@@ -40,53 +39,51 @@ namespace PaperRenderer
         const float screenRatio = (float)extent.width / (float)extent.height;
         
         //set projection based on projectionType
-        switch(projectionType)
+        switch(newProjection.index())
         {
-        case PERSPECTIVE:
-            projection = glm::perspective(glm::radians(cameraInfo.projection.perspective.yFov), screenRatio, cameraInfo.clipNear, cameraInfo.clipFar);
+        case 0: //perspective
+            projection = glm::perspective(glm::radians(std::get<PerspectiveCamera>(cameraInfo.projection).yFov), screenRatio, cameraInfo.clipNear, cameraInfo.clipFar);
             break;
-        case ORTHOGRAPHIC:
+        case 1: //orthographic
             //TODO FIGURE OUT WHY BROKEN AND SAD
-            const glm::vec2 xyScale = cameraInfo.projection.orthographic.xyScale;
-            projection = glm::ortho(-xyScale.x / 2.0f, xyScale.x / 2.0f, -xyScale.y / 2.0f, xyScale.y / 2.0f);
+            const glm::vec2 xyScale = std::get<OrthographicCamera>(cameraInfo.projection).xyScale;
+            projection = glm::ortho(-xyScale.x, xyScale.x, -xyScale.y, xyScale.y, cameraInfo.clipNear, cameraInfo.clipFar);
             break;
         }
     }
 
-    void Camera::updateView(const CameraTransformation& newTransform, CameraTransformationType transformType)
+    void Camera::updateView(const std::variant<glm::mat4, CameraTransformationParameters>& newTransform)
     {
         //update camera info
-        cameraInfo.transformationType = transformType;
         cameraInfo.transformation = newTransform;
 
-        if(transformType == MATRIX)
+        if(std::holds_alternative<glm::mat4>(cameraInfo.transformation))
         {
-            view = cameraInfo.transformation.viewMatrix;
+            view = std::get<glm::mat4>(cameraInfo.transformation);
         }
-        else if(transformType == PARAMETERS)
+        else if(std::holds_alternative<CameraTransformationParameters>(cameraInfo.transformation))
         {
             //create copy of transformation parameters
-            CameraTransformationParameters parameters = cameraInfo.transformation.translationParameters; //not a reference
+            CameraTransformationParameters parameters = std::get<CameraTransformationParameters>(cameraInfo.transformation); //not a reference
             
             //calculate quaternion from euler angles if needed
-            if(parameters.rotationType == EULER)
+            if(std::holds_alternative<EulerRotation>(parameters.rotation))
             {
                 //TODO VERIFY THIS STUFF IS RIGHT
 
                 //calculate qRotation
-                glm::quat yawRot = glm::angleAxis(glm::radians(parameters.rotation.eRotation.yaw), glm::vec3(0.0f, 0.0f, -1.0f));
-                glm::quat pitchRot = glm::angleAxis(glm::radians(parameters.rotation.eRotation.pitch - 90.0f), glm::vec3(-1.0f, 0.0f, 0.0f));
-                glm::quat zUpPitchRot = glm::angleAxis(glm::radians(parameters.rotation.eRotation.pitch), glm::vec3(-1.0f, 0.0f, 0.0f));
+                glm::quat yawRot = glm::angleAxis(glm::radians(std::get<EulerRotation>(parameters.rotation).yaw), glm::vec3(0.0f, 0.0f, -1.0f));
+                glm::quat pitchRot = glm::angleAxis(glm::radians(std::get<EulerRotation>(parameters.rotation).pitch - 90.0f), glm::vec3(-1.0f, 0.0f, 0.0f));
+                glm::quat zUpPitchRot = glm::angleAxis(glm::radians(std::get<EulerRotation>(parameters.rotation).pitch), glm::vec3(-1.0f, 0.0f, 0.0f));
 
                 //set qRotation
-                parameters.rotation.qRotation = zUpPitchRot * yawRot;
-                parameters.rotationType = QUATERNION;
+                parameters.rotation = zUpPitchRot * yawRot;
             }
 
             //normalize
-            parameters.rotation.qRotation = glm::normalize(parameters.rotation.qRotation);
+            parameters.rotation = glm::normalize(std::get<glm::quat>(parameters.rotation));
 
-            glm::mat4 mRotation = glm::mat4_cast(parameters.rotation.qRotation);
+            glm::mat4 mRotation = glm::mat4_cast(std::get<glm::quat>(parameters.rotation));
             glm::mat4 mTranslation = glm::mat4(1.0f);
 
             //add position
