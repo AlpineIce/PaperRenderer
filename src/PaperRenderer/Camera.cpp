@@ -29,23 +29,29 @@ namespace PaperRenderer
         updateProjection(cameraInfo.projection);
     }
 
-    void Camera::updateProjection(const std::variant<PerspectiveCamera, OrthographicCamera>& newProjection)
+    void Camera::updateProjection(const std::variant<PerspectiveCamera, OrthographicCamera, glm::mat4>& newProjection)
     {
         //update camera info
         cameraInfo.projection = newProjection;
+
+        //early return if custom matrix type
+        if(std::holds_alternative<glm::mat4>(newProjection))
+        {
+            projection = std::get<glm::mat4>(newProjection);
+            return;
+        }
 
         //get screen ratio
         const VkExtent2D extent = renderer.getSwapchain().getExtent();
         const float screenRatio = (float)extent.width / (float)extent.height;
         
         //set projection based on projectionType
-        switch(newProjection.index())
+        switch(cameraInfo.projection.index())
         {
         case 0: //perspective
             projection = glm::perspective(glm::radians(std::get<PerspectiveCamera>(cameraInfo.projection).yFov), screenRatio, cameraInfo.clipNear, cameraInfo.clipFar);
             break;
         case 1: //orthographic
-            //TODO FIGURE OUT WHY BROKEN AND SAD
             const glm::vec2 xyScale = std::get<OrthographicCamera>(cameraInfo.projection).xyScale;
             projection = glm::ortho(-xyScale.x, xyScale.x, -xyScale.y, xyScale.y, cameraInfo.clipNear, cameraInfo.clipFar);
             break;

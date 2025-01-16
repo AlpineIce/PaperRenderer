@@ -39,7 +39,7 @@ namespace PaperRenderer
     //creation info
     struct CameraInfo
     {
-        std::variant<PerspectiveCamera, OrthographicCamera> projection = {};
+        std::variant<PerspectiveCamera, OrthographicCamera, glm::mat4> projection = {};
         std::variant<glm::mat4, CameraTransformationParameters> transformation = {};
         float clipNear = 0.1f;
         float clipFar = 1000.0f;
@@ -70,7 +70,7 @@ namespace PaperRenderer
         Camera(const Camera&) = delete;
 
         void updateClipSpace(float near, float far); //implicitly updates projection after
-        void updateProjection(const std::variant<PerspectiveCamera, OrthographicCamera>& newProjection); //updates projection to match window extent (doesn't apply to orthographic)
+        void updateProjection(const std::variant<PerspectiveCamera, OrthographicCamera, glm::mat4>& newProjection); //updates projection to match window extent (doesn't apply to orthographic)
         void updateView(const std::variant<glm::mat4, CameraTransformationParameters>& newTransform);
         void updateUBO(); //MUST be called to update the camera UBO
         
