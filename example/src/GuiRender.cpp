@@ -68,8 +68,8 @@ void renderImGui(PaperRenderer::RenderEngine* renderer, PaperRenderer::Statistic
 
     MaterialParameters materialParameters = guiContext->adjustableMaterial->getParameters();
 
-    ImGui::ColorEdit3("Base color", (float*)&materialParameters.baseColor); // Edit 3 floats representing a color
-    ImGui::ColorEdit3("Emission", (float*)&materialParameters.emission); // Edit 3 floats representing a color
+    ImGui::ColorEdit4("Base color", (float*)&materialParameters.baseColor); // Edit 3 floats representing a color
+    ImGui::ColorEdit4("Emission", (float*)&materialParameters.emission); // Edit 4 floats representing a color
     ImGui::SliderFloat("Metallic", &materialParameters.metallic, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
     ImGui::SliderFloat("Roughness", &materialParameters.roughness, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
 

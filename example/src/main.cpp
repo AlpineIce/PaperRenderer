@@ -641,6 +641,21 @@ int main()
         }
     }
 
+    //sorted metal ball
+    if(scene.models.count("MetalBall"))
+    {
+        std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *scene.models["MetalBall"], false);
+
+        //set transformation
+        instance->setTransformation(scene.instanceTransforms[scene.models["MetalBall"].get()]);
+
+        //add to render passes
+        addInstanceToRenderPass(*instance, baseRTMaterial, true);
+
+        //push to model instances
+        modelInstances["MetalBall"].push_back(std::move(instance));
+    }
+
     //everything else (including one drop lol)
     for(const auto& [name, model] : scene.models)
     {
