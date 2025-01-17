@@ -9,6 +9,29 @@ namespace PaperRenderer
 {
     //----------MODEL CREATION INFO----------//
 
+    struct AABB
+    {
+        float posX = 0.0f;
+        float negX = 0.0f;
+        float posY = 0.0f;
+        float negY = 0.0f;
+        float posZ = 0.0f;
+        float negZ = 0.0f;
+
+        bool operator==(const AABB& other) const
+        {
+            bool equal = true;
+            equal = equal && posX == other.posX;
+            equal = equal && negX == other.negX;
+            equal = equal && posY == other.posY;
+            equal = equal && negY == other.negY;
+            equal = equal && posZ == other.posZ;
+            equal = equal && negZ == other.negZ;
+
+            return equal;
+        }
+    };
+
     struct MaterialMeshInfo
     {
         std::vector<char> verticesData; //DEEP COPY WARNING! USE STD::MOVE why is it like this? because theres a high risk of accidential dangling pointers
@@ -28,6 +51,7 @@ namespace PaperRenderer
         const std::vector<ModelLODInfo>& LODs;
         bool createBLAS = true; //create a default BLAS
         const std::string& modelName;
+        AABB bounds = {}; //ignore/default construct to auto construct AABB; used for raster culling and is accessible in shaders
     };
 
     //----------MODEL INFORMATION----------//
@@ -49,16 +73,6 @@ namespace PaperRenderer
     struct LOD //acts more like an individual model
     {
         std::vector<MaterialMesh> materialMeshes; //material index, mesh in material slot
-    };
-
-    struct AABB
-    {
-        float posX = 0.0f;
-        float negX = 0.0f;
-        float posY = 0.0f;
-        float negY = 0.0f;
-        float posZ = 0.0f;
-        float negZ = 0.0f;
     };
 
     struct ModelTransformation

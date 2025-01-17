@@ -122,7 +122,8 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
                 },
                 .LODs = { modelLOD },
                 .createBLAS = true,
-                .modelName = modelName
+                .modelName = modelName,
+                .bounds = {}
             };
 
             returnData.models[modelName] = std::make_unique<PaperRenderer::Model>(renderer, modelInfo);

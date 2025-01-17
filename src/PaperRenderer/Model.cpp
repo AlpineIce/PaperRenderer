@@ -21,12 +21,17 @@ namespace PaperRenderer
 		std::vector<uint32_t> creationIndices;
 
 		//AABB processing
-		aabb.posX = -1000000.0f;
-		aabb.negX = 1000000.0f;
-		aabb.posY = -1000000.0f;
-		aabb.negY = 1000000.0f;
-		aabb.posZ = -1000000.0f;
-		aabb.negZ = 1000000.0f;
+		const AABB defaultAABB = {};
+		const bool constructAABB = creationInfo.bounds == defaultAABB;
+		if(constructAABB)
+		{
+			aabb.posX = -1000000.0f;
+			aabb.negX = 1000000.0f;
+			aabb.posY = -1000000.0f;
+			aabb.negY = 1000000.0f;
+			aabb.posZ = -1000000.0f;
+			aabb.negZ = 1000000.0f;
+		}
 
 		//vertex data
 		vertexAttributes = creationInfo.vertexAttributes;
@@ -36,18 +41,22 @@ namespace PaperRenderer
 		VkDeviceSize dynamicVertexOffset = 0;
 		for(const ModelLODInfo& lod : creationInfo.LODs)
 		{
-			LOD returnLOD;
+			LOD returnLOD = {};
+			returnLOD.materialMeshes.reserve(lod.lodData.size());
 
 			//iterate materials in LOD
 			for(const auto& [matIndex, meshGroup] : lod.lodData)
 			{
 				//process mesh data
-				MaterialMesh materialMesh;
-				materialMesh.invokeAnyHit = !meshGroup.opaque;
-				materialMesh.mesh.vboOffset = dynamicVertexOffset;
-				materialMesh.mesh.vertexCount =  meshGroup.verticesData.size() / vertexDescription.stride;
-				materialMesh.mesh.iboOffset = creationIndices.size();
-				materialMesh.mesh.indexCount =  meshGroup.indices.size();
+				const MaterialMesh materialMesh = {
+					.mesh = {
+						.vboOffset = (uint32_t)dynamicVertexOffset,
+						.vertexCount =  (uint32_t)meshGroup.verticesData.size() / vertexDescription.stride,
+						.iboOffset = (uint32_t)creationIndices.size(),
+						.indexCount =  (uint32_t)meshGroup.indices.size()
+					},
+					.invokeAnyHit = !meshGroup.opaque
+				};
 
 				creationVerticesData.insert(creationVerticesData.end(), meshGroup.verticesData.begin(), meshGroup.verticesData.end());
 				creationIndices.insert(creationIndices.end(), meshGroup.indices.begin(), meshGroup.indices.end());
@@ -55,18 +64,23 @@ namespace PaperRenderer
 				dynamicVertexOffset += materialMesh.mesh.vertexCount;
 
 				//AABB processing
-				uint32_t vertexCount = creationVerticesData.size() / vertexDescription.stride;
-				for(uint32_t i = 0; i < vertexCount; i++)
+				if(constructAABB)
 				{
-					const glm::vec3& vertexPosition = *(glm::vec3*)(creationVerticesData.data() + (i * vertexDescription.stride));
+					uint32_t vertexCount = creationVerticesData.size() / vertexDescription.stride;
+					for(uint32_t i = 0; i < vertexCount; i++)
+					{
+						const glm::vec3& vertexPosition = *(glm::vec3*)(creationVerticesData.data() + (i * vertexDescription.stride));
 
-					aabb.posX = std::max(vertexPosition.x, aabb.posX);
-					aabb.negX = std::min(vertexPosition.x, aabb.negX);
-					aabb.posY = std::max(vertexPosition.y, aabb.posY);
-					aabb.negY = std::min(vertexPosition.y, aabb.negY);
-					aabb.posZ = std::max(vertexPosition.z, aabb.posZ);
-					aabb.negZ = std::min(vertexPosition.z, aabb.negZ);
+						aabb.posX = std::max(vertexPosition.x, aabb.posX);
+						aabb.negX = std::min(vertexPosition.x, aabb.negX);
+						aabb.posY = std::max(vertexPosition.y, aabb.posY);
+						aabb.negY = std::min(vertexPosition.y, aabb.negY);
+						aabb.posZ = std::max(vertexPosition.z, aabb.posZ);
+						aabb.negZ = std::min(vertexPosition.z, aabb.negZ);
+					}
 				}
+
+				//push data
 				returnLOD.materialMeshes.push_back(materialMesh);
 			}
 			LODs.push_back(returnLOD);
@@ -83,7 +97,7 @@ namespace PaperRenderer
 		if(creationInfo.createBLAS && renderer.getDevice().getRTSupport())
 		{
 			defaultBLAS = std::make_unique<BLAS>(renderer, *this, vbo.get());
-			BLASBuildOp op = {
+			const BLASBuildOp op = {
 				.accelerationStructure = *defaultBLAS.get(),
 				.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 				.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
