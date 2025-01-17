@@ -259,6 +259,7 @@ namespace PaperRenderer
 
         void setTransformation(const ModelTransformation& newTransformation);
         void invalidateGeometry(const VkBuildAccelerationStructureFlagsKHR flags) const; //call this to queue an update of it's acceleration structure for the next AS builder call
+        void bindBuffers(const VkCommandBuffer& cmdBuffer) const; //binds the parent models buffers if not using unique geometry, but binds unique VBO (not including IBO) if used
         
         const Model& getParentModel() const { return parentModel; }
         const InstanceUniqueGeometry& getUniqueGeometryData() const { return uniqueGeometryData; }

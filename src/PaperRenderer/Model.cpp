@@ -296,15 +296,16 @@ namespace PaperRenderer
 				//pointers
 				LODMesh const* lodMeshPtr = &parentModel.getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh;
 				CommonMeshGroup const* meshGroupPtr = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&parentModel.getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh);
+				ModelInstance const* instancePtr = uniqueGeometryData.isUsed ? this : NULL;
 
 				//material mesh group data
 				MaterialMeshGroup materialMeshGroup = {};
 				materialMeshGroup.drawCommandAddress = 
 					meshGroupPtr->getDrawCommandsBuffer().getBufferDeviceAddress() + 
-					(meshGroupPtr->getMeshesData().at(lodMeshPtr).drawCommandIndex * sizeof(DrawCommand));
+					(meshGroupPtr->getInstanceMeshesData().at(instancePtr).at(lodMeshPtr).drawCommandIndex * sizeof(DrawCommand));
 				materialMeshGroup.matricesBufferAddress = 
 					meshGroupPtr->getModelMatricesBuffer().getBufferDeviceAddress() + 
-					(meshGroupPtr->getMeshesData().at(lodMeshPtr).matricesStartIndex * sizeof(glm::mat4));
+					(meshGroupPtr->getInstanceMeshesData().at(instancePtr).at(lodMeshPtr).matricesStartIndex * sizeof(glm::mat4));
 
 				memcpy(newData.data() + lodMaterialData.meshGroupsOffset + sizeof(MaterialMeshGroup) * matIndex, &materialMeshGroup, sizeof(MaterialMeshGroup));
 			}
@@ -350,5 +351,19 @@ namespace PaperRenderer
     void ModelInstance::invalidateGeometry(const VkBuildAccelerationStructureFlagsKHR flags) const
     {
 		queueBLAS(flags);
+    }
+
+    void ModelInstance::bindBuffers(const VkCommandBuffer &cmdBuffer) const
+    {
+		if(uniqueGeometryData.isUsed)
+		{
+			VkDeviceSize offsets[1] = { 0 };
+			vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &uniqueGeometryData.uniqueVBO->getBuffer(), offsets);
+			vkCmdBindIndexBuffer(cmdBuffer, parentModel.ibo->getBuffer(), 0, VK_INDEX_TYPE_UINT32);
+		}
+		else
+		{
+			parentModel.bindBuffers(cmdBuffer);
+		}
     }
 }

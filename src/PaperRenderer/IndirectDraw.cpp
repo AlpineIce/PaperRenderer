@@ -59,15 +59,11 @@ namespace PaperRenderer
 
         //get instances to update
         std::vector<ModelInstance*> modifiedInstances;
+        modifiedInstances.reserve(instanceMeshes.size());
         for(auto& [instance, meshes] : instanceMeshes)
         {
             modifiedInstances.push_back(instance);
         }
-
-        //remove duplicates
-        std::sort(modifiedInstances.begin(), modifiedInstances.end());
-        auto uniqueIndices = std::unique(modifiedInstances.begin(), modifiedInstances.end());
-        modifiedInstances.erase(uniqueIndices, modifiedInstances.end());
 
         return modifiedInstances;
     }
@@ -76,24 +72,27 @@ namespace PaperRenderer
     {
         BufferSizeRequirements sizeRequirements = {};
 
-        //draw commands count
-        drawCommandCount = meshesData.size();
-        sizeRequirements.drawCommandCount = drawCommandCount;
-
-        //model matrices and offsets/indices
+        //model matrices, draw commands, and offsets/indices
         uint32_t meshIndex = 0;
-        for(auto& [mesh, meshInstancesData] : meshesData)
+        for(auto& [instance, meshesData] : instanceMeshesData)
         {
-            //draw commands count offset
-            meshInstancesData.drawCommandIndex = meshIndex;
+            for(auto& [mesh, meshInstancesData] : meshesData)
+            {
+                //get new instance count
+                const uint32_t instanceCount = std::max((uint32_t)(meshInstancesData.instanceCount - 1) * 2, (uint32_t)1);
 
-            //output objects
-            const uint32_t instanceCount = std::max((uint32_t)(meshInstancesData.instanceCount * instanceCountOverhead), (uint32_t)8); //minimum of 8 instances to make things happy
-            meshInstancesData.lastRebuildInstanceCount = instanceCount;
-            meshInstancesData.matricesStartIndex = sizeRequirements.matricesCount;
-            sizeRequirements.matricesCount += instanceCount;
+                //set mesh data
+                meshInstancesData.drawCommandIndex = meshIndex;
+                meshInstancesData.lastRebuildInstanceCount = instanceCount;
+                meshInstancesData.matricesStartIndex = sizeRequirements.matricesCount;
 
-            meshIndex++;
+                //increment size requirements
+                sizeRequirements.matricesCount += instanceCount;
+                sizeRequirements.drawCommandCount++;
+
+                //increment mesh counter
+                meshIndex++;
+            }
         }
 
         return sizeRequirements;
@@ -101,99 +100,125 @@ namespace PaperRenderer
 
     void CommonMeshGroup::setDrawCommandData() const
     {
-        for(const auto& [mesh, meshInstancesData] : meshesData)
+        for(auto& [instance, meshesData] : instanceMeshesData)
         {
-            //get command data
-            DrawCommand command = {};
-            command.command.indexCount = mesh->indexCount;
-            command.command.instanceCount = 0;
-            command.command.firstIndex = mesh->iboOffset;
-            command.command.vertexOffset = mesh->vboOffset;
-            command.command.firstInstance = 0;
+            for(const auto& [mesh, meshInstancesData] : meshesData)
+            {
+                //get command data
+                const DrawCommand command = {
+                    .command = {
+                        .indexCount = mesh->indexCount,
+                        .instanceCount = 0,
+                        .firstIndex = mesh->iboOffset,
+                        .vertexOffset = (int32_t)mesh->vboOffset,
+                        .firstInstance = 0
+                    }
+                };
 
-            std::vector<char> data(sizeof(DrawCommand));
-            memcpy(data.data(), &command, sizeof(DrawCommand));
+                std::vector<char> data(sizeof(DrawCommand));
+                memcpy(data.data(), &command, sizeof(DrawCommand));
 
-            //queue data transfer
-            renderer.getStagingBuffer().queueDataTransfers(
-                *drawCommandsBuffer,
-                sizeof(DrawCommand) * meshInstancesData.drawCommandIndex,
-                data
-            );
+                //queue data transfer
+                renderer.getStagingBuffer().queueDataTransfers(
+                    *drawCommandsBuffer,
+                    sizeof(DrawCommand) * meshInstancesData.drawCommandIndex,
+                    data
+                );
+            }
         }
     }
 
     void CommonMeshGroup::addInstanceMesh(ModelInstance& instance, const LODMesh& instanceMeshData)
-    {        
-        if(!meshesData.count(&instanceMeshData))
+    {
+        //use instance pointer if using unique geometry; otherwise NULL index
+        ModelInstance const* instancePtr = instance.uniqueGeometryData.isUsed ? &instance : NULL;
+
+        if(!instanceMeshesData[instancePtr].count(&instanceMeshData))
         {
-            meshesData[&instanceMeshData].parentModelPtr = &instance.getParentModel();
+            instanceMeshesData[instancePtr][&instanceMeshData].parentModelPtr = &instance.getParentModel();
             rebuild = true;
         }
 
-        meshesData.at(&instanceMeshData).instanceCount++;
+        instanceMeshesData[instancePtr][&instanceMeshData].instanceCount++;
 
-        if(meshesData.at(&instanceMeshData).instanceCount > meshesData.at(&instanceMeshData).lastRebuildInstanceCount) rebuild = true;
-
-        this->instanceMeshes[&instance].push_back(&instanceMeshData);
+        if(instanceMeshesData[instancePtr][&instanceMeshData].instanceCount > instanceMeshesData[instancePtr][&instanceMeshData].lastRebuildInstanceCount) rebuild = true;
+        
+        //add instance mesh references
+        instanceMeshes[&instance].push_back(&instanceMeshData);
     }
 
     void CommonMeshGroup::removeInstanceMeshes(ModelInstance& instance)
-    {        
+    {
+        //use instance pointer if using unique geometry; otherwise NULL index
+        ModelInstance const* instancePtr = instance.uniqueGeometryData.isUsed ? &instance : NULL;
+
         if(instanceMeshes.count(&instance))
         {
-            for(LODMesh const* meshData : instanceMeshes.at(&instance))
+            for(LODMesh const* meshData : instanceMeshes[&instance])
             {
-                meshesData.at(meshData).instanceCount--;
+                instanceMeshesData[instancePtr][meshData].instanceCount--;
 
                 //remove if 0 instances
-                if(meshesData.at(meshData).instanceCount < 1)
+                if(instanceMeshesData[instancePtr][meshData].instanceCount < 1)
                 {
-                    meshesData.erase(meshData);
+                    instanceMeshesData[instancePtr].erase(meshData);
                 }
             }
+
+            //remove instance mesh references
             instanceMeshes.erase(&instance);
         }
     }
 
     void CommonMeshGroup::draw(const VkCommandBuffer &cmdBuffer, const Material& material) const
     {
-        for(const auto& [mesh, meshData] : meshesData)
+        for(const auto& [instance, meshesData] : instanceMeshesData)
         {
-            if(meshData.parentModelPtr)//null safety
+            for(const auto& [mesh, meshData] : meshesData)
             {
                 //assign object descriptor if used
                 if(material.usesDefaultDescriptors())
                 {
                     //get new descriptor set
-                    VkDescriptorSet objDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(material.getRasterPipeline().getDescriptorSetLayouts().at(material.getRasterPipeline().getDrawDescriptorIndex()));
+                    const VkDescriptorSet objDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(material.getRasterPipeline().getDescriptorSetLayouts().at(material.getRasterPipeline().getDrawDescriptorIndex()));
                     
                     //write uniforms
-                    VkDescriptorBufferInfo descriptorInfo = {};
-                    descriptorInfo.buffer = modelMatricesBuffer->getBuffer();
-                    descriptorInfo.offset = meshData.matricesStartIndex * sizeof(ShaderOutputObject);
-                    descriptorInfo.range = sizeof(ShaderOutputObject) * meshData.instanceCount;
+                    const VkDescriptorBufferInfo descriptorInfo = {
+                        .buffer = modelMatricesBuffer->getBuffer(),
+                        .offset = meshData.matricesStartIndex * sizeof(ShaderOutputObject),
+                        .range = sizeof(ShaderOutputObject) * meshData.instanceCount
+                    };
 
-                    BuffersDescriptorWrites write = {};
-                    write.binding = 0;
-                    write.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                    write.infos.push_back(descriptorInfo);
+                    const BuffersDescriptorWrites write = {
+                        .infos = { descriptorInfo },
+                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .binding = 0,
+                    };
 
-                    DescriptorWrites descriptorWritesInfo = {};
-                    descriptorWritesInfo.bufferWrites = { write };
+                    const DescriptorWrites descriptorWritesInfo = {
+                        .bufferWrites = { write }
+                    };
                     renderer.getDescriptorAllocator().writeUniforms(objDescriptorSet, descriptorWritesInfo);
 
                     //bind set
-                    DescriptorBind bindingInfo = {};
-                    bindingInfo.descriptorSetIndex = material.getRasterPipeline().getDrawDescriptorIndex();
-                    bindingInfo.set = objDescriptorSet;
-                    bindingInfo.layout = material.getRasterPipeline().getLayout();
-                    bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+                    const DescriptorBind bindingInfo = {
+                        .bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        .layout = material.getRasterPipeline().getLayout(),
+                        .descriptorSetIndex = material.getRasterPipeline().getDrawDescriptorIndex(),
+                        .set = objDescriptorSet
+                    };
                     renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
                 }
 
-                //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)
-                meshData.parentModelPtr->bindBuffers(cmdBuffer);
+                //bind vbo and ibo
+                if(instance)
+                {
+                    instance->bindBuffers(cmdBuffer);
+                }
+                else
+                {
+                    meshData.parentModelPtr->bindBuffers(cmdBuffer);
+                }
 
                 //draw
                 vkCmdDrawIndexedIndirect(
@@ -209,69 +234,72 @@ namespace PaperRenderer
 
     void CommonMeshGroup::clearDrawCommand(const VkCommandBuffer &cmdBuffer) const
     {
+        //pre-transfer memory barrier
+        const VkBufferMemoryBarrier2 preMemBarrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+            .pNext = NULL,
+            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
+            .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = drawCommandsBuffer->getBuffer(),
+            .offset = 0,
+            .size = VK_WHOLE_SIZE
+        };
+
+        const VkDependencyInfo preDependency = {
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .pNext = NULL,
+            .bufferMemoryBarrierCount = 1,
+            .pBufferMemoryBarriers = &preMemBarrier
+        };
+
+        vkCmdPipelineBarrier2(cmdBuffer, &preDependency);
+
         //clear instance count
-        uint32_t drawCountDefaultValue = 0;
-        for(const auto& [mesh, meshData] : meshesData)
+        const uint32_t drawCountDefaultValue = 0;
+        for(const auto& [instance, meshesData] : instanceMeshesData)
         {
-            //location
-            const uint32_t instanceCountLocation = (sizeof(DrawCommand) * meshData.drawCommandIndex);
-            
-            //pre-transfer memory barrier
-            const VkBufferMemoryBarrier2 preMemBarrier = {
-                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                .pNext = NULL,
-                .srcStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                .srcAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .buffer = drawCommandsBuffer->getBuffer(),
-                .offset = instanceCountLocation,
-                .size = sizeof(DrawCommand)
-            };
+            for(const auto& [mesh, meshData] : meshesData)
+            {
+                //location
+                const uint32_t drawCommandLocation = (sizeof(DrawCommand) * meshData.drawCommandIndex);
+                
+                //zero out instance count
+                vkCmdFillBuffer(
+                    cmdBuffer,
+                    drawCommandsBuffer->getBuffer(),
+                    drawCommandLocation + offsetof(VkDrawIndexedIndirectCommand, instanceCount),
+                    sizeof(VkDrawIndexedIndirectCommand::instanceCount),
+                    drawCountDefaultValue
+                );
 
-            const VkDependencyInfo preDependency = {
-                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                .pNext = NULL,
-                .bufferMemoryBarrierCount = 1,
-                .pBufferMemoryBarriers = &preMemBarrier
-            };
+                //post memory barrier
+                const VkBufferMemoryBarrier2 postMemBarrier = {
+                    .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                    .pNext = NULL,
+                    .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+                    .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                    .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
+                    .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
+                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .buffer = drawCommandsBuffer->getBuffer(),
+                    .offset = drawCommandLocation + offsetof(VkDrawIndexedIndirectCommand, instanceCount),
+                    .size = sizeof(VkDrawIndexedIndirectCommand::instanceCount)
+                };
 
-            vkCmdPipelineBarrier2(cmdBuffer, &preDependency);
+                const VkDependencyInfo postDependency = {
+                    .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                    .pNext = NULL,
+                    .bufferMemoryBarrierCount = 1,
+                    .pBufferMemoryBarriers = &postMemBarrier
+                };
 
-            //zero out instance count
-            vkCmdFillBuffer(
-                cmdBuffer,
-                drawCommandsBuffer->getBuffer(),
-                instanceCountLocation + offsetof(VkDrawIndexedIndirectCommand, instanceCount),
-                sizeof(VkDrawIndexedIndirectCommand::instanceCount),
-                drawCountDefaultValue
-            );
-
-            //post memory barrier
-            const VkBufferMemoryBarrier2 postMemBarrier = {
-                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                .pNext = NULL,
-                .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
-                .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .buffer = drawCommandsBuffer->getBuffer(),
-                .offset = instanceCountLocation,
-                .size = sizeof(VkDrawIndexedIndirectCommand)
-            };
-
-            const VkDependencyInfo postDependency = {
-                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                .pNext = NULL,
-                .bufferMemoryBarrierCount = 1,
-                .pBufferMemoryBarriers = &postMemBarrier
-            };
-
-            vkCmdPipelineBarrier2(cmdBuffer, &postDependency);
+                vkCmdPipelineBarrier2(cmdBuffer, &postDependency);
+            }
         }
     }
 

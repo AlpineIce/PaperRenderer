@@ -56,13 +56,12 @@ namespace PaperRenderer
         };
 
         uint32_t drawCommandCount = 0;
-        float instanceCountOverhead = 1.3;
         std::vector<class ModelInstance*> rebuildBuffer();
-        bool rebuild;
+        bool rebuild = true;
         BufferSizeRequirements getBuffersRequirements();
         void setDrawCommandData() const;
 
-        std::unordered_map<struct LODMesh const*, struct MeshInstancesData> meshesData;
+        std::unordered_map<class ModelInstance const*, std::unordered_map<struct LODMesh const*, MeshInstancesData>> instanceMeshesData = {};
         std::unordered_map<class ModelInstance*, std::vector<struct LODMesh const*>> instanceMeshes;
 
         class RenderEngine& renderer;
@@ -85,7 +84,7 @@ namespace PaperRenderer
         //const Buffer& getModelMatricesBuffer() { return *modelMatricesBuffer; }
         const Buffer& getDrawCommandsBuffer() const { return *drawCommandsBuffer; }
         const Buffer& getModelMatricesBuffer() const { return *modelMatricesBuffer; }
-        const std::unordered_map<struct LODMesh const*, MeshInstancesData>& getMeshesData() const { return meshesData; }
+        const std::unordered_map<class ModelInstance const*, std::unordered_map<struct LODMesh const*, MeshInstancesData>>& getInstanceMeshesData() const { return instanceMeshesData; }
         
     };
 }
