@@ -106,22 +106,24 @@ namespace PaperRenderer
         return 0;
     }
 
-    void Buffer::copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
+    const Queue& Buffer::copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
     {
         VkCommandBuffer transferBuffer = renderer.getDevice().getCommands().getCommandBuffer(QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
 
-        VkCommandBufferBeginInfo beginInfo = {};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.pNext = NULL;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
+        const VkCommandBufferBeginInfo beginInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .pNext = NULL,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            .pInheritanceInfo = NULL
+        };
+        
         vkBeginCommandBuffer(transferBuffer, &beginInfo);
         vkCmdCopyBuffer(transferBuffer, src.getBuffer(), this->buffer, regions.size(), regions.data());
         vkEndCommandBuffer(transferBuffer);
 
         renderer.getDevice().getCommands().unlockCommandBuffer(transferBuffer);
 
-        renderer.getDevice().getCommands().submitToQueue(synchronizationInfo, { transferBuffer });
+        return renderer.getDevice().getCommands().submitToQueue(synchronizationInfo, { transferBuffer });
     }
 
     VkDeviceAddress Buffer::getBufferDeviceAddress() const

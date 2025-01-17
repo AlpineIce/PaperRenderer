@@ -66,7 +66,7 @@ namespace PaperRenderer
 
         int writeToBuffer(const std::vector<BufferWrite>& writes) const; //returns 0 if successful, 1 if unsuccessful (probably because not host visible)
         int readFromBuffer(const std::vector<BufferRead>& reads) const;
-        void copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const;
+        const Queue& copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const;
 
         const VkBuffer& getBuffer() const { return buffer; }
         const bool& isWritable() const { return writable; }
