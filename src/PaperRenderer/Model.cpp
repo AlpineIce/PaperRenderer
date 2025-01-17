@@ -305,7 +305,7 @@ namespace PaperRenderer
 					(meshGroupPtr->getInstanceMeshesData().at(instancePtr).at(lodMeshPtr).drawCommandIndex * sizeof(DrawCommand));
 				materialMeshGroup.matricesBufferAddress = 
 					meshGroupPtr->getModelMatricesBuffer().getBufferDeviceAddress() + 
-					(meshGroupPtr->getInstanceMeshesData().at(instancePtr).at(lodMeshPtr).matricesStartIndex * sizeof(glm::mat4));
+					(meshGroupPtr->getInstanceMeshesData().at(instancePtr).at(lodMeshPtr).matricesStartIndex * sizeof(ShaderOutputObject));
 
 				memcpy(newData.data() + lodMaterialData.meshGroupsOffset + sizeof(MaterialMeshGroup) * matIndex, &materialMeshGroup, sizeof(MaterialMeshGroup));
 			}
