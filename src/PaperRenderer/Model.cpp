@@ -187,20 +187,16 @@ namespace PaperRenderer
 		std::unique_ptr<Buffer> buffer = std::make_unique<Buffer>(renderer, bufferInfo);
 
 		//copy
-		VkBufferCopy copyRegion;
-		copyRegion.dstOffset = 0;
-		copyRegion.srcOffset = 0;
-		copyRegion.size = size;
+		const VkBufferCopy copyRegion = {
+			.srcOffset = 0,
+			.dstOffset = 0,
+			.size = size
+		};
 
-		SynchronizationInfo synchronizationInfo = {};
-		synchronizationInfo.queueType = QueueType::TRANSFER;
-		synchronizationInfo.fence = renderer.getDevice().getCommands().getUnsignaledFence();
-
-		buffer->copyFromBufferRanges(vboStaging, { copyRegion }, synchronizationInfo);
-
-		//wait for fence and destroy (potential for efficiency improvements here since this is technically brute force synchronization)
-		vkWaitForFences(renderer.getDevice().getDevice(), 1, &synchronizationInfo.fence, VK_TRUE, UINT64_MAX);
-		vkDestroyFence(renderer.getDevice().getDevice(), synchronizationInfo.fence, nullptr);
+		const SynchronizationInfo synchronizationInfo = {
+			.queueType = QueueType::TRANSFER
+		};
+		vkQueueWaitIdle(buffer->copyFromBufferRanges(vboStaging, { copyRegion }, synchronizationInfo).queue);
 
 		return buffer;
     }
@@ -214,9 +210,9 @@ namespace PaperRenderer
 
 	//----------MODEL INSTANCE DEFINITIONS----------//
 
-    ModelInstance::ModelInstance(RenderEngine& renderer, const Model& parentModel, bool uniqueGeometry)
-        :uniqueGeometryData({ .isUsed = uniqueGeometry }),
-		renderer(renderer),
+    ModelInstance::ModelInstance(RenderEngine &renderer, const Model &parentModel, bool uniqueGeometry, const VkBuildAccelerationStructureFlagsKHR flags)
+        :uniqueGeometryData({.isUsed = uniqueGeometry}),
+        renderer(renderer),
         parentModel(parentModel)
     {
 		renderer.addObject(this);
@@ -224,41 +220,30 @@ namespace PaperRenderer
 		//create unique VBO and BLAS if requested
 		if((uniqueGeometry || !parentModel.defaultBLAS) && renderer.getDevice().getRTSupport())
 		{
-			BufferInfo bufferInfo = {};
-			bufferInfo.allocationFlags = 0;
-			bufferInfo.size = parentModel.vbo->getSize();
-			bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-				VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+			//new vertex buffer
+			const BufferInfo bufferInfo = {
+				.size = parentModel.vbo->getSize(),
+				.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_VERTEX_BUFFER_BIT |
+					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+				.allocationFlags = 0
+			};
 			uniqueGeometryData.uniqueVBO  = std::make_unique<Buffer>(renderer, bufferInfo);
 
-			//copy
-			VkBufferCopy copyRegion;
-			copyRegion.dstOffset = 0;
-			copyRegion.srcOffset = 0;
-			copyRegion.size = parentModel.vbo->getSize();
+			//copy vertex data
+			const VkBufferCopy copyRegion = {
+				.srcOffset = 0,
+				.dstOffset = 0,
+				.size = parentModel.vbo->getSize()
+			};
 
-			SynchronizationInfo synchronizationInfo = {};
-			synchronizationInfo.queueType = QueueType::TRANSFER;
-			synchronizationInfo.fence = renderer.getDevice().getCommands().getUnsignaledFence();
-
-			uniqueGeometryData.uniqueVBO->copyFromBufferRanges(*parentModel.vbo, { copyRegion }, synchronizationInfo);
-
-			//wait for fence and destroy (potential for efficiency improvements here since this is technically brute force synchronization)
-			vkWaitForFences(renderer.getDevice().getDevice(), 1, &synchronizationInfo.fence, VK_TRUE, UINT64_MAX);
-			vkDestroyFence(renderer.getDevice().getDevice(), synchronizationInfo.fence, nullptr);
+			const SynchronizationInfo synchronizationInfo = {
+				.queueType = QueueType::TRANSFER
+			};
+			vkQueueWaitIdle(uniqueGeometryData.uniqueVBO->copyFromBufferRanges(*parentModel.vbo, { copyRegion }, synchronizationInfo).queue);
 
 			//create BLAS
-			if(renderer.getDevice().getRTSupport())
-			{
-				uniqueGeometryData.blas = std::make_unique<BLAS>(renderer, parentModel, uniqueGeometryData.uniqueVBO.get());
-				BLASBuildOp op = {
-					.accelerationStructure = *uniqueGeometryData.blas.get(),
-					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
-					//if geometry is unique then allow update, otherwise geometry isn't unique, but a parent copy doesnt exist; assume static
-					.flags = uniqueGeometry ? (uint32_t)VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR : (uint32_t)(VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR)
-				};
-				renderer.getAsBuilder().queueBLAS(op);
-			}
+			uniqueGeometryData.blas = std::make_unique<BLAS>(renderer, parentModel, uniqueGeometryData.uniqueVBO.get());
+			queueBLAS(flags);
 		}
     }
 
@@ -276,6 +261,9 @@ namespace PaperRenderer
 		{
 			((RayTraceRender*)rtRenderSelfReferences.begin()->first)->removeInstance(*this);
 		}
+
+		//destroy unique geometry
+		uniqueGeometryData = {};
     }
 
 	void ModelInstance::setRenderPassInstanceData(RenderPass const* renderPass)
@@ -330,18 +318,37 @@ namespace PaperRenderer
 
     ModelInstance::ShaderModelInstance ModelInstance::getShaderInstance() const
     {
-		ShaderModelInstance shaderModelInstance = {};
-		shaderModelInstance.position = transform.position;
-		shaderModelInstance.qRotation = transform.rotation;
-		shaderModelInstance.scale = transform.scale;
-		shaderModelInstance.modelDataOffset = parentModel.shaderDataLocation;
-
+		const ShaderModelInstance shaderModelInstance = {
+			.position = transform.position,
+			.scale = transform.scale,
+			.qRotation = transform.rotation,
+			.modelDataOffset = (uint32_t)parentModel.shaderDataLocation
+		};
 		return shaderModelInstance;
+    }
+
+	void ModelInstance::queueBLAS(const VkBuildAccelerationStructureFlagsKHR flags) const
+    {
+		if(renderer.getDevice().getRTSupport() && uniqueGeometryData.isUsed)
+		{
+			//queue operation
+			const BLASBuildOp op = {
+				.accelerationStructure = *uniqueGeometryData.blas.get(),
+				.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
+				.flags = flags
+			};
+			renderer.getAsBuilder().queueBLAS(op);
+		}
     }
 
     void ModelInstance::setTransformation(const ModelTransformation &newTransformation)
     {
 		this->transform = newTransformation;
 		renderer.toUpdateModelInstances.push_front(this);
+    }
+
+    void ModelInstance::invalidateGeometry(const VkBuildAccelerationStructureFlagsKHR flags) const
+    {
+		queueBLAS(flags);
     }
 }

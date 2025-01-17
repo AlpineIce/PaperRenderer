@@ -84,7 +84,7 @@ namespace PaperRenderer
 
     //----------MODEL DECLARATION----------//
 
-    class Model //acts more like a collection of models (LODs)
+    class Model //Immutable collection of LODs with unique Material-Mesh groups
     {
     private:
         std::vector<VkVertexInputAttributeDescription> vertexAttributes;
@@ -163,7 +163,7 @@ namespace PaperRenderer
         std::unique_ptr<class BLAS> blas = NULL;
     };
 
-    class ModelInstance
+    class ModelInstance //Mutable instance of a parent model which always shares its parent's index buffer, but may contain a unique vertex buffer if specified
     {
     private:
         //per instance data
@@ -234,6 +234,8 @@ namespace PaperRenderer
 
         //unique instance acceleration structure and VBO (only used if uniqueGeometry is set to true on instance creation)
         InstanceUniqueGeometry uniqueGeometryData;
+
+        void queueBLAS(const VkBuildAccelerationStructureFlagsKHR flags) const;
         
         ModelTransformation transform = {};
 
@@ -251,11 +253,12 @@ namespace PaperRenderer
         
     public:
         //uniqueGeometry should only be set to true if the instance is animate
-        ModelInstance(RenderEngine& renderer, const Model& parentModel, bool uniqueGeometry);
+        ModelInstance(RenderEngine& renderer, const Model& parentModel, bool uniqueGeometry, const VkBuildAccelerationStructureFlagsKHR flags=0);
         ~ModelInstance();
         ModelInstance(const ModelInstance&) = delete;
 
         void setTransformation(const ModelTransformation& newTransformation);
+        void invalidateGeometry(const VkBuildAccelerationStructureFlagsKHR flags) const; //call this to queue an update of it's acceleration structure for the next AS builder call
         
         const Model& getParentModel() const { return parentModel; }
         const InstanceUniqueGeometry& getUniqueGeometryData() const { return uniqueGeometryData; }
