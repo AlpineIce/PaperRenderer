@@ -140,7 +140,6 @@ namespace PaperRenderer
 
     AS::~AS()
     {
-        scratchBuffer.reset();
         asBuffer.reset();
 
         if(accelerationStructure)
@@ -231,28 +230,15 @@ namespace PaperRenderer
         //update dstAccelerationStructure variable
         buildGeoInfo.dstAccelerationStructure = accelerationStructure;
 
-        //get scratch buffer size
-        const VkDeviceSize requiredScratchSize = std::max(Device::getAlignment(buildSizeInfo.buildScratchSize, renderer.getDevice().getASproperties().minAccelerationStructureScratchOffsetAlignment), (VkDeviceSize)256);
-        
-        //rebuild scratch buffer if needed
-        if(!scratchBuffer || scratchBuffer->getSize() < requiredScratchSize)
-        {
-            const BufferInfo bufferInfo = {
-                .size = requiredScratchSize,
-                .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
-                .allocationFlags = 0
-            };
-            scratchBuffer = std::make_unique<Buffer>(renderer, bufferInfo);
-        }
-
-        //set scratch buffer address
-        buildGeoInfo.scratchData.deviceAddress = scratchBuffer->getBufferDeviceAddress();
-
+        //return
         return { std::move(geometryBuildData), buildGeoInfo, buildSizeInfo, compact };
     }
 
-    void AS::buildStructure(VkCommandBuffer cmdBuffer, const AsBuildData& data, const CompactionQuery compactionQuery)
+    void AS::buildStructure(VkCommandBuffer cmdBuffer, AsBuildData& data, const CompactionQuery compactionQuery, const VkDeviceAddress scratchAddress)
     {
+        //set scratch address
+        data.buildGeoInfo.scratchData.deviceAddress = scratchAddress;
+
         //convert format of build ranges
         std::vector<VkAccelerationStructureBuildRangeInfoKHR const*> buildRangesPtrArray;
         for(const VkAccelerationStructureBuildRangeInfoKHR& buildRange : data.geometryBuildData->buildRangeInfos)
@@ -351,7 +337,6 @@ namespace PaperRenderer
     void AS::assignResourceOwner(const Queue &queue)
     {
         asBuffer->addOwner(queue);
-        scratchBuffer->addOwner(queue);
     }
 
     //----------BLAS DEFINITIONS----------//
@@ -413,10 +398,10 @@ namespace PaperRenderer
         return returnData;
     }
 
-    void BLAS::buildStructure(VkCommandBuffer cmdBuffer, const AsBuildData& data, const CompactionQuery compactionQuery)
+    void BLAS::buildStructure(VkCommandBuffer cmdBuffer, AsBuildData& data, const CompactionQuery compactionQuery, const VkDeviceAddress scratchAddress)
     {
         //call super
-        AS::buildStructure(cmdBuffer, data, compactionQuery);
+        AS::buildStructure(cmdBuffer, data, compactionQuery, scratchAddress);
     }
 
     //----------TLAS DEFINITIONS----------//
@@ -433,6 +418,7 @@ namespace PaperRenderer
 
     TLAS::~TLAS()
     {
+        scratchBuffer.reset();
         instancesBuffer.reset();
     }
 
@@ -551,7 +537,7 @@ namespace PaperRenderer
         }
     }
 
-    void TLAS::buildStructure(VkCommandBuffer cmdBuffer, const AsBuildData& data, const CompactionQuery compactionQuery)
+    void TLAS::buildStructure(VkCommandBuffer cmdBuffer, AsBuildData& data, const CompactionQuery compactionQuery, const VkDeviceAddress scratchAddress)
     {
         //only rebuild/update a TLAS if any instances were updated
         if(nextUpdateSize)
@@ -585,11 +571,12 @@ namespace PaperRenderer
         }
 
         //call super function
-        AS::buildStructure(cmdBuffer, data, compactionQuery);
+        AS::buildStructure(cmdBuffer, data, compactionQuery, scratchAddress);
     }
 
     void TLAS::assignResourceOwner(const Queue &queue)
     {
+        scratchBuffer->addOwner(queue);
         instancesBuffer->addOwner(queue);
 
         AS::assignResourceOwner(queue);
@@ -688,10 +675,24 @@ namespace PaperRenderer
         //----------TLAS BUILD----------//
 
         //set build data
-        const AsBuildData buildData = getAsData(VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR, flags, mode);
+        AsBuildData buildData = getAsData(VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR, flags, mode);
+
+        //get scratch buffer size
+        const VkDeviceSize requiredScratchSize = mode == VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR ? buildData.buildSizeInfo.buildScratchSize : buildData.buildSizeInfo.updateScratchSize;
+        
+        //rebuild scratch buffer if needed
+        if(!scratchBuffer || scratchBuffer->getSize() < requiredScratchSize)
+        {
+            const BufferInfo bufferInfo = {
+                .size = requiredScratchSize,
+                .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
+                .allocationFlags = 0
+            };
+            scratchBuffer = std::make_unique<Buffer>(renderer, bufferInfo);
+        }
 
         //build TLAS; note that compaction is ignored for TLAS
-        buildStructure(cmdBuffer, buildData, {});
+        buildStructure(cmdBuffer, buildData, {}, scratchBuffer->getBufferDeviceAddress());
 
         //end command buffer and submit
         vkEndCommandBuffer(cmdBuffer);
@@ -714,6 +715,14 @@ namespace PaperRenderer
     AccelerationStructureBuilder::AccelerationStructureBuilder(RenderEngine& renderer)
         :renderer(renderer)
     {
+        //create scratch buffer with set size
+        const BufferInfo bufferInfo = {
+            .size = scratchBufferSize,
+            .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
+            .allocationFlags = 0
+        };
+        scratchBuffer = std::make_unique<Buffer>(renderer, bufferInfo);
+
         //log constructor
         renderer.getLogger().recordLog({
             .type = INFO,
@@ -787,11 +796,55 @@ namespace PaperRenderer
         };
         vkBeginCommandBuffer(cmdBuffer, &cmdBufferInfo);
 
-        //builds and updates
+        //builds and updates (batch them to avoid stupidly large scratch buffer) TODO batch queue submits because microsoft's weird queue submit time limit
+        VkDeviceSize scratchOffset = 0;
         for(BLASBuildOp& op : blasQueue)
         {
             //get build data
-            const AS::AsBuildData buildData = op.accelerationStructure.getAsData(VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR, op.flags, op.mode);
+            AS::AsBuildData buildData = op.accelerationStructure.getAsData(VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR, op.flags, op.mode);
+            const VkDeviceSize opRequiredScratchSize = op.mode == VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR ? buildData.buildSizeInfo.buildScratchSize : buildData.buildSizeInfo.updateScratchSize;
+
+            //verify scratch offset + required scratch size isn't too large; insert mem barrier and reset offset if it is too large
+            if(scratchOffset + opRequiredScratchSize > scratchBuffer->getSize())
+            {
+                if(opRequiredScratchSize > scratchBuffer->getSize())
+                {
+                    //error handling for too big of a model
+                    renderer.getLogger().recordLog({
+                        .type = ERROR,
+                        .text = "Tried to build a BLAS with a required scratch size of " + std::to_string(opRequiredScratchSize) + " which is larger than " + std::to_string(scratchBuffer->getSize())
+                    });
+                    continue;
+                }
+
+                //insert memory barrier
+                const VkBufferMemoryBarrier2 memBarrier = {
+                    .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                    .pNext = NULL,
+                    .srcStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                    .srcAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR | VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
+                    .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                    .dstAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
+                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .buffer = scratchBuffer->getBuffer(),
+                    .offset = 0,
+                    .size = VK_WHOLE_SIZE
+                };
+
+                const VkDependencyInfo dependencyInfo = {
+                    .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                    .pNext = NULL,
+                    .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+                    .bufferMemoryBarrierCount = 1,
+                    .pBufferMemoryBarriers = &memBarrier
+                };
+
+                vkCmdPipelineBarrier2(cmdBuffer, &dependencyInfo);  
+
+                //reset scratch offset
+                scratchOffset = 0;
+            }
 
             //compaction query if applies
             AS::CompactionQuery compactionQuery = {
@@ -800,7 +853,11 @@ namespace PaperRenderer
             };
 
             //build
-            op.accelerationStructure.buildStructure(cmdBuffer, buildData, compactionQuery);
+            op.accelerationStructure.buildStructure(cmdBuffer, buildData, compactionQuery, scratchBuffer->getBufferDeviceAddress() + scratchOffset);
+
+            //set scratch offset
+            scratchOffset += buildData.buildSizeInfo.buildScratchSize;
+            scratchOffset = renderer.getDevice().getAlignment(scratchOffset, renderer.getDevice().getASproperties().minAccelerationStructureScratchOffsetAlignment);
         }
 
         //end command buffer and submit
@@ -884,13 +941,11 @@ namespace PaperRenderer
             }
         }
 
-        //assign owners (there are potentially 2 queues used, but the latest one requires waiting on the last so it should be fine)
+        //assign owners and clear queue
         for(BLASBuildOp& op : blasQueue)
         {
             op.accelerationStructure.assignResourceOwner(*returnQueue);
         }
-
-        //clear build queue
         blasQueue.clear();
 
         //return

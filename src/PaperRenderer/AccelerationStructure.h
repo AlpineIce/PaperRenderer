@@ -32,11 +32,7 @@ namespace PaperRenderer
     class AS
     {
     private:
-        //buffers
-        std::unique_ptr<Buffer> asBuffer;
-        std::unique_ptr<Buffer> scratchBuffer;
-
-        //structure
+        std::unique_ptr<Buffer> asBuffer = NULL;
         VkAccelerationStructureKHR accelerationStructure = VK_NULL_HANDLE;
 
         friend class AccelerationStructureBuilder;
@@ -67,7 +63,7 @@ namespace PaperRenderer
             VkQueryPool pool = VK_NULL_HANDLE;
             VkDeviceSize compactionIndex = 0;
         };
-        virtual void buildStructure(VkCommandBuffer cmdBuffer, const AsBuildData& data, const CompactionQuery compactionQuery);
+        virtual void buildStructure(VkCommandBuffer cmdBuffer, AsBuildData& data, const CompactionQuery compactionQuery, const VkDeviceAddress scratchAddress);
 
         //compaction operation; returns old buffer which must stay in scope until completion
         std::unique_ptr<Buffer> compactStructure(VkCommandBuffer cmdBuffer, const VkAccelerationStructureTypeKHR type, const VkDeviceSize newSize);
@@ -95,7 +91,7 @@ namespace PaperRenderer
         Buffer const* vboPtr = NULL;
 
         std::unique_ptr<AsGeometryBuildData> getGeometryData() const override;
-        void buildStructure(VkCommandBuffer cmdBuffer, const AsBuildData& data, const CompactionQuery compactionQuery) override;
+        void buildStructure(VkCommandBuffer cmdBuffer, AsBuildData& data, const CompactionQuery compactionQuery, const VkDeviceAddress scratchAddress) override;
 
         friend class AccelerationStructureBuilder;
 
@@ -116,6 +112,7 @@ namespace PaperRenderer
     private:
         //buffers
         Buffer preprocessUniformBuffer;
+        std::unique_ptr<Buffer> scratchBuffer; //TLAS gets its own scratch buffer
         std::unique_ptr<Buffer> instancesBuffer;
 
         //instances data offsets/sizes
@@ -132,7 +129,7 @@ namespace PaperRenderer
 
         std::unique_ptr<AsGeometryBuildData> getGeometryData() const override;
         void verifyInstancesBuffer(const uint32_t instanceCount);
-        void buildStructure(VkCommandBuffer cmdBuffer, const AsBuildData& data, const CompactionQuery compactionQuery) override;
+        void buildStructure(VkCommandBuffer cmdBuffer, AsBuildData& data, const CompactionQuery compactionQuery, const VkDeviceAddress scratchAddress) override;
 
         //ownership
         void assignResourceOwner(const Queue& queue) override;
@@ -166,6 +163,10 @@ namespace PaperRenderer
     private:
         //acceleration structure operation queue
         std::deque<BLASBuildOp> blasQueue;
+
+        //scratch buffer shared amongst BLAS builds
+        const VkDeviceSize scratchBufferSize = 268435456; // 2^26 bytes; ~256MiB
+        std::unique_ptr<Buffer> scratchBuffer;
 
         //BLAS' that request compaction
         std::unordered_map<BLAS*, VkDeviceSize> getCompactions() const;
