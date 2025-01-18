@@ -164,7 +164,7 @@ void main()
 
         //add reflection value to total light
         const float reflecionInfluence = clamp(materialInfo.metallic, 0.04, 1.0);
-        totalLight += reflectionValue * reflecionInfluence;
+        totalLight += reflectionValue * reflecionInfluence * mix(vec3(1.0), materialInfo.albedo, materialInfo.metallic);
     }
 
     //----------TRANSLUCENCY----------//
