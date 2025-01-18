@@ -69,7 +69,6 @@ struct DrawCommand
     uint firstIndex;
     int vertexOffset;
     uint firstInstance;
-    float padding;
 };
 
 layout(scalar, buffer_reference) buffer DrawCommands

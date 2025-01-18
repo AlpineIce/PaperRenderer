@@ -111,7 +111,7 @@ namespace PaperRenderer
                         .instanceCount = 0,
                         .firstIndex = mesh->iboOffset,
                         .vertexOffset = (int32_t)mesh->vboOffset,
-                        .firstInstance = 0
+                        .firstInstance = meshInstancesData.matricesStartIndex
                     }
                 };
 
@@ -172,44 +172,45 @@ namespace PaperRenderer
 
     void CommonMeshGroup::draw(const VkCommandBuffer &cmdBuffer, const Material& material) const
     {
+        //assign object descriptor if used
+        if(material.usesDefaultDescriptors())
+        {
+            //get new descriptor set
+            const VkDescriptorSet objDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(material.getRasterPipeline().getDescriptorSetLayouts().at(material.getRasterPipeline().getDrawDescriptorIndex()));
+            
+            //write uniforms
+            const VkDescriptorBufferInfo descriptorInfo = {
+                .buffer = modelMatricesBuffer->getBuffer(),
+                .offset = 0,
+                .range = VK_WHOLE_SIZE
+            };
+
+            const BuffersDescriptorWrites write = {
+                .infos = { descriptorInfo },
+                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .binding = 0,
+            };
+
+            const DescriptorWrites descriptorWritesInfo = {
+                .bufferWrites = { write }
+            };
+            renderer.getDescriptorAllocator().writeUniforms(objDescriptorSet, descriptorWritesInfo);
+
+            //bind set
+            const DescriptorBind bindingInfo = {
+                .bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+                .layout = material.getRasterPipeline().getLayout(),
+                .descriptorSetIndex = material.getRasterPipeline().getDrawDescriptorIndex(),
+                .set = objDescriptorSet
+            };
+            renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
+        }
+
+        //submit draw calls
         for(const auto& [instance, meshesData] : instanceMeshesData)
         {
             for(const auto& [mesh, meshData] : meshesData)
             {
-                //assign object descriptor if used
-                if(material.usesDefaultDescriptors())
-                {
-                    //get new descriptor set
-                    const VkDescriptorSet objDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(material.getRasterPipeline().getDescriptorSetLayouts().at(material.getRasterPipeline().getDrawDescriptorIndex()));
-                    
-                    //write uniforms
-                    const VkDescriptorBufferInfo descriptorInfo = {
-                        .buffer = modelMatricesBuffer->getBuffer(),
-                        .offset = meshData.matricesStartIndex * sizeof(ShaderOutputObject),
-                        .range = sizeof(ShaderOutputObject) * meshData.instanceCount
-                    };
-
-                    const BuffersDescriptorWrites write = {
-                        .infos = { descriptorInfo },
-                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .binding = 0,
-                    };
-
-                    const DescriptorWrites descriptorWritesInfo = {
-                        .bufferWrites = { write }
-                    };
-                    renderer.getDescriptorAllocator().writeUniforms(objDescriptorSet, descriptorWritesInfo);
-
-                    //bind set
-                    const DescriptorBind bindingInfo = {
-                        .bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        .layout = material.getRasterPipeline().getLayout(),
-                        .descriptorSetIndex = material.getRasterPipeline().getDrawDescriptorIndex(),
-                        .set = objDescriptorSet
-                    };
-                    renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
-                }
-
                 //bind vbo and ibo
                 if(instance)
                 {
