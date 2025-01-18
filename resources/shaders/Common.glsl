@@ -74,8 +74,6 @@ layout(scalar, set = 0, binding = 1) readonly buffer InputInstances
 
 mat3x4 getModelMatrix(ModelInstance modelInstance)
 {
-    
-
     //rotation
     const vec4 q = modelInstance.qRotation;
     const mat3 qMat = mat3(
@@ -105,14 +103,13 @@ mat3x4 getModelMatrix(ModelInstance modelInstance)
 
     //composition of rotation and scale
     const mat3 scaleRotMat = scaleMat * qMat;
-
-    mat3x4 result = mat3x4(
+    
+    //return composition of all transformations
+    return mat3x4(
         vec4(scaleRotMat[0], modelInstance.position.x),
         vec4(scaleRotMat[1], modelInstance.position.y),
         vec4(scaleRotMat[2], modelInstance.position.z)
     );
-    
-    return result;
 }
 
 bool isInBounds(ModelInstance modelInstance, Model model, mat3x4 modelMatrix, mat4 projection, mat4 view)
