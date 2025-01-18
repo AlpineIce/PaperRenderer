@@ -690,7 +690,7 @@ namespace PaperRenderer
                     const LODMesh& meshData = sortedInstances[i]->instance->getParentModel().getLODs()[lodIndex].materialMeshes[matSlot].mesh;
 
                     //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)
-                    sortedInstances[i]->instance->getParentModel().bindBuffers(cmdBuffer);
+                    sortedInstances[i]->instance->bindBuffers(cmdBuffer);
 
                     //draw
                     vkCmdDrawIndexed(
