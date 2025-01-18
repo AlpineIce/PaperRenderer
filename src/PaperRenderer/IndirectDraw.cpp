@@ -225,7 +225,7 @@ namespace PaperRenderer
                 vkCmdDrawIndexedIndirect(
                     cmdBuffer,
                     drawCommandsBuffer->getBuffer(),
-                    meshData.drawCommandIndex * sizeof(uint32_t),
+                    meshData.drawCommandIndex * sizeof(DrawCommand),
                     1,
                     sizeof(DrawCommand)
                 );
