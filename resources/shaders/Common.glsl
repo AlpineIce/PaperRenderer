@@ -74,37 +74,43 @@ layout(scalar, set = 0, binding = 1) readonly buffer InputInstances
 
 mat3x4 getModelMatrix(ModelInstance modelInstance)
 {
-    mat3 qMat;
+    
 
     //rotation
-    vec4 q = modelInstance.qRotation;
-    float qxx = q.x * q.x;
-    float qyy = q.y * q.y;
-    float qzz = q.z * q.z;
-    float qxz = q.x * q.z;
-    float qxy = q.x * q.y;
-    float qyz = q.y * q.z;
-    float qwx = q.w * q.x;
-    float qwy = q.w * q.y;
-    float qwz = q.w * q.z;
-
-    qMat[0] = vec3(1.0 - 2.0 * (qyy + qzz), 2.0 * (qxy + qwz), 2.0 * (qxz - qwy));
-    qMat[1] = vec3(2.0 * (qxy - qwz), 1.0 - 2.0 * (qxx + qzz), 2.0 * (qyz + qwx));
-    qMat[2] = vec3(2.0 * (qxz + qwy), 2.0 * (qyz - qwx), 1.0 - 2.0 * (qxx + qyy));
+    const vec4 q = modelInstance.qRotation;
+    const mat3 qMat = mat3(
+        vec3(
+            2.0 * (q[0] * q[0] + q[1] * q[1]) - 1.0,
+            2.0 * (q[1] * q[2] - q[0] * q[3]),
+            2.0 * (q[1] * q[3] + q[0] * q[2])
+        ),
+        vec3(
+            2.0 * (q[1] * q[2] + q[0] * q[3]),
+            2.0 * (q[0] * q[0] + q[2] * q[2]) - 1.0,
+            2.0 * (q[2] * q[3] - q[0] * q[1])
+        ),
+        vec3(
+            2.0 * (q[1] * q[3] - q[0] * q[2]),
+            2.0 * (q[2] * q[3] + q[0] * q[1]),
+            2.0 * (q[0] * q[0] + q[3] * q[3]) - 1.0
+        )
+    );
 
     //scale
-    mat3 scaleMat;
-    scaleMat[0] = vec3(modelInstance.scale.x, 0.0, 0.0);
-    scaleMat[1] = vec3(0.0, modelInstance.scale.y, 0.0);
-    scaleMat[2] = vec3(0.0, 0.0, modelInstance.scale.z);
+    const mat3 scaleMat = mat3(
+        vec3(modelInstance.scale.x, 0.0, 0.0),
+        vec3(0.0, modelInstance.scale.y, 0.0),
+        vec3(0.0, 0.0, modelInstance.scale.z)
+    );
 
     //composition of rotation and scale
-    mat3 scaleRotMat = scaleMat * qMat;
+    const mat3 scaleRotMat = scaleMat * qMat;
 
-    mat3x4 result;
-    result[0] = vec4(scaleRotMat[0], modelInstance.position.x);
-    result[1] = vec4(scaleRotMat[1], modelInstance.position.y);
-    result[2] = vec4(scaleRotMat[2], modelInstance.position.z);
+    mat3x4 result = mat3x4(
+        vec4(scaleRotMat[0], modelInstance.position.x),
+        vec4(scaleRotMat[1], modelInstance.position.y),
+        vec4(scaleRotMat[2], modelInstance.position.z)
+    );
     
     return result;
 }

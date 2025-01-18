@@ -581,7 +581,7 @@ int main()
             PaperRenderer::ModelTransformation newTransform = {
                 .position = glm::vec3(sin(glm::radians(360.0f / instanceCount) * i) * 5.0f, cos(glm::radians(360.0f / instanceCount) * i) * 5.0f, 0.0f),
                 .scale = glm::vec3(1.0f),
-                .rotation = glm::quat(cos(glm::radians(360.0f / instanceCount / 2.0f) * i), 0.0f, 0.0f, sin(glm::radians(360.0f / instanceCount / 2.0f) * i))
+                .rotation = glm::quat(sin(-glm::radians(360.0f / instanceCount / 2.0f) * i), cos(glm::radians(360.0f / instanceCount / 2.0f) * i), 0.0f, 0.0f)
             };
             instance->setTransformation(newTransform);
 
