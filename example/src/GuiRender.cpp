@@ -28,7 +28,7 @@ GuiContext initImGui(PaperRenderer::RenderEngine& renderer, DefaultMaterialInsta
         .ImageCount = renderer.getSwapchain().getImageCount(),
         .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
         .PipelineCache = renderer.getPipelineBuilder().getPipelineCache(),
-        .DescriptorPoolSize = 1,
+        .DescriptorPoolSize = 1000,
         .UseDynamicRendering = true,
         .PipelineRenderingCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
