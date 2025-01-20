@@ -31,32 +31,49 @@ namespace PaperRenderer
     Buffer::Buffer(RenderEngine& renderer, const BufferInfo& bufferInfo)
         :VulkanResource(renderer)
     {
-        VkBufferCreateInfo bufferCreateInfo = {};
-        bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferCreateInfo.pNext = NULL;
-        bufferCreateInfo.flags = 0;
-        bufferCreateInfo.size = bufferInfo.size;
-        bufferCreateInfo.usage = bufferInfo.usageFlags;
-        bufferCreateInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
-
+        //get queue family indices
         const QueueFamiliesIndices& deviceQueueFamilies = renderer.getDevice().getQueueFamiliesIndices();
-        std::vector<uint32_t> queueFamilyIndices;
+        std::vector<uint32_t> queueFamilyIndices = {};
         if(deviceQueueFamilies.graphicsFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.graphicsFamilyIndex);
         if(deviceQueueFamilies.computeFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.computeFamilyIndex);
         if(deviceQueueFamilies.transferFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.transferFamilyIndex);
         if(deviceQueueFamilies.presentationFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.presentationFamilyIndex);
+
         std::sort(queueFamilyIndices.begin(), queueFamilyIndices.end());
         auto uniqueIndices = std::unique(queueFamilyIndices.begin(), queueFamilyIndices.end());
         queueFamilyIndices.erase(uniqueIndices, queueFamilyIndices.end());
 
-        if(!queueFamilyIndices.size()) throw std::runtime_error("Tried to create buffer with no queue family indices referenced");
-        
-        bufferCreateInfo.queueFamilyIndexCount = queueFamilyIndices.size();
-        bufferCreateInfo.pQueueFamilyIndices = queueFamilyIndices.data();
+        //log error if detected
+        if(!queueFamilyIndices.size())
+        {
+            renderer.getLogger().recordLog({
+                .type = ERROR,
+                .text = "Tried to create buffer with no queue family indices referenced"
+            });
+        }
 
-        VmaAllocationCreateInfo allocCreateInfo = {};
-        allocCreateInfo.flags = bufferInfo.allocationFlags;
-        allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
+        //creation info
+        const VkBufferUsageFlags2CreateInfo usageFlagsInfo = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_USAGE_FLAGS_2_CREATE_INFO,
+            .pNext = NULL,
+            .usage = bufferInfo.usageFlags
+        };
+
+        const VkBufferCreateInfo bufferCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .pNext = &usageFlagsInfo,
+            .flags = 0,
+            .size = bufferInfo.size,
+            .usage = 0, //use usage flags 2
+            .sharingMode = VK_SHARING_MODE_CONCURRENT,
+            .queueFamilyIndexCount = (uint32_t)queueFamilyIndices.size(),
+            .pQueueFamilyIndices = queueFamilyIndices.data()
+        };
+
+        const VmaAllocationCreateInfo allocCreateInfo = {
+            .flags = bufferInfo.allocationFlags,
+            .usage = VMA_MEMORY_USAGE_AUTO
+        };
 
         VmaAllocationInfo allocInfo = {};
         VkResult result = vmaCreateBuffer(renderer.getDevice().getAllocator(), &bufferCreateInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
@@ -75,7 +92,7 @@ namespace PaperRenderer
     Buffer::~Buffer()
     {
         idleOwners();
-        vmaDestroyBuffer(renderer.getDevice().getAllocator(), buffer, allocation);
+        if(allocation && buffer) vmaDestroyBuffer(renderer.getDevice().getAllocator(), buffer, allocation);
     }
 
     int Buffer::writeToBuffer(const std::vector<BufferWrite>& writes) const
@@ -128,13 +145,13 @@ namespace PaperRenderer
 
     VkDeviceAddress Buffer::getBufferDeviceAddress() const
     {
-        if(buffer != VK_NULL_HANDLE)
+        if(buffer)
         {
-            VkBufferDeviceAddressInfo deviceAddressInfo = {};
-            deviceAddressInfo.sType  = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-            deviceAddressInfo.pNext = NULL;
-            deviceAddressInfo.buffer = buffer;
-
+            const VkBufferDeviceAddressInfo deviceAddressInfo = {
+                .sType  = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                .pNext = NULL,
+                .buffer = buffer
+            };
             return vkGetBufferDeviceAddress(renderer.getDevice().getDevice(), &deviceAddressInfo);
         }
         else
@@ -358,7 +375,7 @@ namespace PaperRenderer
             const SynchronizationInfo syncInfo = {
                 .queueType = TRANSFER
             };
-            vkQueueWaitIdle(renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer }).queue);
+            renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
 
             //call callback function
             if(compactionCallback) compactionCallback(compactionLocations);
@@ -375,41 +392,44 @@ namespace PaperRenderer
     {
         //calculate mip levels (select the least of minimum mip levels either explicitely, or from whats mathematically doable)
         mipmapLevels = std::min((uint32_t)(std::floor(std::log2(std::max(imageInfo.extent.width, imageInfo.extent.height))) + 1), std::max(imageInfo.maxMipLevels, (uint32_t)1));
-
-        //create image
-        VkImageCreateInfo imageCreateInfo = {};
-        imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        imageCreateInfo.pNext = NULL;
-        imageCreateInfo.flags = 0;
-        imageCreateInfo.imageType = imageInfo.imageType;
-        imageCreateInfo.format = imageInfo.format;
-        imageCreateInfo.extent = imageInfo.extent;
-        imageCreateInfo.mipLevels = mipmapLevels;
-        imageCreateInfo.arrayLayers = 1;
-        imageCreateInfo.samples = imageInfo.samples;
-        imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        imageCreateInfo.usage = imageInfo.usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-        imageCreateInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
-        imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
+        
+        //get queue families
         const QueueFamiliesIndices& deviceQueueFamilies = renderer.getDevice().getQueueFamiliesIndices();
-        std::vector<uint32_t> queueFamilyIndices;
+        std::vector<uint32_t> queueFamilyIndices = {};
         if(deviceQueueFamilies.graphicsFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.graphicsFamilyIndex);
         if(deviceQueueFamilies.computeFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.computeFamilyIndex);
         if(deviceQueueFamilies.transferFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.transferFamilyIndex);
         if(deviceQueueFamilies.presentationFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.presentationFamilyIndex);
+
         std::sort(queueFamilyIndices.begin(), queueFamilyIndices.end());
         auto uniqueIndices = std::unique(queueFamilyIndices.begin(), queueFamilyIndices.end());
         queueFamilyIndices.erase(uniqueIndices, queueFamilyIndices.end());
 
         if(!queueFamilyIndices.size()) throw std::runtime_error("Tried to create buffer with no queue family indices referenced");
-        
-        imageCreateInfo.queueFamilyIndexCount = queueFamilyIndices.size();
-        imageCreateInfo.pQueueFamilyIndices = queueFamilyIndices.data();
 
-        VmaAllocationCreateInfo allocCreateInfo = {};
-        allocCreateInfo.flags = 0;
-        allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
+        //create image
+        const VkImageCreateInfo imageCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .imageType = imageInfo.imageType,
+            .format = imageInfo.format,
+            .extent = imageInfo.extent,
+            .mipLevels = mipmapLevels,
+            .arrayLayers = 1,
+            .samples = imageInfo.samples,
+            .tiling = VK_IMAGE_TILING_OPTIMAL,
+            .usage = imageInfo.usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+            .sharingMode = VK_SHARING_MODE_CONCURRENT,
+            .queueFamilyIndexCount = (uint32_t)queueFamilyIndices.size(),
+            .pQueueFamilyIndices = queueFamilyIndices.data(),
+            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
+        };
+
+        VmaAllocationCreateInfo allocCreateInfo = {
+            .flags = 0,
+            .usage = VMA_MEMORY_USAGE_AUTO
+        };
 
         VmaAllocationInfo allocInfo = {};
         if(vmaCreateImage(renderer.getDevice().getAllocator(), &imageCreateInfo, &allocCreateInfo, &image, &allocation, &allocInfo) != VK_SUCCESS)
@@ -417,7 +437,7 @@ namespace PaperRenderer
             throw std::runtime_error("Buffer creation failed");
         }
 
-        size = 0; //TODO?
+        size = allocInfo.size;
     }
 
     Image::~Image()
@@ -428,21 +448,23 @@ namespace PaperRenderer
 
     VkImageView Image::getNewImageView(VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format)
     {
-        VkImageSubresourceRange subresource = {};
-        subresource.aspectMask = aspectMask;
-        subresource.baseMipLevel = 0;
-        subresource.levelCount = mipmapLevels;
-        subresource.baseArrayLayer = 0;
-        subresource.layerCount = 1;
+        const VkImageSubresourceRange subresource = {
+            .aspectMask = aspectMask,
+            .baseMipLevel = 0,
+            .levelCount = mipmapLevels,
+            .baseArrayLayer = 0,
+            .layerCount = 1
+        };
 
-        VkImageViewCreateInfo viewInfo = {};
-        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        viewInfo.pNext = NULL;
-        viewInfo.flags = 0;
-        viewInfo.image = image;
-        viewInfo.viewType = viewType;
-        viewInfo.format = format;
-        viewInfo.subresourceRange = subresource;
+        const VkImageViewCreateInfo viewInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .image = image,
+            .viewType = viewType,
+            .format = format,
+            .subresourceRange = subresource
+        };
 
         VkImageView view;
         VkResult result = vkCreateImageView(renderer.getDevice().getDevice(), &viewInfo, nullptr, &view);
@@ -502,25 +524,26 @@ namespace PaperRenderer
 
     VkSampler Image::getNewSampler()
     {
-        VkSamplerCreateInfo samplerInfo = {};
-        samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        samplerInfo.pNext = 0;
-        samplerInfo.flags = 0;
-        samplerInfo.magFilter = VK_FILTER_LINEAR;
-        samplerInfo.minFilter = VK_FILTER_LINEAR;
-        samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        samplerInfo.mipLodBias = 0.0f;
-        samplerInfo.anisotropyEnable = renderer.getDevice().getGPUFeatures().samplerAnisotropy;
-        samplerInfo.maxAnisotropy = renderer.getDevice().getGPUProperties().properties.limits.maxSamplerAnisotropy;
-        samplerInfo.compareEnable = VK_FALSE;
-        samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-        samplerInfo.minLod = 0.0f;
-        samplerInfo.maxLod = mipmapLevels;
-        samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-        samplerInfo.unnormalizedCoordinates = VK_FALSE;
+        const VkSamplerCreateInfo samplerInfo = {
+            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .pNext = 0,
+            .flags = 0,
+            .magFilter = VK_FILTER_LINEAR,
+            .minFilter = VK_FILTER_LINEAR,
+            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+            .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .mipLodBias = 0.0f,
+            .anisotropyEnable = renderer.getDevice().getGPUFeatures().samplerAnisotropy,
+            .maxAnisotropy = renderer.getDevice().getGPUProperties().properties.limits.maxSamplerAnisotropy,
+            .compareEnable = VK_FALSE,
+            .compareOp = VK_COMPARE_OP_ALWAYS,
+            .minLod = 0.0f,
+            .maxLod = (float)mipmapLevels,
+            .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+            .unnormalizedCoordinates = VK_FALSE
+        };
 
         VkSampler sampler;
         VkResult result = vkCreateSampler(renderer.getDevice().getDevice(), &samplerInfo, nullptr, &sampler);

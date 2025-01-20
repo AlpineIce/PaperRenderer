@@ -406,12 +406,19 @@ namespace PaperRenderer
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
             .pNext = &vulkan12Features,
             .synchronization2 = VK_TRUE,
-            .dynamicRendering = VK_TRUE
+            .dynamicRendering = VK_TRUE,
+            .maintenance4 = VK_TRUE
+        };
+
+        VkPhysicalDeviceVulkan14Features vulkan14Features = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
+            .pNext = &vulkan13Features,
+            .maintenance5 = VK_TRUE
         };
 
         VkPhysicalDeviceFeatures2 features2 = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-            .pNext = &vulkan13Features
+            .pNext = &vulkan14Features
         };
 
         vkGetPhysicalDeviceFeatures2(GPU, &features2);
@@ -437,34 +444,47 @@ namespace PaperRenderer
         volkLoadDevice(device);
 
         //vma
-        VmaVulkanFunctions vmaFunctions{};
-        vmaFunctions.vkAllocateMemory                    = vkAllocateMemory;
-        vmaFunctions.vkBindBufferMemory                  = vkBindBufferMemory;
-        vmaFunctions.vkBindImageMemory                   = vkBindImageMemory;
-        vmaFunctions.vkCreateBuffer                      = vkCreateBuffer;
-        vmaFunctions.vkCreateImage                       = vkCreateImage;
-        vmaFunctions.vkDestroyBuffer                     = vkDestroyBuffer;
-        vmaFunctions.vkDestroyImage                      = vkDestroyImage;
-        vmaFunctions.vkFlushMappedMemoryRanges           = vkFlushMappedMemoryRanges;
-        vmaFunctions.vkFreeMemory                        = vkFreeMemory;
-        vmaFunctions.vkGetBufferMemoryRequirements       = vkGetBufferMemoryRequirements;
-        vmaFunctions.vkGetDeviceProcAddr                 = vkGetDeviceProcAddr;
-        vmaFunctions.vkGetImageMemoryRequirements        = vkGetImageMemoryRequirements;
-        vmaFunctions.vkGetInstanceProcAddr               = vkGetInstanceProcAddr;
-        vmaFunctions.vkGetPhysicalDeviceMemoryProperties = vkGetPhysicalDeviceMemoryProperties;
-        vmaFunctions.vkGetPhysicalDeviceProperties       = vkGetPhysicalDeviceProperties;
-        vmaFunctions.vkInvalidateMappedMemoryRanges      = vkInvalidateMappedMemoryRanges;
-        vmaFunctions.vkMapMemory                         = vkMapMemory;
-        vmaFunctions.vkUnmapMemory                       = vkUnmapMemory;
-        vmaFunctions.vkCmdCopyBuffer                     = vkCmdCopyBuffer;
+        const VmaVulkanFunctions vmaFunctions = {
+            .vkGetInstanceProcAddr               = vkGetInstanceProcAddr,
+            .vkGetDeviceProcAddr                 = vkGetDeviceProcAddr,
+            .vkGetPhysicalDeviceProperties       = vkGetPhysicalDeviceProperties,
+            .vkGetPhysicalDeviceMemoryProperties = vkGetPhysicalDeviceMemoryProperties,
+            .vkAllocateMemory                    = vkAllocateMemory,
+            .vkFreeMemory                        = vkFreeMemory,
+            .vkMapMemory                         = vkMapMemory,
+            .vkUnmapMemory                       = vkUnmapMemory,
+            .vkFlushMappedMemoryRanges           = vkFlushMappedMemoryRanges,
+            .vkInvalidateMappedMemoryRanges      = vkInvalidateMappedMemoryRanges,
+            .vkBindBufferMemory                  = vkBindBufferMemory,
+            .vkBindImageMemory                   = vkBindImageMemory,
+            .vkGetBufferMemoryRequirements       = vkGetBufferMemoryRequirements,
+            .vkGetImageMemoryRequirements        = vkGetImageMemoryRequirements,
+            .vkCreateBuffer                      = vkCreateBuffer,
+            .vkDestroyBuffer                     = vkDestroyBuffer,
+            .vkCreateImage                       = vkCreateImage,
+            .vkDestroyImage                      = vkDestroyImage,
+            .vkCmdCopyBuffer                     = vkCmdCopyBuffer
+        };
 
-        VmaAllocatorCreateInfo allocatorCreateInfo = {};
-        allocatorCreateInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
-        allocatorCreateInfo.vulkanApiVersion = VK_API_VERSION_1_3;
-        allocatorCreateInfo.physicalDevice = GPU;
-        allocatorCreateInfo.device = device;
-        allocatorCreateInfo.instance = instance;
-        allocatorCreateInfo.pVulkanFunctions = &vmaFunctions;
+        const VmaAllocatorCreateFlags vmaFlags = 
+            VMA_ALLOCATOR_CREATE_KHR_DEDICATED_ALLOCATION_BIT |
+            VMA_ALLOCATOR_CREATE_KHR_BIND_MEMORY2_BIT |
+            VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT |
+            VMA_ALLOCATOR_CREATE_KHR_MAINTENANCE4_BIT |
+            VMA_ALLOCATOR_CREATE_KHR_MAINTENANCE5_BIT;
+
+        const VmaAllocatorCreateInfo allocatorCreateInfo = {
+            .flags = vmaFlags,
+            .physicalDevice = GPU,
+            .device = device,
+            //.preferredLargeHeapBlockSize
+            .pAllocationCallbacks = nullptr,
+            .pDeviceMemoryCallbacks = nullptr,
+            .pHeapSizeLimit = nullptr,
+            .pVulkanFunctions = &vmaFunctions,
+            .instance = instance,
+            .vulkanApiVersion = VK_API_VERSION_1_3
+        };
         
         vmaCreateAllocator(&allocatorCreateInfo, &allocator);
 

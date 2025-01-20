@@ -35,9 +35,9 @@ namespace PaperRenderer
     protected:
         VkDeviceSize size = 0;
         std::set<Queue const*> owners;
+        VmaAllocation allocation = VK_NULL_HANDLE;
 
         class RenderEngine& renderer;
-        VmaAllocation allocation = VK_NULL_HANDLE;
 
     public:
         VulkanResource(class RenderEngine& renderer);
