@@ -14,18 +14,12 @@ namespace PaperRenderer
         {
             VkDeviceSize dstOffset;
             std::vector<char> data;
+            const Buffer& dstBuffer;
         };
 
-        std::unordered_map<Buffer const*, std::deque<QueuedTransfer>> transferQueues;
+        std::deque<QueuedTransfer> transferQueue;
         VkDeviceSize queueSize = 0;
         VkDeviceSize stackLocation = 0;
-
-        struct DstCopy
-        {
-            const Buffer& dstBuffer;
-            VkBufferCopy copyInfo;
-        };
-        std::vector<DstCopy> getDataTransfers();
 
         class RenderEngine& renderer;
 

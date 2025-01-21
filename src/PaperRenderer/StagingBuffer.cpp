@@ -36,15 +36,19 @@ namespace PaperRenderer
         std::lock_guard guard(stagingBufferMutex);
 
         //push transfer to queue
-        transferQueues[&dstBuffer].emplace_front(
+        transferQueue.emplace_front(
             dstOffset,
-            data
+            data,
+            dstBuffer
         );
         queueSize += data.size();
     }
 
-    std::vector<RendererStagingBuffer::DstCopy> RendererStagingBuffer::getDataTransfers()
+    void RendererStagingBuffer::submitQueuedTransfers(VkCommandBuffer cmdBuffer)
     {
+        //timer
+        Timer timer(renderer, "Record Queued Transfers (StagingBuffer)", REGULAR);
+
         //lock mutex
         std::lock_guard guard(stagingBufferMutex);
 
@@ -62,53 +66,36 @@ namespace PaperRenderer
             availableSize = bufferInfo.size;
         }
 
-        //fill in the staging buffer with queued transfers
-        std::vector<DstCopy> dstCopies;
-        for(auto& [buffer, transfers] : transferQueues)
-        {
-            for(const QueuedTransfer& transfer : transfers)
-            {
-                //buffer write
-                BufferWrite bufferWrite = {
-                    .offset = stackLocation,
-                    .size = transfer.data.size(),
-                    .readData = (char const*)transfer.data.data()
-                };
-
-                //fill staging buffer           
-                stagingBuffer->writeToBuffer({ bufferWrite });
-
-                //push VkBufferCopy
-                VkBufferCopy bufferCopyInfo = {
-                    .srcOffset = bufferWrite.offset,
-                    .dstOffset = transfer.dstOffset,
-                    .size = bufferWrite.size
-                };
-
-                dstCopies.emplace_back(
-                    *buffer,
-                    bufferCopyInfo
-                );
-
-                stackLocation += bufferWrite.size;
-            }
-            transfers.clear();
-        }
-        queueSize = 0;
-
-        return dstCopies;
-    }
-
-    void RendererStagingBuffer::submitQueuedTransfers(VkCommandBuffer cmdBuffer)
-    {
-        //timer
-        Timer timer(renderer, "Record Queued Transfers (StagingBuffer)", REGULAR);
-
         //copy to dst
-        for(const auto& copy : getDataTransfers())
+        for(const QueuedTransfer& transfer : transferQueue)
         {
-            vkCmdCopyBuffer(cmdBuffer, stagingBuffer->getBuffer(), copy.dstBuffer.getBuffer(), 1, &copy.copyInfo);
+            //buffer write
+            const BufferWrite bufferWrite = {
+                .offset = stackLocation,
+                .size = transfer.data.size(),
+                .readData = transfer.data.data()
+            };
+
+            //fill staging buffer           
+            stagingBuffer->writeToBuffer({ bufferWrite });
+
+            //push VkBufferCopy
+            const VkBufferCopy copy = {
+                .srcOffset = bufferWrite.offset,
+                .dstOffset = transfer.dstOffset,
+                .size = bufferWrite.size
+            };
+
+            //record copy command
+            vkCmdCopyBuffer(cmdBuffer, stagingBuffer->getBuffer(), transfer.dstBuffer.getBuffer(), 1, &copy);
+
+            //increment stack
+            stackLocation += bufferWrite.size;
         }
+
+        //clear queue
+        transferQueue.clear();
+        queueSize = 0;
     }
 
     const Queue& RendererStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
