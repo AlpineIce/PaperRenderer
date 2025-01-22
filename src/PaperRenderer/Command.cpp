@@ -237,10 +237,11 @@ namespace PaperRenderer
     {
         VkSemaphore semaphore;
 
-        VkSemaphoreCreateInfo semaphoreInfo;
-        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-        semaphoreInfo.pNext = NULL;
-        semaphoreInfo.flags = 0;
+        VkSemaphoreCreateInfo semaphoreInfo = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0
+        };
 
         vkCreateSemaphore(renderer.getDevice().getDevice(), &semaphoreInfo, nullptr, &semaphore);
 
@@ -251,16 +252,18 @@ namespace PaperRenderer
     {
         VkSemaphore semaphore;
 
-        VkSemaphoreTypeCreateInfo semaphoreTypeInfo = {};
-        semaphoreTypeInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
-        semaphoreTypeInfo.pNext = NULL;
-        semaphoreTypeInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
-        semaphoreTypeInfo.initialValue = initialValue;
+        const VkSemaphoreTypeCreateInfo semaphoreTypeInfo = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
+            .pNext = NULL,
+            .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
+            .initialValue = initialValue
+        };
 
-        VkSemaphoreCreateInfo semaphoreInfo;
-        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-        semaphoreInfo.pNext = &semaphoreTypeInfo;
-        semaphoreInfo.flags = 0;
+        const VkSemaphoreCreateInfo semaphoreInfo = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+            .pNext = &semaphoreTypeInfo,
+            .flags = 0
+        };
 
         vkCreateSemaphore(renderer.getDevice().getDevice(), &semaphoreInfo, nullptr, &semaphore);
 
@@ -270,10 +273,11 @@ namespace PaperRenderer
     VkFence Commands::getSignaledFence()
     {
         VkFence fence;
-        VkFenceCreateInfo fenceInfo = {};
-        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fenceInfo.pNext = NULL;
-        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+        const VkFenceCreateInfo fenceInfo = {
+            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = VK_FENCE_CREATE_SIGNALED_BIT
+        };
 
         vkCreateFence(renderer.getDevice().getDevice(), &fenceInfo, nullptr, &fence);
 
@@ -283,10 +287,11 @@ namespace PaperRenderer
     VkFence Commands::getUnsignaledFence()
     {
         VkFence fence;
-        VkFenceCreateInfo fenceInfo = {};
-        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fenceInfo.pNext = NULL;
-        fenceInfo.flags = 0;
+        const VkFenceCreateInfo fenceInfo = {
+            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0
+        };
 
         vkCreateFence(renderer.getDevice().getDevice(), &fenceInfo, nullptr, &fence);
 
@@ -320,12 +325,13 @@ namespace PaperRenderer
             const uint32_t bufferCount = 64;
             lockedPool->cmdBuffers.resize(lockedPool->cmdBuffers.size() + 64);
 
-            VkCommandBufferAllocateInfo bufferInfo = {};
-            bufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-            bufferInfo.pNext = NULL;
-            bufferInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-            bufferInfo.commandBufferCount = bufferCount;
-            bufferInfo.commandPool = lockedPool->cmdPool;
+            const VkCommandBufferAllocateInfo bufferInfo = {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                .pNext = NULL,
+                .commandPool = lockedPool->cmdPool,
+                .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                .commandBufferCount = bufferCount
+            };
 
             VkResult result = vkAllocateCommandBuffers(renderer.getDevice().getDevice(), &bufferInfo, &lockedPool->cmdBuffers[stackLocation]);
         }

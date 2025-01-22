@@ -100,9 +100,6 @@ namespace PaperRenderer
 
     const Queue& RendererStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
     {
-        //timer
-        Timer timer(renderer, "Submit Queued Transfers (StagingBuffer)", REGULAR);
-
         //start command buffer
         VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(syncInfo.queueType);
 

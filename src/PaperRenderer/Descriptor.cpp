@@ -103,13 +103,14 @@ namespace PaperRenderer
             }
         }};
         
-        VkDescriptorPoolCreateInfo poolInfo = {};
-        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        poolInfo.pNext = NULL;
-        poolInfo.flags = 0;
-        poolInfo.maxSets = descriptorCount;
-        poolInfo.poolSizeCount = renderer.getDevice().getRTSupport() ? poolSizes.size() : poolSizes.size() - 1;
-        poolInfo.pPoolSizes = poolSizes.data();
+        const VkDescriptorPoolCreateInfo poolInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .maxSets = descriptorCount,
+            .poolSizeCount = (uint32_t)(renderer.getDevice().getRTSupport() ? poolSizes.size() : poolSizes.size() - 1),
+            .pPoolSizes = poolSizes.data()
+        };
 
         VkDescriptorPool returnPool;
         VkResult result = vkCreateDescriptorPool(renderer.getDevice().getDevice(), &poolInfo, nullptr, &returnPool);
@@ -142,12 +143,13 @@ namespace PaperRenderer
 
         VkDescriptorSet returnSet;
 
-        VkDescriptorSetAllocateInfo allocInfo = {};
-        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.pNext = NULL;
-        allocInfo.descriptorPool = lockedPool->descriptorPools[lockedPool->currentPoolIndex];
-        allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &setLayout;
+        const VkDescriptorSetAllocateInfo allocInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .pNext = NULL,
+            .descriptorPool = lockedPool->descriptorPools[lockedPool->currentPoolIndex],
+            .descriptorSetCount = 1,
+            .pSetLayouts = &setLayout
+        };
 
         VkResult result = vkAllocateDescriptorSets(renderer.getDevice().getDevice(), &allocInfo, &returnSet);
 
@@ -183,18 +185,17 @@ namespace PaperRenderer
         {
             if(write.infos.size())
             {
-                VkWriteDescriptorSet writeInfo = {};
-                writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                writeInfo.dstSet = set;
-                writeInfo.dstBinding = write.binding;
-                writeInfo.dstArrayElement = 0;
-                writeInfo.descriptorType = write.type;
-                writeInfo.descriptorCount = write.infos.size();
-                writeInfo.pBufferInfo = write.infos.data();
-                writeInfo.pImageInfo = NULL;
-                writeInfo.pTexelBufferView = NULL;
-
-                descriptorWrites.push_back(writeInfo);
+                descriptorWrites.push_back({
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = set,
+                    .dstBinding = write.binding,
+                    .dstArrayElement = 0,
+                    .descriptorCount = (uint32_t)write.infos.size(),
+                    .descriptorType = write.type,
+                    .pImageInfo = NULL,
+                    .pBufferInfo = write.infos.data(),
+                    .pTexelBufferView = NULL
+                });
             }
         }
 
@@ -202,18 +203,17 @@ namespace PaperRenderer
         {
             if(write.infos.size())
             {
-                VkWriteDescriptorSet writeInfo = {};
-                writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                writeInfo.dstSet = set;
-                writeInfo.dstBinding = write.binding;
-                writeInfo.dstArrayElement = 0;
-                writeInfo.descriptorType = write.type;
-                writeInfo.descriptorCount = write.infos.size();
-                writeInfo.pBufferInfo = NULL;
-                writeInfo.pImageInfo = write.infos.data();
-                writeInfo.pTexelBufferView = NULL;
-
-                descriptorWrites.push_back(writeInfo);
+                descriptorWrites.push_back({
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = set,
+                    .dstBinding = write.binding,
+                    .dstArrayElement = 0,
+                    .descriptorCount = (uint32_t)write.infos.size(),
+                    .descriptorType = write.type,
+                    .pImageInfo = write.infos.data(),
+                    .pBufferInfo = NULL,
+                    .pTexelBufferView = NULL
+                });
             }
         }
         
@@ -221,18 +221,17 @@ namespace PaperRenderer
         {
             if(write.infos.size())
             {
-                VkWriteDescriptorSet writeInfo = {};
-                writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                writeInfo.dstSet = set;
-                writeInfo.dstBinding = write.binding;
-                writeInfo.dstArrayElement = 0;
-                writeInfo.descriptorType = write.type;
-                writeInfo.descriptorCount = write.infos.size();
-                writeInfo.pBufferInfo = NULL;
-                writeInfo.pImageInfo = NULL;
-                writeInfo.pTexelBufferView = write.infos.data();
-
-                descriptorWrites.push_back(writeInfo);
+                descriptorWrites.push_back({
+                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                    .dstSet = set,
+                    .dstBinding = write.binding,
+                    .dstArrayElement = 0,
+                    .descriptorCount = (uint32_t)write.infos.size(),
+                    .descriptorType = write.type,
+                    .pImageInfo = NULL,
+                    .pBufferInfo = NULL,
+                    .pTexelBufferView = write.infos.data()
+                });
             }
         }
 
@@ -258,24 +257,23 @@ namespace PaperRenderer
                         .pAccelerationStructures = tlasReferences.rbegin()->data()
                     });
 
-                    VkWriteDescriptorSet writeInfo = {};
-                    writeInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                    writeInfo.pNext = &(*tlasWriteInfos.rbegin());
-                    writeInfo.dstSet = set;
-                    writeInfo.dstBinding = write.binding;
-                    writeInfo.dstArrayElement = 0;
-                    writeInfo.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-                    writeInfo.descriptorCount = tlasReferences.size();
-                    writeInfo.pBufferInfo = NULL;
-                    writeInfo.pImageInfo = NULL;
-                    writeInfo.pTexelBufferView = NULL;
-
-                    descriptorWrites.push_back(writeInfo);
+                    descriptorWrites.push_back({
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .pNext = &(*tlasWriteInfos.rbegin()),
+                        .dstSet = set,
+                        .dstBinding = write.binding,
+                        .dstArrayElement = 0,
+                        .descriptorCount = (uint32_t)tlasReferences.size(),
+                        .descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
+                        .pImageInfo = NULL,
+                        .pBufferInfo = NULL,
+                        .pTexelBufferView = NULL
+                    });
                 }
             }
         }
         
-        if(descriptorWrites.size()) //valid usage per spec, encouraging runtime safety
+        if(descriptorWrites.size())
         {
             vkUpdateDescriptorSets(renderer.getDevice().getDevice(), descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
         }

@@ -30,11 +30,12 @@ namespace PaperRenderer
                 VkDescriptorSet descriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(setNumber));
                 renderer.getDescriptorAllocator().writeUniforms(descriptorSet, descriptorWrites.at(setNumber));
 
-                DescriptorBind bindingInfo = {};
-                bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
-                bindingInfo.set = descriptorSet;
-                bindingInfo.descriptorSetIndex = setNumber;
-                bindingInfo.layout = pipeline->getLayout();
+                const DescriptorBind bindingInfo = {
+                    .bindingPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
+                    .layout = pipeline->getLayout(),
+                    .descriptorSetIndex = setNumber,
+                    .set = descriptorSet,
+                };
                 
                 renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
             }
