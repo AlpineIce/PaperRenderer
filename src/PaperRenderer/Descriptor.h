@@ -87,11 +87,16 @@ namespace PaperRenderer
     class DescriptorGroup
     {
     private:
+        std::unordered_map<uint32_t, VkDescriptorSet> descriptorSets = {};
+
         class RenderEngine& renderer;
+
     public:
-        DescriptorGroup(class RenderEngine& renderer);
+        DescriptorGroup(class RenderEngine& renderer, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts);
         ~DescriptorGroup();
         DescriptorGroup(const DescriptorGroup&) = delete;
 
+        void updateDescriptorSets(const std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites) const;
+        void bindSet(VkCommandBuffer cmdBuffer, VkPipelineBindPoint bindingPoint, VkPipelineLayout layout, uint32_t index) const;
     };
 }

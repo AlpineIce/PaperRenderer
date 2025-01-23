@@ -293,4 +293,47 @@ namespace PaperRenderer
             NULL
         );
     }
+
+    //----------DESCRIPTOR GROUP DEFINITIONS----------//
+
+    DescriptorGroup::DescriptorGroup(RenderEngine &renderer, const std::unordered_map<uint32_t, VkDescriptorSetLayout> &setLayouts)
+        :renderer(renderer)
+    {
+        //create descriptor sets
+        for(const auto& [setIndex, layout] : setLayouts)
+        {
+            descriptorSets[setIndex] = renderer.getDescriptorAllocator().getDescriptorSet(layout);
+        }
+    }
+
+    DescriptorGroup::~DescriptorGroup()
+    {
+        //destroy descriptor sets
+        for(const auto& [setIndex, set] : descriptorSets)
+        {
+            renderer.getDescriptorAllocator().freeDescriptorSet(set);
+        }
+    }
+
+    void DescriptorGroup::updateDescriptorSets(const std::unordered_map<uint32_t, DescriptorWrites> &descriptorWrites) const
+    {
+        //write descriptors
+        for(const auto& [setIndex, writes] : descriptorWrites)
+        {
+            //update descriptor set
+            renderer.getDescriptorAllocator().updateDescriptorSet(descriptorSets.at(setIndex), writes);
+        }
+    }
+
+    void DescriptorGroup::bindSet(VkCommandBuffer cmdBuffer, VkPipelineBindPoint bindingPoint, VkPipelineLayout layout, uint32_t index) const
+    {
+        const DescriptorBind bindingInfo = {
+            .bindingPoint = bindingPoint,
+            .layout = layout,
+            .descriptorSetIndex = index,
+            .set = descriptorSets.at(index)
+        };
+
+        renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
+    }
 }
