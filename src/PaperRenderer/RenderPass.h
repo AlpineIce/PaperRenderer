@@ -16,7 +16,7 @@ namespace PaperRenderer
     class RasterPreprocessPipeline
     {
     private:
-        const ComputeShader computeShader;
+        ComputeShader computeShader;
 
         class RenderEngine& renderer;
 
@@ -76,6 +76,7 @@ namespace PaperRenderer
             std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials;
         };
         std::vector<SortedInstance> renderPassSortedInstances;
+        std::unordered_map<Material*, VkDescriptorSet> sortedObjectDescriptorSets = {};
 
         float instancesOverhead = 1.5f;
         std::vector<ModelInstance*> renderPassInstances; //doesn't included sorted

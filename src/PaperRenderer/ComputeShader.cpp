@@ -11,34 +11,43 @@ namespace PaperRenderer
 
     ComputeShader::~ComputeShader()
     {
+        //destroy descriptors
+        for(const auto& [setIndex, set] : descriptorSets)
+        {
+            renderer.getDescriptorAllocator().freeDescriptorSet(set);
+        }
+
         pipeline.reset();
     }
 
     void ComputeShader::dispatch(const VkCommandBuffer& cmdBuffer,
         const std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites,
         const glm::uvec3& workGroupSizes
-    ) const
+    )
     {
         //bind
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->getPipeline());
 
         //write descriptors
-        for(const auto& [setNumber, writes] : descriptorWrites)
+        for(const auto& [setIndex, writes] : descriptorWrites)
         {
-            if(writes.bufferViewWrites.size() || writes.bufferWrites.size() || writes.imageWrites.size())
+            //make sure descriptor set exists
+            if(!descriptorSets.count(setIndex))
             {
-                VkDescriptorSet descriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(setNumber));
-                renderer.getDescriptorAllocator().writeUniforms(descriptorSet, descriptorWrites.at(setNumber));
-
-                const DescriptorBind bindingInfo = {
-                    .bindingPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
-                    .layout = pipeline->getLayout(),
-                    .descriptorSetIndex = setNumber,
-                    .set = descriptorSet,
-                };
-                
-                renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
+                descriptorSets[setIndex] = renderer.getDescriptorAllocator().getDescriptorSet(pipeline->getDescriptorSetLayouts().at(setIndex));
             }
+
+            //update descriptor set
+            renderer.getDescriptorAllocator().updateDescriptorSet(descriptorSets[setIndex], writes);
+
+            const DescriptorBind bindingInfo = {
+                .bindingPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
+                .layout = pipeline->getLayout(),
+                .descriptorSetIndex = setIndex,
+                .set = descriptorSets[setIndex]
+            };
+            
+            renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
         }
 
         //dispatch

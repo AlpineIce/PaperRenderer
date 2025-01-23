@@ -288,7 +288,7 @@ const PaperRenderer::Queue& ExampleRayTracing::rayTraceRender(const PaperRendere
         .camera = camera,
         .preRenderBarriers = &preRenderDependency,
         .postRenderBarriers = NULL, //no post render barrier
-        .rtDescriptorWrites = descriptorWrites
+        .descriptorWrites = { { 0, descriptorWrites } }
     };
     
     return rtRenderPass.render(rtRenderInfo, syncInfo);

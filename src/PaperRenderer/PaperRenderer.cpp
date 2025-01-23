@@ -283,9 +283,8 @@ namespace PaperRenderer
         //idle staging buffer
         stagingBuffer[getBufferIndex()]->idleBuffer();
 
-        //reset command and descriptor pools
+        //reset command pools
         device.getCommands().resetCommandPools();
-        descriptors.refreshPools();
 
         //acquire next image
         const VkSemaphore& imageAcquireSemaphore = swapchain.acquireNextImage();

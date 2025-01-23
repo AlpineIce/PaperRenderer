@@ -94,10 +94,6 @@ namespace PaperRenderer
         //reset all pools
         for(auto& [queueType, pools] : commandPools[renderer.getBufferIndex()])
         {
-            //async reset pools
-            std::vector<std::future<void>> futures;
-            futures.reserve(coreCount);
-
             for(CommandPoolData& pool : pools)
             {
                 //wait for any non-submitted command buffers (potentially a deadlock problem)

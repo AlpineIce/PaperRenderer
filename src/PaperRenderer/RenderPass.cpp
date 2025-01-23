@@ -135,12 +135,20 @@ namespace PaperRenderer
 
     RenderPass::~RenderPass()
     {
+        //destroy buffers
         instancesBuffer.reset();
         instancesDataBuffer.reset();
 
+        //remove references
         for(ModelInstance* instance : renderPassInstances)
         {
             removeInstance(*instance);
+        }
+
+        //destroy sorted object descriptors
+        for(const auto& [material, set] : sortedObjectDescriptorSets)
+        {
+            renderer.getDescriptorAllocator().freeDescriptorSet(set);
         }
     }
 
@@ -532,7 +540,7 @@ namespace PaperRenderer
             {
                 std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> instanceDescriptorWrites;
                 materialInstance->bind(cmdBuffer, instanceDescriptorWrites);
-                meshGroups.draw(cmdBuffer, *material);
+                meshGroups.draw(cmdBuffer);
             }
         }
 
@@ -636,6 +644,32 @@ namespace PaperRenderer
                 return lodLevel;
             };
 
+            //write object descriptors
+            for(auto& [material, descriptorSet] : sortedObjectDescriptorSets)
+            {
+                if(material->usesDefaultDescriptors())
+                {
+                    //write uniforms
+                    const VkDescriptorBufferInfo descriptorInfo = {
+                        .buffer = sortedInstancesOutputBuffer->getBuffer(),
+                        .offset = 0,
+                        .range = VK_WHOLE_SIZE
+                    };
+
+                    const BuffersDescriptorWrites write = {
+                        .infos = { descriptorInfo },
+                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .binding = 0,
+                    };
+
+                    const DescriptorWrites descriptorWritesInfo = {
+                        .bufferWrites = { write }
+                    };
+
+                    renderer.getDescriptorAllocator().updateDescriptorSet(descriptorSet, descriptorWritesInfo);
+                }
+            }
+
             //draw sorted instances in order
             for(uint32_t i = 0; i < sortedInstances.size(); i++)
             {
@@ -650,41 +684,22 @@ namespace PaperRenderer
                     std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> materialDescriptorWrites;
                     material->bind(cmdBuffer, renderPassInfo.camera, materialDescriptorWrites);
 
+                    //bind object descriptor if used
+                    if(material->usesDefaultDescriptors())
+                    {
+                        const DescriptorBind bindingInfo = {
+                            .bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            .layout = material->getRasterPipeline().getLayout(),
+                            .descriptorSetIndex = material->getRasterPipeline().getDrawDescriptorIndex(),
+                            .set = sortedObjectDescriptorSets[material]
+                        };
+                        
+                        renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
+                    }
+
                     //bind material instance
                     std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> instanceDescriptorWrites;
                     materialInstance->bind(cmdBuffer, instanceDescriptorWrites);
-
-                    //assign object descriptor if used
-                    if(material->usesDefaultDescriptors())
-                    {
-                        //get new descriptor set
-                        VkDescriptorSet objDescriptorSet = 
-                            renderer.getDescriptorAllocator().allocateDescriptorSet(material->getRasterPipeline().getDescriptorSetLayouts().at(material->getRasterPipeline().getDrawDescriptorIndex()));
-                        
-                        //write uniforms
-                        VkDescriptorBufferInfo descriptorInfo = {
-                            .buffer = sortedInstancesOutputBuffer->getBuffer(),
-                            .offset = 0,
-                            .range = sizeof(ShaderOutputObject) * sortedInstances.size()
-                        };
-
-                        BuffersDescriptorWrites write = {};
-                        write.binding = 0;
-                        write.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                        write.infos.push_back(descriptorInfo);
-
-                        DescriptorWrites descriptorWritesInfo = {};
-                        descriptorWritesInfo.bufferWrites = { write };
-                        renderer.getDescriptorAllocator().writeUniforms(objDescriptorSet, descriptorWritesInfo);
-
-                        //bind set
-                        DescriptorBind bindingInfo = {};
-                        bindingInfo.descriptorSetIndex = material->getRasterPipeline().getDrawDescriptorIndex();
-                        bindingInfo.set = objDescriptorSet;
-                        bindingInfo.layout = material->getRasterPipeline().getLayout();
-                        bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-                        renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
-                    }
 
                     //get mesh data ptr
                     const LODMesh& meshData = sortedInstances[i]->instance->getParentModel().getLODs()[lodIndex].materialMeshes[matSlot].mesh;
@@ -737,6 +752,24 @@ namespace PaperRenderer
             instance.renderPassSelfReferences[this].selfIndex = renderPassSortedInstances.size();
             instance.renderPassSelfReferences[this].sorted = true;
             renderPassSortedInstances.push_back({ &instance, materials });
+
+            //create descriptor sets if they dont exist
+            for(const std::unordered_map<uint32_t, MaterialInstance*>& lodMaterials : materials)
+            {
+                for(const auto& [matSlot, materialInstance] : lodMaterials)
+                {
+                    //get material variable
+                    Material* material = (Material*)(&materialInstance->getBaseMaterial());
+
+                    //add material reference
+                    if(!sortedObjectDescriptorSets.count(material))
+                    {
+                        //create descriptor set if used
+                        sortedObjectDescriptorSets[material] = material->usesDefaultDescriptors() ? renderer.getDescriptorAllocator().getDescriptorSet(material->getRasterPipeline().getDescriptorSetLayouts().at(
+                            material->getRasterPipeline().getDrawDescriptorIndex())) : VK_NULL_HANDLE;
+                    }
+                }
+            }
         }
         else
         {
@@ -763,7 +796,7 @@ namespace PaperRenderer
                     //check if mesh group class is created
                     if(!renderTree[(Material*)&materialInstance->getBaseMaterial()].count(materialInstance))
                     {
-                        renderTree[(Material*)&materialInstance->getBaseMaterial()].emplace(std::piecewise_construct, std::forward_as_tuple(materialInstance), std::forward_as_tuple(renderer, this));
+                        renderTree[(Material*)&materialInstance->getBaseMaterial()].emplace(std::piecewise_construct, std::forward_as_tuple(materialInstance), std::forward_as_tuple(renderer, *this, materialInstance->getBaseMaterial()));
                     }
 
                     //add references

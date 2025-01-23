@@ -12,7 +12,7 @@ namespace PaperRenderer
         const class Camera& camera;
         VkDependencyInfo const* preRenderBarriers = NULL;
         VkDependencyInfo const* postRenderBarriers = NULL;
-        DescriptorWrites rtDescriptorWrites = {};
+        const std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites = {};
     };
 
     struct AccelerationStructureInstanceData
@@ -27,9 +27,10 @@ namespace PaperRenderer
     {
     private:
         const std::vector<VkPushConstantRange> pcRanges;
-        const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> descriptorSets;
+        const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> descriptorSetBindings;
         const RTPipelineProperties pipelineProperties;
         std::unique_ptr<RTPipeline> pipeline;
+        std::unordered_map<uint32_t, VkDescriptorSet> descriptorSets = {};
         
         bool queuePipelineBuild = true;
 

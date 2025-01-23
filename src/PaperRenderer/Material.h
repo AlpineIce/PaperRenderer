@@ -13,6 +13,7 @@ namespace PaperRenderer
     private:
         const bool assignDefaultDescriptors;
         std::unique_ptr<RasterPipeline> rasterPipeline;
+        std::unordered_map<uint32_t, VkDescriptorSet> descriptorSets = {};
     
     protected:
         class RenderEngine& renderer;
@@ -32,6 +33,8 @@ namespace PaperRenderer
     class MaterialInstance
     {
     protected:
+        std::unordered_map<uint32_t, VkDescriptorSet> descriptorSets = {};
+
         const Material& baseMaterial;
         class RenderEngine& renderer;
 

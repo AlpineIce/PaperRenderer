@@ -40,10 +40,13 @@ namespace PaperRenderer
 
     Pipeline::~Pipeline()
     {
-        for(auto& [setNum, set] : setLayouts)
+        //destroy set layouts
+        for(const auto& [setNum, set] : setLayouts)
         {
             vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), set, nullptr);
         }
+
+        //destroy pipeline and layout
         vkDestroyPipeline(renderer.getDevice().getDevice(), pipeline, nullptr);
         vkDestroyPipelineLayout(renderer.getDevice().getDevice(), pipelineLayout, nullptr);
     }

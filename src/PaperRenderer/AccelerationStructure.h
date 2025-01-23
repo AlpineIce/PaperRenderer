@@ -8,7 +8,7 @@ namespace PaperRenderer
     class TLASInstanceBuildPipeline
     {
     private:
-        const ComputeShader computeShader;
+        ComputeShader computeShader;
 
         class RenderEngine& renderer;
 

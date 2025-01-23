@@ -11,37 +11,37 @@ namespace PaperRenderer
 
     struct BuffersDescriptorWrites
     {
-        std::vector<VkDescriptorBufferInfo> infos;
+        std::vector<VkDescriptorBufferInfo> infos = {};
         VkDescriptorType type;
         uint32_t binding;
     };
 
     struct ImagesDescriptorWrites
     {
-        std::vector<VkDescriptorImageInfo> infos;
+        std::vector<VkDescriptorImageInfo> infos = {};
         VkDescriptorType type;
         uint32_t binding;
     };
 
     struct BufferViewsDescriptorWrites
     {
-        std::vector<VkBufferView> infos;
+        std::vector<VkBufferView> infos = {};
         VkDescriptorType type;
         uint32_t binding;
     };
 
     struct AccelerationStructureDescriptorWrites
     {
-        std::vector<class TLAS const*> accelerationStructures;
+        std::vector<class TLAS const*> accelerationStructures = {};
         uint32_t binding;
     };
 
     struct DescriptorWrites
     {
-        std::vector<BuffersDescriptorWrites> bufferWrites = std::vector<BuffersDescriptorWrites>();
-        std::vector<ImagesDescriptorWrites> imageWrites = std::vector<ImagesDescriptorWrites>();
-        std::vector<BufferViewsDescriptorWrites> bufferViewWrites = std::vector<BufferViewsDescriptorWrites>();
-        std::vector<AccelerationStructureDescriptorWrites> accelerationStructureWrites = std::vector<AccelerationStructureDescriptorWrites>();
+        std::vector<BuffersDescriptorWrites> bufferWrites = {};
+        std::vector<ImagesDescriptorWrites> imageWrites = {};
+        std::vector<BufferViewsDescriptorWrites> bufferViewWrites = {};
+        std::vector<AccelerationStructureDescriptorWrites> accelerationStructureWrites = {};
     };
 
     struct DescriptorBind
@@ -63,8 +63,8 @@ namespace PaperRenderer
             uint32_t currentPoolIndex = 0;
             std::recursive_mutex threadLock = {};
         };
-        const uint32_t coreCount = std::thread::hardware_concurrency();
-        std::array<std::vector<DescriptorPoolData>, 2> descriptorPoolDatas; //collection of pools that can be used async
+        DescriptorPoolData descriptorPoolData = {}; //thread safe command pool wrapper
+        std::unordered_map<VkDescriptorSet, uint32_t> allocatedSetPoolIndices = {};
         
         class RenderEngine& renderer;
 
@@ -75,10 +75,23 @@ namespace PaperRenderer
         ~DescriptorAllocator();
         DescriptorAllocator(const DescriptorAllocator&) = delete;
 
-        void writeUniforms(VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo) const;
+        void updateDescriptorSet(VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo) const;
         void bindSet(VkCommandBuffer cmdBuffer, const DescriptorBind& bindingInfo) const;
 
-        VkDescriptorSet allocateDescriptorSet(VkDescriptorSetLayout setLayout);
-        void refreshPools();
+        VkDescriptorSet getDescriptorSet(VkDescriptorSetLayout setLayout);
+        void freeDescriptorSet(VkDescriptorSet set);
+    };
+
+    //----------RAII DESCRIPTOR WRAPPER----------//
+
+    class DescriptorGroup
+    {
+    private:
+        class RenderEngine& renderer;
+    public:
+        DescriptorGroup(class RenderEngine& renderer);
+        ~DescriptorGroup();
+        DescriptorGroup(const DescriptorGroup&) = delete;
+
     };
 }

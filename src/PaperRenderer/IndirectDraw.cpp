@@ -5,14 +5,21 @@
 
 namespace PaperRenderer
 {
-    CommonMeshGroup::CommonMeshGroup(RenderEngine& renderer, RenderPass const* renderPass)
-        :renderer(renderer),
-        renderPassPtr(renderPass)
+    CommonMeshGroup::CommonMeshGroup(RenderEngine& renderer, const RenderPass& renderPass, const Material& material)
+        :objDescriptorSet(material.usesDefaultDescriptors() ?
+            renderer.getDescriptorAllocator().getDescriptorSet(material.getRasterPipeline().getDescriptorSetLayouts().at(material.getRasterPipeline().getDrawDescriptorIndex())) : VK_NULL_HANDLE),
+        renderer(renderer),
+        renderPass(renderPass),
+        material(material)
     {
     }
 
     CommonMeshGroup::~CommonMeshGroup()
     {
+        //destroy descriptor
+        renderer.getDescriptorAllocator().freeDescriptorSet(objDescriptorSet);
+
+        //destroy buffers
         modelMatricesBuffer.reset();
         drawCommandsBuffer.reset();
     }
@@ -170,14 +177,11 @@ namespace PaperRenderer
         }
     }
 
-    void CommonMeshGroup::draw(const VkCommandBuffer &cmdBuffer, const Material& material) const
+    void CommonMeshGroup::draw(const VkCommandBuffer &cmdBuffer) const
     {
-        //assign object descriptor if used
-        if(material.usesDefaultDescriptors())
+        //update object descriptor set if used (theres only one draw per group per pass)
+        if(objDescriptorSet)
         {
-            //get new descriptor set
-            const VkDescriptorSet objDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(material.getRasterPipeline().getDescriptorSetLayouts().at(material.getRasterPipeline().getDrawDescriptorIndex()));
-            
             //write uniforms
             const VkDescriptorBufferInfo descriptorInfo = {
                 .buffer = modelMatricesBuffer->getBuffer(),
@@ -194,7 +198,8 @@ namespace PaperRenderer
             const DescriptorWrites descriptorWritesInfo = {
                 .bufferWrites = { write }
             };
-            renderer.getDescriptorAllocator().writeUniforms(objDescriptorSet, descriptorWritesInfo);
+
+            renderer.getDescriptorAllocator().updateDescriptorSet(objDescriptorSet, descriptorWritesInfo);
 
             //bind set
             const DescriptorBind bindingInfo = {
@@ -203,6 +208,7 @@ namespace PaperRenderer
                 .descriptorSetIndex = material.getRasterPipeline().getDrawDescriptorIndex(),
                 .set = objDescriptorSet
             };
+            
             renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
         }
 

@@ -17,7 +17,7 @@ namespace PaperRenderer
         const std::vector<VkPushConstantRange>& pcRanges
     )
         :pcRanges(pcRanges),
-        descriptorSets(descriptorSets),
+        descriptorSetBindings(descriptorSets),
         pipelineProperties(pipelineProperties),
         raygenShader(raygenShader),
         missShaders(missShaders),
@@ -38,11 +38,12 @@ namespace PaperRenderer
         Timer timer(renderer, "RayTraceRender Record", REGULAR);
 
         //command buffer
-        VkCommandBufferBeginInfo commandInfo;
-        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        commandInfo.pNext = NULL;
-        commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        commandInfo.pInheritanceInfo = NULL;
+        const VkCommandBufferBeginInfo commandInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .pNext = NULL,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            .pInheritanceInfo = NULL
+        };
 
         VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(syncInfo.queueType);
 
@@ -60,18 +61,24 @@ namespace PaperRenderer
             //bind pipeline
             vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline->getPipeline());
 
-            //descriptor writes
-            if(rtRenderInfo.rtDescriptorWrites.bufferViewWrites.size() || rtRenderInfo.rtDescriptorWrites.bufferWrites.size() || 
-                rtRenderInfo.rtDescriptorWrites.imageWrites.size() || rtRenderInfo.rtDescriptorWrites.accelerationStructureWrites.size())
+            //write descriptors
+            for(const auto& [setIndex, writes] : rtRenderInfo.descriptorWrites)
             {
-                VkDescriptorSet rtDescriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(pipeline->getDescriptorSetLayouts().at(0));
-                renderer.getDescriptorAllocator().writeUniforms(rtDescriptorSet, rtRenderInfo.rtDescriptorWrites);
+                //make sure descriptor set exists
+                if(!descriptorSets.count(setIndex))
+                {
+                    descriptorSets[setIndex] = renderer.getDescriptorAllocator().getDescriptorSet(pipeline->getDescriptorSetLayouts().at(setIndex));
+                }
 
-                DescriptorBind bindingInfo = {};
-                bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
-                bindingInfo.set = rtDescriptorSet;
-                bindingInfo.descriptorSetIndex = 0;
-                bindingInfo.layout = pipeline->getLayout();
+                //update descriptor set
+                renderer.getDescriptorAllocator().updateDescriptorSet(descriptorSets[setIndex], writes);
+
+                const DescriptorBind bindingInfo = {
+                    .bindingPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
+                    .layout = pipeline->getLayout(),
+                    .descriptorSetIndex = setIndex,
+                    .set = descriptorSets[setIndex]
+                };
                 
                 renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
             }
@@ -139,7 +146,7 @@ namespace PaperRenderer
             .raygenShader = raygenShader,
             .missShaders = missShaders,
             .callableShaders = callableShaders,
-            .descriptorSets = descriptorSets,
+            .descriptorSets = descriptorSetBindings,
             .pcRanges = pcRanges,
             .properties = pipelineProperties
         };

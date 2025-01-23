@@ -32,12 +32,19 @@ namespace PaperRenderer
             });
         }
         
-
+        //build pipeline
         rasterPipeline = renderer.getPipelineBuilder().buildRasterPipeline(pipelineInfo);
     }
 
     Material::~Material()
     {
+        //destroy descriptors
+        for(const auto& [setIndex, set] : descriptorSets)
+        {
+            renderer.getDescriptorAllocator().freeDescriptorSet(set);
+        }
+
+        //destroy graphics pipeline
         rasterPipeline.reset();
     }
 
@@ -49,7 +56,6 @@ namespace PaperRenderer
         //camera UBO if used
         if(assignDefaultDescriptors)
         {
-            
             descriptorWrites[0].bufferWrites.push_back({
                 .infos = { {
                     .buffer = camera.getCameraUBO().getBuffer(),
@@ -64,14 +70,21 @@ namespace PaperRenderer
         //write descriptors
         for(const auto& [setIndex, writes] : descriptorWrites)
         {
-            VkDescriptorSet descriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(setIndex));
-            renderer.getDescriptorAllocator().writeUniforms(descriptorSet, writes);
+            //make sure descriptor set exists
+            if(!descriptorSets.count(setIndex))
+            {
+                descriptorSets[setIndex] = renderer.getDescriptorAllocator().getDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(setIndex));
+            }
 
-            DescriptorBind bindingInfo = {};
-            bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-            bindingInfo.set = descriptorSet;
-            bindingInfo.descriptorSetIndex = setIndex;
-            bindingInfo.layout = rasterPipeline->getLayout();
+            //update descriptor set
+            renderer.getDescriptorAllocator().updateDescriptorSet(descriptorSets[setIndex], writes);
+
+            const DescriptorBind bindingInfo = {
+                .bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+                .layout = rasterPipeline->getLayout(),
+                .descriptorSetIndex = setIndex,
+                .set = descriptorSets[setIndex]
+            };
             
             renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
         }
@@ -87,6 +100,11 @@ namespace PaperRenderer
 
     MaterialInstance::~MaterialInstance()
     {
+        //destroy descriptors
+        for(const auto& [setIndex, set] : descriptorSets)
+        {
+            renderer.getDescriptorAllocator().freeDescriptorSet(set);
+        }
     }
 
     void MaterialInstance::bind(VkCommandBuffer cmdBuffer, std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites)
@@ -94,14 +112,21 @@ namespace PaperRenderer
         //write descriptors
         for(const auto& [setIndex, writes] : descriptorWrites)
         {
-            VkDescriptorSet descriptorSet = renderer.getDescriptorAllocator().allocateDescriptorSet(baseMaterial.getRasterPipeline().getDescriptorSetLayouts().at(setIndex));
-            renderer.getDescriptorAllocator().writeUniforms(descriptorSet, writes);
+            //make sure descriptor set exists
+            if(!descriptorSets.count(setIndex))
+            {
+                descriptorSets[setIndex] = renderer.getDescriptorAllocator().getDescriptorSet(baseMaterial.getRasterPipeline().getDescriptorSetLayouts().at(setIndex));
+            }
 
-            DescriptorBind bindingInfo = {};
-            bindingInfo.bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-            bindingInfo.set = descriptorSet;
-            bindingInfo.descriptorSetIndex = setIndex;
-            bindingInfo.layout = baseMaterial.getRasterPipeline().getLayout();
+            //update descriptor set
+            renderer.getDescriptorAllocator().updateDescriptorSet(descriptorSets[setIndex], writes);
+
+            const DescriptorBind bindingInfo = {
+                .bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+                .layout = baseMaterial.getRasterPipeline().getLayout(),
+                .descriptorSetIndex = setIndex,
+                .set = descriptorSets[setIndex]
+            };
             
             renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
         }

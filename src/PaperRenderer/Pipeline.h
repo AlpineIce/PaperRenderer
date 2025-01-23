@@ -1,5 +1,6 @@
 #pragma once
 #include "VulkanResources.h"
+#include "Descriptor.h"
 
 #include <vector>
 #include <unordered_map>
@@ -54,6 +55,7 @@ namespace PaperRenderer
         VkPipeline pipeline;
         std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
         VkPipelineLayout pipelineLayout;
+        std::unordered_map<uint32_t, VkDescriptorSet> descriptorSets = {};
 
         class RenderEngine& renderer;
         

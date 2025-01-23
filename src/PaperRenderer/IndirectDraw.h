@@ -22,6 +22,7 @@ namespace PaperRenderer
     class CommonMeshGroup
     {
     private:
+        //shader structs
         struct ShaderMesh
         {
             uint32_t drawCountsOffset;
@@ -55,20 +56,25 @@ namespace PaperRenderer
             }
         };
 
-        uint32_t drawCommandCount = 0;
+        //buffer helper functions
         std::vector<class ModelInstance*> rebuildBuffer();
-        bool rebuild = true;
         BufferSizeRequirements getBuffersRequirements();
         void setDrawCommandData() const;
 
+        //other
+        VkDescriptorSet objDescriptorSet;
+        uint32_t drawCommandCount = 0;
+        bool rebuild = true;
         std::unordered_map<class ModelInstance const*, std::unordered_map<struct LODMesh const*, MeshInstancesData>> instanceMeshesData = {};
         std::unordered_map<class ModelInstance*, std::vector<struct LODMesh const*>> instanceMeshes;
 
+        //references
         class RenderEngine& renderer;
-        class RenderPass const* renderPassPtr;
+        const class RenderPass& renderPass;
+        const class Material& material;
 
     public:
-        CommonMeshGroup(class RenderEngine& renderer, class RenderPass const* renderPass);
+        CommonMeshGroup(class RenderEngine& renderer, const class RenderPass& renderPass, const class Material& material);
         ~CommonMeshGroup();
         CommonMeshGroup(const CommonMeshGroup&) = delete;
 
@@ -77,7 +83,7 @@ namespace PaperRenderer
         void addInstanceMesh(ModelInstance& instance, const LODMesh& instanceMeshData);
         void removeInstanceMeshes(class ModelInstance& instance);
 
-        void draw(const VkCommandBuffer& cmdBuffer, const class Material& material) const;
+        void draw(const VkCommandBuffer& cmdBuffer) const;
         void clearDrawCommand(const VkCommandBuffer& cmdBuffer) const;
         void addOwner(const Queue& queue);
 
