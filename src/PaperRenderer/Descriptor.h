@@ -46,10 +46,11 @@ namespace PaperRenderer
 
     struct DescriptorBind
     {
-        VkPipelineBindPoint bindingPoint;
-        VkPipelineLayout layout;
-        uint32_t descriptorSetIndex;
-        VkDescriptorSet set;
+        VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+        uint32_t descriptorSetIndex = 0;
+        VkDescriptorSet set = VK_NULL_HANDLE;
+        std::vector<uint32_t> dynamicOffsets = {};
     };
 
     //----------DESCRIPTOR ALLOCATOR DECLARATIONS----------//
@@ -76,6 +77,7 @@ namespace PaperRenderer
         DescriptorAllocator(const DescriptorAllocator&) = delete;
 
         void updateDescriptorSet(VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo) const;
+        void bindDescriptorSet(VkCommandBuffer cmdBuffer, const DescriptorBind& binding) const; 
         
         VkDescriptorSetLayout createDescriptorSetLayout(const std::vector<VkDescriptorSetLayoutBinding>& bindings) const;
         VkDescriptorSet getDescriptorSet(VkDescriptorSetLayout setLayout);
@@ -87,6 +89,7 @@ namespace PaperRenderer
     class DescriptorGroup
     {
     private:
+        const std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
         std::unordered_map<uint32_t, VkDescriptorSet> descriptorSets = {};
 
         class RenderEngine& renderer;
@@ -97,6 +100,9 @@ namespace PaperRenderer
         DescriptorGroup(const DescriptorGroup&) = delete;
 
         void updateDescriptorSets(const std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites) const;
-        void bindSets(VkCommandBuffer cmdBuffer, VkPipelineBindPoint bindingPoint, VkPipelineLayout layout) const;
+        void bindSets(VkCommandBuffer cmdBuffer, VkPipelineBindPoint bindingPoint, VkPipelineLayout layout, std::unordered_map<uint32_t, std::vector<uint32_t>> dynamicOffsets) const;
+
+        const std::unordered_map<uint32_t, VkDescriptorSetLayout>& getSetLayouts() const { return setLayouts; }
+        const std::unordered_map<uint32_t, VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
     };
 }

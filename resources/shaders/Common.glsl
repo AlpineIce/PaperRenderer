@@ -65,7 +65,7 @@ struct ModelInstance
     uint modelDataOffset;
 };
 
-layout(scalar, set = 0, binding = 1) readonly buffer InputInstances
+layout(scalar, set = 1, binding = 0) readonly buffer InputInstances
 {
     ModelInstance modelInstances[];
 } inputInstances;

@@ -12,35 +12,40 @@ namespace PaperRenderer
     //----------PREPROCESS PIPELINES DEFINITIONS----------//
 
     RasterPreprocessPipeline::RasterPreprocessPipeline(RenderEngine& renderer, const std::vector<uint32_t>& shaderData)
-        :computeShader(renderer, {
+        :uboSetLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
+            {
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                .pImmutableSamplers = NULL
+            }
+        })),
+        ioSetLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
+            {
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                .pImmutableSamplers = NULL
+            },
+            {
+                .binding = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                .pImmutableSamplers = NULL
+            }
+        })),
+        computeShader(renderer, {
             .shaderInfo = {
                 .stage = VK_SHADER_STAGE_COMPUTE_BIT,
                 .data = shaderData
             },
-            .descriptors = {
-                { 0, {
-                    {
-                        .binding = 0,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                        .pImmutableSamplers = NULL
-                    },
-                    {
-                        .binding = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                        .pImmutableSamplers = NULL
-                    },
-                    {
-                        .binding = 2,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                        .pImmutableSamplers = NULL
-                    }
-                }}
+            .descriptorSets = {
+                { 0, uboSetLayout },
+                { 1, ioSetLayout },
+                { 2, renderer.getDefaultDescriptorSetLayout(CAMERA_MATRICES) }
             },
             .pcRanges = {}
         }),
@@ -55,6 +60,10 @@ namespace PaperRenderer
     
     RasterPreprocessPipeline::~RasterPreprocessPipeline()
     {
+        //destroy descriptor layouts
+        vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), uboSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), ioSetLayout, nullptr);
+
         //log destructor
         renderer.getLogger().recordLog({
             .type = INFO,
@@ -64,14 +73,13 @@ namespace PaperRenderer
 
     void RasterPreprocessPipeline::submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera)
     {
-        UBOInputData uboInputData = {};
-        uboInputData.camPos = glm::vec4(camera.getPosition(), 1.0f);
-        uboInputData.projection = camera.getProjection();
-        uboInputData.view = camera.getViewMatrix();
-        uboInputData.materialDataPtr = renderPass.instancesDataBuffer->getBuffer().getBufferDeviceAddress();
-        uboInputData.modelDataPtr = renderer.modelDataBuffer->getBuffer().getBufferDeviceAddress();
-        uboInputData.objectCount = renderPass.renderPassInstances.size();
-        uboInputData.doCulling = true;
+        const UBOInputData uboInputData = {
+            .camPos = glm::vec4(camera.getPosition(), 1.0f),
+            .materialDataPtr = renderPass.instancesDataBuffer->getBuffer().getBufferDeviceAddress(),
+            .modelDataPtr = renderer.modelDataBuffer->getBuffer().getBufferDeviceAddress(),
+            .objectCount = renderPass.renderPassInstances.size(),
+            .doCulling = true
+        };
 
         BufferWrite write = {};
         write.readData = &uboInputData;
@@ -128,6 +136,7 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
         }),
+        descriptorGroup(renderer, { { 0, renderer.getRasterPreprocessPipeline().getUboDescriptorLayout() } }),
         renderer(renderer),
         defaultMaterialInstance(defaultMaterialInstance)
     {

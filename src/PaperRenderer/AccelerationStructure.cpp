@@ -10,42 +10,46 @@ namespace PaperRenderer
     //----------TLAS INSTANCE BUILD PIPELINE DEFINITIONS----------//
 
     TLASInstanceBuildPipeline::TLASInstanceBuildPipeline(RenderEngine& renderer, const std::vector<uint32_t>& shaderData)
-        :computeShader(renderer, {
+        :uboSetLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
+            {
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                .pImmutableSamplers = NULL
+            }
+        })),
+        ioSetLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
+            {
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                .pImmutableSamplers = NULL
+            },
+            {
+                .binding = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                .pImmutableSamplers = NULL
+            },
+            {
+                .binding = 2,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+                .pImmutableSamplers = NULL
+            }
+        })),
+        computeShader(renderer, {
             .shaderInfo = {
                 .stage = VK_SHADER_STAGE_COMPUTE_BIT,
                 .data = shaderData
             },
-            .descriptors = {
-                { 0, {
-                    {
-                        .binding = 0,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                        .pImmutableSamplers = NULL
-                    },
-                    {
-                        .binding = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                        .pImmutableSamplers = NULL
-                    },
-                    {
-                        .binding = 2,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                        .pImmutableSamplers = NULL
-                    },
-                    {
-                        .binding = 3,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                        .pImmutableSamplers = NULL
-                    }
-                }}
+            .descriptorSets = {
+                { 0, uboSetLayout },
+                { 1, ioSetLayout }
             },
             .pcRanges = {}
         }),
@@ -60,6 +64,10 @@ namespace PaperRenderer
 
     TLASInstanceBuildPipeline::~TLASInstanceBuildPipeline()
     {
+        //destroy descriptor layouts
+        vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), uboSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), ioSetLayout, nullptr);
+        
         //log destructor
         renderer.getLogger().recordLog({
             .type = INFO,

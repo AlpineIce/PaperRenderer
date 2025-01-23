@@ -303,10 +303,25 @@ namespace PaperRenderer
         }
     }
 
+    void DescriptorAllocator::bindDescriptorSet(VkCommandBuffer cmdBuffer, const DescriptorBind &binding) const
+    {
+        vkCmdBindDescriptorSets(
+            cmdBuffer,
+            binding.bindPoint,
+            binding.pipelineLayout,
+            binding.descriptorSetIndex,
+            1,
+            &binding.set,
+            binding.dynamicOffsets.size(),
+            binding.dynamicOffsets.data()
+        );
+    }
+
     //----------DESCRIPTOR GROUP DEFINITIONS----------//
 
-    DescriptorGroup::DescriptorGroup(RenderEngine &renderer, const std::unordered_map<uint32_t, VkDescriptorSetLayout> &setLayouts)
-        :renderer(renderer)
+    DescriptorGroup::DescriptorGroup(RenderEngine& renderer, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts)
+        :setLayouts(setLayouts),
+        renderer(renderer)
     {
         //create descriptor sets
         for(const auto& [setIndex, layout] : setLayouts)
@@ -324,7 +339,7 @@ namespace PaperRenderer
         }
     }
 
-    void DescriptorGroup::updateDescriptorSets(const std::unordered_map<uint32_t, DescriptorWrites> &descriptorWrites) const
+    void DescriptorGroup::updateDescriptorSets(const std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites) const
     {
         for(const auto& [setIndex, writes] : descriptorWrites)
         {
@@ -332,20 +347,18 @@ namespace PaperRenderer
         }
     }
 
-    void DescriptorGroup::bindSets(VkCommandBuffer cmdBuffer, VkPipelineBindPoint bindingPoint, VkPipelineLayout layout) const
+    void DescriptorGroup::bindSets(VkCommandBuffer cmdBuffer, VkPipelineBindPoint bindingPoint, VkPipelineLayout layout, std::unordered_map<uint32_t, std::vector<uint32_t>> dynamicOffsets) const
     {
         for(const auto& [setIndex, set] : descriptorSets)
         {
-            vkCmdBindDescriptorSets(
-                cmdBuffer,
-                bindingPoint,
-                layout,
-                setIndex,
-                1,
-                &set,
-                0,
-                NULL
-            );
+            const DescriptorBind bind = {
+                .bindPoint = bindingPoint,
+                .pipelineLayout = layout,
+                .descriptorSetIndex = setIndex,
+                .set = set,
+                .dynamicOffsets = dynamicOffsets[setIndex]
+            };
+            renderer.getDescriptorAllocator().bindDescriptorSet(cmdBuffer, bind);
         }
     }
 }

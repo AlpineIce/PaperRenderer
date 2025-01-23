@@ -11,43 +11,21 @@ namespace PaperRenderer
 
     ComputeShader::~ComputeShader()
     {
-        //destroy descriptors
-        for(const auto& [setIndex, set] : descriptorSets)
-        {
-            renderer.getDescriptorAllocator().freeDescriptorSet(set);
-        }
-
         pipeline.reset();
     }
 
     void ComputeShader::dispatch(const VkCommandBuffer& cmdBuffer,
-        const std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites,
+        const std::vector<DescriptorBind>& descriptorBindings,
         const glm::uvec3& workGroupSizes
     )
     {
-        //bind
+        //bind pipeline
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->getPipeline());
 
-        //write descriptors
-        for(const auto& [setIndex, writes] : descriptorWrites)
+        //bind descriptors
+        for(const DescriptorBind& binding : descriptorBindings)
         {
-            //make sure descriptor set exists
-            if(!descriptorSets.count(setIndex))
-            {
-                descriptorSets[setIndex] = renderer.getDescriptorAllocator().getDescriptorSet(pipeline->getDescriptorSetLayouts().at(setIndex));
-            }
-
-            //update descriptor set
-            renderer.getDescriptorAllocator().updateDescriptorSet(descriptorSets[setIndex], writes);
-
-            const DescriptorBind bindingInfo = {
-                .bindingPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
-                .layout = pipeline->getLayout(),
-                .descriptorSetIndex = setIndex,
-                .set = descriptorSets[setIndex]
-            };
-            
-            renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
+            renderer.getDescriptorAllocator().bindDescriptorSet(cmdBuffer, binding);
         }
 
         //dispatch

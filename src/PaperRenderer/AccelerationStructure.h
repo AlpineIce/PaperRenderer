@@ -8,6 +8,8 @@ namespace PaperRenderer
     class TLASInstanceBuildPipeline
     {
     private:
+        VkDescriptorSetLayout uboSetLayout;
+        VkDescriptorSetLayout ioSetLayout;
         ComputeShader computeShader;
 
         class RenderEngine& renderer;
@@ -24,6 +26,8 @@ namespace PaperRenderer
         };
 
         void submit(VkCommandBuffer cmdBuffer, const TLAS& tlas);
+
+        const VkDescriptorSetLayout& getUboDescriptorLayout() const { return uboSetLayout; }
     };
 
     //----------ACCELERATION STRUCTURE DECLARATIONS----------//

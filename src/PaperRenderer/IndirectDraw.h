@@ -1,5 +1,5 @@
 #pragma once
-#include "VulkanResources.h"
+#include "Descriptor.h"
 #include "gtc/quaternion.hpp"
 
 #include <unordered_map>
@@ -61,8 +61,11 @@ namespace PaperRenderer
         BufferSizeRequirements getBuffersRequirements();
         void setDrawCommandData() const;
 
+        //descriptors
+        std::unique_ptr<DescriptorGroup> descriptorGroup = NULL;
+        uint32_t drawDescriptorIndex = 0;
+
         //other
-        VkDescriptorSet objDescriptorSet;
         uint32_t drawCommandCount = 0;
         bool rebuild = true;
         std::unordered_map<class ModelInstance const*, std::unordered_map<struct LODMesh const*, MeshInstancesData>> instanceMeshesData = {};

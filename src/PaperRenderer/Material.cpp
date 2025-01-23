@@ -28,7 +28,7 @@ namespace PaperRenderer
     void Material::bind(VkCommandBuffer cmdBuffer) const
     {
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
-        descriptorGroup.bindSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getLayout());
+        descriptorGroup.bindSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getLayout(), {});
     }
 
     //----------MATERIAL INSTANCE DEFINITIONS----------//
@@ -51,7 +51,7 @@ namespace PaperRenderer
 
     void MaterialInstance::bind(VkCommandBuffer cmdBuffer) const
     {
-        descriptorGroup.bindSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, baseMaterial.getRasterPipeline().getLayout());
+        descriptorGroup.bindSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, baseMaterial.getRasterPipeline().getLayout(), {});
     }
 
     //----------RT MATERIAL DEFINITIONS----------//

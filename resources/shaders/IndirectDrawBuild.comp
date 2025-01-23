@@ -9,13 +9,17 @@ layout (local_size_x = 128) in;
 layout(std430, set = 0, binding = 0) uniform InputData
 {
     vec4 camPos;
-    mat4 projection;
-    mat4 view;
     uint64_t materialDataPtr;
     uint64_t modelDataPtr;
     uint objectCount;
     bool doCulling;
 } inputData;
+
+layout(std430, set = 2, binding = 0) uniform CameraMatrices
+{
+    mat4 projection;
+    mat4 view;
+} cameraMatrices;
 
 //----------PER RENDER PASS INSTANCE DATA (also the main input data)----------//
 
@@ -26,7 +30,7 @@ struct RenderPassInstance
     bool isVisible;
 };
 
-layout(scalar, set = 0, binding = 2) readonly buffer RenderPassInstances
+layout(scalar, set = 1, binding = 1) readonly buffer RenderPassInstances
 {
     RenderPassInstance datas[];
 } inputObjects;
@@ -103,7 +107,7 @@ void main()
     bool visible = inputInstance.isVisible;
     if(inputData.doCulling && visible)
     {
-        visible = isInBounds(modelInstance, model, modelMatrix, inputData.projection, inputData.view);
+        visible = isInBounds(modelInstance, model, modelMatrix, cameraMatrices.projection, cameraMatrices.view);
     }
     
     //indirect draw build if visible

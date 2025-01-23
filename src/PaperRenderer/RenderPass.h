@@ -16,6 +16,8 @@ namespace PaperRenderer
     class RasterPreprocessPipeline
     {
     private:
+        VkDescriptorSetLayout uboSetLayout;
+        VkDescriptorSetLayout ioSetLayout;
         ComputeShader computeShader;
 
         class RenderEngine& renderer;
@@ -28,8 +30,6 @@ namespace PaperRenderer
         struct UBOInputData
         {
             glm::vec4 camPos = glm::vec4(0.0f);
-            glm::mat4 projection = glm::mat4(1.0f);
-            glm::mat4 view = glm::mat4(1.0f);
             VkDeviceAddress materialDataPtr = 0;
             VkDeviceAddress modelDataPtr = 0;
             uint32_t objectCount = 0;
@@ -38,6 +38,8 @@ namespace PaperRenderer
         };
 
         void submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera);
+
+        const VkDescriptorSetLayout& getUboDescriptorLayout() const { return uboSetLayout; }
     };
     
     //----------RENDER PASS----------//
@@ -88,6 +90,10 @@ namespace PaperRenderer
         std::unique_ptr<Buffer> sortedInstancesOutputBuffer;
         std::unique_ptr<FragmentableBuffer> instancesDataBuffer;
 
+        //descriptors
+        DescriptorGroup descriptorGroup;
+
+        //functions
         void rebuildInstancesBuffer();
         void rebuildSortedInstancesBuffer();
         void rebuildMaterialDataBuffer();

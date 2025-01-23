@@ -30,7 +30,6 @@ namespace PaperRenderer
         const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> descriptorSetBindings;
         const RTPipelineProperties pipelineProperties;
         std::unique_ptr<RTPipeline> pipeline;
-        std::unordered_map<uint32_t, VkDescriptorSet> descriptorSets = {};
         
         bool queuePipelineBuild = true;
 

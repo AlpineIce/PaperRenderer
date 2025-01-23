@@ -8,7 +8,6 @@ namespace PaperRenderer
     {
     private:
         std::unique_ptr<ComputePipeline> pipeline;
-        std::unordered_map<uint32_t, VkDescriptorSet> descriptorSets = {};
 
         class RenderEngine& renderer;
 
@@ -19,7 +18,7 @@ namespace PaperRenderer
 
         //binds pipeline, writes descriptors, and does vkCmdDispatch on work group size
         void dispatch(const VkCommandBuffer& cmdBuffer,
-            const std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites,
+            const std::vector<DescriptorBind>& descriptorBindings,
             const glm::uvec3& workGroupSizes
         );
     };

@@ -22,7 +22,7 @@ struct InputASInstance
     uint recordOffsetAndFlags;
 };
 
-layout(scalar, set = 0, binding = 2) readonly buffer InputASInstances
+layout(scalar, set = 1, binding = 1) readonly buffer InputASInstances
 {
     InputASInstance instances[];
 } inputASInstances;
@@ -37,7 +37,7 @@ struct AccelerationStructureInstance
     uint64_t accelerationStructureReference;
 };
 
-layout(std430, set = 0, binding = 3) writeonly buffer ASInstances
+layout(std430, set = 1, binding = 2) writeonly buffer ASInstances
 {
     AccelerationStructureInstance objects[];
 } asInstances; 

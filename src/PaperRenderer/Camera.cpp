@@ -1,8 +1,6 @@
 #include "Camera.h"
 #include "PaperRenderer.h"
 
-#include <functional>
-
 namespace PaperRenderer
 {
     Camera::Camera(RenderEngine& renderer, const CameraInfo& cameraInfo)
@@ -12,10 +10,27 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR,
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
         }),
+        descriptorGroup(renderer, { { cameraInfo.descriptorIndex, renderer.getDefaultDescriptorSetLayout(CAMERA_MATRICES) } }),
         renderer(renderer)
     {
+        //update matrices to initial values
         updateProjection(cameraInfo.projection);
         updateView(cameraInfo.transformation);
+
+        //update descriptors
+        const DescriptorWrites descriptorWritesInfo = {
+            .bufferWrites = { {
+                .infos = { {
+                    .buffer = ubo.getBuffer(),
+                    .offset = 0,
+                    .range = sizeof(CameraUBOData)
+                } },
+                .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                .binding = 0,
+            } }
+        };
+
+        descriptorGroup.updateDescriptorSets({ { cameraInfo.descriptorIndex, descriptorWritesInfo } });
     }
 
     Camera::~Camera()

@@ -27,7 +27,7 @@ namespace PaperRenderer
         rebuildModelDataBuffer();
         rebuildInstancesbuffer();
 
-        //indirect draw model matrices
+        //indirect draw model matrices descriptor layout
         defaultDescriptorLayouts[INDIRECT_DRAW_MATRICES] = descriptors.createDescriptorSetLayout({ {
             .binding = 0,
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -36,7 +36,7 @@ namespace PaperRenderer
             .pImmutableSamplers = NULL
         } });
 
-        //camera matrices
+        //camera matrices descriptor layout
         defaultDescriptorLayouts[CAMERA_MATRICES] = descriptors.createDescriptorSetLayout({ {
             .binding = 0,
             .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
