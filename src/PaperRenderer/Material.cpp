@@ -6,130 +6,52 @@ namespace PaperRenderer
 {
     //----------MATERIAL DEFINITIONS----------//
 
-    Material::Material(RenderEngine& renderer, RasterPipelineBuildInfo pipelineInfo, bool assignDefaultDescriptors)
-        :assignDefaultDescriptors(assignDefaultDescriptors),
+    Material::Material(RenderEngine& renderer, const RasterPipelineBuildInfo& pipelineInfo, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& materialDescriptorSets)
+        :descriptorGroup(renderer, materialDescriptorSets),
         renderer(renderer)
     {
-        //add reserved descriptors if set
-        if(assignDefaultDescriptors)
-        {
-            //camera UBO
-            pipelineInfo.descriptorSets[0].push_back({
-                .binding = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                .pImmutableSamplers = NULL
-            });
-
-            //model matrices SBO
-            pipelineInfo.descriptorSets[pipelineInfo.drawDescriptorIndex].push_back({
-                .binding = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-                .pImmutableSamplers = NULL
-            });
-        }
-        
         //build pipeline
         rasterPipeline = renderer.getPipelineBuilder().buildRasterPipeline(pipelineInfo);
     }
 
     Material::~Material()
     {
-        //destroy descriptors
-        for(const auto& [setIndex, set] : descriptorSets)
-        {
-            renderer.getDescriptorAllocator().freeDescriptorSet(set);
-        }
-
         //destroy graphics pipeline
         rasterPipeline.reset();
     }
 
-    void Material::bind(VkCommandBuffer cmdBuffer, const Camera& camera, std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites)
+    void Material::updateDescriptors(std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> descriptorWrites) const
     {
-        //bind
+        descriptorGroup.updateDescriptorSets(descriptorWrites);
+    }
+
+    void Material::bind(VkCommandBuffer cmdBuffer) const
+    {
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
-
-        //camera UBO if used
-        if(assignDefaultDescriptors)
-        {
-            descriptorWrites[0].bufferWrites.push_back({
-                .infos = { {
-                    .buffer = camera.getCameraUBO().getBuffer(),
-                    .offset = renderer.getBufferIndex() * sizeof(CameraUBOData),
-                    .range = sizeof(CameraUBOData)
-                } },
-                .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .binding = 0
-            });
-        }
-        
-        //write descriptors
-        for(const auto& [setIndex, writes] : descriptorWrites)
-        {
-            //make sure descriptor set exists
-            if(!descriptorSets.count(setIndex))
-            {
-                descriptorSets[setIndex] = renderer.getDescriptorAllocator().getDescriptorSet(rasterPipeline->getDescriptorSetLayouts().at(setIndex));
-            }
-
-            //update descriptor set
-            renderer.getDescriptorAllocator().updateDescriptorSet(descriptorSets[setIndex], writes);
-
-            const DescriptorBind bindingInfo = {
-                .bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-                .layout = rasterPipeline->getLayout(),
-                .descriptorSetIndex = setIndex,
-                .set = descriptorSets[setIndex]
-            };
-            
-            renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
-        }
+        descriptorGroup.bindSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getLayout());
     }
 
     //----------MATERIAL INSTANCE DEFINITIONS----------//
 
-    MaterialInstance::MaterialInstance(RenderEngine& renderer, const Material& baseMaterial)
-        :baseMaterial(baseMaterial),
+    MaterialInstance::MaterialInstance(RenderEngine& renderer, const Material& baseMaterial, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& instanceDescriptorSets)
+        :descriptorGroup(renderer, instanceDescriptorSets),
+        baseMaterial(baseMaterial),
         renderer(renderer)
     {
     }
 
     MaterialInstance::~MaterialInstance()
     {
-        //destroy descriptors
-        for(const auto& [setIndex, set] : descriptorSets)
-        {
-            renderer.getDescriptorAllocator().freeDescriptorSet(set);
-        }
     }
 
-    void MaterialInstance::bind(VkCommandBuffer cmdBuffer, std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites)
+    void MaterialInstance::updateDescriptors(std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> descriptorWrites) const
     {
-        //write descriptors
-        for(const auto& [setIndex, writes] : descriptorWrites)
-        {
-            //make sure descriptor set exists
-            if(!descriptorSets.count(setIndex))
-            {
-                descriptorSets[setIndex] = renderer.getDescriptorAllocator().getDescriptorSet(baseMaterial.getRasterPipeline().getDescriptorSetLayouts().at(setIndex));
-            }
+        descriptorGroup.updateDescriptorSets(descriptorWrites);
+    }
 
-            //update descriptor set
-            renderer.getDescriptorAllocator().updateDescriptorSet(descriptorSets[setIndex], writes);
-
-            const DescriptorBind bindingInfo = {
-                .bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-                .layout = baseMaterial.getRasterPipeline().getLayout(),
-                .descriptorSetIndex = setIndex,
-                .set = descriptorSets[setIndex]
-            };
-            
-            renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
-        }
+    void MaterialInstance::bind(VkCommandBuffer cmdBuffer) const
+    {
+        descriptorGroup.bindSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, baseMaterial.getRasterPipeline().getLayout());
     }
 
     //----------RT MATERIAL DEFINITIONS----------//

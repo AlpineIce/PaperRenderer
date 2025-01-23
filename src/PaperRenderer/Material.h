@@ -11,41 +11,43 @@ namespace PaperRenderer
     class Material
     {
     private:
-        const bool assignDefaultDescriptors;
+        const DescriptorGroup descriptorGroup;
         std::unique_ptr<RasterPipeline> rasterPipeline;
-        std::unordered_map<uint32_t, VkDescriptorSet> descriptorSets = {};
     
     protected:
         class RenderEngine& renderer;
 
     public:
-        Material(class RenderEngine& renderer, RasterPipelineBuildInfo pipelineInfo, bool assignDefaultDescriptors=true);
+        //materialDescriptorSets refers to the descriptor sets that will be updated/bound in the scope of this material only
+        Material(class RenderEngine& renderer, const RasterPipelineBuildInfo& pipelineInfo, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& materialDescriptorSets);
         virtual ~Material();
         Material(const Material&) = delete;
 
-        //additional descriptor writes can be added with parameter. SET 0, BINDING 0 IS RESERVED FOR CAMERA MATRICES
-        virtual void bind(VkCommandBuffer cmdBuffer, const class Camera& camera, std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites); //used per pipeline bind and material instance; camera is optional
+        virtual void updateDescriptors(std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> descriptorWrites) const;
+        void bind(VkCommandBuffer cmdBuffer) const;
         
         const RasterPipeline& getRasterPipeline() const { return *rasterPipeline; }
-        const bool& usesDefaultDescriptors() const { return assignDefaultDescriptors; }
+        const DescriptorGroup& getDescriptorGroup() const { return descriptorGroup; }
     };
 
     class MaterialInstance
     {
     protected:
-        std::unordered_map<uint32_t, VkDescriptorSet> descriptorSets = {};
+        const DescriptorGroup descriptorGroup;
 
         const Material& baseMaterial;
         class RenderEngine& renderer;
 
     public:
-        MaterialInstance(class RenderEngine& renderer, const Material& baseMaterial);
+        //instanceDescriptorSets refers to the descriptor sets that will be updated/bound in the scope of this material instance only
+        MaterialInstance(class RenderEngine& renderer, const Material& baseMaterial, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& instanceDescriptorSets);
         virtual ~MaterialInstance();
         MaterialInstance(const MaterialInstance&) = delete;
-        
-        //additional descriptor writes can be added with parameter
-        virtual void bind(VkCommandBuffer cmdBuffer, std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites);
 
+        virtual void updateDescriptors(std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> descriptorWrites) const;
+        void bind(VkCommandBuffer cmdBuffer) const;
+        
+        const DescriptorGroup& getDescriptorGroup() const { return descriptorGroup; }
         const Material& getBaseMaterial() const { return baseMaterial; }
     };
 

@@ -23,8 +23,27 @@ namespace PaperRenderer
         asBuilder(*this),
         stagingBuffer({ std::make_unique<RendererStagingBuffer>(*this), std::make_unique<RendererStagingBuffer>(*this) })
     {
+        //initialize buffers
         rebuildModelDataBuffer();
         rebuildInstancesbuffer();
+
+        //indirect draw model matrices
+        defaultDescriptorLayouts[INDIRECT_DRAW_MATRICES] = descriptors.createDescriptorSetLayout({ {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+            .pImmutableSamplers = NULL
+        } });
+
+        //camera matrices
+        defaultDescriptorLayouts[CAMERA_MATRICES] = descriptors.createDescriptorSetLayout({ {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+            .pImmutableSamplers = NULL
+        } });
 
         //finish up
         vkDeviceWaitIdle(device.getDevice());
@@ -40,8 +59,14 @@ namespace PaperRenderer
     RenderEngine::~RenderEngine()
     {
         vkDeviceWaitIdle(device.getDevice());
+
+        //destroy default set layouts
+        for(VkDescriptorSetLayout layout : defaultDescriptorLayouts)
+        {
+            vkDestroyDescriptorSetLayout(device.getDevice(), layout, nullptr);
+        }
     
-        //free cmd buffers
+        //destroy buffers
         modelDataBuffer.reset();
         instancesDataBuffer.reset();
 

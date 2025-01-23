@@ -21,6 +21,14 @@
 
 namespace PaperRenderer
 {
+    //Default descriptors
+    enum DefaultDescriptors
+    {
+        INDIRECT_DRAW_MATRICES = 0,
+        CAMERA_MATRICES = 1
+    };
+
+    //struct for RenderEngine
     struct PaperRendererInfo
     {
         const std::function<void(RenderEngine&, const LogEvent&)>& logEventCallbackFunction = NULL;
@@ -30,7 +38,8 @@ namespace PaperRenderer
         const DeviceInstanceInfo& deviceInstanceInfo = {};
         const WindowState& windowState = {};
     };
-
+    
+    //main renderer class
     class RenderEngine
     {
     private:
@@ -50,6 +59,9 @@ namespace PaperRenderer
         std::deque<ModelInstance*> toUpdateModelInstances; //queued instance references that need to have their data in GPU buffers updated
         std::vector<Model*> renderingModels;
         std::deque<Model*> toUpdateModels; //queued model references that need to have their data in GPU buffers updated
+
+        //descriptor layouts
+        std::array<VkDescriptorSetLayout, 2> defaultDescriptorLayouts;
 
         //----------BUFFERS----------//
 
@@ -108,5 +120,6 @@ namespace PaperRenderer
         const std::vector<Model*>& getModelReferences() const { return renderingModels; }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
         Buffer& getModelDataBuffer() const { return modelDataBuffer->getBuffer(); }
+        VkDescriptorSetLayout getDefaultDescriptorSetLayout(const DefaultDescriptors descriptor) const { return defaultDescriptorLayouts[descriptor]; }
     };
 }

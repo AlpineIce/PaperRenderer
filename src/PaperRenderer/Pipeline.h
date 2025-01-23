@@ -53,9 +53,7 @@ namespace PaperRenderer
     {
     protected:
         VkPipeline pipeline;
-        std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
         VkPipelineLayout pipelineLayout;
-        std::unordered_map<uint32_t, VkDescriptorSet> descriptorSets = {};
 
         class RenderEngine& renderer;
         
@@ -65,7 +63,6 @@ namespace PaperRenderer
         Pipeline(const Pipeline&) = delete;
         
         VkPipeline getPipeline() const { return pipeline; }
-        const std::unordered_map<uint32_t, VkDescriptorSetLayout>& getDescriptorSetLayouts() const { return setLayouts; } //TODO USE AN ENUM FOR USABLE SET LAYOUT INDICES
         VkPipelineLayout getLayout() const { return pipelineLayout; }
     };
 
@@ -78,7 +75,7 @@ namespace PaperRenderer
     struct ComputePipelineBuildInfo
     {
         const ShaderPair& shaderInfo;
-        const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptors; //set, bindings
+        const std::unordered_map<uint32_t, VkDescriptorSetLayout>& descriptorSets; //set, bindings
         const std::vector<VkPushConstantRange>& pcRanges;
     };
 
@@ -146,21 +143,16 @@ namespace PaperRenderer
 
     struct RasterPipelineBuildInfo
     {
-        std::vector<ShaderPair> shaderInfo;
-        //SET 0 BINDING 0 AND SET 2 BINDING 0 ARE RESERVED (camera matrices and model matrices respectively)
-        std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> descriptorSets;
-        std::vector<VkPushConstantRange> pcRanges;
+        std::vector<ShaderPair> shaderInfo = {};
+        std::unordered_map<uint32_t, VkDescriptorSetLayout> descriptorSets = {}; //includes all descriptors that will be used in the pipeline
+        std::vector<VkPushConstantRange> pcRanges = {};
         RasterPipelineProperties properties = {};
-        //Lowest level descriptor, used for drawing. Should be mat4[] at binding 0, which will be filled
-        //in with model matrix data by the renderer. Default value is 1, which means it will use set 1, binding 0 unless otherwise specified
-        const uint32_t drawDescriptorIndex = 1;
     };
 
     class RasterPipeline : public Pipeline
     {
     private:
         const RasterPipelineProperties pipelineProperties;
-        const uint32_t drawDescriptorIndex;
 
     public:
         RasterPipeline(const RasterPipelineCreationInfo& creationInfo, const RasterPipelineProperties& pipelineProperties);
@@ -168,7 +160,6 @@ namespace PaperRenderer
         RasterPipeline(const RasterPipeline&) = delete;
 
         const RasterPipelineProperties& getPipelineProperties() const { return pipelineProperties; }
-        const uint32_t& getDrawDescriptorIndex() const { return drawDescriptorIndex; }
     };
 
     //ray tracing pipeline
@@ -191,7 +182,7 @@ namespace PaperRenderer
         const ShaderDescription& raygenShader;
         const std::vector<ShaderDescription>& missShaders;
         const std::vector<ShaderDescription>& callableShaders;
-        const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptorSets;
+        const std::unordered_map<uint32_t, VkDescriptorSetLayout>& descriptorSets;
         const std::vector<VkPushConstantRange>& pcRanges;
         const RTPipelineProperties& properties;
     };
@@ -248,7 +239,6 @@ namespace PaperRenderer
     private:
         VkPipelineCache cache = VK_NULL_HANDLE;
 
-        std::unordered_map<uint32_t, VkDescriptorSetLayout> createDescriptorLayouts(const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptorSets) const;
         VkPipelineLayout createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, const std::vector<VkPushConstantRange>& pcRanges) const;
 
         class RenderEngine& renderer;

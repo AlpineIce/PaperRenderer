@@ -161,6 +161,29 @@ namespace PaperRenderer
         return returnSet;
     }
 
+    VkDescriptorSetLayout DescriptorAllocator::createDescriptorSetLayout(const std::vector<VkDescriptorSetLayoutBinding>& bindings) const
+    {
+        const VkDescriptorSetLayoutCreateInfo descriptorLayoutInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .bindingCount = (uint32_t)bindings.size(),
+            .pBindings = bindings.data()
+        };
+        
+        VkDescriptorSetLayout setLayout;
+        VkResult result = vkCreateDescriptorSetLayout(renderer.getDevice().getDevice(), &descriptorLayoutInfo, nullptr, &setLayout);
+        if(result != VK_SUCCESS)
+        {
+            renderer.getLogger().recordLog({
+                .type = ERROR,
+                .text = "Failed to create descriptor set layout"
+            });
+        }
+
+        return setLayout;
+    }
+
     void DescriptorAllocator::freeDescriptorSet(VkDescriptorSet set)
     {
         //free
@@ -280,20 +303,6 @@ namespace PaperRenderer
         }
     }
 
-    void DescriptorAllocator::bindSet(VkCommandBuffer cmdBuffer, const DescriptorBind& bindingInfo) const
-    {
-        vkCmdBindDescriptorSets(
-            cmdBuffer,
-            bindingInfo.bindingPoint,
-            bindingInfo.layout,
-            bindingInfo.descriptorSetIndex,
-            1,
-            &bindingInfo.set,
-            0,
-            NULL
-        );
-    }
-
     //----------DESCRIPTOR GROUP DEFINITIONS----------//
 
     DescriptorGroup::DescriptorGroup(RenderEngine &renderer, const std::unordered_map<uint32_t, VkDescriptorSetLayout> &setLayouts)
@@ -317,23 +326,26 @@ namespace PaperRenderer
 
     void DescriptorGroup::updateDescriptorSets(const std::unordered_map<uint32_t, DescriptorWrites> &descriptorWrites) const
     {
-        //write descriptors
         for(const auto& [setIndex, writes] : descriptorWrites)
         {
-            //update descriptor set
             renderer.getDescriptorAllocator().updateDescriptorSet(descriptorSets.at(setIndex), writes);
         }
     }
 
-    void DescriptorGroup::bindSet(VkCommandBuffer cmdBuffer, VkPipelineBindPoint bindingPoint, VkPipelineLayout layout, uint32_t index) const
+    void DescriptorGroup::bindSets(VkCommandBuffer cmdBuffer, VkPipelineBindPoint bindingPoint, VkPipelineLayout layout) const
     {
-        const DescriptorBind bindingInfo = {
-            .bindingPoint = bindingPoint,
-            .layout = layout,
-            .descriptorSetIndex = index,
-            .set = descriptorSets.at(index)
-        };
-
-        renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
+        for(const auto& [setIndex, set] : descriptorSets)
+        {
+            vkCmdBindDescriptorSets(
+                cmdBuffer,
+                bindingPoint,
+                layout,
+                setIndex,
+                1,
+                &set,
+                0,
+                NULL
+            );
+        }
     }
 }

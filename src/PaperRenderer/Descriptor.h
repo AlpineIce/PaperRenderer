@@ -76,8 +76,8 @@ namespace PaperRenderer
         DescriptorAllocator(const DescriptorAllocator&) = delete;
 
         void updateDescriptorSet(VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo) const;
-        void bindSet(VkCommandBuffer cmdBuffer, const DescriptorBind& bindingInfo) const;
-
+        
+        VkDescriptorSetLayout createDescriptorSetLayout(const std::vector<VkDescriptorSetLayoutBinding>& bindings) const;
         VkDescriptorSet getDescriptorSet(VkDescriptorSetLayout setLayout);
         void freeDescriptorSet(VkDescriptorSet set);
     };
@@ -97,6 +97,6 @@ namespace PaperRenderer
         DescriptorGroup(const DescriptorGroup&) = delete;
 
         void updateDescriptorSets(const std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites) const;
-        void bindSet(VkCommandBuffer cmdBuffer, VkPipelineBindPoint bindingPoint, VkPipelineLayout layout, uint32_t index) const;
+        void bindSets(VkCommandBuffer cmdBuffer, VkPipelineBindPoint bindingPoint, VkPipelineLayout layout) const;
     };
 }

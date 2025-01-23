@@ -1,6 +1,4 @@
 #include "PaperRenderer.h"
-
-#include <functional>
 #include "Pipeline.h"
 
 namespace PaperRenderer
@@ -10,17 +8,21 @@ namespace PaperRenderer
     Shader::Shader(RenderEngine& renderer, const std::vector<uint32_t>& data)
         :renderer(renderer)
     {
-        VkShaderModuleCreateInfo creationInfo;
-        creationInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        creationInfo.pNext = NULL;
-        creationInfo.flags = 0;
-        creationInfo.codeSize = data.size();
-        creationInfo.pCode = data.data();
+        const VkShaderModuleCreateInfo creationInfo = {
+            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .codeSize = data.size(),
+            .pCode = data.data()
+        };
 
         VkResult result = vkCreateShaderModule(renderer.getDevice().getDevice(), &creationInfo, nullptr, &program);
         if(result != VK_SUCCESS)
         {
-            throw std::runtime_error("Creation of shader module failed.");
+            renderer.getLogger().recordLog({
+                .type = ERROR,
+                .text = "Creation of shader module failed."
+            });
         }
     }
 
@@ -33,19 +35,12 @@ namespace PaperRenderer
 
     Pipeline::Pipeline(const PipelineCreationInfo& creationInfo)
         :renderer(creationInfo.renderer),
-        pipelineLayout(creationInfo.pipelineLayout),
-        setLayouts(creationInfo.setLayouts)
+        pipelineLayout(creationInfo.pipelineLayout)
     {
     }
 
     Pipeline::~Pipeline()
     {
-        //destroy set layouts
-        for(const auto& [setNum, set] : setLayouts)
-        {
-            vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), set, nullptr);
-        }
-
         //destroy pipeline and layout
         vkDestroyPipeline(renderer.getDevice().getDevice(), pipeline, nullptr);
         vkDestroyPipelineLayout(renderer.getDevice().getDevice(), pipelineLayout, nullptr);
@@ -56,26 +51,29 @@ namespace PaperRenderer
     ComputePipeline::ComputePipeline(const ComputePipelineCreationInfo& creationInfo)
         :Pipeline(creationInfo)
     {
-        VkPipelineShaderStageCreateInfo stageInfo;
-        stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        stageInfo.pNext = NULL,
-        stageInfo.flags = 0,
-        stageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-        stageInfo.module = creationInfo.shader->getModule(),
-        stageInfo.pName = "main", //use main() function in shaders
-        stageInfo.pSpecializationInfo = NULL;
-
-        VkComputePipelineCreateInfo pipelineInfo = {};
-        pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-        pipelineInfo.pNext = NULL;
-        pipelineInfo.flags = 0;
-        pipelineInfo.stage = stageInfo;
-        pipelineInfo.layout = pipelineLayout;
+        const VkComputePipelineCreateInfo pipelineInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .stage = {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .pNext = NULL,
+                .flags = 0,
+                .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+                .module = creationInfo.shader->getModule(),
+                .pName = "main", //use main() function in shaders
+                .pSpecializationInfo = NULL
+            },
+            .layout = pipelineLayout
+        };
         
         VkResult result = vkCreateComputePipelines(renderer.getDevice().getDevice(), creationInfo.cache, 1, &pipelineInfo, nullptr, &pipeline);
         if(result != VK_SUCCESS)
         {
-            throw std::runtime_error("Failed to create compute pipeline");
+            renderer.getLogger().recordLog({
+                .type = ERROR,
+                .text = "Failed to create compute pipeline"
+            });
         }
     }
 
@@ -87,8 +85,7 @@ namespace PaperRenderer
 
     RasterPipeline::RasterPipeline(const RasterPipelineCreationInfo& creationInfo, const RasterPipelineProperties& pipelineProperties)
         :Pipeline(creationInfo),
-        pipelineProperties(pipelineProperties),
-        drawDescriptorIndex(creationInfo.drawDescriptorIndex)
+        pipelineProperties(pipelineProperties)
     {
         //pipeline info from here on
         VkPipelineRenderingCreateInfo renderingInfo = {};
@@ -200,7 +197,10 @@ namespace PaperRenderer
         VkResult result = vkCreateGraphicsPipelines(renderer.getDevice().getDevice(), creationInfo.cache, 1, &pipelineCreateInfo, nullptr, &pipeline);
         if(result != VK_SUCCESS)
         {
-            throw std::runtime_error("Failed to create a graphics pipeline");
+            renderer.getLogger().recordLog({
+                .type = ERROR,
+                .text = "Failed to create a graphics pipeline"
+            });
         }
     }
 
@@ -344,7 +344,10 @@ namespace PaperRenderer
         VkResult result = vkCreateRayTracingPipelinesKHR(renderer.getDevice().getDevice(), VK_NULL_HANDLE, creationInfo.cache, 1, &pipelineCreateInfo, nullptr, &pipeline);
         if(result != VK_SUCCESS)
         {
-            throw std::runtime_error("Failed to create a ray tracing pipeline");
+            renderer.getLogger().recordLog({
+                .type = ERROR,
+                .text = "Failed to create a ray tracing pipeline"
+            });
         }
 
 
@@ -508,35 +511,6 @@ namespace PaperRenderer
         });
     }
 
-    std::unordered_map<uint32_t, VkDescriptorSetLayout> PipelineBuilder::createDescriptorLayouts(const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptorSets) const
-    {
-        std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
-        for(const auto& [setNum, set] : descriptorSets)
-        {
-            std::vector<VkDescriptorSetLayoutBinding> vBindings;
-            vBindings.reserve(set.size());
-            for(const VkDescriptorSetLayoutBinding& binding : set)
-            {
-                vBindings.push_back(binding);
-            }
-
-            VkDescriptorSetLayoutCreateInfo descriptorLayoutInfo = {};
-            descriptorLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            descriptorLayoutInfo.pNext = NULL;
-            descriptorLayoutInfo.flags = 0;
-            descriptorLayoutInfo.bindingCount = vBindings.size();
-            descriptorLayoutInfo.pBindings = vBindings.data();
-            
-            VkDescriptorSetLayout setLayout;
-            VkResult result = vkCreateDescriptorSetLayout(renderer.getDevice().getDevice(), &descriptorLayoutInfo, nullptr, &setLayout);
-            if(result != VK_SUCCESS) throw std::runtime_error("Failed to create descriptor set layout");
-
-            setLayouts[setNum] = setLayout;
-        }
-
-        return setLayouts;
-    }
-
     VkPipelineLayout PipelineBuilder::createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, const std::vector<VkPushConstantRange>& pcRanges) const
     {
         std::vector<VkDescriptorSetLayout> vSetLayouts(setLayouts.size());
@@ -569,7 +543,7 @@ namespace PaperRenderer
         ComputePipelineCreationInfo pipelineInfo = {{
                 .renderer = renderer,
                 .cache = cache,
-                .setLayouts = createDescriptorLayouts(info.descriptors),
+                .setLayouts = info.descriptorSets,
                 .pcRanges = info.pcRanges,
                 .pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts, info.pcRanges),
             },
@@ -595,12 +569,11 @@ namespace PaperRenderer
         const RasterPipelineCreationInfo pipelineInfo = { {
                 .renderer = renderer,
                 .cache = cache,
-                .setLayouts = createDescriptorLayouts(info.descriptorSets),
+                .setLayouts = info.descriptorSets,
                 .pcRanges = info.pcRanges,
                 .pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts, info.pcRanges),
             },
-            shaders,
-            info.drawDescriptorIndex
+            shaders
         };
         
         return std::make_unique<RasterPipeline>(pipelineInfo, info.properties);
@@ -614,7 +587,7 @@ namespace PaperRenderer
         RTPipelineCreationInfo pipelineInfo = { {
                 .renderer = renderer,
                 .cache = cache,
-                .setLayouts = createDescriptorLayouts(info.descriptorSets),
+                .setLayouts = info.descriptorSets,
                 .pcRanges = info.pcRanges,
                 .pipelineLayout = createPipelineLayout(pipelineInfo.setLayouts, info.pcRanges)
             },
