@@ -207,7 +207,7 @@ namespace PaperRenderer
         //bind matrices descriptor if used
         if(descriptorGroup)
         {
-            descriptorGroup->bindSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.getRasterPipeline().getLayout());
+            descriptorGroup->bindSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.getRasterPipeline().getLayout(), {});
         }
 
         //submit draw calls

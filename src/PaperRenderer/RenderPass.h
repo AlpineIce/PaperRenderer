@@ -29,17 +29,17 @@ namespace PaperRenderer
 
         struct UBOInputData
         {
-            glm::vec4 camPos = glm::vec4(0.0f);
             VkDeviceAddress materialDataPtr = 0;
             VkDeviceAddress modelDataPtr = 0;
             uint32_t objectCount = 0;
             bool doCulling = true;
-            float padding[6] = {};
+            float padding[9];
         };
 
         void submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera);
 
         const VkDescriptorSetLayout& getUboDescriptorLayout() const { return uboSetLayout; }
+        const VkDescriptorSetLayout& getIODescriptorLayout() const { return ioSetLayout; }
     };
     
     //----------RENDER PASS----------//

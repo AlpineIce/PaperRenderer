@@ -14,17 +14,16 @@ namespace PaperRenderer
         const DescriptorGroup descriptorGroup;
         std::unique_ptr<RasterPipeline> rasterPipeline;
     
-    protected:
         class RenderEngine& renderer;
 
     public:
         //materialDescriptorSets refers to the descriptor sets that will be updated/bound in the scope of this material only
         Material(class RenderEngine& renderer, const RasterPipelineBuildInfo& pipelineInfo, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& materialDescriptorSets);
-        virtual ~Material();
+        ~Material();
         Material(const Material&) = delete;
 
-        virtual void updateDescriptors(std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> descriptorWrites) const;
-        void bind(VkCommandBuffer cmdBuffer) const;
+        void updateDescriptors(std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> descriptorWrites) const;
+        void bind(VkCommandBuffer cmdBuffer, const class Camera& camera) const;
         
         const RasterPipeline& getRasterPipeline() const { return *rasterPipeline; }
         const DescriptorGroup& getDescriptorGroup() const { return descriptorGroup; }
@@ -32,7 +31,7 @@ namespace PaperRenderer
 
     class MaterialInstance
     {
-    protected:
+    private:
         const DescriptorGroup descriptorGroup;
 
         const Material& baseMaterial;
@@ -41,10 +40,10 @@ namespace PaperRenderer
     public:
         //instanceDescriptorSets refers to the descriptor sets that will be updated/bound in the scope of this material instance only
         MaterialInstance(class RenderEngine& renderer, const Material& baseMaterial, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& instanceDescriptorSets);
-        virtual ~MaterialInstance();
+        ~MaterialInstance();
         MaterialInstance(const MaterialInstance&) = delete;
 
-        virtual void updateDescriptors(std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> descriptorWrites) const;
+        void updateDescriptors(std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> descriptorWrites) const;
         void bind(VkCommandBuffer cmdBuffer) const;
         
         const DescriptorGroup& getDescriptorGroup() const { return descriptorGroup; }

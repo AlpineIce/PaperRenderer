@@ -10,7 +10,7 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR,
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
         }),
-        descriptorGroup(renderer, { { cameraInfo.descriptorIndex, renderer.getDefaultDescriptorSetLayout(CAMERA_MATRICES) } }),
+        descriptorGroup(renderer, { { 0, renderer.getDefaultDescriptorSetLayout(CAMERA_MATRICES) } }),
         renderer(renderer)
     {
         //update matrices to initial values
@@ -30,7 +30,7 @@ namespace PaperRenderer
             } }
         };
 
-        descriptorGroup.updateDescriptorSets({ { cameraInfo.descriptorIndex, descriptorWritesInfo } });
+        descriptorGroup.updateDescriptorSets({ { 0, descriptorWritesInfo } });
     }
 
     Camera::~Camera()
@@ -133,5 +133,10 @@ namespace PaperRenderer
         glm::mat4 viewInverse = glm::inverse(view);
 
         return glm::vec3(viewInverse[3][0], viewInverse[3][1], viewInverse[3][2]);
+    }
+    
+    const uint32_t Camera::getUBODynamicOffset() const
+    {
+        return sizeof(CameraUBOData) * renderer.getBufferIndex(); 
     }
 }

@@ -39,7 +39,7 @@ namespace PaperRenderer
         //camera matrices descriptor layout
         defaultDescriptorLayouts[CAMERA_MATRICES] = descriptors.createDescriptorSetLayout({ {
             .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
             .descriptorCount = 1,
             .stageFlags = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
             .pImmutableSamplers = NULL

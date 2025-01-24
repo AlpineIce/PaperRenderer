@@ -28,6 +28,7 @@ namespace PaperRenderer
         void submit(VkCommandBuffer cmdBuffer, const TLAS& tlas);
 
         const VkDescriptorSetLayout& getUboDescriptorLayout() const { return uboSetLayout; }
+        const VkDescriptorSetLayout& getIODescriptorLayout() const { return ioSetLayout; }
     };
 
     //----------ACCELERATION STRUCTURE DECLARATIONS----------//
@@ -118,6 +119,9 @@ namespace PaperRenderer
         Buffer preprocessUniformBuffer;
         std::unique_ptr<Buffer> scratchBuffer; //TLAS gets its own scratch buffer
         std::unique_ptr<Buffer> instancesBuffer;
+
+        //descriptors
+        DescriptorGroup descriptorGroup;
 
         //instances data offsets/sizes
         VkDeviceSize instanceDescriptionsOffset = 0;

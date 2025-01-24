@@ -43,7 +43,6 @@ namespace PaperRenderer
         std::variant<glm::mat4, CameraTransformationParameters> transformation = {};
         float clipNear = 0.1f;
         float clipFar = 1000.0f;
-        uint32_t descriptorIndex = 0; //all shaders that use the camera matrices will need the corresponding set set to this index
     };
 
     //----------CAMERA CLASS----------//
@@ -83,5 +82,6 @@ namespace PaperRenderer
         CameraInfo getCameraInfo() const { return cameraInfo; }
         const class Buffer& getCameraUBO() const { return ubo; }
         const DescriptorGroup& getDescriptorGroup() const { return descriptorGroup; }
+        const uint32_t getUBODynamicOffset() const;
     };
 }

@@ -25,7 +25,7 @@ namespace PaperRenderer
         descriptorGroup.updateDescriptorSets(descriptorWrites);
     }
 
-    void Material::bind(VkCommandBuffer cmdBuffer) const
+    void Material::bind(VkCommandBuffer cmdBuffer, const Camera& camera) const
     {
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
         descriptorGroup.bindSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getLayout(), {});

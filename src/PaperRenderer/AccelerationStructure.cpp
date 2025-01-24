@@ -420,6 +420,10 @@ namespace PaperRenderer
             .size = sizeof(TLASInstanceBuildPipeline::UBOInputData) * 2,
             .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
+        }),
+        descriptorGroup(renderer, {
+            { 0, renderer.getTLASPreprocessPipeline().getUboDescriptorLayout() },
+            { 1, renderer.getRasterPreprocessPipeline().getIODescriptorLayout() }
         })
     {
     }
@@ -517,7 +521,6 @@ namespace PaperRenderer
 
                 SynchronizationInfo syncInfo = {};
                 syncInfo.queueType = TRANSFER;
-                syncInfo.fence = renderer.getDevice().getCommands().getUnsignaledFence();
 
                 //start command buffer
                 VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(syncInfo.queueType);
@@ -534,10 +537,7 @@ namespace PaperRenderer
                 renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
                 //submit
-                renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
-
-                vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
-                vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
+                vkQueueWaitIdle(renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer }).queue);
             }
             
             //replace old buffers

@@ -16,6 +16,8 @@ namespace PaperRenderer
         ~ComputeShader();
         ComputeShader(const ComputeShader&) = delete;
 
+        const ComputePipeline& getPipeline() const { return *pipeline; }
+
         //binds pipeline, writes descriptors, and does vkCmdDispatch on work group size
         void dispatch(const VkCommandBuffer& cmdBuffer,
             const std::vector<DescriptorBind>& descriptorBindings,

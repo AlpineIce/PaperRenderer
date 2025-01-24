@@ -112,6 +112,7 @@ namespace PaperRenderer
         StatisticsTracker& getStatisticsTracker() { return statisticsTracker; }
         Device& getDevice() { return device; }
         RasterPreprocessPipeline& getRasterPreprocessPipeline() { return rasterPreprocessPipeline; }
+        TLASInstanceBuildPipeline& getTLASPreprocessPipeline() { return tlasInstanceBuildPipeline; }
         DescriptorAllocator& getDescriptorAllocator() { return descriptors; }
         PipelineBuilder& getPipelineBuilder() { return pipelineBuilder; }
         Swapchain& getSwapchain() { return swapchain; }
