@@ -97,7 +97,9 @@ namespace PaperRenderer
             CAMERA = 2,
             SORTED_MATRICES = 3
         };
-        const std::vector<ResourceDescriptor> descriptorSets;
+        ResourceDescriptor uboDescriptor;
+        ResourceDescriptor ioDescriptor;
+        ResourceDescriptor sortedMatricesDescriptor;
 
         //functions
         void rebuildInstancesBuffer();

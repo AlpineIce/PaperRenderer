@@ -127,7 +127,9 @@ namespace PaperRenderer
             IO = 1,
             DESCRIPTIONS = 2
         };
-        const std::vector<ResourceDescriptor> descriptorSets;
+        ResourceDescriptor uboDescriptor;
+        ResourceDescriptor ioDescriptor;
+        ResourceDescriptor instanceDescriptionsDescriptor;
 
         //instances data offsets/sizes
         VkDeviceSize instanceDescriptionsOffset = 0;

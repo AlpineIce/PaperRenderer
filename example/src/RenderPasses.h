@@ -110,7 +110,7 @@ class BufferCopyPass
 {
 private:
     //buffer copy material
-    class BufferCopyMaterial : public PaperRenderer::Material
+    class BufferCopyMaterial
     {
     private:
         //UBO
@@ -126,14 +126,15 @@ private:
             float gammaCorrection;
         };
         PaperRenderer::Buffer uniformBuffer;
+        PaperRenderer::Material material;
 
         const HDRBuffer& hdrBuffer;
         
     public:
         BufferCopyMaterial(PaperRenderer::RenderEngine& renderer, const HDRBuffer& hdrBuffer);
-        ~BufferCopyMaterial() override;
+        ~BufferCopyMaterial();
 
-        void bind(VkCommandBuffer cmdBuffer, const PaperRenderer::Camera& camera, std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites>& descriptorWrites) override;
+        void bind(VkCommandBuffer cmdBuffer, const PaperRenderer::Camera& camera);
     } material;
 
     PaperRenderer::RenderEngine& renderer;

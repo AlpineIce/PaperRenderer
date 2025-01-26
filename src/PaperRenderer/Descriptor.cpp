@@ -305,7 +305,7 @@ namespace PaperRenderer
 
     //----------DESCRIPTOR WRAPPER DEFINITIONS----------//
 
-    ResourceDescriptor::ResourceDescriptor(RenderEngine& renderer, const VkDescriptorSetLayout layout)
+    ResourceDescriptor::ResourceDescriptor(RenderEngine& renderer, const VkDescriptorSetLayout& layout)
         :layout(layout),
         set(renderer.getDescriptorAllocator().getDescriptorSet(layout)),
         renderer(renderer)

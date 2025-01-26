@@ -1,7 +1,7 @@
 #include "AccelerationStructure.h"
-#include "PaperRenderer.h"
 #include "Material.h"
 #include "RayTrace.h"
+#include "PaperRenderer.h"
 
 #include <algorithm>
 
@@ -80,7 +80,7 @@ namespace PaperRenderer
         //descriptor bindings
         const std::vector<SetBinding> descriptorBindings = {
             { //set 0 (UBO input data)
-                .set =  tlas.descriptorSets[TLAS::TLASDescriptorIndices::UBO],
+                .set =  tlas.uboDescriptor,
                 .binding = {
                     .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
                     .pipelineLayout = computeShader.getPipeline().getLayout(),
@@ -89,7 +89,7 @@ namespace PaperRenderer
                 }
             },
             { //set 1 (IO buffers)
-                .set = tlas.descriptorSets[TLAS::TLASDescriptorIndices::IO],
+                .set = tlas.ioDescriptor,
                 .binding = {
                     .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
                     .pipelineLayout = computeShader.getPipeline().getLayout(),
@@ -385,14 +385,12 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
         }),
-        descriptorSets({
-            { renderer, renderer.getTLASPreprocessPipeline().getUboDescriptorLayout() }, //UBO
-            { renderer, renderer.getTLASPreprocessPipeline().getIODescriptorLayout() }, //IO
-            { renderer, renderer.getDefaultDescriptorSetLayout(TLAS_INSTANCE_DESCRIPTIONS) } //DESCRIPTIONS
-        })
+        uboDescriptor(renderer, renderer.getTLASPreprocessPipeline().getUboDescriptorLayout()),
+        ioDescriptor(renderer, renderer.getTLASPreprocessPipeline().getIODescriptorLayout()),
+        instanceDescriptionsDescriptor(renderer, renderer.getDefaultDescriptorSetLayout(TLAS_INSTANCE_DESCRIPTIONS))
     {
         //UBO descriptor write
-        descriptorSets[UBO].updateDescriptorSet({
+        uboDescriptor.updateDescriptorSet({
             .bufferWrites = {
                 {
                     .infos = { {
@@ -492,7 +490,7 @@ namespace PaperRenderer
             //----------UPDATE DESCRIPTOR SETS----------//
 
             //io
-            descriptorSets[IO].updateDescriptorSet({
+            ioDescriptor.updateDescriptorSet({
                 .bufferWrites = {
                     { //binding 0: model instances
                         .infos = { {
@@ -525,7 +523,7 @@ namespace PaperRenderer
             });
 
             //instance descriptions 
-            descriptorSets[DESCRIPTIONS].updateDescriptorSet({
+            instanceDescriptionsDescriptor.updateDescriptorSet({
                 .bufferWrites = {
                     { //binding 0: model instances
                         .infos = { {

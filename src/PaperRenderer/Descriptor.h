@@ -93,13 +93,13 @@ namespace PaperRenderer
     class ResourceDescriptor
     {
     private:
-        const VkDescriptorSetLayout layout; //does not own
+        const VkDescriptorSetLayout& layout;
         const VkDescriptorSet set;
 
         class RenderEngine& renderer;
 
     public:
-        ResourceDescriptor(class RenderEngine& renderer, const VkDescriptorSetLayout layout);
+        ResourceDescriptor(class RenderEngine& renderer, const VkDescriptorSetLayout& layout);
         ~ResourceDescriptor();
         ResourceDescriptor(const ResourceDescriptor&) = delete;
 

@@ -122,6 +122,6 @@ namespace PaperRenderer
         const std::vector<Model*>& getModelReferences() const { return renderingModels; }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
         Buffer& getModelDataBuffer() const { return modelDataBuffer->getBuffer(); }
-        VkDescriptorSetLayout getDefaultDescriptorSetLayout(const DefaultDescriptors descriptor) const { return defaultDescriptorLayouts[descriptor]; }
+        const VkDescriptorSetLayout& getDefaultDescriptorSetLayout(const DefaultDescriptors descriptor) const { return defaultDescriptorLayouts[descriptor]; }
     };
 }

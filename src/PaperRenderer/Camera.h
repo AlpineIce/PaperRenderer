@@ -81,7 +81,7 @@ namespace PaperRenderer
 
         CameraInfo getCameraInfo() const { return cameraInfo; }
         const class Buffer& getCameraUBO() const { return ubo; }
-        const ResourceDescriptor& getUBODescriptorSet() const { return uboDescriptor; }
+        const ResourceDescriptor& getUBODescriptor() const { return uboDescriptor; }
         const uint32_t getUBODynamicOffset() const;
     };
 }

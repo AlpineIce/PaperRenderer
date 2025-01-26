@@ -76,7 +76,7 @@ namespace PaperRenderer
         //descriptor bindings
         const std::vector<SetBinding> descriptorBindings = {
             { //set 0 (UBO input data)
-                .set = renderPass.descriptorSets[RenderPass::RenderPassDescriptorIndices::UBO],
+                .set = renderPass.uboDescriptor,
                 .binding = {
                     .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
                     .pipelineLayout = computeShader.getPipeline().getLayout(),
@@ -85,7 +85,7 @@ namespace PaperRenderer
                 }
             },
             { //set 1 (IO)
-                .set = renderPass.descriptorSets[RenderPass::RenderPassDescriptorIndices::IO],
+                .set = renderPass.ioDescriptor,
                 .binding = {
                     .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
                     .pipelineLayout = computeShader.getPipeline().getLayout(),
@@ -94,7 +94,7 @@ namespace PaperRenderer
                 }
             },
             { //set 2 (Camera)
-                .set = renderPass.descriptorSets[RenderPass::RenderPassDescriptorIndices::CAMERA],
+                .set = camera.getUBODescriptor(),
                 .binding = {
                     .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
                     .pipelineLayout = computeShader.getPipeline().getLayout(),
@@ -116,16 +116,14 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
         }),
-        descriptorSets({
-            { renderer, renderer.getRasterPreprocessPipeline().getUboDescriptorLayout() }, //UBO
-            { renderer, renderer.getRasterPreprocessPipeline().getIODescriptorLayout() }, //IO
-            { renderer, renderer.getDefaultDescriptorSetLayout(INDIRECT_DRAW_MATRICES) } //SORTED_MATRICES
-        }),
+        uboDescriptor(renderer, renderer.getRasterPreprocessPipeline().getUboDescriptorLayout()),
+        ioDescriptor(renderer, renderer.getRasterPreprocessPipeline().getIODescriptorLayout()),
+        sortedMatricesDescriptor(renderer, renderer.getDefaultDescriptorSetLayout(INDIRECT_DRAW_MATRICES)),
         renderer(renderer),
         defaultMaterialInstance(defaultMaterialInstance)
     {
         //UBO descriptor write
-        descriptorSets[UBO].updateDescriptorSet({
+        uboDescriptor.updateDescriptorSet({
             .bufferWrites = {
                 { //binding 0: UBO input data
                     .infos = { {
@@ -295,8 +293,8 @@ namespace PaperRenderer
         //reset descriptors if needed
         if(updateDescriptors)
         {
-            //preprocess descriptor
-            descriptorSets[IO].updateDescriptorSet({
+            //io descriptor
+            ioDescriptor.updateDescriptorSet({
                 .bufferWrites = {
                     { //binding 0: model instances
                         .infos = { {
@@ -320,7 +318,7 @@ namespace PaperRenderer
             });
 
             //sorted instances descriptor
-            descriptorSets[SORTED_MATRICES].updateDescriptorSet({
+            sortedMatricesDescriptor.updateDescriptorSet({
                 .bufferWrites = {
                     { //binding 0: input objects
                         .infos = { {
@@ -730,13 +728,14 @@ namespace PaperRenderer
                     //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)
                     sortedInstances[i]->instance->bindBuffers(cmdBuffer);
 
+                    //bind descriptor
                     const DescriptorBinding binding = {
                         .bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
                         .pipelineLayout = material->getRasterPipeline().getLayout(),
                         .descriptorSetIndex = material->getDrawMatricesDescriptorIndex(),
                         .dynamicOffsets = {}
                     };
-                    descriptorSets[SORTED_MATRICES].bindDescriptorSet(cmdBuffer, binding);
+                    sortedMatricesDescriptor.bindDescriptorSet(cmdBuffer, binding);
 
                     //draw
                     vkCmdDrawIndexed(

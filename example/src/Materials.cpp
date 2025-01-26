@@ -3,9 +3,9 @@
 //----------RASTER MATERIALS----------//
 
 DefaultMaterial::DefaultMaterial(PaperRenderer::RenderEngine &renderer, const PaperRenderer::RasterPipelineBuildInfo &pipelineInfo, const PaperRenderer::Buffer &lightBuffer, const PaperRenderer::Buffer &lightInfoUBO)
-    :PaperRenderer::Material(renderer, pipelineInfo),
-    lightBuffer(lightBuffer),
-    lightInfoUBO(lightInfoUBO)
+    :lightBuffer(lightBuffer),
+    lightInfoUBO(lightInfoUBO),
+    material(renderer, pipelineInfo, [&](VkCommandBuffer cmdBuffer, const PaperRenderer::Camera& camera) { bind(cmdBuffer, camera); })
 {
 }
 
@@ -13,9 +13,8 @@ DefaultMaterial::~DefaultMaterial()
 {
 }
 
-void DefaultMaterial::bind(VkCommandBuffer cmdBuffer, const PaperRenderer::Camera &camera, std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> &descriptorWrites)
+void DefaultMaterial::bind(VkCommandBuffer cmdBuffer, const PaperRenderer::Camera& camera) const 
 {
-    //additional non-default descriptor writes can be inserted into descriptorWrites here
     descriptorWrites[0].bufferWrites.push_back({
         .infos = {{
             .buffer = lightBuffer.getBuffer(),
@@ -34,18 +33,16 @@ void DefaultMaterial::bind(VkCommandBuffer cmdBuffer, const PaperRenderer::Camer
         .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         .binding = 2
     });
-
-    Material::bind(cmdBuffer, camera, descriptorWrites); //parent class function must be called
 }
 
 DefaultMaterialInstance::DefaultMaterialInstance(PaperRenderer::RenderEngine &renderer, const PaperRenderer::Material &baseMaterial, MaterialParameters parameters)
-    :PaperRenderer::MaterialInstance(renderer, baseMaterial),
-    parameters(parameters),
+    :parameters(parameters),
     parametersUBO(renderer, {
         .size = sizeof(MaterialParameters),
         .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
         .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
-    })
+    }),
+    materialInstance(renderer, baseMaterial, [&](VkCommandBuffer cmdBuffer) { bind(cmdBuffer); })
 {
 }
 
@@ -53,17 +50,14 @@ DefaultMaterialInstance::~DefaultMaterialInstance()
 {
 }
 
-void DefaultMaterialInstance::bind(VkCommandBuffer cmdBuffer, std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> &descriptorWrites)
+void DefaultMaterialInstance::bind(VkCommandBuffer cmdBuffer) const
 {
-    //additional non-default descriptor writes can be inserted into descriptorWrites here
-
     //fill UBO data
     PaperRenderer::BufferWrite uboWrite = {
         .offset = 0,
         .size=  sizeof(MaterialParameters),
         .readData = &parameters
     };
-
     parametersUBO.writeToBuffer({ uboWrite });
 
     //set 2, binding 0 (example material parameters)
@@ -76,9 +70,6 @@ void DefaultMaterialInstance::bind(VkCommandBuffer cmdBuffer, std::unordered_map
         .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         .binding = 0
     });
-    
-    //remember to call the parent class function!
-    MaterialInstance::bind(cmdBuffer, descriptorWrites);
 }
 
 LeafMaterial::LeafMaterial(PaperRenderer::RenderEngine &renderer, const PaperRenderer::RasterPipelineBuildInfo &pipelineInfo, const PaperRenderer::Buffer &lightBuffer, const PaperRenderer::Buffer &lightInfoUBO)
