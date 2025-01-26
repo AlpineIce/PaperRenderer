@@ -163,7 +163,7 @@ bool isInBounds(ModelInstance modelInstance, Model model, mat3x4 modelMatrix, ma
 	return visible;
 }
 
-uint getLODLevel(ModelInstance modelInstance, Model model, vec4 camPos)
+uint getLODLevel(ModelInstance modelInstance, Model model, vec3 camPos)
 {
     //get largest OBB extent to be used as size
     AABB bounds = model.bounds;
@@ -176,7 +176,7 @@ uint getLODLevel(ModelInstance modelInstance, Model model, vec4 camPos)
     worldSize = max(worldSize, yLength);
     worldSize = max(worldSize, zLength);
 
-    float cameraDistance = length(modelInstance.position.xyz - camPos.xyz);
+    float cameraDistance = length(modelInstance.position - camPos);
     
     uint lodLevel = uint(floor(inversesqrt(worldSize * 10.0) * sqrt(cameraDistance)));
 

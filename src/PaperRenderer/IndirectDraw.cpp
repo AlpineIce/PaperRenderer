@@ -6,29 +6,15 @@
 namespace PaperRenderer
 {
     CommonMeshGroup::CommonMeshGroup(RenderEngine& renderer, const RenderPass& renderPass, const Material& material)
-        :renderer(renderer),
+        :descriptorSet(renderer, renderer.getDefaultDescriptorSetLayout(INDIRECT_DRAW_MATRICES)),
+        renderer(renderer),
         renderPass(renderPass),
         material(material)
     {
-        //create object descriptor group if material has the set layout
-        for(const auto& [index, layout] : material.getDescriptorGroup().getSetLayouts())
-        {
-            if(layout == renderer.getDefaultDescriptorSetLayout(INDIRECT_DRAW_MATRICES))
-            {
-                const std::unordered_map<uint32_t, VkDescriptorSetLayout> layouts = { { index, layout } };
-                descriptorGroup = std::make_unique<DescriptorGroup>(renderer, layouts);
-                drawDescriptorIndex = index;
-                
-                break;
-            }
-        }
     }
 
     CommonMeshGroup::~CommonMeshGroup()
     {
-        //destroy descriptor group
-        descriptorGroup.reset();
-
         //destroy buffers
         modelMatricesBuffer.reset();
         drawCommandsBuffer.reset();
@@ -75,19 +61,19 @@ namespace PaperRenderer
         setDrawCommandData();
 
         //update descriptors
-        const DescriptorWrites descriptorWritesInfo = {
-            .bufferWrites = { {
-                .infos = { {
-                    .buffer = modelMatricesBuffer->getBuffer(),
-                    .offset = 0,
-                    .range = VK_WHOLE_SIZE
-                } },
-                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .binding = 0,
-            } }
-        };
-
-        descriptorGroup->updateDescriptorSets({ { drawDescriptorIndex, descriptorWritesInfo } });
+        descriptorSet.updateDescriptorSet({
+            .bufferWrites = {
+                {
+                    .infos = { {
+                        .buffer = modelMatricesBuffer->getBuffer(),
+                        .offset = 0,
+                        .range = VK_WHOLE_SIZE
+                    } },
+                    .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .binding = 0,
+                }
+            }
+        });
 
         //get instances to update
         std::vector<ModelInstance*> modifiedInstances;
@@ -205,9 +191,16 @@ namespace PaperRenderer
     void CommonMeshGroup::draw(const VkCommandBuffer &cmdBuffer) const
     {
         //bind matrices descriptor if used
-        if(descriptorGroup)
+        
+        if(material.getDrawMatricesDescriptorIndex() != 0xFFFFFFFF)
         {
-            descriptorGroup->bindSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.getRasterPipeline().getLayout(), {});
+            const DescriptorBinding binding = {
+                .bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+                .pipelineLayout = material.getRasterPipeline().getLayout(),
+                .descriptorSetIndex = material.getDrawMatricesDescriptorIndex(),
+                .dynamicOffsets = {}
+            };
+            descriptorSet.bindDescriptorSet(cmdBuffer, binding);
         }
 
         //submit draw calls

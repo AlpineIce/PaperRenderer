@@ -11,42 +11,44 @@ namespace PaperRenderer
     class Material
     {
     private:
-        const DescriptorGroup descriptorGroup;
+        const std::function<void(VkCommandBuffer, const class Camera&)>& bindFunction;
         std::unique_ptr<RasterPipeline> rasterPipeline;
+        uint32_t indirectDrawMatricesLocation = 0xFFFFFFFF;
     
         class RenderEngine& renderer;
 
     public:
-        //materialDescriptorSets refers to the descriptor sets that will be updated/bound in the scope of this material only
-        Material(class RenderEngine& renderer, const RasterPipelineBuildInfo& pipelineInfo, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& materialDescriptorSets);
+        //materialDescriptorSets refers to the descriptor sets that will be bound in the scope of this material only
+        Material(
+            class RenderEngine& renderer,
+            const RasterPipelineBuildInfo& pipelineInfo,
+            const std::function<void(VkCommandBuffer, const class Camera&)>& bindFunction
+        );
         ~Material();
         Material(const Material&) = delete;
 
-        void updateDescriptors(std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> descriptorWrites) const;
         void bind(VkCommandBuffer cmdBuffer, const class Camera& camera) const;
         
         const RasterPipeline& getRasterPipeline() const { return *rasterPipeline; }
-        const DescriptorGroup& getDescriptorGroup() const { return descriptorGroup; }
+        uint32_t getDrawMatricesDescriptorIndex() const { return indirectDrawMatricesLocation; }
     };
 
     class MaterialInstance
     {
     private:
-        const DescriptorGroup descriptorGroup;
+        const std::function<void(VkCommandBuffer)> bindFunction;
 
         const Material& baseMaterial;
         class RenderEngine& renderer;
 
     public:
-        //instanceDescriptorSets refers to the descriptor sets that will be updated/bound in the scope of this material instance only
-        MaterialInstance(class RenderEngine& renderer, const Material& baseMaterial, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& instanceDescriptorSets);
+        //instanceDescriptorSets refers to the descriptor sets that will be bound in the scope of this material instance only
+        MaterialInstance(class RenderEngine& renderer, const Material& baseMaterial, const std::function<void(VkCommandBuffer)>& bindFunction);
         ~MaterialInstance();
         MaterialInstance(const MaterialInstance&) = delete;
 
-        void updateDescriptors(std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> descriptorWrites) const;
         void bind(VkCommandBuffer cmdBuffer) const;
         
-        const DescriptorGroup& getDescriptorGroup() const { return descriptorGroup; }
         const Material& getBaseMaterial() const { return baseMaterial; }
     };
 

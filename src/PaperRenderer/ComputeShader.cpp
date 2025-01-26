@@ -15,7 +15,7 @@ namespace PaperRenderer
     }
 
     void ComputeShader::dispatch(const VkCommandBuffer& cmdBuffer,
-        const std::vector<DescriptorBind>& descriptorBindings,
+        const std::vector<SetBinding>& descriptorSetsBindings,
         const glm::uvec3& workGroupSizes
     )
     {
@@ -23,9 +23,9 @@ namespace PaperRenderer
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->getPipeline());
 
         //bind descriptors
-        for(const DescriptorBind& binding : descriptorBindings)
+        for(const SetBinding& setBinding : descriptorSetsBindings)
         {
-            renderer.getDescriptorAllocator().bindDescriptorSet(cmdBuffer, binding);
+            setBinding.set.bindDescriptorSet(cmdBuffer, setBinding.binding);
         }
 
         //dispatch

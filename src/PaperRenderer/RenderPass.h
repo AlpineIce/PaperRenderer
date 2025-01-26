@@ -78,7 +78,6 @@ namespace PaperRenderer
             std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials;
         };
         std::vector<SortedInstance> renderPassSortedInstances;
-        std::unordered_map<Material*, VkDescriptorSet> sortedObjectDescriptorSets = {};
 
         float instancesOverhead = 1.5f;
         std::vector<ModelInstance*> renderPassInstances; //doesn't included sorted
@@ -91,7 +90,14 @@ namespace PaperRenderer
         std::unique_ptr<FragmentableBuffer> instancesDataBuffer;
 
         //descriptors
-        DescriptorGroup descriptorGroup;
+        enum RenderPassDescriptorIndices
+        {
+            UBO = 0,
+            IO = 1,
+            CAMERA = 2,
+            SORTED_MATRICES = 3
+        };
+        const std::vector<ResourceDescriptor> descriptorSets;
 
         //functions
         void rebuildInstancesBuffer();

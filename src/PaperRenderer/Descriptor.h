@@ -44,12 +44,11 @@ namespace PaperRenderer
         std::vector<AccelerationStructureDescriptorWrites> accelerationStructureWrites = {};
     };
 
-    struct DescriptorBind
+    struct DescriptorBinding
     {
         VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
         uint32_t descriptorSetIndex = 0;
-        VkDescriptorSet set = VK_NULL_HANDLE;
         std::vector<uint32_t> dynamicOffsets = {};
     };
 
@@ -77,7 +76,6 @@ namespace PaperRenderer
         DescriptorAllocator(const DescriptorAllocator&) = delete;
 
         void updateDescriptorSet(VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo) const;
-        void bindDescriptorSet(VkCommandBuffer cmdBuffer, const DescriptorBind& binding) const; 
         
         VkDescriptorSetLayout createDescriptorSetLayout(const std::vector<VkDescriptorSetLayoutBinding>& bindings) const;
         VkDescriptorSet getDescriptorSet(VkDescriptorSetLayout setLayout);
@@ -86,23 +84,29 @@ namespace PaperRenderer
 
     //----------RAII DESCRIPTOR WRAPPER----------//
 
-    class DescriptorGroup
+    struct SetBinding
+    {
+        const class ResourceDescriptor& set;
+        const DescriptorBinding& binding;
+    };
+
+    class ResourceDescriptor
     {
     private:
-        const std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
-        std::unordered_map<uint32_t, VkDescriptorSet> descriptorSets = {};
+        const VkDescriptorSetLayout layout; //does not own
+        const VkDescriptorSet set;
 
         class RenderEngine& renderer;
 
     public:
-        DescriptorGroup(class RenderEngine& renderer, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts);
-        ~DescriptorGroup();
-        DescriptorGroup(const DescriptorGroup&) = delete;
+        ResourceDescriptor(class RenderEngine& renderer, const VkDescriptorSetLayout layout);
+        ~ResourceDescriptor();
+        ResourceDescriptor(const ResourceDescriptor&) = delete;
 
-        void updateDescriptorSets(const std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites) const;
-        void bindSets(VkCommandBuffer cmdBuffer, VkPipelineBindPoint bindingPoint, VkPipelineLayout layout, std::unordered_map<uint32_t, std::vector<uint32_t>> dynamicOffsets) const;
+        void updateDescriptorSet(const DescriptorWrites& writes) const;
+        void bindDescriptorSet(VkCommandBuffer cmdBuffer, const DescriptorBinding& binding) const;
 
-        const std::unordered_map<uint32_t, VkDescriptorSetLayout>& getSetLayouts() const { return setLayouts; }
-        const std::unordered_map<uint32_t, VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
+        const VkDescriptorSetLayout& getLayout() const { return layout; }
+        const VkDescriptorSet& getDescriptorSet() const { return set; }
     };
 }

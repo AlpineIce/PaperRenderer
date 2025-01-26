@@ -43,9 +43,9 @@ namespace PaperRenderer
                 .data = shaderData
             },
             .descriptorSets = {
-                { 0, uboSetLayout },
-                { 1, ioSetLayout },
-                { 2, renderer.getDefaultDescriptorSetLayout(CAMERA_MATRICES) }
+                { RenderPass::RenderPassDescriptorIndices::UBO, uboSetLayout },
+                { RenderPass::RenderPassDescriptorIndices::IO, ioSetLayout },
+                { RenderPass::RenderPassDescriptorIndices::CAMERA, renderer.getDefaultDescriptorSetLayout(CAMERA_MATRICES) }
             },
             .pcRanges = {}
         }),
@@ -74,27 +74,33 @@ namespace PaperRenderer
     void RasterPreprocessPipeline::submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera)
     {
         //descriptor bindings
-        const std::vector<DescriptorBind> descriptorBindings = {
+        const std::vector<SetBinding> descriptorBindings = {
             { //set 0 (UBO input data)
-                .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
-                .pipelineLayout = computeShader.getPipeline().getLayout(),
-                .descriptorSetIndex = 0,
-                .set =  renderPass.descriptorGroup.getDescriptorSets().at(0),
-                .dynamicOffsets = { (uint32_t)sizeof(UBOInputData) * renderer.getBufferIndex() }
+                .set = renderPass.descriptorSets[RenderPass::RenderPassDescriptorIndices::UBO],
+                .binding = {
+                    .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
+                    .pipelineLayout = computeShader.getPipeline().getLayout(),
+                    .descriptorSetIndex = RenderPass::RenderPassDescriptorIndices::UBO,
+                    .dynamicOffsets = { (uint32_t)sizeof(UBOInputData) * renderer.getBufferIndex() }
+                }
             },
-            { //set 1 (IO buffers)
-                .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
-                .pipelineLayout = computeShader.getPipeline().getLayout(),
-                .descriptorSetIndex = 1,
-                .set = renderPass.descriptorGroup.getDescriptorSets().at(1),
-                .dynamicOffsets = {}
+            { //set 1 (IO)
+                .set = renderPass.descriptorSets[RenderPass::RenderPassDescriptorIndices::IO],
+                .binding = {
+                    .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
+                    .pipelineLayout = computeShader.getPipeline().getLayout(),
+                    .descriptorSetIndex = RenderPass::RenderPassDescriptorIndices::IO,
+                    .dynamicOffsets = {}
+                }
             },
-            { //set 2 (Camera Matrices)
-                .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
-                .pipelineLayout = computeShader.getPipeline().getLayout(),
-                .descriptorSetIndex = 2,
-                .set = camera.getDescriptorGroup().getDescriptorSets().at(0),
-                .dynamicOffsets = { camera.getUBODynamicOffset() }
+            { //set 2 (Camera)
+                .set = renderPass.descriptorSets[RenderPass::RenderPassDescriptorIndices::CAMERA],
+                .binding = {
+                    .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
+                    .pipelineLayout = computeShader.getPipeline().getLayout(),
+                    .descriptorSetIndex = RenderPass::RenderPassDescriptorIndices::CAMERA,
+                    .dynamicOffsets = { camera.getUBODynamicOffset() }
+                }
             }
         };
 
@@ -110,28 +116,27 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
         }),
-        descriptorGroup(renderer, {
-            { 0, renderer.getRasterPreprocessPipeline().getUboDescriptorLayout() },
-            { 1, renderer.getRasterPreprocessPipeline().getIODescriptorLayout() }
+        descriptorSets({
+            { renderer, renderer.getRasterPreprocessPipeline().getUboDescriptorLayout() }, //UBO
+            { renderer, renderer.getRasterPreprocessPipeline().getIODescriptorLayout() }, //IO
+            { renderer, renderer.getDefaultDescriptorSetLayout(INDIRECT_DRAW_MATRICES) } //SORTED_MATRICES
         }),
         renderer(renderer),
         defaultMaterialInstance(defaultMaterialInstance)
     {
         //UBO descriptor write
-        descriptorGroup.updateDescriptorSets({
-            { 0, {
-                .bufferWrites = {
-                    { //set0 - binding 0: UBO input data
-                        .infos = { {
-                            .buffer = preprocessUniformBuffer.getBuffer(),
-                            .offset = 0,
-                            .range = sizeof(RasterPreprocessPipeline::UBOInputData)
-                        } },
-                        .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-                        .binding = 0
-                    }
-                } } 
-            },
+        descriptorSets[UBO].updateDescriptorSet({
+            .bufferWrites = {
+                { //binding 0: UBO input data
+                    .infos = { {
+                        .buffer = preprocessUniformBuffer.getBuffer(),
+                        .offset = 0,
+                        .range = sizeof(RasterPreprocessPipeline::UBOInputData)
+                    } },
+                    .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                    .binding = 0
+                }
+            }
         });
     }
 
@@ -145,12 +150,6 @@ namespace PaperRenderer
         for(ModelInstance* instance : renderPassInstances)
         {
             removeInstance(*instance);
-        }
-
-        //destroy sorted object descriptors
-        for(const auto& [material, set] : sortedObjectDescriptorSets)
-        {
-            renderer.getDescriptorAllocator().freeDescriptorSet(set);
         }
     }
 
@@ -276,65 +275,62 @@ namespace PaperRenderer
         }
 
         //verify buffers
-        bool updateUBO = false;
+        bool updateDescriptors = false;
         if(!instancesBuffer || instancesBuffer->getSize() / sizeof(ModelInstance::RenderPassInstance) < renderPassInstances.size())
         {
             rebuildInstancesBuffer();
-            updateUBO = true;
+            updateDescriptors = true;
         }
         if(!sortedInstancesOutputBuffer || sortedInstancesOutputBuffer->getSize() / sizeof(ShaderOutputObject) < renderPassSortedInstances.size())
         {
             rebuildSortedInstancesBuffer();
-            updateUBO = true;
+            updateDescriptors = true;
         }
         if(!instancesDataBuffer)
         {
             rebuildMaterialDataBuffer();
-            updateUBO = true;
+            updateDescriptors = true;
         }
 
         //reset descriptors if needed
-        if(updateUBO)
+        if(updateDescriptors)
         {
-            //update UBO data
-            const RasterPreprocessPipeline::UBOInputData uboInputData = {
-                .materialDataPtr = instancesDataBuffer->getBuffer().getBufferDeviceAddress(),
-                .modelDataPtr = renderer.modelDataBuffer->getBuffer().getBufferDeviceAddress(),
-                .objectCount = (uint32_t)renderPassInstances.size(),
-                .doCulling = true
-            };
+            //preprocess descriptor
+            descriptorSets[IO].updateDescriptorSet({
+                .bufferWrites = {
+                    { //binding 0: model instances
+                        .infos = { {
+                            .buffer = renderer.instancesDataBuffer->getBuffer(),
+                            .offset = 0,
+                            .range = VK_WHOLE_SIZE //actual data range controlled by UBO object count
+                        } },
+                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .binding = 0
+                    },
+                    { //binding 1: input objects
+                        .infos = { {
+                            .buffer = instancesBuffer->getBuffer(),
+                            .offset = 0,
+                            .range = VK_WHOLE_SIZE //actual data range controlled by UBO object count
+                        } },
+                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .binding = 1
+                    }
+                }
+            });
 
-            const BufferWrite write = {
-                .offset = sizeof(RasterPreprocessPipeline::UBOInputData) * renderer.getBufferIndex(),
-                .size = sizeof(RasterPreprocessPipeline::UBOInputData),
-                .readData = &uboInputData
-            };
-
-            preprocessUniformBuffer.writeToBuffer({ write });
-
-            //update descriptors
-            descriptorGroup.updateDescriptorSets({
-                { 1, {
-                    .bufferWrites = {
-                        { //set1 - binding 0: model instances
-                            .infos = { {
-                                .buffer = renderer.instancesDataBuffer->getBuffer(),
-                                .offset = 0,
-                                .range = VK_WHOLE_SIZE //actual data range controlled by UBO object count
-                            } },
-                            .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                            .binding = 0
-                        },
-                        { //set1 - binding 1: input objects
-                            .infos = { {
-                                .buffer = instancesBuffer->getBuffer(),
-                                .offset = 0,
-                                .range = VK_WHOLE_SIZE //actual data range controlled by UBO object count
-                            } },
-                            .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                            .binding = 1
-                        }
-                    } } 
+            //sorted instances descriptor
+            descriptorSets[SORTED_MATRICES].updateDescriptorSet({
+                .bufferWrites = {
+                    { //binding 0: input objects
+                        .infos = { {
+                            .buffer = sortedInstancesOutputBuffer->getBuffer(),
+                            .offset = 0,
+                            .range = VK_WHOLE_SIZE
+                        } },
+                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .binding = 0
+                    }
                 }
             });
         }
@@ -530,6 +526,22 @@ namespace PaperRenderer
         //preprocess
         if(renderPassInstances.size())
         {
+            //update UBO data
+            const RasterPreprocessPipeline::UBOInputData uboInputData = {
+                .materialDataPtr = instancesDataBuffer->getBuffer().getBufferDeviceAddress(),
+                .modelDataPtr = renderer.modelDataBuffer->getBuffer().getBufferDeviceAddress(),
+                .objectCount = (uint32_t)renderPassInstances.size(),
+                .doCulling = true
+            };
+
+            const BufferWrite write = {
+                .offset = sizeof(RasterPreprocessPipeline::UBOInputData) * renderer.getBufferIndex(),
+                .size = sizeof(RasterPreprocessPipeline::UBOInputData),
+                .readData = &uboInputData
+            };
+
+            preprocessUniformBuffer.writeToBuffer({ write });
+
             //compute shader
             renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this, renderPassInfo.camera);
 
@@ -695,32 +707,6 @@ namespace PaperRenderer
                 return lodLevel;
             };
 
-            //write object descriptors
-            for(auto& [material, descriptorSet] : sortedObjectDescriptorSets)
-            {
-                if(material->usesDefaultDescriptors())
-                {
-                    //write uniforms
-                    const VkDescriptorBufferInfo descriptorInfo = {
-                        .buffer = sortedInstancesOutputBuffer->getBuffer(),
-                        .offset = 0,
-                        .range = VK_WHOLE_SIZE
-                    };
-
-                    const BuffersDescriptorWrites write = {
-                        .infos = { descriptorInfo },
-                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .binding = 0,
-                    };
-
-                    const DescriptorWrites descriptorWritesInfo = {
-                        .bufferWrites = { write }
-                    };
-
-                    renderer.getDescriptorAllocator().updateDescriptorSet(descriptorSet, descriptorWritesInfo);
-                }
-            }
-
             //draw sorted instances in order
             for(uint32_t i = 0; i < sortedInstances.size(); i++)
             {
@@ -733,30 +719,24 @@ namespace PaperRenderer
 
                     //bind material
                     std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> materialDescriptorWrites;
-                    material->bind(cmdBuffer, renderPassInfo.camera, materialDescriptorWrites);
-
-                    //bind object descriptor if used
-                    if(material->usesDefaultDescriptors())
-                    {
-                        const DescriptorBind bindingInfo = {
-                            .bindingPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            .layout = material->getRasterPipeline().getLayout(),
-                            .descriptorSetIndex = material->getRasterPipeline().getDrawDescriptorIndex(),
-                            .set = sortedObjectDescriptorSets[material]
-                        };
-                        
-                        renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
-                    }
+                    material->bind(cmdBuffer, renderPassInfo.camera);
 
                     //bind material instance
-                    std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> instanceDescriptorWrites;
-                    materialInstance->bind(cmdBuffer, instanceDescriptorWrites);
+                    materialInstance->bind(cmdBuffer);
 
                     //get mesh data ptr
                     const LODMesh& meshData = sortedInstances[i]->instance->getParentModel().getLODs()[lodIndex].materialMeshes[matSlot].mesh;
 
                     //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)
                     sortedInstances[i]->instance->bindBuffers(cmdBuffer);
+
+                    const DescriptorBinding binding = {
+                        .bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        .pipelineLayout = material->getRasterPipeline().getLayout(),
+                        .descriptorSetIndex = material->getDrawMatricesDescriptorIndex(),
+                        .dynamicOffsets = {}
+                    };
+                    descriptorSets[SORTED_MATRICES].bindDescriptorSet(cmdBuffer, binding);
 
                     //draw
                     vkCmdDrawIndexed(
@@ -803,24 +783,6 @@ namespace PaperRenderer
             instance.renderPassSelfReferences[this].selfIndex = renderPassSortedInstances.size();
             instance.renderPassSelfReferences[this].sorted = true;
             renderPassSortedInstances.push_back({ &instance, materials });
-
-            //create descriptor sets if they dont exist
-            for(const std::unordered_map<uint32_t, MaterialInstance*>& lodMaterials : materials)
-            {
-                for(const auto& [matSlot, materialInstance] : lodMaterials)
-                {
-                    //get material variable
-                    Material* material = (Material*)(&materialInstance->getBaseMaterial());
-
-                    //add material reference
-                    if(!sortedObjectDescriptorSets.count(material))
-                    {
-                        //create descriptor set if used
-                        sortedObjectDescriptorSets[material] = material->usesDefaultDescriptors() ? renderer.getDescriptorAllocator().getDescriptorSet(material->getRasterPipeline().getDescriptorSetLayouts().at(
-                            material->getRasterPipeline().getDrawDescriptorIndex())) : VK_NULL_HANDLE;
-                    }
-                }
-            }
         }
         else
         {

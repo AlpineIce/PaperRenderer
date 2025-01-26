@@ -10,9 +10,9 @@ namespace PaperRenderer
         VkBuildAccelerationStructureFlagsKHR tlasBuildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
         const Image& image;
         const class Camera& camera;
+        const std::vector<SetBinding>& descriptorBindings = {};
         VkDependencyInfo const* preRenderBarriers = NULL;
         VkDependencyInfo const* postRenderBarriers = NULL;
-        const std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites = {};
     };
 
     struct AccelerationStructureInstanceData
@@ -27,7 +27,7 @@ namespace PaperRenderer
     {
     private:
         const std::vector<VkPushConstantRange> pcRanges;
-        const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>> descriptorSetBindings;
+        const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts;
         const RTPipelineProperties pipelineProperties;
         std::unique_ptr<RTPipeline> pipeline;
         
@@ -49,10 +49,10 @@ namespace PaperRenderer
         RayTraceRender(
             RenderEngine& renderer,
             TLAS& accelerationStructure,
-            const ShaderDescription raygenShader,
-            const std::vector<ShaderDescription> missShaders,
-            const std::vector<ShaderDescription> callableShaders,
-            const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptors,
+            const ShaderDescription& raygenShader,
+            const std::vector<ShaderDescription>& missShaders,
+            const std::vector<ShaderDescription>& callableShaders,
+            const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts,
             const RTPipelineProperties& pipelineProperties,
             const std::vector<VkPushConstantRange>& pcRanges
         );

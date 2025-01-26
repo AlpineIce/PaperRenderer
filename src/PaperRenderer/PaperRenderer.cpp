@@ -45,6 +45,15 @@ namespace PaperRenderer
             .pImmutableSamplers = NULL
         } });
 
+        //ray tracing instance descriptions
+        defaultDescriptorLayouts[TLAS_INSTANCE_DESCRIPTIONS] = descriptors.createDescriptorSetLayout({ {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+            .pImmutableSamplers = NULL
+        } });
+
         //finish up
         vkDeviceWaitIdle(device.getDevice());
         lastFrameTimePoint = std::chrono::high_resolution_clock::now();

@@ -303,7 +303,26 @@ namespace PaperRenderer
         }
     }
 
-    void DescriptorAllocator::bindDescriptorSet(VkCommandBuffer cmdBuffer, const DescriptorBind &binding) const
+    //----------DESCRIPTOR WRAPPER DEFINITIONS----------//
+
+    ResourceDescriptor::ResourceDescriptor(RenderEngine& renderer, const VkDescriptorSetLayout layout)
+        :layout(layout),
+        set(renderer.getDescriptorAllocator().getDescriptorSet(layout)),
+        renderer(renderer)
+    {
+    }
+
+    ResourceDescriptor::~ResourceDescriptor()
+    {
+        renderer.getDescriptorAllocator().freeDescriptorSet(set);
+    }
+
+    void ResourceDescriptor::updateDescriptorSet(const DescriptorWrites& writes) const
+    {
+        renderer.getDescriptorAllocator().updateDescriptorSet(set, writes);
+    }
+
+    void ResourceDescriptor::bindDescriptorSet(VkCommandBuffer cmdBuffer, const DescriptorBinding& binding) const
     {
         vkCmdBindDescriptorSets(
             cmdBuffer,
@@ -311,54 +330,9 @@ namespace PaperRenderer
             binding.pipelineLayout,
             binding.descriptorSetIndex,
             1,
-            &binding.set,
+            &set,
             binding.dynamicOffsets.size(),
             binding.dynamicOffsets.data()
         );
-    }
-
-    //----------DESCRIPTOR GROUP DEFINITIONS----------//
-
-    DescriptorGroup::DescriptorGroup(RenderEngine& renderer, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts)
-        :setLayouts(setLayouts),
-        renderer(renderer)
-    {
-        //create descriptor sets
-        for(const auto& [setIndex, layout] : setLayouts)
-        {
-            descriptorSets[setIndex] = renderer.getDescriptorAllocator().getDescriptorSet(layout);
-        }
-    }
-
-    DescriptorGroup::~DescriptorGroup()
-    {
-        //destroy descriptor sets
-        for(const auto& [setIndex, set] : descriptorSets)
-        {
-            renderer.getDescriptorAllocator().freeDescriptorSet(set);
-        }
-    }
-
-    void DescriptorGroup::updateDescriptorSets(const std::unordered_map<uint32_t, DescriptorWrites>& descriptorWrites) const
-    {
-        for(const auto& [setIndex, writes] : descriptorWrites)
-        {
-            renderer.getDescriptorAllocator().updateDescriptorSet(descriptorSets.at(setIndex), writes);
-        }
-    }
-
-    void DescriptorGroup::bindSets(VkCommandBuffer cmdBuffer, VkPipelineBindPoint bindingPoint, VkPipelineLayout layout, std::unordered_map<uint32_t, std::vector<uint32_t>> dynamicOffsets) const
-    {
-        for(const auto& [setIndex, set] : descriptorSets)
-        {
-            const DescriptorBind bind = {
-                .bindPoint = bindingPoint,
-                .pipelineLayout = layout,
-                .descriptorSetIndex = setIndex,
-                .set = set,
-                .dynamicOffsets = dynamicOffsets[setIndex]
-            };
-            renderer.getDescriptorAllocator().bindDescriptorSet(cmdBuffer, bind);
-        }
     }
 }

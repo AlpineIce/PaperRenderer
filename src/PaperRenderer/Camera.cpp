@@ -10,7 +10,7 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR,
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
         }),
-        descriptorGroup(renderer, { { 0, renderer.getDefaultDescriptorSetLayout(CAMERA_MATRICES) } }),
+        uboDescriptor(renderer, renderer.getDefaultDescriptorSetLayout(CAMERA_MATRICES)),
         renderer(renderer)
     {
         //update matrices to initial values
@@ -18,7 +18,7 @@ namespace PaperRenderer
         updateView(cameraInfo.transformation);
 
         //update descriptors
-        const DescriptorWrites descriptorWritesInfo = {
+        uboDescriptor.updateDescriptorSet({
             .bufferWrites = { {
                 .infos = { {
                     .buffer = ubo.getBuffer(),
@@ -28,9 +28,7 @@ namespace PaperRenderer
                 .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
                 .binding = 0,
             } }
-        };
-
-        descriptorGroup.updateDescriptorSets({ { 0, descriptorWritesInfo } });
+        });
     }
 
     Camera::~Camera()

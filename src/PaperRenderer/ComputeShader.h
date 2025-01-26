@@ -20,7 +20,7 @@ namespace PaperRenderer
 
         //binds pipeline, writes descriptors, and does vkCmdDispatch on work group size
         void dispatch(const VkCommandBuffer& cmdBuffer,
-            const std::vector<DescriptorBind>& descriptorBindings,
+            const std::vector<SetBinding>& descriptorSetsBindings,
             const glm::uvec3& workGroupSizes
         );
     };

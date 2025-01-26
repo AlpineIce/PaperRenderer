@@ -25,7 +25,8 @@ namespace PaperRenderer
     enum DefaultDescriptors
     {
         INDIRECT_DRAW_MATRICES = 0,
-        CAMERA_MATRICES = 1
+        CAMERA_MATRICES = 1,
+        TLAS_INSTANCE_DESCRIPTIONS = 2
     };
 
     //struct for RenderEngine

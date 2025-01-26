@@ -9,15 +9,15 @@ namespace PaperRenderer
     RayTraceRender::RayTraceRender(
         RenderEngine& renderer,
         TLAS& accelerationStructure,
-        const ShaderDescription raygenShader,
-        const std::vector<ShaderDescription> missShaders,
-        const std::vector<ShaderDescription> callableShaders,
-        const std::unordered_map<uint32_t, std::vector<VkDescriptorSetLayoutBinding>>& descriptorSets,
+        const ShaderDescription& raygenShader,
+        const std::vector<ShaderDescription>& missShaders,
+        const std::vector<ShaderDescription>& callableShaders,
+        const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts,
         const RTPipelineProperties& pipelineProperties,
         const std::vector<VkPushConstantRange>& pcRanges
     )
         :pcRanges(pcRanges),
-        descriptorSetBindings(descriptorSets),
+        setLayouts(setLayouts),
         pipelineProperties(pipelineProperties),
         raygenShader(raygenShader),
         missShaders(missShaders),
@@ -61,26 +61,10 @@ namespace PaperRenderer
             //bind pipeline
             vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline->getPipeline());
 
-            //write descriptors
-            for(const auto& [setIndex, writes] : rtRenderInfo.descriptorWrites)
+            //bind descriptors
+            for(const SetBinding& setBinding : rtRenderInfo.descriptorBindings)
             {
-                //make sure descriptor set exists
-                if(!descriptorSets.count(setIndex))
-                {
-                    descriptorSets[setIndex] = renderer.getDescriptorAllocator().getDescriptorSet(pipeline->getDescriptorSetLayouts().at(setIndex));
-                }
-
-                //update descriptor set
-                renderer.getDescriptorAllocator().updateDescriptorSet(descriptorSets[setIndex], writes);
-
-                const DescriptorBind bindingInfo = {
-                    .bindingPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
-                    .layout = pipeline->getLayout(),
-                    .descriptorSetIndex = setIndex,
-                    .set = descriptorSets[setIndex]
-                };
-                
-                renderer.getDescriptorAllocator().bindSet(cmdBuffer, bindingInfo);
+                setBinding.set.bindDescriptorSet(cmdBuffer, setBinding.binding);
             }
 
             //trace rays
@@ -146,7 +130,7 @@ namespace PaperRenderer
             .raygenShader = raygenShader,
             .missShaders = missShaders,
             .callableShaders = callableShaders,
-            .descriptorSets = descriptorSetBindings,
+            .descriptorSets = setLayouts,
             .pcRanges = pcRanges,
             .properties = pipelineProperties
         };

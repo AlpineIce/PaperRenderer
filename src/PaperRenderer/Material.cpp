@@ -6,12 +6,22 @@ namespace PaperRenderer
 {
     //----------MATERIAL DEFINITIONS----------//
 
-    Material::Material(RenderEngine& renderer, const RasterPipelineBuildInfo& pipelineInfo, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& materialDescriptorSets)
-        :descriptorGroup(renderer, materialDescriptorSets),
+    Material::Material(RenderEngine& renderer, const RasterPipelineBuildInfo& pipelineInfo, const std::function<void(VkCommandBuffer, const Camera&)>& bindFunction)
+        :bindFunction(bindFunction),
         renderer(renderer)
     {
         //build pipeline
         rasterPipeline = renderer.getPipelineBuilder().buildRasterPipeline(pipelineInfo);
+
+        //assign indirect draw matrices descriptor index if used
+        for(const auto& [index, layout] : pipelineInfo.descriptorSets)
+        {
+            if(layout == renderer.getDefaultDescriptorSetLayout(INDIRECT_DRAW_MATRICES))
+            {
+                indirectDrawMatricesLocation = index;
+                break;
+            }
+        }
     }
 
     Material::~Material()
@@ -20,21 +30,16 @@ namespace PaperRenderer
         rasterPipeline.reset();
     }
 
-    void Material::updateDescriptors(std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> descriptorWrites) const
-    {
-        descriptorGroup.updateDescriptorSets(descriptorWrites);
-    }
-
     void Material::bind(VkCommandBuffer cmdBuffer, const Camera& camera) const
     {
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
-        descriptorGroup.bindSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getLayout(), {});
+        bindFunction(cmdBuffer, camera);
     }
 
     //----------MATERIAL INSTANCE DEFINITIONS----------//
 
-    MaterialInstance::MaterialInstance(RenderEngine& renderer, const Material& baseMaterial, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& instanceDescriptorSets)
-        :descriptorGroup(renderer, instanceDescriptorSets),
+    MaterialInstance::MaterialInstance(RenderEngine& renderer, const Material& baseMaterial, const std::function<void(VkCommandBuffer)>& bindFunction)
+        :bindFunction(bindFunction),
         baseMaterial(baseMaterial),
         renderer(renderer)
     {
@@ -44,14 +49,9 @@ namespace PaperRenderer
     {
     }
 
-    void MaterialInstance::updateDescriptors(std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> descriptorWrites) const
-    {
-        descriptorGroup.updateDescriptorSets(descriptorWrites);
-    }
-
     void MaterialInstance::bind(VkCommandBuffer cmdBuffer) const
     {
-        descriptorGroup.bindSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, baseMaterial.getRasterPipeline().getLayout(), {});
+        bindFunction(cmdBuffer);
     }
 
     //----------RT MATERIAL DEFINITIONS----------//

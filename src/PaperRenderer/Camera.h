@@ -61,7 +61,7 @@ namespace PaperRenderer
         glm::mat4 projection = glm::mat4(1.0f);
         
         Buffer ubo;
-        DescriptorGroup descriptorGroup;
+        ResourceDescriptor uboDescriptor;
 
         class RenderEngine& renderer;
         
@@ -81,7 +81,7 @@ namespace PaperRenderer
 
         CameraInfo getCameraInfo() const { return cameraInfo; }
         const class Buffer& getCameraUBO() const { return ubo; }
-        const DescriptorGroup& getDescriptorGroup() const { return descriptorGroup; }
+        const ResourceDescriptor& getUBODescriptorSet() const { return uboDescriptor; }
         const uint32_t getUBODynamicOffset() const;
     };
 }

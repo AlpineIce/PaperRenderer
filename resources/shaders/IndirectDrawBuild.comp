@@ -112,8 +112,12 @@ void main()
     //indirect draw build if visible
     if(visible)
     {
+        //get camera position
+        const mat4 viewInverse = inverse(cameraMatrices.view);
+        const vec3 camPos = vec3(viewInverse[3][0], viewInverse[3][1], viewInverse[3][2]);
+
         //get LOD
-        const uint lodLevel = min(getLODLevel(modelInstance, model, inputData.camPos), model.lodCount - 1);
+        const uint lodLevel = min(getLODLevel(modelInstance, model, camPos), model.lodCount - 1);
 
         const ModelLOD modelLOD = ModelLODs(inputData.modelDataPtr + uint64_t(modelInstance.modelDataOffset + model.lodsOffset)).LODs[lodLevel];
         const uint meshGroupOffset = MeshGroupOffsets(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset)).offsets[lodLevel];

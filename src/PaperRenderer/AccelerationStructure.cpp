@@ -48,8 +48,8 @@ namespace PaperRenderer
                 .data = shaderData
             },
             .descriptorSets = {
-                { 0, uboSetLayout },
-                { 1, ioSetLayout }
+                { TLAS::TLASDescriptorIndices::UBO, uboSetLayout },
+                { TLAS::TLASDescriptorIndices::IO, ioSetLayout }
             },
             .pcRanges = {}
         }),
@@ -77,66 +77,30 @@ namespace PaperRenderer
 
     void TLASInstanceBuildPipeline::submit(VkCommandBuffer cmdBuffer, const TLAS& tlas)
     {
-        //update UBO
-        UBOInputData uboInputData = {};
-        uboInputData.objectCount = tlas.nextUpdateSize;
-
-        BufferWrite write = {};
-        write.readData = &uboInputData;
-        write.size = sizeof(UBOInputData);
-        write.offset = sizeof(UBOInputData) * renderer.getBufferIndex();
-
-        tlas.preprocessUniformBuffer.writeToBuffer({ write });
-
-        //set0 - binding 0: UBO input data
-        VkDescriptorBufferInfo bufferWrite0Info = {};
-        bufferWrite0Info.buffer = tlas.preprocessUniformBuffer.getBuffer();
-        bufferWrite0Info.offset = sizeof(UBOInputData) * renderer.getBufferIndex();
-        bufferWrite0Info.range = sizeof(UBOInputData);
-
-        BuffersDescriptorWrites bufferWrite0 = {};
-        bufferWrite0.binding = 0;
-        bufferWrite0.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        bufferWrite0.infos = { bufferWrite0Info };
-
-        //set0 - binding 1: model instances
-        VkDescriptorBufferInfo bufferWrite1Info = {};
-        bufferWrite1Info.buffer = renderer.instancesDataBuffer->getBuffer();
-        bufferWrite1Info.offset = 0;
-        bufferWrite1Info.range = renderer.renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance);
-
-        BuffersDescriptorWrites bufferWrite1 = {};
-        bufferWrite1.binding = 1;
-        bufferWrite1.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        bufferWrite1.infos = { bufferWrite1Info };
-
-        //set0 - binding 2: input objects
-        VkDescriptorBufferInfo bufferWrite2Info = {};
-        bufferWrite2Info.buffer = tlas.instancesBuffer->getBuffer();
-        bufferWrite2Info.offset = 0;
-        bufferWrite2Info.range = tlas.nextUpdateSize * sizeof(ModelInstance::AccelerationStructureInstance);
-
-        BuffersDescriptorWrites bufferWrite2 = {};
-        bufferWrite2.binding = 2;
-        bufferWrite2.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        bufferWrite2.infos = { bufferWrite2Info };
-
-        //set0 - binding 3: output objects
-        VkDescriptorBufferInfo bufferWrite3Info = {};
-        bufferWrite3Info.buffer = tlas.instancesBuffer->getBuffer();
-        bufferWrite3Info.offset = tlas.tlInstancesOffset;
-        bufferWrite3Info.range = tlas.nextUpdateSize * sizeof(VkAccelerationStructureInstanceKHR);
-
-        BuffersDescriptorWrites bufferWrite3 = {};
-        bufferWrite3.binding = 3;
-        bufferWrite3.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        bufferWrite3.infos = { bufferWrite3Info };
+        //descriptor bindings
+        const std::vector<SetBinding> descriptorBindings = {
+            { //set 0 (UBO input data)
+                .set =  tlas.descriptorSets[TLAS::TLASDescriptorIndices::UBO],
+                .binding = {
+                    .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
+                    .pipelineLayout = computeShader.getPipeline().getLayout(),
+                    .descriptorSetIndex = TLAS::TLASDescriptorIndices::UBO,
+                    .dynamicOffsets = { (uint32_t)sizeof(UBOInputData) * renderer.getBufferIndex() }
+                }
+            },
+            { //set 1 (IO buffers)
+                .set = tlas.descriptorSets[TLAS::TLASDescriptorIndices::IO],
+                .binding = {
+                    .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
+                    .pipelineLayout = computeShader.getPipeline().getLayout(),
+                    .descriptorSetIndex = TLAS::TLASDescriptorIndices::IO,
+                    .dynamicOffsets = {}
+                }
+            }
+        };
 
         //dispatch
-        const DescriptorWrites descriptorWritesInfo = {
-            .bufferWrites = { bufferWrite0, bufferWrite1, bufferWrite2, bufferWrite3 }
-        };
-        computeShader.dispatch(cmdBuffer, { { 0, descriptorWritesInfo } }, glm::uvec3((tlas.nextUpdateSize / 128) + 1, 1, 1));
+        computeShader.dispatch(cmdBuffer, descriptorBindings, glm::uvec3((tlas.nextUpdateSize / 128) + 1, 1, 1));
     }
 
     //----------AS BASE CLASS DEFINITIONS----------//
@@ -421,11 +385,26 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
         }),
-        descriptorGroup(renderer, {
-            { 0, renderer.getTLASPreprocessPipeline().getUboDescriptorLayout() },
-            { 1, renderer.getRasterPreprocessPipeline().getIODescriptorLayout() }
+        descriptorSets({
+            { renderer, renderer.getTLASPreprocessPipeline().getUboDescriptorLayout() }, //UBO
+            { renderer, renderer.getTLASPreprocessPipeline().getIODescriptorLayout() }, //IO
+            { renderer, renderer.getDefaultDescriptorSetLayout(TLAS_INSTANCE_DESCRIPTIONS) } //DESCRIPTIONS
         })
     {
+        //UBO descriptor write
+        descriptorSets[UBO].updateDescriptorSet({
+            .bufferWrites = {
+                {
+                    .infos = { {
+                        .buffer = preprocessUniformBuffer.getBuffer(),
+                        .offset = 0,
+                        .range = sizeof(TLASInstanceBuildPipeline::UBOInputData)
+                    } },
+                    .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                    .binding = 0
+                }
+            }
+        });
     }
 
     TLAS::~TLAS()
@@ -509,34 +488,89 @@ namespace PaperRenderer
                 .allocationFlags = 0
             };
             std::unique_ptr<Buffer> newInstancesBuffer = std::make_unique<Buffer>(renderer, instancesBufferInfo);
+            
+            //----------UPDATE DESCRIPTOR SETS----------//
 
-            //copy old data into new if old existed
+            //io
+            descriptorSets[IO].updateDescriptorSet({
+                .bufferWrites = {
+                    { //binding 0: model instances
+                        .infos = { {
+                            .buffer = renderer.instancesDataBuffer->getBuffer(),
+                            .offset = 0,
+                            .range = VK_WHOLE_SIZE
+                        } },
+                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .binding = 0
+                    },
+                    { //binding 1: input objects
+                        .infos = { {
+                            .buffer = instancesBuffer->getBuffer(),
+                            .offset = 0,
+                            .range = newInstancesSize //actual data range controlled by UBO object count
+                        } },
+                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .binding = 1
+                    },
+                    { //binding 2: output objects
+                        .infos = { {
+                            .buffer = instancesBuffer->getBuffer(),
+                            .offset = tlInstancesOffset,
+                            .range = newTLInstancesSize //actual data range controlled by UBO object count
+                        } },
+                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .binding = 2
+                    }
+                }
+            });
+
+            //instance descriptions 
+            descriptorSets[DESCRIPTIONS].updateDescriptorSet({
+                .bufferWrites = {
+                    { //binding 0: model instances
+                        .infos = { {
+                            .buffer = renderer.instancesDataBuffer->getBuffer(),
+                            .offset = instanceDescriptionsOffset,
+                            .range = newInstanceDescriptionsSize
+                        } },
+                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .binding = 0
+                    }
+                }
+            });
+
+            //----------MOVE OLD DATA----------//
+
             if(instancesBuffer)
             {
+                //start command buffer
+                const VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(TRANSFER);
+
+                const VkCommandBufferBeginInfo beginInfo = {
+                    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                    .pNext = NULL,
+                    .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+                    .pInheritanceInfo = NULL
+                };
+
+                vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+
                 const VkBufferCopy instancesCopyRegion = {
                     .srcOffset = 0,
                     .dstOffset = 0,
                     .size = instancesBuffer->getSize()
                 };
-
-                SynchronizationInfo syncInfo = {};
-                syncInfo.queueType = TRANSFER;
-
-                //start command buffer
-                VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(syncInfo.queueType);
-
-                VkCommandBufferBeginInfo beginInfo = {};
-                beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-                beginInfo.pNext = NULL;
-                beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-                vkBeginCommandBuffer(cmdBuffer, &beginInfo);
                 vkCmdCopyBuffer(cmdBuffer, instancesBuffer->getBuffer(), newInstancesBuffer->getBuffer(), 1, &instancesCopyRegion);
+                
+                //end
                 vkEndCommandBuffer(cmdBuffer);
 
                 renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
                 //submit
+                const SynchronizationInfo syncInfo = {
+                    .queueType = TRANSFER
+                };
                 vkQueueWaitIdle(renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer }).queue);
             }
             
@@ -550,6 +584,20 @@ namespace PaperRenderer
         //only rebuild/update a TLAS if any instances were updated
         if(nextUpdateSize)
         {
+            //update UBO
+            const TLASInstanceBuildPipeline::UBOInputData uboInputData = {
+                .objectCount = nextUpdateSize
+            };
+
+            const BufferWrite write = {
+                .offset = sizeof(TLASInstanceBuildPipeline::UBOInputData) * renderer.getBufferIndex(),
+                .size = sizeof(TLASInstanceBuildPipeline::UBOInputData),
+                .readData = &uboInputData
+            };
+
+            preprocessUniformBuffer.writeToBuffer({ write });
+
+            //submit
             renderer.tlasInstanceBuildPipeline.submit(cmdBuffer, *this);
 
             //TLAS instance data memory barrier

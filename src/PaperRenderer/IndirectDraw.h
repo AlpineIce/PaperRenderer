@@ -62,8 +62,7 @@ namespace PaperRenderer
         void setDrawCommandData() const;
 
         //descriptors
-        std::unique_ptr<DescriptorGroup> descriptorGroup = NULL;
-        uint32_t drawDescriptorIndex = 0;
+        const ResourceDescriptor descriptorSet;
 
         //other
         uint32_t drawCommandCount = 0;

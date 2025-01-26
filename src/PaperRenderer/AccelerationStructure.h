@@ -121,7 +121,13 @@ namespace PaperRenderer
         std::unique_ptr<Buffer> instancesBuffer;
 
         //descriptors
-        DescriptorGroup descriptorGroup;
+        enum TLASDescriptorIndices
+        {
+            UBO = 0,
+            IO = 1,
+            DESCRIPTIONS = 2
+        };
+        const std::vector<ResourceDescriptor> descriptorSets;
 
         //instances data offsets/sizes
         VkDeviceSize instanceDescriptionsOffset = 0;
