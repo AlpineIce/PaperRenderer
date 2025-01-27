@@ -859,6 +859,22 @@ BufferCopyPass::BufferCopyMaterial::~BufferCopyMaterial()
 {
 }
 
+void BufferCopyPass::BufferCopyMaterial::updateHDRBuffer() const
+{
+    //write descriptors
+    descriptor.updateDescriptorSet({
+        .imageWrites = { { //HDR buffer
+            .infos = { {
+                .sampler = hdrBuffer.sampler,
+                .imageView = hdrBuffer.view,
+                .imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL
+            }},
+            .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .binding = 1
+        } }
+    });
+}
+
 void BufferCopyPass::BufferCopyMaterial::updateUBO() const
 {
     const UBOInputData uboInputData = {
@@ -873,7 +889,7 @@ void BufferCopyPass::BufferCopyMaterial::updateUBO() const
     };
 
     const PaperRenderer::BufferWrite uboWrite = {
-        .offset = 0,
+        .offset = sizeof(UBOInputData) * renderer.getBufferIndex(),
         .size = sizeof(UBOInputData),
         .readData = &uboInputData
     };

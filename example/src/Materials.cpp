@@ -58,8 +58,15 @@ DefaultMaterialInstance::DefaultMaterialInstance(PaperRenderer::RenderEngine& re
         } }
     });
 
-    //update UBO
-    updateUBO();
+    //fill UBO data
+    PaperRenderer::BufferWrite uboWrite = {
+        .offset = 0,
+        .size = sizeof(MaterialParameters),
+        .readData = &parameters
+    };
+    parametersUBO.writeToBuffer({ uboWrite });
+    uboWrite.offset = sizeof(MaterialParameters);
+    parametersUBO.writeToBuffer({ uboWrite });
 }
 
 DefaultMaterialInstance::~DefaultMaterialInstance()
@@ -71,7 +78,7 @@ void DefaultMaterialInstance::bind(VkCommandBuffer cmdBuffer) const
     const PaperRenderer::DescriptorBinding binding = {
         .bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
         .pipelineLayout = materialInstance.getBaseMaterial().getRasterPipeline().getLayout(),
-        .descriptorSetIndex = 2, //set 3
+        .descriptorSetIndex = 2, //set 2
         .dynamicOffsets = { (uint32_t)sizeof(MaterialParameters) * renderer.getBufferIndex() }
     };
     uboDescriptor.bindDescriptorSet(cmdBuffer, binding);

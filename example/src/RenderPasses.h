@@ -156,8 +156,10 @@ private:
         BufferCopyMaterial(PaperRenderer::RenderEngine& renderer, const HDRBuffer& hdrBuffer, VkDescriptorSetLayout setLayout);
         ~BufferCopyMaterial();
 
-        PaperRenderer::Material& getMaterial() { return material; }
+        void updateHDRBuffer() const;
         void updateUBO() const;
+
+        PaperRenderer::Material& getMaterial() { return material; }
     } material;
 
     PaperRenderer::RenderEngine& renderer;
@@ -168,7 +170,9 @@ public:
     BufferCopyPass(PaperRenderer::RenderEngine &renderer, const PaperRenderer::Camera &camera, const HDRBuffer &hdrBuffer);
     ~BufferCopyPass();
 
+    void updateHDRBuffer() const { material.updateHDRBuffer(); }
+    void updateUBO() const { material.updateUBO(); }
+
     //to render function
     const PaperRenderer::Queue& render(const PaperRenderer::SynchronizationInfo &syncInfo, bool fromRaster);
-    void updateUBO() const { material.updateUBO(); }
 };

@@ -355,6 +355,7 @@ int main()
     DepthBuffer depthBuffer = {};
     SceneData scene = {};
     ExampleRayTracing const* exampleRtPtr = NULL;
+    BufferCopyPass const* bufferCopyPassPtr = NULL;
 
     //----------RENDERER INITIALIZATION----------//
 
@@ -391,6 +392,9 @@ int main()
         //update RT descriptor
         exampleRtPtr->updateHDRBuffer();
 
+        //update buffer copy descriptor
+        bufferCopyPassPtr->updateHDRBuffer();
+
         //destroy old depth buffer
         vkDestroyImageView(renderer.getDevice().getDevice(), depthBuffer.view, nullptr);
         depthBuffer.image.reset();
@@ -417,7 +421,8 @@ int main()
             .engineName = "PaperRenderer"
         },
         .windowState = {
-            .windowName = "PaperRenderer Example"
+            .windowName = "PaperRenderer Example",
+            .enableVsync = true
         }
     };
     PaperRenderer::RenderEngine renderer(rendererInfo);
@@ -450,6 +455,7 @@ int main()
     
     //HDR buffer copy render pass
     BufferCopyPass bufferCopyPass(renderer, *scene.camera, hdrBuffer);
+    bufferCopyPassPtr = &bufferCopyPass;
 
     //----------EXTRA MATERIALS----------//
 
