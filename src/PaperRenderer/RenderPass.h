@@ -89,6 +89,10 @@ namespace PaperRenderer
         std::unique_ptr<Buffer> sortedInstancesOutputBuffer;
         std::unique_ptr<FragmentableBuffer> instancesDataBuffer;
 
+        //sync
+        uint64_t transferSemaphoreValue = 0;
+        VkSemaphore transferSemaphore;
+
         //descriptors
         enum RenderPassDescriptorIndices
         {
@@ -106,7 +110,7 @@ namespace PaperRenderer
         void rebuildInstancesBuffer();
         void rebuildSortedInstancesBuffer();
         void rebuildMaterialDataBuffer();
-        void queueInstanceTransfers(VkCommandBuffer cmdBuffer);
+        void queueInstanceTransfers();
         void handleMaterialDataCompaction(const std::vector<CompactionResult>&);
         void handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances);
         void clearDrawCounts(VkCommandBuffer cmdBuffer);

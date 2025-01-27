@@ -21,16 +21,16 @@ namespace PaperRenderer
         VkDeviceSize queueSize = 0;
         VkDeviceSize stackLocation = 0;
 
+        void submitQueuedTransfers(VkCommandBuffer cmdBuffer); //records all queued transfers and clears the queue
+
         class RenderEngine& renderer;
 
     public:
         RendererStagingBuffer(RenderEngine& renderer);
         ~RendererStagingBuffer();
         
-        void idleBuffer();
+        void resetBuffer();
         void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char>& data); //do not submit more than 1 transfer with the same destination! undefined behavior!
-        void submitQueuedTransfers(VkCommandBuffer cmdBuffer); //records all queued transfers and clears the queue
         const Queue& submitQueuedTransfers(SynchronizationInfo syncInfo); //Submits all queued transfers and clears the queue
-        void addOwner(const Queue& queue);
     };
 }

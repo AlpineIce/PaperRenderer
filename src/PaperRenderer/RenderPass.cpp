@@ -119,6 +119,7 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
         }),
+        transferSemaphore(renderer.getDevice().getCommands().getTimelineSemaphore(transferSemaphoreValue)),
         uboDescriptor(renderer, renderer.getRasterPreprocessPipeline().getUboDescriptorLayout()),
         ioDescriptor(renderer, renderer.getRasterPreprocessPipeline().getIODescriptorLayout()),
         sortedMatricesDescriptor(renderer, renderer.getDefaultDescriptorSetLayout(INDIRECT_DRAW_MATRICES)),
@@ -283,7 +284,7 @@ namespace PaperRenderer
         instancesDataBuffer = std::move(newInstancesDataBuffer);
     }
 
-    void RenderPass::queueInstanceTransfers(VkCommandBuffer cmdBuffer)
+    void RenderPass::queueInstanceTransfers()
     {
         //Timer
         Timer timer(renderer, "RenderPass Queue instance Transfers", REGULAR);
@@ -344,7 +345,7 @@ namespace PaperRenderer
             else if(writeResult == FragmentableBuffer::COMPACTED)
             {
                 //recursive redo (handling compaction resets the instances)
-                queueInstanceTransfers(cmdBuffer);
+                queueInstanceTransfers();
                 return;
             }
         }
@@ -377,43 +378,12 @@ namespace PaperRenderer
         toUpdateInstances.clear();
 
         //submit
-        renderer.getStagingBuffer().submitQueuedTransfers(cmdBuffer);
-
-        //memory barriers
-        const std::array<VkBufferMemoryBarrier2, 2> transferMemBarriers = {
-            VkBufferMemoryBarrier2({
-                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                .pNext = NULL,
-                .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
-                .buffer = instancesBuffer->getBuffer(),
-                .offset = 0,
-                .size = VK_WHOLE_SIZE
-            }),
-            VkBufferMemoryBarrier2({
-                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                .pNext = NULL,
-                .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
-                .buffer = instancesDataBuffer->getBuffer().getBuffer(),
-                .offset = 0,
-                .size = VK_WHOLE_SIZE
-            })
+        const SynchronizationInfo syncInfo = {
+            .queueType = TRANSFER,
+            .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } }, //wait on self
+            .timelineSignalPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue + 1 } }
         };
-
-        const VkDependencyInfo transferDependencyInfo = {
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .pNext = NULL,
-            .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
-            .bufferMemoryBarrierCount = transferMemBarriers.size(),
-            .pBufferMemoryBarriers = transferMemBarriers.data()
-        };
-
-        vkCmdPipelineBarrier2(cmdBuffer, &transferDependencyInfo);
+        renderer.getStagingBuffer().submitQueuedTransfers(syncInfo);
     }
 
     void RenderPass::handleMaterialDataCompaction(const std::vector<CompactionResult>& results)
@@ -471,6 +441,9 @@ namespace PaperRenderer
                 meshGroup.addOwner(queue);
             }
         }
+
+        //renderer instances
+        renderer.instancesDataBuffer->addOwner(queue);
     }
 
     const Queue& RenderPass::render(const RenderPassInfo& renderPassInfo, SynchronizationInfo syncInfo)
@@ -495,7 +468,7 @@ namespace PaperRenderer
         }
 
         //instance transfers
-        queueInstanceTransfers(cmdBuffer);
+        queueInstanceTransfers();
 
         //clear draw counts
         clearDrawCounts(cmdBuffer);
@@ -743,12 +716,16 @@ namespace PaperRenderer
 
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
+        //append transfer semaphore
+        syncInfo.timelineWaitPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 1 });
+        syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 2 });
+        transferSemaphoreValue += 2;
+
         //submit
         const Queue& queue = renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
 
         //assign owner to resources in case destruction is required
         assignResourceOwner(queue);
-        renderer.getStagingBuffer().addOwner(queue);
 
         return queue;
     }

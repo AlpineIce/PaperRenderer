@@ -121,6 +121,10 @@ namespace PaperRenderer
         std::unique_ptr<Buffer> scratchBuffer; //TLAS gets its own scratch buffer
         std::unique_ptr<Buffer> instancesBuffer;
 
+        //sync
+        uint64_t transferSemaphoreValue = 0;
+        VkSemaphore transferSemaphore;
+
         //descriptors
         enum TLASDescriptorIndices
         {
@@ -147,8 +151,8 @@ namespace PaperRenderer
                 return instancesRange + instanceDescriptionsRange + tlInstancesRange;
             }
         } instancesBufferSizes = {};
-        uint32_t nextUpdateSize = 0;
 
+        uint32_t nextUpdateSize = 0;
         const float instancesOverhead = 1.5;
 
         struct InstanceDescription

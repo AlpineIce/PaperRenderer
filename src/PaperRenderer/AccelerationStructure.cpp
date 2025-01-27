@@ -398,6 +398,7 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
         }),
+        transferSemaphore(renderer.getDevice().getCommands().getTimelineSemaphore(transferSemaphoreValue)),
         uboDescriptor(renderer, renderer.getTLASPreprocessPipeline().getUboDescriptorLayout()),
         ioDescriptor(renderer, renderer.getTLASPreprocessPipeline().getIODescriptorLayout()),
         instanceDescriptionsDescriptor(renderer, renderer.getDefaultDescriptorSetLayout(TLAS_INSTANCE_DESCRIPTIONS))
@@ -667,6 +668,13 @@ namespace PaperRenderer
         //queue data transfers
         renderer.getStagingBuffer().queueDataTransfers(*instancesBuffer, 0, newInstancesData);
 
+        //submit transfers
+        const SynchronizationInfo transferSyncInfo = {
+            .queueType = TRANSFER,
+            .timelineSignalPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue + 1 } }
+        };
+        renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
+
         //start command buffer
         VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(COMPUTE);
 
@@ -677,32 +685,6 @@ namespace PaperRenderer
             .pInheritanceInfo = NULL
         };
         vkBeginCommandBuffer(cmdBuffer, &cmdBufferInfo);
-
-        //record transfers
-        renderer.getStagingBuffer().submitQueuedTransfers(cmdBuffer);
-
-         //memory barriers
-        const VkBufferMemoryBarrier2 transferMemBarrier = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .pNext = NULL,
-            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-            .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
-            .buffer = instancesBuffer->getBuffer(),
-            .offset = 0,
-            .size = VK_WHOLE_SIZE
-        };
-
-        const VkDependencyInfo transferDependencyInfo = {
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .pNext = NULL,
-            .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
-            .bufferMemoryBarrierCount = 1,
-            .pBufferMemoryBarriers = &transferMemBarrier
-        };
-
-        vkCmdPipelineBarrier2(cmdBuffer, &transferDependencyInfo);
 
         //----------TLAS BUILD----------//
 
@@ -730,13 +712,17 @@ namespace PaperRenderer
         vkEndCommandBuffer(cmdBuffer);
 
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
+
+        //append transfer semaphore to syncInfo
+        syncInfo.timelineWaitPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 1});
+        syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 2});
+        transferSemaphoreValue += 2;
         
         //submit
         const Queue& queue = renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
 
         //assign ownership
         assignResourceOwner(queue);
-        renderer.getStagingBuffer().addOwner(queue);
 
         //return
         return queue;

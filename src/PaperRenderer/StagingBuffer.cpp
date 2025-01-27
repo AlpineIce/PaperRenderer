@@ -24,9 +24,8 @@ namespace PaperRenderer
         });
     }
 
-    void RendererStagingBuffer::idleBuffer()
+    void RendererStagingBuffer::resetBuffer()
     {
-        if(stagingBuffer) stagingBuffer->idleOwners();
         stackLocation = 0;
     }
 
@@ -125,11 +124,5 @@ namespace PaperRenderer
         if(stagingBuffer) stagingBuffer->addOwner(queue);
 
         return queue;
-    }
-
-    void RendererStagingBuffer::addOwner(const Queue &queue)
-    {
-        std::lock_guard guard(stagingBufferMutex);
-        if(stagingBuffer) stagingBuffer->addOwner(queue);
     }
 }
