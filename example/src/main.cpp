@@ -422,7 +422,7 @@ int main()
         },
         .windowState = {
             .windowName = "PaperRenderer Example",
-            .enableVsync = true
+            .enableVsync = false
         }
     };
     PaperRenderer::RenderEngine renderer(rendererInfo);
@@ -792,7 +792,7 @@ int main()
         //RNG
         std::random_device rd;
         std::mt19937 mt(rd());
-        std::uniform_int_distribution<uint32_t> intDist(0.0, 0.05 / deltaTime);
+        std::uniform_int_distribution<uint32_t> intDist(0.0, 0.01 / deltaTime);
         
         //populate new raindrop if RNG is happy
         if(intDist(mt) == 0)

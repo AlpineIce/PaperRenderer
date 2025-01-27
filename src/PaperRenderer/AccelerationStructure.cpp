@@ -542,7 +542,7 @@ namespace PaperRenderer
                 .bufferWrites = {
                     { //binding 0: model instances
                         .infos = { {
-                            .buffer = renderer.instancesDataBuffer->getBuffer(),
+                            .buffer = instancesBuffer->getBuffer(),
                             .offset = instancesBufferSizes.instanceDescriptionsOffset,
                             .range = instancesBufferSizes.instanceDescriptionsRange
                         } },
@@ -652,13 +652,13 @@ namespace PaperRenderer
                     .recordOffset = sbtOffset,
                     .flags = instance.flags
                 };
-                memcpy(newInstancesData.data() + sizeof(ModelInstance::AccelerationStructureInstance) * nextUpdateSize, &instanceShaderData, sizeof(ModelInstance::AccelerationStructureInstance));
+                memcpy(newInstancesData.data() + instancesBufferSizes.instancesOffset + (sizeof(ModelInstance::AccelerationStructureInstance) * nextUpdateSize), &instanceShaderData, sizeof(ModelInstance::AccelerationStructureInstance));
 
                 //write description data
                 InstanceDescription descriptionShaderData = {
                     .modelDataOffset = (uint32_t)instance.instancePtr->getParentModel().getShaderDataLocation()
                 };
-                memcpy(newInstancesData.data() + instancesBufferSizes.instanceDescriptionsOffset + sizeof(InstanceDescription) * nextUpdateSize, &descriptionShaderData, sizeof(InstanceDescription));
+                memcpy(newInstancesData.data() + instancesBufferSizes.instanceDescriptionsOffset + (sizeof(InstanceDescription) * nextUpdateSize), &descriptionShaderData, sizeof(InstanceDescription));
 
                 nextUpdateSize++;
             }

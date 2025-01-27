@@ -27,7 +27,7 @@ void main()
     
 
     //cast main RT ray; recursion will be used to solve the integral in chit shaders
-    /*traceRayEXT(
+    traceRayEXT(
         accelerationStructureEXT(inputData.tlasAddress), // acceleration structure
         gl_RayFlagsNoneEXT,       // rayFlags
         0xFF,           // cullMask
@@ -39,7 +39,7 @@ void main()
         mainRayDirection.xyz,  // ray direction
         1000.0,           // ray max range
         0               // payload (location = 0)
-    );*/
+    );
 
     //add total light depending on if depth is non-zero (aka hit)
     vec3 totalLight = vec3(0.0);
