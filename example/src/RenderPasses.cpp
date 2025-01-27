@@ -820,7 +820,7 @@ BufferCopyPass::BufferCopyMaterial::BufferCopyMaterial(PaperRenderer::RenderEngi
                 }
             }
         },
-        [&](VkCommandBuffer cmdBuffer, const PaperRenderer::Camera& camera) { bind(cmdBuffer, camera); }
+        [this](VkCommandBuffer cmdBuffer, const PaperRenderer::Camera& camera) { bind(cmdBuffer, camera); }
     ),
     uniformBuffer(renderer, {
         .size = sizeof(UBOInputData) * 2,

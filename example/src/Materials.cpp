@@ -4,7 +4,7 @@
 
 DefaultMaterial::DefaultMaterial(PaperRenderer::RenderEngine &renderer, const PaperRenderer::RasterPipelineBuildInfo &pipelineInfo, const LightingData& lightingData)
     :lightingData(lightingData),
-    material(renderer, pipelineInfo, [&](VkCommandBuffer cmdBuffer, const PaperRenderer::Camera& camera) { bind(cmdBuffer, camera); }),
+    material(renderer, pipelineInfo, [this](VkCommandBuffer cmdBuffer, const PaperRenderer::Camera& camera) { bind(cmdBuffer, camera); }),
     renderer(renderer)
 {
 }
@@ -42,7 +42,7 @@ DefaultMaterialInstance::DefaultMaterialInstance(PaperRenderer::RenderEngine& re
         .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
     }),
     uboDescriptor(renderer, uboDescriptorLayout),
-    materialInstance(renderer, baseMaterial.getMaterial(), [&](VkCommandBuffer cmdBuffer) { bind(cmdBuffer); }),
+    materialInstance(renderer, baseMaterial.getMaterial(), [this](VkCommandBuffer cmdBuffer) { bind(cmdBuffer); }),
     renderer(renderer)
 {
     //update descriptor
