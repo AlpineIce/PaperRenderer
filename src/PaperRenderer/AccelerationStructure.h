@@ -125,16 +125,23 @@ namespace PaperRenderer
         enum TLASDescriptorIndices
         {
             UBO = 0,
-            IO = 1,
-            DESCRIPTIONS = 2
+            INSTANCES = 1,
+            IO = 2,
         };
         ResourceDescriptor uboDescriptor;
         ResourceDescriptor ioDescriptor;
         ResourceDescriptor instanceDescriptionsDescriptor;
 
         //instances data offsets/sizes
-        VkDeviceSize instanceDescriptionsOffset = 0;
-        VkDeviceSize tlInstancesOffset = 0;
+        struct InstancesBufferSizes
+        {
+            VkDeviceSize instancesOffset = 0;
+            VkDeviceSize instancesRange = 0;
+            VkDeviceSize instanceDescriptionsOffset = 0;
+            VkDeviceSize instanceDescriptionsRange = 0;
+            VkDeviceSize tlInstancesOffset = 0;
+            VkDeviceSize tlInstancesRange = 0;
+        } instancesBufferSizes = {};
         uint32_t nextUpdateSize = 0;
 
         const float instancesOverhead = 1.5;
@@ -164,8 +171,6 @@ namespace PaperRenderer
 
         const Buffer& getInstancesBuffer() const { return *instancesBuffer; }
         const ResourceDescriptor& getInstanceDescriptionsDescriptor() const { return instanceDescriptionsDescriptor; }
-        const VkDeviceSize getInstanceDescriptionsOffset() const { return instanceDescriptionsOffset; } //MAY POSSIBLY CHANGE AFTER UPDATING TLAS
-        const VkDeviceSize getInstanceDescriptionsRange() const { return nextUpdateSize * sizeof(InstanceDescription); } //MAY POSSIBLY CHANGE AFTER UPDATING TLAS
     };
 
     //BLAS operation

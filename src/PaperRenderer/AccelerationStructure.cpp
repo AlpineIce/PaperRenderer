@@ -33,13 +33,6 @@ namespace PaperRenderer
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
                 .pImmutableSamplers = NULL
-            },
-            {
-                .binding = 2,
-                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                .pImmutableSamplers = NULL
             }
         })),
         computeShader(renderer, {
@@ -49,6 +42,7 @@ namespace PaperRenderer
             },
             .descriptorSets = {
                 { TLAS::TLASDescriptorIndices::UBO, uboSetLayout },
+                { TLAS::TLASDescriptorIndices::INSTANCES, renderer.getDefaultDescriptorSetLayout(INSTANCES) },
                 { TLAS::TLASDescriptorIndices::IO, ioSetLayout }
             },
             .pcRanges = {}
@@ -88,7 +82,16 @@ namespace PaperRenderer
                     .dynamicOffsets = { (uint32_t)sizeof(UBOInputData) * renderer.getBufferIndex() }
                 }
             },
-            { //set 1 (IO buffers)
+            { //set 1 (Renderer Instances)
+                .set = renderer.getInstancesBufferDescriptor(),
+                .binding = {
+                    .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
+                    .pipelineLayout = computeShader.getPipeline().getLayout(),
+                    .descriptorSetIndex = TLAS::TLASDescriptorIndices::INSTANCES,
+                    .dynamicOffsets = {}
+                }
+            },
+            { //set 2 (IO buffers)
                 .set = tlas.ioDescriptor,
                 .binding = {
                     .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -434,7 +437,7 @@ namespace PaperRenderer
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR,
                 .pNext = NULL,
                 .arrayOfPointers = VK_FALSE,
-                .data = VkDeviceOrHostAddressConstKHR{ .deviceAddress = instancesBuffer->getBufferDeviceAddress() + tlInstancesOffset }
+                .data = VkDeviceOrHostAddressConstKHR{ .deviceAddress = instancesBuffer->getBufferDeviceAddress() + instancesBufferSizes.tlInstancesOffset }
             }},
             .flags = VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR
         };
@@ -455,136 +458,100 @@ namespace PaperRenderer
 
     void TLAS::verifyInstancesBuffer(const uint32_t instanceCount)
     {
-        //instances
-        const VkDeviceSize newInstancesSize = Device::getAlignment(
-            std::max((VkDeviceSize)(instanceCount * sizeof(ModelInstance::AccelerationStructureInstance) * instancesOverhead),
-            (VkDeviceSize)(sizeof(ModelInstance::AccelerationStructureInstance) * 64)),
-            renderer.getDevice().getGPUProperties().properties.limits.minStorageBufferOffsetAlignment
-        );
-
-        //instances description
-        const VkDeviceSize newInstanceDescriptionsSize = Device::getAlignment(
-            std::max((VkDeviceSize)(instanceCount * sizeof(InstanceDescription) * instancesOverhead),
-            (VkDeviceSize)(sizeof(InstanceDescription) * 64)),
-            renderer.getDevice().getGPUProperties().properties.limits.minStorageBufferOffsetAlignment
-        );
-
-        //tl instances
-        const VkDeviceSize newTLInstancesSize = Device::getAlignment(
-            std::max((VkDeviceSize)(instanceCount * sizeof(VkAccelerationStructureInstanceKHR) * instancesOverhead),
-            (VkDeviceSize)(sizeof(VkAccelerationStructureInstanceKHR) * 64)),
-            renderer.getDevice().getGPUProperties().properties.limits.minStorageBufferOffsetAlignment
-        );
-
-        const VkDeviceSize totalBufferSize = newInstancesSize + newInstanceDescriptionsSize + newTLInstancesSize;
+        const VkDeviceSize curInstancesSize = (VkDeviceSize)((instanceCount + 1) * sizeof(ModelInstance::AccelerationStructureInstance));
 
         //rebuild buffer if needed
-        if(!instancesBuffer || instancesBuffer->getSize() < totalBufferSize)
+        if(!instancesBuffer || instancesBufferSizes.instancesRange < curInstancesSize)
         {
             //create timer
             Timer timer(renderer, "TLAS Rebuild Instances Buffer", IRREGULAR);
 
-            //offsets
-            instanceDescriptionsOffset = newInstancesSize;
-            tlInstancesOffset = newInstancesSize + newInstanceDescriptionsSize;
+            //instances
+            const VkDeviceSize newInstancesSize = Device::getAlignment(
+                std::max((VkDeviceSize)((instanceCount + 1) * sizeof(ModelInstance::AccelerationStructureInstance) * instancesOverhead),
+                (VkDeviceSize)(sizeof(ModelInstance::AccelerationStructureInstance) * 64)),
+                renderer.getDevice().getGPUProperties().properties.limits.minStorageBufferOffsetAlignment
+            );
+
+            //instances description
+            const VkDeviceSize newInstanceDescriptionsSize = Device::getAlignment(
+                std::max((VkDeviceSize)((instanceCount + 1) * sizeof(InstanceDescription) * instancesOverhead),
+                (VkDeviceSize)(sizeof(InstanceDescription) * 64)),
+                renderer.getDevice().getGPUProperties().properties.limits.minStorageBufferOffsetAlignment
+            );
+
+            //tl instances
+            const VkDeviceSize newTLInstancesSize = Device::getAlignment(
+                std::max((VkDeviceSize)((instanceCount + 1) * sizeof(VkAccelerationStructureInstanceKHR) * instancesOverhead),
+                (VkDeviceSize)(sizeof(VkAccelerationStructureInstanceKHR) * 64)),
+                renderer.getDevice().getGPUProperties().properties.limits.minStorageBufferOffsetAlignment
+            );
+
+            const VkDeviceSize newSize = newInstancesSize + newInstanceDescriptionsSize + newTLInstancesSize;
+
+            //set offsets and ranges
+            instancesBufferSizes = {
+                .instancesOffset = 0,
+                .instancesRange = newInstancesSize,
+                .instanceDescriptionsOffset = newInstancesSize,
+                .instanceDescriptionsRange = newInstanceDescriptionsSize,
+                .tlInstancesOffset = newInstanceDescriptionsSize,
+                .tlInstancesRange = newTLInstancesSize
+            };
 
             //buffer
             const BufferInfo instancesBufferInfo = {
-                .size = (VkDeviceSize)((double)totalBufferSize * instancesOverhead),
-                .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+                .size = newSize,
+                .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT |
                     VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
                 .allocationFlags = 0
             };
             std::unique_ptr<Buffer> newInstancesBuffer = std::make_unique<Buffer>(renderer, instancesBufferInfo);
             
-            //----------MOVE OLD DATA----------//
-
-            if(instancesBuffer)
-            {
-                //start command buffer
-                const VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(TRANSFER);
-
-                const VkCommandBufferBeginInfo beginInfo = {
-                    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-                    .pNext = NULL,
-                    .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-                    .pInheritanceInfo = NULL
-                };
-
-                vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-
-                const VkBufferCopy instancesCopyRegion = {
-                    .srcOffset = 0,
-                    .dstOffset = 0,
-                    .size = instancesBuffer->getSize()
-                };
-                vkCmdCopyBuffer(cmdBuffer, instancesBuffer->getBuffer(), newInstancesBuffer->getBuffer(), 1, &instancesCopyRegion);
-                
-                //end
-                vkEndCommandBuffer(cmdBuffer);
-
-                renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
-
-                //submit
-                const SynchronizationInfo syncInfo = {
-                    .queueType = TRANSFER
-                };
-                vkQueueWaitIdle(renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer }).queue);
-            }
-            
             //replace old buffers
             instancesBuffer = std::move(newInstancesBuffer);
+
+            //----------UPDATE DESCRIPTOR SETS----------//
+
+            //io
+            ioDescriptor.updateDescriptorSet({
+                .bufferWrites = {
+                    { //binding 0: input objects
+                        .infos = { {
+                            .buffer = instancesBuffer->getBuffer(),
+                            .offset = instancesBufferSizes.instancesOffset,
+                            .range = instancesBufferSizes.instancesRange
+                        } },
+                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .binding = 0
+                    },
+                    { //binding 1: output objects
+                        .infos = { {
+                            .buffer = instancesBuffer->getBuffer(),
+                            .offset = instancesBufferSizes.tlInstancesOffset,
+                            .range = instancesBufferSizes.tlInstancesRange
+                        } },
+                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .binding = 1
+                    }
+                }
+            });
+
+            //instance descriptions 
+            instanceDescriptionsDescriptor.updateDescriptorSet({
+                .bufferWrites = {
+                    { //binding 0: model instances
+                        .infos = { {
+                            .buffer = renderer.instancesDataBuffer->getBuffer(),
+                            .offset = instancesBufferSizes.instanceDescriptionsOffset,
+                            .range = instancesBufferSizes.instanceDescriptionsRange
+                        } },
+                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                        .binding = 0
+                    }
+                }
+            });
         }
-
-        //----------UPDATE DESCRIPTOR SETS----------//
-
-        //io
-        ioDescriptor.updateDescriptorSet({
-            .bufferWrites = {
-                { //binding 0: model instances
-                    .infos = { {
-                        .buffer = renderer.instancesDataBuffer->getBuffer(),
-                        .offset = 0,
-                        .range = VK_WHOLE_SIZE
-                    } },
-                    .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                    .binding = 0
-                },
-                { //binding 1: input objects
-                    .infos = { {
-                        .buffer = instancesBuffer->getBuffer(),
-                        .offset = 0,
-                        .range = newInstancesSize //actual data range controlled by UBO object count
-                    } },
-                    .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                    .binding = 1
-                },
-                { //binding 2: output objects
-                    .infos = { {
-                        .buffer = instancesBuffer->getBuffer(),
-                        .offset = tlInstancesOffset,
-                        .range = newTLInstancesSize //actual data range controlled by UBO object count
-                    } },
-                    .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                    .binding = 2
-                }
-            }
-        });
-
-        //instance descriptions 
-        instanceDescriptionsDescriptor.updateDescriptorSet({
-            .bufferWrites = {
-                { //binding 0: model instances
-                    .infos = { {
-                        .buffer = renderer.instancesDataBuffer->getBuffer(),
-                        .offset = instanceDescriptionsOffset,
-                        .range = newInstanceDescriptionsSize
-                    } },
-                    .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                    .binding = 0
-                }
-            }
-        });
     }
 
     void TLAS::buildStructure(VkCommandBuffer cmdBuffer, AsBuildData& data, const CompactionQuery compactionQuery, const VkDeviceAddress scratchAddress)
@@ -619,8 +586,8 @@ namespace PaperRenderer
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .buffer = instancesBuffer->getBuffer(),
-                .offset = tlInstancesOffset,
-                .size = instancesBuffer->getSize() - tlInstancesOffset
+                .offset = instancesBufferSizes.tlInstancesOffset,
+                .size = instancesBufferSizes.tlInstancesRange
             };
 
             const VkDependencyInfo tlasInstanceDependencyInfo = {
@@ -641,6 +608,7 @@ namespace PaperRenderer
     void TLAS::assignResourceOwner(const Queue &queue)
     {
         scratchBuffer->addOwner(queue);
+        renderer.instancesDataBuffer->addOwner(queue);
         instancesBuffer->addOwner(queue);
 
         AS::assignResourceOwner(queue);
@@ -660,7 +628,7 @@ namespace PaperRenderer
         verifyInstancesBuffer(rtRender.getTLASInstanceData().size());
 
         //queue instance data
-        std::vector<char> newInstancesData(tlInstancesOffset); //allocate memory for everything but VkAccelerationStructureInstanceKHRs, which is at the end of the buffer
+        std::vector<char> newInstancesData(instancesBufferSizes.tlInstancesOffset);
         for(const AccelerationStructureInstanceData& instance : rtRender.getTLASInstanceData())
         {
             //get BLAS pointer
@@ -690,7 +658,7 @@ namespace PaperRenderer
                 InstanceDescription descriptionShaderData = {
                     .modelDataOffset = (uint32_t)instance.instancePtr->getParentModel().getShaderDataLocation()
                 };
-                memcpy(newInstancesData.data() + instanceDescriptionsOffset + sizeof(InstanceDescription) * nextUpdateSize, &descriptionShaderData, sizeof(InstanceDescription));
+                memcpy(newInstancesData.data() + instancesBufferSizes.instanceDescriptionsOffset + sizeof(InstanceDescription) * nextUpdateSize, &descriptionShaderData, sizeof(InstanceDescription));
 
                 nextUpdateSize++;
             }
