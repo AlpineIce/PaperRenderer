@@ -331,7 +331,7 @@ namespace PaperRenderer
         statisticsTracker.clearStatistics();
 
         //idle staging buffer
-        stagingBuffer[getBufferIndex()]->idleBuffer();
+        //stagingBuffer[getBufferIndex()]->idleBuffer();
 
         //reset command pools
         device.getCommands().resetCommandPools();

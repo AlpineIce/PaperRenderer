@@ -495,7 +495,7 @@ namespace PaperRenderer
                 .instancesRange = newInstancesSize,
                 .instanceDescriptionsOffset = newInstancesSize,
                 .instanceDescriptionsRange = newInstanceDescriptionsSize,
-                .tlInstancesOffset = newInstanceDescriptionsSize,
+                .tlInstancesOffset = newInstancesSize + newInstanceDescriptionsSize,
                 .tlInstancesRange = newTLInstancesSize
             };
 
@@ -628,7 +628,7 @@ namespace PaperRenderer
         verifyInstancesBuffer(rtRender.getTLASInstanceData().size());
 
         //queue instance data
-        std::vector<char> newInstancesData(instancesBufferSizes.tlInstancesOffset);
+        std::vector<char> newInstancesData(instancesBufferSizes.totalSize());
         for(const AccelerationStructureInstanceData& instance : rtRender.getTLASInstanceData())
         {
             //get BLAS pointer

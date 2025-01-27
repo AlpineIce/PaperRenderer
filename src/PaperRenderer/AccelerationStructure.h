@@ -141,6 +141,11 @@ namespace PaperRenderer
             VkDeviceSize instanceDescriptionsRange = 0;
             VkDeviceSize tlInstancesOffset = 0;
             VkDeviceSize tlInstancesRange = 0;
+
+            VkDeviceSize totalSize()
+            {
+                return instancesRange + instanceDescriptionsRange + tlInstancesRange;
+            }
         } instancesBufferSizes = {};
         uint32_t nextUpdateSize = 0;
 
