@@ -18,41 +18,45 @@ namespace PaperRenderer
         swapchain(*this, creationInfo.swapchainRebuildCallbackFunction, creationInfo.windowState),
         descriptors(*this),
         pipelineBuilder(*this),
+        defaultDescriptorLayouts({
+            descriptors.createDescriptorSetLayout({ { //INDIRECT_DRAW_MATRICES
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                .pImmutableSamplers = NULL
+            } }),
+            descriptors.createDescriptorSetLayout({ { //CAMERA_MATRICES
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_ALL,
+                .pImmutableSamplers = NULL
+            } }),
+            descriptors.createDescriptorSetLayout({ { //TLAS_INSTANCE_DESCRIPTIONS
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR,
+                .pImmutableSamplers = NULL
+            } }),
+            descriptors.createDescriptorSetLayout({ { //INSTANCES
+                .binding = 0,
+                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = VK_SHADER_STAGE_ALL,
+                .pImmutableSamplers = NULL
+            } }),
+        }),
         rasterPreprocessPipeline(*this, creationInfo.rasterPreprocessSpirv),
         tlasInstanceBuildPipeline(*this, creationInfo.rtPreprocessSpirv),
         asBuilder(*this),
-        stagingBuffer({ std::make_unique<RendererStagingBuffer>(*this), std::make_unique<RendererStagingBuffer>(*this) })
+        stagingBuffer({ std::make_unique<RendererStagingBuffer>(*this), std::make_unique<RendererStagingBuffer>(*this) }),
+        instancesBufferDescriptor(*this, defaultDescriptorLayouts[INSTANCES])
     {
         //initialize buffers
         rebuildModelDataBuffer();
         rebuildInstancesbuffer();
-
-        //indirect draw model matrices descriptor layout
-        defaultDescriptorLayouts[INDIRECT_DRAW_MATRICES] = descriptors.createDescriptorSetLayout({ {
-            .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-            .pImmutableSamplers = NULL
-        } });
-
-        //camera matrices descriptor layout
-        defaultDescriptorLayouts[CAMERA_MATRICES] = descriptors.createDescriptorSetLayout({ {
-            .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-            .descriptorCount = 1,
-            .stageFlags = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-            .pImmutableSamplers = NULL
-        } });
-
-        //ray tracing instance descriptions
-        defaultDescriptorLayouts[TLAS_INSTANCE_DESCRIPTIONS] = descriptors.createDescriptorSetLayout({ {
-            .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
-            .pImmutableSamplers = NULL
-        } });
 
         //finish up
         vkDeviceWaitIdle(device.getDevice());
@@ -116,11 +120,10 @@ namespace PaperRenderer
             copyRegion.dstOffset = 0;
             copyRegion.size = newWriteSize;
 
-            SynchronizationInfo syncInfo = {};
-            syncInfo.fence = device.getCommands().getUnsignaledFence();
-            newBuffer->getBuffer().copyFromBufferRanges(*instancesDataBuffer, { copyRegion }, syncInfo);
-            vkWaitForFences(device.getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
-            vkDestroyFence(device.getDevice(), syncInfo.fence, nullptr);
+            const SynchronizationInfo syncInfo = {
+                .queueType = TRANSFER
+            };
+            vkQueueWaitIdle(newBuffer->getBuffer().copyFromBufferRanges(*instancesDataBuffer, { copyRegion }, syncInfo).queue);
 
             //pseudo write
             newBuffer->newWrite(NULL, newWriteSize, NULL);
@@ -172,16 +175,29 @@ namespace PaperRenderer
             copyRegion.dstOffset = 0;
             copyRegion.size = std::min(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance), (size_t)instancesDataBuffer->getSize());
 
-            SynchronizationInfo syncInfo = {};
-            syncInfo.queueType = TRANSFER;
-            syncInfo.fence = device.getCommands().getUnsignaledFence();
-            newBuffer->copyFromBufferRanges(*instancesDataBuffer, { copyRegion }, syncInfo);
-            vkWaitForFences(device.getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
-            vkDestroyFence(device.getDevice(), syncInfo.fence, nullptr);
+            const SynchronizationInfo syncInfo = {
+                .queueType = TRANSFER
+            };
+            vkQueueWaitIdle(newBuffer->copyFromBufferRanges(*instancesDataBuffer, { copyRegion }, syncInfo).queue);
         }
         
         //replace old buffer
         instancesDataBuffer = std::move(newBuffer);
+
+        //update descriptors
+        instancesBufferDescriptor.updateDescriptorSet({
+            .bufferWrites = {
+                { //binding 0: UBO input data
+                    .infos = { {
+                        .buffer = instancesDataBuffer->getBuffer(),
+                        .offset = 0,
+                        .range = VK_WHOLE_SIZE
+                    } },
+                    .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .binding = 0
+                }
+            }
+        });
     }
 
     void RenderEngine::addModelData(Model* model)

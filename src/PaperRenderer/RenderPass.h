@@ -93,9 +93,10 @@ namespace PaperRenderer
         enum RenderPassDescriptorIndices
         {
             UBO = 0,
-            IO = 1,
-            CAMERA = 2,
-            SORTED_MATRICES = 3
+            INSTANCES = 1,
+            IO = 2,
+            CAMERA = 3,
+            SORTED_MATRICES = 4
         };
         ResourceDescriptor uboDescriptor;
         ResourceDescriptor ioDescriptor;

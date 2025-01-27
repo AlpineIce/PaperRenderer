@@ -10,7 +10,7 @@ layout(location = 0) in vec3 worldPosition;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 texCoord;
 
-layout(std430, set = 0, binding = 0) uniform GlobalInputData
+layout(std430, set = 0, binding = 0) uniform CameraInputData
 {
     mat4 projection;
     mat4 view;

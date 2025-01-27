@@ -27,7 +27,7 @@ namespace PaperRenderer
     {
     private:
         const std::vector<VkPushConstantRange> pcRanges;
-        const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts;
+        const std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
         const RTPipelineProperties pipelineProperties;
         std::unique_ptr<RTPipeline> pipeline;
         

@@ -13,7 +13,7 @@ namespace PaperRenderer
         :uboSetLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
             {
                 .binding = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
                 .pImmutableSamplers = NULL
@@ -125,6 +125,16 @@ namespace PaperRenderer
                 vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), structure, nullptr);
             }
         }
+    }
+
+    VkDeviceAddress AS::getAsDeviceAddress() const
+    {
+        const VkAccelerationStructureDeviceAddressInfoKHR info = {
+            .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
+            .pNext = NULL,
+            .accelerationStructure = accelerationStructure
+        };
+        return vkGetAccelerationStructureDeviceAddressKHR(renderer.getDevice().getDevice(), &info);
     }
 
     AS::AsBuildData AS::getAsData(const VkAccelerationStructureTypeKHR type, const VkBuildAccelerationStructureFlagsKHR flags, const VkBuildAccelerationStructureModeKHR mode)
@@ -487,56 +497,6 @@ namespace PaperRenderer
             };
             std::unique_ptr<Buffer> newInstancesBuffer = std::make_unique<Buffer>(renderer, instancesBufferInfo);
             
-            //----------UPDATE DESCRIPTOR SETS----------//
-
-            //io
-            ioDescriptor.updateDescriptorSet({
-                .bufferWrites = {
-                    { //binding 0: model instances
-                        .infos = { {
-                            .buffer = renderer.instancesDataBuffer->getBuffer(),
-                            .offset = 0,
-                            .range = VK_WHOLE_SIZE
-                        } },
-                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .binding = 0
-                    },
-                    { //binding 1: input objects
-                        .infos = { {
-                            .buffer = instancesBuffer->getBuffer(),
-                            .offset = 0,
-                            .range = newInstancesSize //actual data range controlled by UBO object count
-                        } },
-                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .binding = 1
-                    },
-                    { //binding 2: output objects
-                        .infos = { {
-                            .buffer = instancesBuffer->getBuffer(),
-                            .offset = tlInstancesOffset,
-                            .range = newTLInstancesSize //actual data range controlled by UBO object count
-                        } },
-                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .binding = 2
-                    }
-                }
-            });
-
-            //instance descriptions 
-            instanceDescriptionsDescriptor.updateDescriptorSet({
-                .bufferWrites = {
-                    { //binding 0: model instances
-                        .infos = { {
-                            .buffer = renderer.instancesDataBuffer->getBuffer(),
-                            .offset = instanceDescriptionsOffset,
-                            .range = newInstanceDescriptionsSize
-                        } },
-                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .binding = 0
-                    }
-                }
-            });
-
             //----------MOVE OLD DATA----------//
 
             if(instancesBuffer)
@@ -575,6 +535,56 @@ namespace PaperRenderer
             //replace old buffers
             instancesBuffer = std::move(newInstancesBuffer);
         }
+
+        //----------UPDATE DESCRIPTOR SETS----------//
+
+        //io
+        ioDescriptor.updateDescriptorSet({
+            .bufferWrites = {
+                { //binding 0: model instances
+                    .infos = { {
+                        .buffer = renderer.instancesDataBuffer->getBuffer(),
+                        .offset = 0,
+                        .range = VK_WHOLE_SIZE
+                    } },
+                    .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .binding = 0
+                },
+                { //binding 1: input objects
+                    .infos = { {
+                        .buffer = instancesBuffer->getBuffer(),
+                        .offset = 0,
+                        .range = newInstancesSize //actual data range controlled by UBO object count
+                    } },
+                    .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .binding = 1
+                },
+                { //binding 2: output objects
+                    .infos = { {
+                        .buffer = instancesBuffer->getBuffer(),
+                        .offset = tlInstancesOffset,
+                        .range = newTLInstancesSize //actual data range controlled by UBO object count
+                    } },
+                    .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .binding = 2
+                }
+            }
+        });
+
+        //instance descriptions 
+        instanceDescriptionsDescriptor.updateDescriptorSet({
+            .bufferWrites = {
+                { //binding 0: model instances
+                    .infos = { {
+                        .buffer = renderer.instancesDataBuffer->getBuffer(),
+                        .offset = instanceDescriptionsOffset,
+                        .range = newInstanceDescriptionsSize
+                    } },
+                    .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .binding = 0
+                }
+            }
+        });
     }
 
     void TLAS::buildStructure(VkCommandBuffer cmdBuffer, AsBuildData& data, const CompactionQuery compactionQuery, const VkDeviceAddress scratchAddress)
@@ -666,7 +676,7 @@ namespace PaperRenderer
 
                 //write instance data
                 ModelInstance::AccelerationStructureInstance instanceShaderData = {
-                    .blasReference = blasPtr->getAccelerationStructureAddress(),
+                    .blasReference = blasPtr->getASBufferAddress(),
                     .selfIndex = instance.instancePtr->rendererSelfIndex,
                     .modelInstanceIndex = instance.instancePtr->rendererSelfIndex,
                     .customIndex = instance.customIndex,

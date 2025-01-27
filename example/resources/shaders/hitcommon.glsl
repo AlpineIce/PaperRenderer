@@ -5,8 +5,6 @@
 
 #include "raycommon.glsl"
 
-layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
-
 //----------INSTANCE DESCRIPTIONS----------//
 
 struct InstanceDescription
@@ -14,7 +12,7 @@ struct InstanceDescription
     uint modelDataOffset;
 };
 
-layout(scalar, set = 0, binding = 5) readonly buffer InstanceDescriptions
+layout(scalar, set = 3, binding = 0) readonly buffer InstanceDescriptions
 {
     InstanceDescription descriptions[];
 } instanceDescriptions;
@@ -34,7 +32,7 @@ struct Material
     float ior;
 };
 
-layout(scalar, set = 0, binding = 6) readonly buffer MaterialDefinitions
+layout(scalar, set = 2, binding = 2) readonly buffer MaterialDefinitions
 {
     Material materials[];
 } materialDefinitions;

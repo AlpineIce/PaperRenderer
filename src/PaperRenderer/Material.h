@@ -11,7 +11,7 @@ namespace PaperRenderer
     class Material
     {
     private:
-        const std::function<void(VkCommandBuffer, const class Camera&)>& bindFunction;
+        const std::function<void(VkCommandBuffer, const class Camera&)> bindFunction;
         std::unique_ptr<RasterPipeline> rasterPipeline;
         uint32_t indirectDrawMatricesLocation = 0xFFFFFFFF;
     

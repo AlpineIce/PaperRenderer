@@ -13,10 +13,15 @@
 
 #define PI 3.14159265359
 
-layout(set = 0, binding = 4) uniform InputData
+layout(std430, set = 0, binding = 0) uniform CameraInputData
 {
     mat4 projection;
     mat4 view;
+} cameraData;
+
+layout(set = 2, binding = 0) uniform InputData
+{
+    uint64_t tlasAddress;
     uint64_t modelDataReference;
     uint64_t frameNumber;
     uint recursionDepth;

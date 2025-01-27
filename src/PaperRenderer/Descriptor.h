@@ -87,7 +87,7 @@ namespace PaperRenderer
     struct SetBinding
     {
         const class ResourceDescriptor& set;
-        const DescriptorBinding& binding;
+        DescriptorBinding binding;
     };
 
     class ResourceDescriptor

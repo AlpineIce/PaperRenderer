@@ -40,7 +40,7 @@ void main()
     if(matIndex == 1) materialInfo.albedo = vec3(1.0, 0.0, 0.0);;
 
     //get camera position from view matrix
-    const vec3 camPos = inverse(inputData.view)[3].xyz;
+    const vec3 camPos = inverse(cameraData.view)[3].xyz;
     
     //normal and camera direction vectors
     const vec3 N = normalize(hitInfo.normal);
@@ -90,7 +90,8 @@ void main()
 
                     //cast ray
                     isShadowed = true;
-                    traceRayEXT(topLevelAS,  // acceleration structure
+                    traceRayEXT(
+                        accelerationStructureEXT(inputData.tlasAddress),  // acceleration structure
                         gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT,       // rayFlags
                         0xFF,        // cullMask
                         0,           // sbtRecordOffset
@@ -143,8 +144,9 @@ void main()
             const uint aoFlags = gl_RayFlagsNoneEXT; //gl_RayFlagsTerminateOnFirstHitEXT
             
             rayQueryEXT rayQuery;
-            rayQueryInitializeEXT(rayQuery,
-                topLevelAS,
+            rayQueryInitializeEXT(
+                rayQuery,
+                accelerationStructureEXT(inputData.tlasAddress),
                 aoFlags,
                 0xFF,
                 OffsetRay(hitInfo.worldPosition, N),

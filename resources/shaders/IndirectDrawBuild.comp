@@ -14,7 +14,7 @@ layout(std430, set = 0, binding = 0) uniform InputData
     bool doCulling;
 } inputData;
 
-layout(std430, set = 2, binding = 0) uniform CameraMatrices
+layout(std430, set = 3, binding = 0) uniform CameraMatrices
 {
     mat4 projection;
     mat4 view;
@@ -29,7 +29,7 @@ struct RenderPassInstance
     bool isVisible;
 };
 
-layout(scalar, set = 1, binding = 1) readonly buffer RenderPassInstances
+layout(scalar, set = 2, binding = 0) readonly buffer RenderPassInstances
 {
     RenderPassInstance datas[];
 } inputObjects;

@@ -32,6 +32,10 @@ private:
     //tlas
     PaperRenderer::TLAS tlas;
 
+    //descriptors
+    VkDescriptorSetLayout rtDescriptorLayout;
+    PaperRenderer::ResourceDescriptor rtDescriptor;
+
     //general shaders
     const PaperRenderer::Shader rgenShader;
     const PaperRenderer::Shader rmissShader;
@@ -42,8 +46,7 @@ private:
     //ubo
     struct RayTraceInfo
     {
-        glm::mat4 projection;
-        glm::mat4 view;
+        uint64_t tlasAddress;
         uint64_t modelDataReference;
         uint64_t frameNumber;
         uint32_t recursionDepth;
@@ -51,7 +54,7 @@ private:
         float aoRadius;
         uint32_t shadowSamples;
         uint32_t reflectionSamples;
-        float padding[6];
+        float padding[4];
     };
     PaperRenderer::Buffer rtInfoUBO;
     
@@ -61,14 +64,16 @@ private:
     PaperRenderer::RenderEngine& renderer;
     const PaperRenderer::Camera& camera;
     const HDRBuffer& hdrBuffer;
-    const PaperRenderer::Buffer& lightBuffer;
-    const PaperRenderer::Buffer& lightInfoUBO;
+    PaperRenderer::Buffer const* materialBuffer = NULL;
+    const LightingData& lightingData;
 public:
-    ExampleRayTracing(PaperRenderer::RenderEngine& renderer, const PaperRenderer::Camera& camera, const HDRBuffer& hdrBuffer, const PaperRenderer::Buffer& lightBuffer, const PaperRenderer::Buffer& lightInfoUBO);
+    ExampleRayTracing(PaperRenderer::RenderEngine& renderer, const PaperRenderer::Camera& camera, const HDRBuffer& hdrBuffer, const LightingData& lightingData);
     ~ExampleRayTracing();
 
     const PaperRenderer::Queue& rayTraceRender(const PaperRenderer::SynchronizationInfo& syncInfo, const PaperRenderer::Buffer& materialDefinitionsBuffer);
-    void updateUBO();
+    void updateUBO() const;
+    void updateHDRBuffer() const;
+    void updateMaterialBuffer(const PaperRenderer::Buffer& materialDataBuffer);
 
     PaperRenderer::RayTraceRender& getRTRender() { return rtRenderPass; }
 };
@@ -78,6 +83,10 @@ public:
 class ExampleRaster
 {
 private:
+    //descriptors for base material
+    const VkDescriptorSetLayout parametersDescriptorSetLayout;
+    const PaperRenderer::ResourceDescriptor parametersDescriptor;
+
     //base raster material
     DefaultMaterial baseMaterial;
 
@@ -91,15 +100,17 @@ private:
     const PaperRenderer::Camera& camera;
     const HDRBuffer& hdrBuffer;
     const DepthBuffer& depthBuffer;
-    const PaperRenderer::Buffer& lightBuffer;
-    const PaperRenderer::Buffer& lightInfoUBO;
+    const LightingData& lightingData;
+
 public:
-    ExampleRaster(PaperRenderer::RenderEngine& renderer, const PaperRenderer::Camera& camera, const HDRBuffer& hdrBuffer, const DepthBuffer& depthBuffer, const PaperRenderer::Buffer& lightBuffer, const PaperRenderer::Buffer& lightInfoUBO);
+    ExampleRaster(PaperRenderer::RenderEngine& renderer, const PaperRenderer::Camera& camera, const HDRBuffer& hdrBuffer, const DepthBuffer& depthBuffer, const LightingData& lightingData);
     ~ExampleRaster();
 
     const PaperRenderer::Queue& rasterRender(PaperRenderer::SynchronizationInfo syncInfo);
     
-    const DefaultMaterial& getDefaultMaterial() const { return baseMaterial; }
+    const VkDescriptorSetLayout& getParametersDescriptorSetLayout() const { return parametersDescriptorSetLayout; }
+    const PaperRenderer::ResourceDescriptor& getParametersDescriptor() const { return parametersDescriptor; }
+    DefaultMaterial& getDefaultMaterial() { return baseMaterial; }
     PaperRenderer::RenderPass& getRenderPass() { return renderPass; }
 };
 
@@ -109,10 +120,16 @@ public:
 class BufferCopyPass
 {
 private:
+    //descriptor layout
+    const VkDescriptorSetLayout setLayout;
+
     //buffer copy material
     class BufferCopyMaterial
     {
     private:
+        //descriptor
+        const PaperRenderer::ResourceDescriptor descriptor;
+
         //UBO
         struct UBOInputData
         {
@@ -124,17 +141,23 @@ private:
             float brightness;
             float saturation;
             float gammaCorrection;
+            float padding[5];
         };
         PaperRenderer::Buffer uniformBuffer;
         PaperRenderer::Material material;
 
+        //binding function
+        void bind(VkCommandBuffer cmdBuffer, const PaperRenderer::Camera& camera);
+
         const HDRBuffer& hdrBuffer;
+        PaperRenderer::RenderEngine& renderer;
         
     public:
-        BufferCopyMaterial(PaperRenderer::RenderEngine& renderer, const HDRBuffer& hdrBuffer);
+        BufferCopyMaterial(PaperRenderer::RenderEngine& renderer, const HDRBuffer& hdrBuffer, VkDescriptorSetLayout setLayout);
         ~BufferCopyMaterial();
 
-        void bind(VkCommandBuffer cmdBuffer, const PaperRenderer::Camera& camera);
+        PaperRenderer::Material& getMaterial() { return material; }
+        void updateUBO() const;
     } material;
 
     PaperRenderer::RenderEngine& renderer;
@@ -147,4 +170,5 @@ public:
 
     //to render function
     const PaperRenderer::Queue& render(const PaperRenderer::SynchronizationInfo &syncInfo, bool fromRaster);
+    void updateUBO() const { material.updateUBO(); }
 };

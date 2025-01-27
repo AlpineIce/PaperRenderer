@@ -12,16 +12,16 @@ struct PointLight
     bool castShadow;
 };
 
-layout(scalar, set = 0, binding = 1) readonly buffer PointLights
-{
-    PointLight lights[];
-} pointLights;
-
-layout(std430, set = 0, binding = 2) uniform LightInformation
+layout(std430, set = 1, binding = 0) uniform LightInformation
 {
     vec4 ambientLight;
     uint pointLightCount;
 } lightInfo;
+
+layout(scalar, set = 1, binding = 1) readonly buffer PointLights
+{
+    PointLight lights[];
+} pointLights;
 
 struct AmbientLight
 {

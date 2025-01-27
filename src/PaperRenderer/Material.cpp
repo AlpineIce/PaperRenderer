@@ -33,7 +33,7 @@ namespace PaperRenderer
     void Material::bind(VkCommandBuffer cmdBuffer, const Camera& camera) const
     {
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
-        bindFunction(cmdBuffer, camera);
+        if(bindFunction) bindFunction(cmdBuffer, camera);
     }
 
     //----------MATERIAL INSTANCE DEFINITIONS----------//

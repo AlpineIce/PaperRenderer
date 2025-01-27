@@ -26,7 +26,8 @@ namespace PaperRenderer
     {
         INDIRECT_DRAW_MATRICES = 0,
         CAMERA_MATRICES = 1,
-        TLAS_INSTANCE_DESCRIPTIONS = 2
+        TLAS_INSTANCE_DESCRIPTIONS = 2,
+        INSTANCES = 3
     };
 
     //struct for RenderEngine
@@ -50,20 +51,21 @@ namespace PaperRenderer
         Swapchain swapchain;
         DescriptorAllocator descriptors;
         PipelineBuilder pipelineBuilder;
+        std::array<VkDescriptorSetLayout, 4> defaultDescriptorLayouts;
         RasterPreprocessPipeline rasterPreprocessPipeline;
         TLASInstanceBuildPipeline tlasInstanceBuildPipeline;
         AccelerationStructureBuilder asBuilder;
         std::array<std::unique_ptr<RendererStagingBuffer>, 2> stagingBuffer; //double buffered
+
+        //renderer descriptors
+        ResourceDescriptor instancesBufferDescriptor;
 
         //frame rendering stuff
         std::vector<ModelInstance*> renderingModelInstances;
         std::deque<ModelInstance*> toUpdateModelInstances; //queued instance references that need to have their data in GPU buffers updated
         std::vector<Model*> renderingModels;
         std::deque<Model*> toUpdateModels; //queued model references that need to have their data in GPU buffers updated
-
-        //descriptor layouts
-        std::array<VkDescriptorSetLayout, 2> defaultDescriptorLayouts;
-
+        
         //----------BUFFERS----------//
 
         const float instancesDataOverhead = 1.4f;
@@ -123,5 +125,6 @@ namespace PaperRenderer
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
         Buffer& getModelDataBuffer() const { return modelDataBuffer->getBuffer(); }
         const VkDescriptorSetLayout& getDefaultDescriptorSetLayout(const DefaultDescriptors descriptor) const { return defaultDescriptorLayouts[descriptor]; }
+        const ResourceDescriptor& getInstancesBufferDescriptor() const { return instancesBufferDescriptor; }
     };
 }

@@ -15,7 +15,7 @@ namespace PaperRenderer
         :uboSetLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
             {
                 .binding = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
                 .pImmutableSamplers = NULL
@@ -24,13 +24,6 @@ namespace PaperRenderer
         ioSetLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
             {
                 .binding = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                .pImmutableSamplers = NULL
-            },
-            {
-                .binding = 1,
                 .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -44,6 +37,7 @@ namespace PaperRenderer
             },
             .descriptorSets = {
                 { RenderPass::RenderPassDescriptorIndices::UBO, uboSetLayout },
+                { RenderPass::RenderPassDescriptorIndices::INSTANCES, renderer.getDefaultDescriptorSetLayout(INSTANCES) },
                 { RenderPass::RenderPassDescriptorIndices::IO, ioSetLayout },
                 { RenderPass::RenderPassDescriptorIndices::CAMERA, renderer.getDefaultDescriptorSetLayout(CAMERA_MATRICES) }
             },
@@ -84,7 +78,16 @@ namespace PaperRenderer
                     .dynamicOffsets = { (uint32_t)sizeof(UBOInputData) * renderer.getBufferIndex() }
                 }
             },
-            { //set 1 (IO)
+            { //set 1 (Instances)
+                .set = renderer.getInstancesBufferDescriptor(),
+                .binding = {
+                    .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
+                    .pipelineLayout = computeShader.getPipeline().getLayout(),
+                    .descriptorSetIndex = RenderPass::RenderPassDescriptorIndices::INSTANCES,
+                    .dynamicOffsets = {}
+                }
+            },
+            { //set 2 (IO)
                 .set = renderPass.ioDescriptor,
                 .binding = {
                     .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -93,7 +96,7 @@ namespace PaperRenderer
                     .dynamicOffsets = {}
                 }
             },
-            { //set 2 (Camera)
+            { //set 3 (Camera)
                 .set = camera.getUBODescriptor(),
                 .binding = {
                     .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
@@ -177,17 +180,28 @@ namespace PaperRenderer
 
             if(instancesCopyRegion.size)
             {
-                SynchronizationInfo syncInfo = {};
-                syncInfo.queueType = TRANSFER;
-                syncInfo.fence = renderer.getDevice().getCommands().getUnsignaledFence();
-                newInstancesBuffer->copyFromBufferRanges(*instancesBuffer, { instancesCopyRegion }, syncInfo);
-                vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
-                vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
+                const SynchronizationInfo syncInfo = {
+                    .queueType = TRANSFER
+                };
+                vkQueueWaitIdle(newInstancesBuffer->copyFromBufferRanges(*instancesBuffer, { instancesCopyRegion }, syncInfo).queue);
             }
         }
 
         //replace old buffer
         instancesBuffer = std::move(newInstancesBuffer);
+
+        //update descriptors
+        ioDescriptor.updateDescriptorSet({
+            .bufferWrites = { { //binding 1: input objects
+                .infos = { {
+                    .buffer = instancesBuffer->getBuffer(),
+                    .offset = 0,
+                    .range = VK_WHOLE_SIZE //actual data range controlled by UBO object count
+                } },
+                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .binding = 0
+            } }
+        });
     }
 
     void RenderPass::rebuildSortedInstancesBuffer()
@@ -208,6 +222,21 @@ namespace PaperRenderer
 
         //replace old buffer
         sortedInstancesOutputBuffer = std::move(newSortedInstancesBuffer);
+
+        //update descriptors
+        sortedMatricesDescriptor.updateDescriptorSet({
+            .bufferWrites = {
+                { //binding 0: input objects
+                    .infos = { {
+                        .buffer = sortedInstancesOutputBuffer->getBuffer(),
+                        .offset = 0,
+                        .range = VK_WHOLE_SIZE
+                    } },
+                    .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .binding = 0
+                }
+            }
+        });
     }
 
     void RenderPass::rebuildMaterialDataBuffer()
@@ -244,13 +273,10 @@ namespace PaperRenderer
             materialDataCopyRegion.dstOffset = 0;
             materialDataCopyRegion.size = newMaterialDataWriteSize;
 
-            SynchronizationInfo syncInfo = {};
-            syncInfo.queueType = TRANSFER;
-            syncInfo.fence = renderer.getDevice().getCommands().getUnsignaledFence();
-            newInstancesDataBuffer->getBuffer().copyFromBufferRanges(instancesDataBuffer->getBuffer(), { materialDataCopyRegion }, syncInfo);
-
-            vkWaitForFences(renderer.getDevice().getDevice(), 1, &syncInfo.fence, VK_TRUE, UINT64_MAX);
-            vkDestroyFence(renderer.getDevice().getDevice(), syncInfo.fence, nullptr);
+            const SynchronizationInfo syncInfo = {
+                .queueType = TRANSFER
+            };
+            vkQueueWaitIdle(newInstancesDataBuffer->getBuffer().copyFromBufferRanges(instancesDataBuffer->getBuffer(), { materialDataCopyRegion }, syncInfo).queue);
         }
         
         //replace old buffer
@@ -273,64 +299,17 @@ namespace PaperRenderer
         }
 
         //verify buffers
-        bool updateDescriptors = false;
         if(!instancesBuffer || instancesBuffer->getSize() / sizeof(ModelInstance::RenderPassInstance) < renderPassInstances.size())
         {
             rebuildInstancesBuffer();
-            updateDescriptors = true;
         }
         if(!sortedInstancesOutputBuffer || sortedInstancesOutputBuffer->getSize() / sizeof(ShaderOutputObject) < renderPassSortedInstances.size())
         {
             rebuildSortedInstancesBuffer();
-            updateDescriptors = true;
         }
         if(!instancesDataBuffer)
         {
             rebuildMaterialDataBuffer();
-            updateDescriptors = true;
-        }
-
-        //reset descriptors if needed
-        if(updateDescriptors)
-        {
-            //io descriptor
-            ioDescriptor.updateDescriptorSet({
-                .bufferWrites = {
-                    { //binding 0: model instances
-                        .infos = { {
-                            .buffer = renderer.instancesDataBuffer->getBuffer(),
-                            .offset = 0,
-                            .range = VK_WHOLE_SIZE //actual data range controlled by UBO object count
-                        } },
-                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .binding = 0
-                    },
-                    { //binding 1: input objects
-                        .infos = { {
-                            .buffer = instancesBuffer->getBuffer(),
-                            .offset = 0,
-                            .range = VK_WHOLE_SIZE //actual data range controlled by UBO object count
-                        } },
-                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .binding = 1
-                    }
-                }
-            });
-
-            //sorted instances descriptor
-            sortedMatricesDescriptor.updateDescriptorSet({
-                .bufferWrites = {
-                    { //binding 0: input objects
-                        .infos = { {
-                            .buffer = sortedInstancesOutputBuffer->getBuffer(),
-                            .offset = 0,
-                            .range = VK_WHOLE_SIZE
-                        } },
-                        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .binding = 0
-                    }
-                }
-            });
         }
 
         //sort instances; remove duplicates

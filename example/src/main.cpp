@@ -11,6 +11,8 @@
 
 #include <random>
 
+//----------SCENE LOADING FROM GLTF----------//
+
 //loaded scene data from glTF
 struct SceneData
 {
@@ -193,6 +195,8 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
     return returnData;
 }
 
+//----------LIGHTING BUFFERS AND DESCRIPTORS----------//
+
 //point light definition
 struct PointLight
 {
@@ -234,6 +238,7 @@ struct LightInfo
 {
     glm::vec4 ambientLight;
     uint32_t pointLightCount;
+    float padding[11];
 };
 
 std::unique_ptr<PaperRenderer::Buffer> createLightInfoUniformBuffer(PaperRenderer::RenderEngine& renderer)
@@ -244,7 +249,7 @@ std::unique_ptr<PaperRenderer::Buffer> createLightInfoUniformBuffer(PaperRendere
     };
 
     PaperRenderer::BufferInfo uniformBufferInfo = {
-        .size = sizeof(LightInfo),
+        .size = sizeof(LightInfo) * 2,
         .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
         .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
     };
@@ -260,9 +265,69 @@ std::unique_ptr<PaperRenderer::Buffer> createLightInfoUniformBuffer(PaperRendere
     return uniformBuffer;
 }
 
-//----------UBOs----------//
+LightingData createLightingData(PaperRenderer::RenderEngine& renderer)
+{
+    //lighting buffers
+    std::unique_ptr<PaperRenderer::Buffer> pointLightsBuffer = createPointLightsBuffer(renderer);
+    std::unique_ptr<PaperRenderer::Buffer> lightingUniformBuffer = createLightInfoUniformBuffer(renderer);
 
-void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::Camera& camera, ExampleRayTracing& exampleRayTrace)
+    //descriptor layout
+    VkDescriptorSetLayout lightingDescriptorLayout = renderer.getDescriptorAllocator().createDescriptorSetLayout({
+        {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_ALL,
+            .pImmutableSamplers = NULL
+        },
+        {
+            .binding = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_ALL,
+            .pImmutableSamplers = NULL
+        }
+    });
+
+    //descriptor
+    std::unique_ptr<PaperRenderer::ResourceDescriptor> lightingDescriptor = std::make_unique<PaperRenderer::ResourceDescriptor>(renderer, lightingDescriptorLayout);
+
+    //descriptor writes
+    lightingDescriptor->updateDescriptorSet({
+        .bufferWrites = {
+            {
+                .infos = { {
+                    .buffer = lightingUniformBuffer->getBuffer(),
+                    .offset = 0,
+                    .range = VK_WHOLE_SIZE
+                } },
+                .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .binding = 0
+            },
+            {
+                .infos = { {
+                    .buffer = pointLightsBuffer->getBuffer(),
+                    .offset = 0,
+                    .range = VK_WHOLE_SIZE
+                } },
+                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .binding = 1
+            }
+        }
+    });
+
+    //return
+    return {
+        std::move(lightingUniformBuffer),
+        std::move(pointLightsBuffer),
+        lightingDescriptorLayout,
+        std::move(lightingDescriptor),
+    };
+}
+
+//----------UBO UPDATE FUNCTION----------//
+
+void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::Camera& camera, DefaultMaterialInstance& material, ExampleRayTracing& exampleRayTrace, BufferCopyPass& bufferCopyPass)
 {
     //update camera
     const glm::vec3 newCameraPosition = glm::vec3(15.0f * sin(glfwGetTime() * 0.1f), 15.0f * cos(glfwGetTime() * 0.1f), 5.0f);
@@ -274,8 +339,11 @@ void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::
     camera.updateView(newTransform);
     camera.updateUBO();
 
-    //update RT
-    exampleRayTrace.updateUBO();
+    //update material
+    material.updateUBO();
+
+    //update buffer copy pass
+    bufferCopyPass.updateUBO();
 }
 
 //----------MAIN----------//
@@ -286,6 +354,7 @@ int main()
     HDRBuffer hdrBuffer = {};
     DepthBuffer depthBuffer = {};
     SceneData scene = {};
+    ExampleRayTracing const* exampleRtPtr = NULL;
 
     //----------RENDERER INITIALIZATION----------//
 
@@ -318,6 +387,9 @@ int main()
 
         //create new HDR buffer
         hdrBuffer = getHDRBuffer(renderer, VK_IMAGE_LAYOUT_GENERAL);
+
+        //update RT descriptor
+        exampleRtPtr->updateHDRBuffer();
 
         //destroy old depth buffer
         vkDestroyImageView(renderer.getDevice().getDevice(), depthBuffer.view, nullptr);
@@ -355,6 +427,10 @@ int main()
     //load glTF scene
     scene = loadSceneData(renderer);
 
+    //----------LIGHTING DATA----------//
+
+    LightingData lightingData = createLightingData(renderer);
+
     //----------HDR & DEPTH RENDERING BUFFER----------//
 
     //get HDR buffer
@@ -362,28 +438,23 @@ int main()
 
     //get depth buffer
     depthBuffer = getDepthBuffer(renderer);
-
-    //----------UNIFORM AND STORAGE BUFFERS----------//
-
-    //lighting buffers
-    std::unique_ptr<PaperRenderer::Buffer> pointLightsBuffer = createPointLightsBuffer(renderer);
-    std::unique_ptr<PaperRenderer::Buffer> lightingUniformBuffer = createLightInfoUniformBuffer(renderer);
     
     //----------RENDER PASSES----------//
 
     //ray tracing
-    ExampleRayTracing exampleRayTrace(renderer, *scene.camera, hdrBuffer, *pointLightsBuffer, *lightingUniformBuffer);
+    ExampleRayTracing exampleRayTrace(renderer, *scene.camera, hdrBuffer, lightingData);
+    exampleRtPtr = &exampleRayTrace;
     
     //raster
-    ExampleRaster exampleRaster(renderer, *scene.camera, hdrBuffer, depthBuffer, *pointLightsBuffer, *lightingUniformBuffer);
+    ExampleRaster exampleRaster(renderer, *scene.camera, hdrBuffer, depthBuffer, lightingData);
     
     //HDR buffer copy render pass
     BufferCopyPass bufferCopyPass(renderer, *scene.camera, hdrBuffer);
 
-    //----------MATERIALS----------//
+    //----------EXTRA MATERIALS----------//
 
     //leaf raster material
-    LeafMaterial leafMaterial(renderer, {
+    DefaultMaterial leafMaterial(renderer, {
             .shaderInfo = {
                 {
                     .stage = VK_SHADER_STAGE_VERTEX_BIT,
@@ -395,28 +466,10 @@ int main()
                 }
             },
             .descriptorSets = {
-                { 0, {
-                    {
-                        .binding = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
-                    },
-                    {
-                        .binding = 2,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
-                    }
-                }},
-                { 2, {
-                    {
-                        .binding = 0,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
-                    }
-                }}
+                { 0, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::CAMERA_MATRICES) },
+                { 1, lightingData.lightingDescriptorLayout },
+                { 2, exampleRaster.getParametersDescriptorSetLayout() }, //ownership of this one is kinda weird, I will admit that
+                { 3, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::INDIRECT_DRAW_MATRICES) }
             },
             .pcRanges = {}, //no push constants
             .properties = {
@@ -470,7 +523,7 @@ int main()
                     .depthClampEnable = VK_FALSE,
                     .rasterizerDiscardEnable = VK_FALSE,
                     .polygonMode = VK_POLYGON_MODE_FILL,
-                    .cullMode = VK_CULL_MODE_NONE, //this is foliage so no backface culling will be used
+                    .cullMode = VK_CULL_MODE_NONE, //This is foliage so no backface culling will be used. Funny enough the grass doesnt use this material and culling is therefore enabled when it shouldnt be
                     .frontFace = VK_FRONT_FACE_CLOCKWISE,
                     .depthBiasEnable = VK_FALSE,
                     .depthBiasConstantFactor = 0.0f,
@@ -478,11 +531,9 @@ int main()
                     .depthBiasSlopeFactor = 0.0f,
                     .lineWidth = 1.0f
                 }
-            },
-            .drawDescriptorIndex = 1
+            }
         },
-        *pointLightsBuffer,
-        *lightingUniformBuffer
+        lightingData
     );
 
     //base RT material
@@ -506,18 +557,18 @@ int main()
     uint32_t adjustableMaterialIndex = 0; //for ImGUI
     uint32_t raindropMaterialIndex = 0; //for raindrops test
 
-    //create material instances that "derive" from base material and the loaded scene data parameters
-    std::unordered_map<std::string, std::unique_ptr<PaperRenderer::MaterialInstance>> materialInstances;
+    //create material instances
+    std::unordered_map<std::string, std::unique_ptr<DefaultMaterialInstance>> materialInstances;
     materialInstances.reserve(scene.materialInstancesData.size());
     for(const auto& [name, parameters] : scene.materialInstancesData)
     {
         if(name == "Leaves")
         {
-            materialInstances[name] = std::make_unique<LeafMaterialInstance>(renderer, leafMaterial, parameters);
+            materialInstances[name] = std::make_unique<DefaultMaterialInstance>(renderer, leafMaterial, parameters, exampleRaster.getParametersDescriptorSetLayout());
         }
         else
         {
-            materialInstances[name] = std::make_unique<DefaultMaterialInstance>(renderer, exampleRaster.getDefaultMaterial(), parameters);
+            materialInstances[name] = std::make_unique<DefaultMaterialInstance>(renderer, exampleRaster.getDefaultMaterial(), parameters, exampleRaster.getParametersDescriptorSetLayout());
         }
     }
 
@@ -532,7 +583,7 @@ int main()
         uint32_t matIndex = 0;
         for(const std::string& matName : scene.instanceMaterials[instance.getParentModel().getModelName()])
         {
-            materials[matIndex] = materialInstances[matName].get();
+            materials[matIndex] = &materialInstances[matName]->getMaterialInstance();
             matIndex++;
         }
         exampleRaster.getRenderPass().addInstance(instance, { materials }, sorted);
@@ -690,10 +741,13 @@ int main()
     //queue data transfer for RT material data
     renderer.getStagingBuffer().queueDataTransfers(rtMaterialDefinitionsBuffer, 0, instanceRTMaterialDefinitionsData);
 
+    //update descriptor
+    exampleRayTrace.updateMaterialBuffer(rtMaterialDefinitionsBuffer);
+
     //----------MISC----------//
 
     //init GUI
-    GuiContext guiContext = initImGui(renderer, *dynamic_cast<DefaultMaterialInstance*>(materialInstances.at("MetalBall").get()));
+    GuiContext guiContext = initImGui(renderer, *materialInstances.at("MetalBall"));
 
     //raindrops deque
     std::deque<std::unique_ptr<PaperRenderer::ModelInstance>> rainDrops;
@@ -802,7 +856,7 @@ int main()
         renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
 
         //update uniform buffers
-        updateUniformBuffers(renderer, *scene.camera, exampleRayTrace);
+        updateUniformBuffers(renderer, *scene.camera, *guiContext.adjustableMaterial, exampleRayTrace, bufferCopyPass);
 
         //ray tracing
         if(!guiContext.raster)
@@ -836,6 +890,9 @@ int main()
                 .timelineSignalPairs = { { renderingSemaphore[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue[renderer.getBufferIndex()] + 3 } }
             };
             exampleRayTrace.getRTRender().updateTLAS(VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR, tlasSyncInfo);
+
+            //update UBO after TLAS is built
+            exampleRayTrace.updateUBO();
 
             //render pass (wait for TLAS build, signal rendering semaphore)
             PaperRenderer::SynchronizationInfo rtRenderSync = {
@@ -894,9 +951,10 @@ int main()
     //destroy scene info
     scene = {};
 
-    //destroy light buffers
-    lightingUniformBuffer.reset();
-    pointLightsBuffer.reset();
+    //destroy light buffers and descriptors
+    lightingData.lightingUBO.reset();
+    lightingData.pointLightsBuffer.reset();
+    vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), lightingData.lightingDescriptorLayout, nullptr);
 
     //destroy some stuff
     for(uint32_t i = 0; i < 2; i++)

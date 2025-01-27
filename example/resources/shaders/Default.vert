@@ -9,13 +9,13 @@ layout(location = 0) out vec3 worldPosition;
 layout(location = 1) out vec3 normal;
 layout(location = 2) out vec2 texCoord;
 
-layout(std430, set = 0, binding = 0) uniform GlobalInputData
+layout(std430, set = 0, binding = 0) uniform CameraInputData
 {
     mat4 projection;
     mat4 view;
 } inputData;
 
-layout(scalar, set = 1, binding = 0) readonly buffer ObjectBuffer
+layout(scalar, set = 3, binding = 0) readonly buffer ObjectBuffer
 {
     mat3x4 matrices[];
 } objBuffer;

@@ -85,7 +85,8 @@ namespace PaperRenderer
         AS(const AS&) = delete;
 
         VkAccelerationStructureKHR getAccelerationStructure() const { return accelerationStructure; }
-        VkDeviceAddress getAccelerationStructureAddress() const { return asBuffer ? asBuffer->getBufferDeviceAddress() : 0; }
+        VkDeviceAddress getASBufferAddress() const { return asBuffer ? asBuffer->getBufferDeviceAddress() : 0; }
+        VkDeviceAddress getAsDeviceAddress() const;
     };
 
     //Bottom level acceleration structure
@@ -162,6 +163,7 @@ namespace PaperRenderer
         const Queue& updateTLAS(const class RayTraceRender& rtRender, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo);
 
         const Buffer& getInstancesBuffer() const { return *instancesBuffer; }
+        const ResourceDescriptor& getInstanceDescriptionsDescriptor() const { return instanceDescriptionsDescriptor; }
         const VkDeviceSize getInstanceDescriptionsOffset() const { return instanceDescriptionsOffset; } //MAY POSSIBLY CHANGE AFTER UPDATING TLAS
         const VkDeviceSize getInstanceDescriptionsRange() const { return nextUpdateSize * sizeof(InstanceDescription); } //MAY POSSIBLY CHANGE AFTER UPDATING TLAS
     };

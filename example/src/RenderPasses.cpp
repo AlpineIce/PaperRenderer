@@ -87,12 +87,35 @@ DepthBuffer getDepthBuffer(PaperRenderer::RenderEngine &renderer)
 
 //----------RAY TRACING----------//
 
-ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, const PaperRenderer::Camera& camera, const HDRBuffer& hdrBuffer, const PaperRenderer::Buffer& lightBuffer, const PaperRenderer::Buffer& lightInfoUBO)
+ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, const PaperRenderer::Camera& camera, const HDRBuffer& hdrBuffer, const LightingData& lightingData)
     :tlas(renderer),
+    rtDescriptorLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
+        { //RT input data
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_INTERSECTION_BIT_KHR,
+            .pImmutableSamplers = NULL
+        },
+        { //hdr buffer
+            .binding = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR,
+            .pImmutableSamplers = NULL
+        },
+        { //material descriptions
+            .binding = 2,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR,
+            .pImmutableSamplers = NULL
+        }
+    })),
+    rtDescriptor(renderer, rtDescriptorLayout),
     rgenShader(renderer, readFromFile("resources/shaders/raytrace_rgen.spv")),
     rmissShader(renderer, readFromFile("resources/shaders/raytrace_rmiss.spv")),
     rshadowShader(renderer, readFromFile("resources/shaders/raytraceShadow_rmiss.spv")),
-
     generalShaders({
         //rgen
         { VK_SHADER_STAGE_RAYGEN_BIT_KHR, &rgenShader },
@@ -113,50 +136,10 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
         { generalShaders[1], generalShaders[2] },
         {},
         {
-            { 0, {
-                { //AS pointer
-                    .binding = 0,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
-                    .descriptorCount = 1,
-                    .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR
-                },
-                { //point lights (pbr.glsl)
-                    .binding = 1,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                    .descriptorCount = 1,
-                    .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR
-                },
-                { //light info (pbr.glsl)
-                    .binding = 2,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    .descriptorCount = 1,
-                    .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR
-                },
-                { //hdr buffer
-                    .binding = 3,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                    .descriptorCount = 1,
-                    .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR
-                },
-                { //RT input data
-                    .binding = 4,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    .descriptorCount = 1,
-                    .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_INTERSECTION_BIT_KHR
-                },
-                { //instance descriptions
-                    .binding = 5,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                    .descriptorCount = 1,
-                    .stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_INTERSECTION_BIT_KHR
-                },
-                { //material descriptions
-                    .binding = 6,
-                    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                    .descriptorCount = 1,
-                    .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR
-                }
-            }}
+            { 0, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::CAMERA_MATRICES) },
+            { 1, lightingData.lightingDescriptorLayout },
+            { 2, rtDescriptorLayout },
+            { 3, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::TLAS_INSTANCE_DESCRIPTIONS) }
         },
         {
             .maxRecursionDepth = rayRecursionDepth
@@ -166,13 +149,36 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
     renderer(renderer),
     camera(camera),
     hdrBuffer(hdrBuffer),
-    lightBuffer(lightBuffer),
-    lightInfoUBO(lightInfoUBO)
+    lightingData(lightingData)
 {
+    //write RT descriptor
+    rtDescriptor.updateDescriptorSet({
+        .bufferWrites = {
+            { //UBO
+                .infos = { {
+                    .buffer = rtInfoUBO.getBuffer(),
+                    .offset = 0,
+                    .range = sizeof(RayTraceInfo)
+                } },
+                .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                .binding = 0
+            }
+        },
+        .imageWrites = { { //HDR buffer
+            .infos = { {
+                .sampler = hdrBuffer.sampler,
+                .imageView = hdrBuffer.view,
+                .imageLayout = VK_IMAGE_LAYOUT_GENERAL
+            }},
+            .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .binding = 1
+        } }
+    });
 }
 
 ExampleRayTracing::~ExampleRayTracing()
 {
+    vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), rtDescriptorLayout, nullptr);
 }
 
 const PaperRenderer::Queue& ExampleRayTracing::rayTraceRender(const PaperRenderer::SynchronizationInfo &syncInfo, const PaperRenderer::Buffer& materialDefinitionsBuffer)
@@ -213,72 +219,43 @@ const PaperRenderer::Queue& ExampleRayTracing::rayTraceRender(const PaperRendere
         .pImageMemoryBarriers = preRenderImageBarriers.data()
     };
 
-    //descriptor writes
-    const PaperRenderer::DescriptorWrites descriptorWrites = {
-        .bufferWrites = {
-            {
-                .infos = {{
-                    .buffer = lightBuffer.getBuffer(),
-                    .offset = 0,
-                    .range = VK_WHOLE_SIZE
-                }},
-                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .binding = 1
-            },
-            {
-                .infos = {{
-                    .buffer = lightInfoUBO.getBuffer(),
-                    .offset = 0,
-                    .range = VK_WHOLE_SIZE
-                }},
-                .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .binding = 2
-            },
-            {
-                .infos = {{
-                    .buffer = rtInfoUBO.getBuffer(),
-                    .offset = sizeof(RayTraceInfo) * renderer.getBufferIndex(),
-                    .range = sizeof(RayTraceInfo)
-                }},
-                .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .binding = 4
-            },
-            {
-                .infos = {{
-                    .buffer = rtRenderPass.getTLAS().getInstanceDescriptionsRange() ? rtRenderPass.getTLAS().getInstancesBuffer().getBuffer() : VK_NULL_HANDLE,
-                    .offset = rtRenderPass.getTLAS().getInstanceDescriptionsOffset(),
-                    .range = rtRenderPass.getTLAS().getInstanceDescriptionsRange()
-                }},
-                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .binding = 5
-            },
-            {
-                .infos = {{
-                    .buffer = materialDefinitionsBuffer.getBuffer(),
-                    .offset = 0,
-                    .range = VK_WHOLE_SIZE
-                }},
-                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .binding = 6
+    //descriptor bindings
+    const std::vector<PaperRenderer::SetBinding> bindings = {
+        { //set 0 (Camera UBO)
+            .set = camera.getUBODescriptor(),
+            .binding = {
+                .bindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
+                .pipelineLayout = rtRenderPass.getPipeline().getLayout(),
+                .descriptorSetIndex = 0,
+                .dynamicOffsets = { camera.getUBODynamicOffset() }
             }
         },
-        .imageWrites = {
-            {
-                .infos = {{
-                    .sampler = hdrBuffer.sampler,
-                    .imageView = hdrBuffer.view,
-                    .imageLayout = VK_IMAGE_LAYOUT_GENERAL
-                }},
-                .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-                .binding = 3
+        { //set 1 (Lighting Data)
+            .set = *lightingData.lightingDescriptor,
+            .binding = {
+                .bindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
+                .pipelineLayout = rtRenderPass.getPipeline().getLayout(),
+                .descriptorSetIndex = 1,
+                .dynamicOffsets = {}
             }
         },
-        .bufferViewWrites = {},
-        .accelerationStructureWrites = {
-            {
-                .accelerationStructures = { &rtRenderPass.getTLAS() },
-                .binding = 0
-            },
+        { //set 2 (RT input data)
+            .set = rtDescriptor,
+            .binding = {
+                .bindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
+                .pipelineLayout = rtRenderPass.getPipeline().getLayout(),
+                .descriptorSetIndex = 2,
+                .dynamicOffsets = { (uint32_t)sizeof(RayTraceInfo) * renderer.getBufferIndex() }
+            }
+        },
+        { //set 3 (instance descriptions)
+            .set = tlas.getInstanceDescriptionsDescriptor(),
+            .binding = {
+                .bindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
+                .pipelineLayout = rtRenderPass.getPipeline().getLayout(),
+                .descriptorSetIndex = 3,
+                .dynamicOffsets = {}
+            }
         }
     };
 
@@ -286,20 +263,19 @@ const PaperRenderer::Queue& ExampleRayTracing::rayTraceRender(const PaperRendere
     const PaperRenderer::RayTraceRenderInfo rtRenderInfo = {
         .image = *hdrBuffer.image,
         .camera = camera,
+        .descriptorBindings = bindings,
         .preRenderBarriers = &preRenderDependency,
         .postRenderBarriers = NULL, //no post render barrier
-        .descriptorWrites = { { 0, descriptorWrites } }
     };
     
     return rtRenderPass.render(rtRenderInfo, syncInfo);
 }
 
-void ExampleRayTracing::updateUBO()
+void ExampleRayTracing::updateUBO() const
 {
     //update RT UBO
-    RayTraceInfo rtInfo = {
-        .projection = camera.getProjection(),
-        .view = camera.getViewMatrix(),
+    const RayTraceInfo rtInfo = {
+        .tlasAddress = tlas.getAsDeviceAddress(),
         .modelDataReference = renderer.getModelDataBuffer().getBufferDeviceAddress(),
         .frameNumber = renderer.getFramesRenderedCount(),
         .recursionDepth = rayRecursionDepth,
@@ -317,10 +293,55 @@ void ExampleRayTracing::updateUBO()
     rtInfoUBO.writeToBuffer({ write });
 }
 
+void ExampleRayTracing::updateHDRBuffer() const
+{
+    //write RT descriptor
+    rtDescriptor.updateDescriptorSet({
+        .imageWrites = { { //HDR buffer
+            .infos = { {
+                .sampler = hdrBuffer.sampler,
+                .imageView = hdrBuffer.view,
+                .imageLayout = VK_IMAGE_LAYOUT_GENERAL
+            }},
+            .type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .binding = 1
+        } }
+    });
+}
+
+void ExampleRayTracing::updateMaterialBuffer(const PaperRenderer::Buffer& materialDataBuffer)
+{
+    rtDescriptor.updateDescriptorSet({
+        .bufferWrites = {
+            { //material info
+                .infos = { {
+                    .buffer = materialDataBuffer.getBuffer(),
+                    .offset = 0,
+                    .range = VK_WHOLE_SIZE
+                } },
+                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .binding = 2
+            }
+        },
+    });
+
+    materialBuffer = &materialDataBuffer;
+}
+
 //----------RASTER----------//
 
-ExampleRaster::ExampleRaster(PaperRenderer::RenderEngine &renderer, const PaperRenderer::Camera& camera, const HDRBuffer& hdrBuffer, const DepthBuffer& depthBuffer, const PaperRenderer::Buffer& lightBuffer, const PaperRenderer::Buffer& lightInfoUBO)
-    :baseMaterial(renderer, {
+ExampleRaster::ExampleRaster(PaperRenderer::RenderEngine &renderer, const PaperRenderer::Camera& camera, const HDRBuffer& hdrBuffer, const DepthBuffer& depthBuffer, const LightingData& lightingData)
+    :parametersDescriptorSetLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
+        {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .pImmutableSamplers = NULL,
+        }
+    })),
+    parametersDescriptor(renderer, parametersDescriptorSetLayout),
+    baseMaterial(renderer, {
             .shaderInfo = {
                 {
                     .stage = VK_SHADER_STAGE_VERTEX_BIT,
@@ -332,28 +353,10 @@ ExampleRaster::ExampleRaster(PaperRenderer::RenderEngine &renderer, const PaperR
                 }
             },
             .descriptorSets = {
-                { 0, {
-                    {
-                        .binding = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
-                    },
-                    {
-                        .binding = 2,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
-                    }
-                }},
-                { 2, {
-                    {
-                        .binding = 0,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
-                    }
-                }}
+                { 0, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::CAMERA_MATRICES) },
+                { 1, lightingData.lightingDescriptorLayout },
+                { 2, parametersDescriptorSetLayout },
+                { 3, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::INDIRECT_DRAW_MATRICES) }
             },
             .pcRanges = {}, //no push constants
             .properties = {
@@ -416,29 +419,29 @@ ExampleRaster::ExampleRaster(PaperRenderer::RenderEngine &renderer, const PaperR
                     .lineWidth = 1.0f
                 }
             },
-            .drawDescriptorIndex = 1
         },
-        lightBuffer,
-        lightInfoUBO
+        lightingData
     ),
     defaultMaterialInstance(renderer, baseMaterial, {
-        .baseColor = glm::vec4(1.0f, 0.5f, 1.0f, 1.0f),
-        .emission = glm::vec4(0.0f),
-        .roughness = 0.5f,
-        .metallic = 0.0f
-    }),
-    renderPass(renderer, defaultMaterialInstance),
+            .baseColor = glm::vec4(1.0f, 0.5f, 1.0f, 1.0f),
+            .emission = glm::vec4(0.0f),
+            .roughness = 0.5f,
+            .metallic = 0.0f
+        },
+        parametersDescriptorSetLayout
+    ),
+    renderPass(renderer, defaultMaterialInstance.getMaterialInstance()),
     renderer(renderer),
     camera(camera),
     hdrBuffer(hdrBuffer),
     depthBuffer(depthBuffer),
-    lightBuffer(lightBuffer),
-    lightInfoUBO(lightInfoUBO)
+    lightingData(lightingData)
 {
 }
 
 ExampleRaster::~ExampleRaster()
 {
+    vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), parametersDescriptorSetLayout, nullptr);
 }
 
 const PaperRenderer::Queue& ExampleRaster::rasterRender(PaperRenderer::SynchronizationInfo syncInfo)
@@ -550,7 +553,22 @@ const PaperRenderer::Queue& ExampleRaster::rasterRender(PaperRenderer::Synchroni
 //----------BUFFER COPY PASS----------//
 
 BufferCopyPass::BufferCopyPass(PaperRenderer::RenderEngine &renderer, const PaperRenderer::Camera &camera, const HDRBuffer &hdrBuffer)
-    :material(renderer, hdrBuffer),
+    :setLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
+        { //UBO
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .pImmutableSamplers = NULL,
+        },
+        { //HDR buffer
+            .binding = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
+        }
+    })),
+    material(renderer, hdrBuffer, setLayout),
     renderer(renderer),
     camera(camera),
     hdrBuffer(hdrBuffer)
@@ -559,6 +577,7 @@ BufferCopyPass::BufferCopyPass(PaperRenderer::RenderEngine &renderer, const Pape
 
 BufferCopyPass::~BufferCopyPass()
 {
+    vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), setLayout, nullptr);
 }
 
 const PaperRenderer::Queue& BufferCopyPass::render(const PaperRenderer::SynchronizationInfo &syncInfo, bool fromRaster)
@@ -729,9 +748,8 @@ const PaperRenderer::Queue& BufferCopyPass::render(const PaperRenderer::Synchron
     //compare op
     vkCmdSetDepthCompareOp(cmdBuffer, VK_COMPARE_OP_NEVER);
 
-    //bind (camera isn't actually used in this implementation, but thats fine)
-    std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> descriptorWrites;
-    material.bind(cmdBuffer, camera, descriptorWrites);
+    //bind pipeline/material
+    material.getMaterial().bind(cmdBuffer, camera);
 
     //draw command
     vkCmdDraw(cmdBuffer, 3, 1, 0, 0);
@@ -748,8 +766,9 @@ const PaperRenderer::Queue& BufferCopyPass::render(const PaperRenderer::Synchron
     return renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
 }
 
-BufferCopyPass::BufferCopyMaterial::BufferCopyMaterial(PaperRenderer::RenderEngine &renderer, const HDRBuffer &hdrBuffer)
-    :PaperRenderer::Material(
+BufferCopyPass::BufferCopyMaterial::BufferCopyMaterial(PaperRenderer::RenderEngine &renderer, const HDRBuffer &hdrBuffer, VkDescriptorSetLayout setLayout)
+    :descriptor(renderer, setLayout),
+    material(
         renderer, 
         {
             .shaderInfo = {
@@ -763,20 +782,7 @@ BufferCopyPass::BufferCopyMaterial::BufferCopyMaterial(PaperRenderer::RenderEngi
                 }
             },
             .descriptorSets = {
-                { 0, {
-                    { //UBO
-                        .binding = 0,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
-                    },
-                    { //HDR buffer
-                        .binding = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
-                    }
-                }}
+                { 0, setLayout }
             },
             .pcRanges = {},
             .properties = {
@@ -814,67 +820,74 @@ BufferCopyPass::BufferCopyMaterial::BufferCopyMaterial(PaperRenderer::RenderEngi
                 }
             }
         },
-    false
+        [&](VkCommandBuffer cmdBuffer, const PaperRenderer::Camera& camera) { bind(cmdBuffer, camera); }
     ),
     uniformBuffer(renderer, {
-        .size = sizeof(UBOInputData),
+        .size = sizeof(UBOInputData) * 2,
         .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
         .allocationFlags=  VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
     }),
-    hdrBuffer(hdrBuffer)
+    hdrBuffer(hdrBuffer),
+    renderer(renderer)
 {
+    //write descriptors
+    descriptor.updateDescriptorSet({
+        .bufferWrites = {
+            { //UBO
+                .infos = { {
+                    .buffer = uniformBuffer.getBuffer(),
+                    .offset = 0,
+                    .range = sizeof(UBOInputData)
+                } },
+                .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                .binding = 0
+            }
+        },
+        .imageWrites = { { //HDR buffer
+            .infos = { {
+                .sampler = hdrBuffer.sampler,
+                .imageView = hdrBuffer.view,
+                .imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL
+            }},
+            .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .binding = 1
+        } }
+    });
 }
 
 BufferCopyPass::BufferCopyMaterial::~BufferCopyMaterial()
 {
 }
 
-void BufferCopyPass::BufferCopyMaterial::bind(VkCommandBuffer cmdBuffer, const PaperRenderer::Camera &camera, std::unordered_map<uint32_t, PaperRenderer::DescriptorWrites> &descriptorWrites)
+void BufferCopyPass::BufferCopyMaterial::updateUBO() const
 {
-    //----------UBO----------//
+    const UBOInputData uboInputData = {
+        .colorFilter = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+        .exposure = 1.0f,
+        .WBtemp = 0.0f,
+        .WBtint = 0.0f,
+        .contrast = 1.0f,
+        .brightness = 0.0f,
+        .saturation = 1.0f,
+        .gammaCorrection = renderer.getSwapchain().getIsUsingHDR() ? 1.0f : 2.2f
+    };
 
-    UBOInputData uboInputData = {};
-    uboInputData.exposure = 1.0f;
-    uboInputData.WBtemp = 0.0f;
-    uboInputData.WBtint = 0.0f;
-    uboInputData.contrast = 1.0f;
-    uboInputData.colorFilter = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
-    uboInputData.brightness = 0.0f;
-    uboInputData.saturation = 1.0f;
-    uboInputData.gammaCorrection = renderer.getSwapchain().getIsUsingHDR() ? 1.0f : 2.2f;
-
-    PaperRenderer::BufferWrite uboWrite;
-    uboWrite.readData = &uboInputData;
-    uboWrite.offset = 0;
-    uboWrite.size = sizeof(UBOInputData);
+    const PaperRenderer::BufferWrite uboWrite = {
+        .offset = 0,
+        .size = sizeof(UBOInputData),
+        .readData = &uboInputData
+    };
     uniformBuffer.writeToBuffer({ uboWrite });
+}
 
-    //uniform buffer
-    VkDescriptorBufferInfo uniformInfo = {};
-    uniformInfo.buffer = uniformBuffer.getBuffer();
-    uniformInfo.offset = 0;
-    uniformInfo.range = sizeof(UBOInputData);
-
-    PaperRenderer::BuffersDescriptorWrites uniformWrite;
-    uniformWrite.binding = 0;
-    uniformWrite.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    uniformWrite.infos = { uniformInfo };
-
-    //hdr buffer
-    VkDescriptorImageInfo hdrBufferInfo = {};
-    hdrBufferInfo.imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
-    hdrBufferInfo.imageView = hdrBuffer.view;
-    hdrBufferInfo.sampler = hdrBuffer.sampler;
-
-    PaperRenderer::ImagesDescriptorWrites hdrBufferWrite;
-    hdrBufferWrite.binding = 1;
-    hdrBufferWrite.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    hdrBufferWrite.infos = { hdrBufferInfo };
-
-    //descriptor writes
-    descriptorWrites[0].bufferWrites.push_back(uniformWrite);
-    descriptorWrites[0].imageWrites.push_back(hdrBufferWrite);
-
-    //next level bind
-    PaperRenderer::Material::bind(cmdBuffer, camera, descriptorWrites);
+void BufferCopyPass::BufferCopyMaterial::bind(VkCommandBuffer cmdBuffer, const PaperRenderer::Camera &camera)
+{
+    //descriptor binding
+    const PaperRenderer::DescriptorBinding binding = {
+        .bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+        .pipelineLayout = material.getRasterPipeline().getLayout(),
+        .descriptorSetIndex = 0,
+        .dynamicOffsets = { (uint32_t)sizeof(UBOInputData) * renderer.getBufferIndex() }
+    };
+    descriptor.bindDescriptorSet(cmdBuffer, binding);
 }
