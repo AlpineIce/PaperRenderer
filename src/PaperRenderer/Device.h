@@ -30,6 +30,7 @@ namespace PaperRenderer
         VkInstance instance = VK_NULL_HANDLE;
         VkPhysicalDevice GPU = VK_NULL_HANDLE;
         VmaAllocator allocator = NULL;
+        VkDebugUtilsMessengerEXT debugUtilsMessenger = VK_NULL_HANDLE;
         std::vector<VkExtensionProperties> extensions;
         VkPhysicalDeviceProperties2 gpuProperties;
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtPipelineProperties = {};
@@ -51,6 +52,12 @@ namespace PaperRenderer
                           const std::vector<VkQueueFamilyProperties>& queueFamiliesProperties, 
                           float* queuePriority);
         void retrieveQueues(std::unordered_map<uint32_t, VkDeviceQueueCreateInfo>& queuecreationInfo);
+        static VkBool32 debugUtilsMessengerCallback(
+            VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+            VkDebugUtilsMessageTypeFlagsEXT messageType,
+            const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+            void* pUserData
+        );
         
     public:
         Device(class RenderEngine& renderer, const DeviceInstanceInfo& instanceInfo);

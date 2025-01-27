@@ -1,8 +1,8 @@
 #include "Device.h"
 #include "PaperRenderer.h"
 
-#include <iostream>
 #include <unordered_map>
+#include <functional>
 
 namespace PaperRenderer
 {
@@ -20,6 +20,7 @@ namespace PaperRenderer
     {
         commands.reset();
         vmaDestroyAllocator(allocator);
+        if(debugUtilsMessenger) vkDestroyDebugUtilsMessengerEXT(instance, debugUtilsMessenger, nullptr);
         vkDestroyDevice(device, nullptr);
         vkDestroyInstance(instance, nullptr);
         
@@ -44,7 +45,8 @@ namespace PaperRenderer
         }
 
         std::vector<const char*> extensionNames = {
-            VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME
+            VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME,
+            VK_EXT_DEBUG_UTILS_EXTENSION_NAME
         };
         extensionNames.insert(extensionNames.end(), glfwExtensions.begin(), glfwExtensions.end());
 
@@ -302,6 +304,38 @@ namespace PaperRenderer
         }
     }
 
+    VkBool32 Device::debugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData)
+    {
+        //get renderer handle from pUserData
+        RenderEngine& renderer = *((RenderEngine*)pUserData);
+
+        //get message
+        std::string debugMessage = std::to_string(pCallbackData->messageIdNumber) + pCallbackData->pMessageIdName + pCallbackData->pMessage;
+
+        //get log type
+        LogType type;
+        if(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT)
+        {
+            type = INFO;
+        }
+        else if(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+        {
+            type = WARNING;
+        }
+        else if(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+        {
+            type = ERROR;
+        }
+
+        //log error
+        renderer.getLogger().recordLog({
+            .type = type,
+            .text = debugMessage
+        });
+
+        return VK_FALSE;
+    }
+
     void Device::createDevice()
     {
         //enable anisotropy
@@ -344,7 +378,8 @@ namespace PaperRenderer
                 VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
                 VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
                 VK_KHR_RAY_QUERY_EXTENSION_NAME,
-                VK_KHR_RAY_TRACING_MAINTENANCE_1_EXTENSION_NAME
+                VK_KHR_RAY_TRACING_MAINTENANCE_1_EXTENSION_NAME,
+                //VK_NV_RAY_TRACING_VALIDATION_EXTENSION_NAME
             });
         }
 
@@ -382,10 +417,15 @@ namespace PaperRenderer
             .rayTracingMaintenance1 = VK_TRUE
         };
 
+        VkPhysicalDeviceRayTracingValidationFeaturesNV validationFeatures = { //NVIDIA only, for RT validation
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_VALIDATION_FEATURES_NV,
+            .pNext = &rtMaintFeatures
+        };
+
         //Core features
         VkPhysicalDeviceExtendedDynamicState3FeaturesEXT dynamicState3Features = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
-            .pNext = rtSupport ? &rtMaintFeatures : NULL,
+            .pNext = rtSupport ? &/*validationFeatures*/rtMaintFeatures : NULL,
             .extendedDynamicState3RasterizationSamples = VK_TRUE
         };
 
@@ -437,7 +477,40 @@ namespace PaperRenderer
         VkResult result = vkCreateDevice(GPU, &deviceCreateInfo, NULL, &device);
         if(result != VK_SUCCESS)
         {
-            throw std::runtime_error("VkResult: " + std::to_string(result) + "Failed to create Vulkan device");
+            if(result == VK_ERROR_EXTENSION_NOT_PRESENT)
+            {
+                renderer.getLogger().recordLog({
+                    .type = WARNING,
+                    .text = "One or more device extensions aren't present"
+                });
+            }
+            else
+            {
+                renderer.getLogger().recordLog({
+                    .type = ERROR,
+                    .text = "Device creation returned an error that's probably unrelated to missing extensions"
+                });
+            }
+        }
+
+        //create validation stuff
+        const VkDebugUtilsMessengerCreateInfoEXT debugUtilsMessengerInfo = {
+            .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+            .pNext = NULL,
+            .flags = 0,
+            .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+            .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+            .pfnUserCallback = debugUtilsMessengerCallback,
+            .pUserData = &renderer
+        };
+
+        result = vkCreateDebugUtilsMessengerEXT(instance, &debugUtilsMessengerInfo, nullptr, &debugUtilsMessenger);
+        if(result != VK_SUCCESS)
+        {
+            renderer.getLogger().recordLog({
+                .type = WARNING,
+                .text = "Failed to create debug messenger"
+            });
         }
 
         //volk
