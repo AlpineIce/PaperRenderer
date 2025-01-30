@@ -21,7 +21,7 @@ namespace PaperRenderer
         VkDeviceSize queueSize = 0;
         VkDeviceSize stackLocation = 0;
 
-        void submitQueuedTransfers(VkCommandBuffer cmdBuffer); //records all queued transfers and clears the queue
+        std::set<Buffer*> submitQueuedTransfers(VkCommandBuffer cmdBuffer); //records all queued transfers and clears the queue
 
         class RenderEngine& renderer;
 

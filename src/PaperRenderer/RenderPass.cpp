@@ -148,6 +148,9 @@ namespace PaperRenderer
         instancesBuffer.reset();
         instancesDataBuffer.reset();
 
+        //destroy semaphore
+        vkDestroySemaphore(renderer.getDevice().getDevice(), transferSemaphore, nullptr);
+
         //remove references
         for(ModelInstance* instance : renderPassInstances)
         {
@@ -717,8 +720,8 @@ namespace PaperRenderer
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
         //append transfer semaphore
-        syncInfo.timelineWaitPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 1 });
-        syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 2 });
+        syncInfo.timelineWaitPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 1 });
+        syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT, transferSemaphoreValue + 2 });
         transferSemaphoreValue += 2;
 
         //submit

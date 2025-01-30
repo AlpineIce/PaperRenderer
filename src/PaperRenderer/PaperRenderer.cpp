@@ -161,19 +161,25 @@ namespace PaperRenderer
         Timer timer(*this, "Rebuild Instances Buffer", IRREGULAR);
 
         //new buffer to replace old
-        BufferInfo bufferInfo = {};
-        bufferInfo.allocationFlags = 0;
-        bufferInfo.size = std::max((VkDeviceSize)(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance) * instancesDataOverhead), (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128);
-        bufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR;
+        const BufferInfo bufferInfo = {
+            .size = std::max((VkDeviceSize)(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance) * instancesDataOverhead), (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128),
+            .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR,
+            .allocationFlags = 0
+        };
         std::unique_ptr<Buffer> newBuffer = std::make_unique<Buffer>(*this, bufferInfo);
 
         //copy old data into new if old existed
         if(instancesDataBuffer)
         {
-            VkBufferCopy copyRegion = {};
-            copyRegion.srcOffset = 0;
-            copyRegion.dstOffset = 0;
-            copyRegion.size = std::min(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance), (size_t)instancesDataBuffer->getSize());
+            //idle old buffer
+            instancesDataBuffer->idleOwners();
+
+            //copy
+            const VkBufferCopy copyRegion = {
+                .srcOffset = 0,
+                .dstOffset = 0,
+                .size = std::min(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance), (size_t)instancesDataBuffer->getSize())
+            };
 
             const SynchronizationInfo syncInfo = {
                 .queueType = TRANSFER

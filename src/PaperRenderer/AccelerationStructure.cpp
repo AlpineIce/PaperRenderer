@@ -421,8 +421,12 @@ namespace PaperRenderer
 
     TLAS::~TLAS()
     {
+        //destroy buffers
         scratchBuffer.reset();
         instancesBuffer.reset();
+
+        //destroy semaphore
+        vkDestroySemaphore(renderer.getDevice().getDevice(), transferSemaphore, nullptr);
     }
 
     std::unique_ptr<AS::AsGeometryBuildData> TLAS::getGeometryData() const
@@ -671,6 +675,7 @@ namespace PaperRenderer
         //submit transfers
         const SynchronizationInfo transferSyncInfo = {
             .queueType = TRANSFER,
+            .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } }, //wait on self
             .timelineSignalPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue + 1 } }
         };
         renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);

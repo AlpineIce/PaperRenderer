@@ -232,30 +232,6 @@ namespace PaperRenderer
 
     void CommonMeshGroup::clearDrawCommand(const VkCommandBuffer &cmdBuffer) const
     {
-        //pre-transfer memory barrier
-        const VkBufferMemoryBarrier2 preMemBarrier = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .pNext = NULL,
-            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
-            .dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = drawCommandsBuffer->getBuffer(),
-            .offset = 0,
-            .size = VK_WHOLE_SIZE
-        };
-
-        const VkDependencyInfo preDependency = {
-            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-            .pNext = NULL,
-            .bufferMemoryBarrierCount = 1,
-            .pBufferMemoryBarriers = &preMemBarrier
-        };
-
-        vkCmdPipelineBarrier2(cmdBuffer, &preDependency);
-
         //clear instance count
         const uint32_t drawCountDefaultValue = 0;
         for(const auto& [instance, meshesData] : instanceMeshesData)
@@ -272,33 +248,33 @@ namespace PaperRenderer
                     drawCommandLocation + offsetof(VkDrawIndexedIndirectCommand, instanceCount),
                     sizeof(VkDrawIndexedIndirectCommand::instanceCount),
                     drawCountDefaultValue
-                );
-
-                //post memory barrier
-                const VkBufferMemoryBarrier2 postMemBarrier = {
-                    .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                    .pNext = NULL,
-                    .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-                    .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                    .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
-                    .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
-                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                    .buffer = drawCommandsBuffer->getBuffer(),
-                    .offset = drawCommandLocation + offsetof(VkDrawIndexedIndirectCommand, instanceCount),
-                    .size = sizeof(VkDrawIndexedIndirectCommand::instanceCount)
-                };
-
-                const VkDependencyInfo postDependency = {
-                    .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                    .pNext = NULL,
-                    .bufferMemoryBarrierCount = 1,
-                    .pBufferMemoryBarriers = &postMemBarrier
-                };
-
-                vkCmdPipelineBarrier2(cmdBuffer, &postDependency);
+                );  
             }
         }
+        
+        //memory barrier
+        const VkBufferMemoryBarrier2 postMemBarrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+            .pNext = NULL,
+            .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT,
+            .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = drawCommandsBuffer->getBuffer(),
+            .offset = 0,
+            .size = VK_WHOLE_SIZE
+        };
+
+        const VkDependencyInfo postDependency = {
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .pNext = NULL,
+            .bufferMemoryBarrierCount = 1,
+            .pBufferMemoryBarriers = &postMemBarrier
+        };
+
+        vkCmdPipelineBarrier2(cmdBuffer, &postDependency);
     }
 
     void CommonMeshGroup::addOwner(const Queue &queue)

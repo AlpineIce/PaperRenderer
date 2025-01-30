@@ -43,7 +43,7 @@ namespace PaperRenderer
         queueSize += data.size();
     }
 
-    void RendererStagingBuffer::submitQueuedTransfers(VkCommandBuffer cmdBuffer)
+    std::set<Buffer*> RendererStagingBuffer::submitQueuedTransfers(VkCommandBuffer cmdBuffer)
     {
         //timer
         Timer timer(renderer, "Record Queued Transfers (StagingBuffer)", REGULAR);
@@ -65,9 +65,15 @@ namespace PaperRenderer
             availableSize = bufferInfo.size;
         }
 
+        //keep track of dst buffers
+        std::set<Buffer*> dstBuffers;
+
         //copy to dst
         for(const QueuedTransfer& transfer : transferQueue)
         {
+            //make sure dstBuffer is referenced
+            dstBuffers.insert(const_cast<Buffer*>(&transfer.dstBuffer));
+
             //buffer write
             const BufferWrite bufferWrite = {
                 .offset = stackLocation,
@@ -95,6 +101,9 @@ namespace PaperRenderer
         //clear queue
         transferQueue.clear();
         queueSize = 0;
+
+        //return collection of dst buffers
+        return dstBuffers;
     }
 
     const Queue& RendererStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
@@ -110,7 +119,7 @@ namespace PaperRenderer
         };
         vkBeginCommandBuffer(cmdBuffer, &beginInfo);
 
-        submitQueuedTransfers(cmdBuffer);
+        std::set<Buffer*> dstBuffers = submitQueuedTransfers(cmdBuffer);
 
         //end command buffer
         vkEndCommandBuffer(cmdBuffer);
@@ -120,7 +129,11 @@ namespace PaperRenderer
         //submit
         const Queue& queue = renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
 
-        //add owner
+        //add owners
+        for(Buffer* buffer : dstBuffers)
+        {
+            buffer->addOwner(queue);
+        }
         if(stagingBuffer) stagingBuffer->addOwner(queue);
 
         return queue;
