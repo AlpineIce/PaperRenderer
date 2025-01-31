@@ -33,11 +33,15 @@ namespace PaperRenderer
         
         bool queuePipelineBuild = true;
 
-        std::unordered_map<RTMaterial const*, uint32_t> materialReferences; //uint32_t is the number of instances using it
+        //instances
         std::vector<AccelerationStructureInstanceData> asInstances;
+        std::deque<AccelerationStructureInstanceData*> toUpdateInstances;
+
+        //shaders
         const ShaderDescription raygenShader;
         const std::vector<ShaderDescription> missShaders;
         const std::vector<ShaderDescription> callableShaders;
+        std::unordered_map<RTMaterial const*, uint32_t> materialReferences; //uint32_t is the number of instances using it
 
         void rebuildPipeline();
         void assignResourceOwner(const Queue& queue);

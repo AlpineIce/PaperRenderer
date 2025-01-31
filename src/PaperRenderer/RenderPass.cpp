@@ -824,7 +824,7 @@ namespace PaperRenderer
                     renderPassInstances[selfReference]->renderPassSelfReferences[this].selfIndex = selfReference;
 
                     //queue data transfer
-                    toUpdateInstances.push_front(renderPassInstances.at(instance.renderPassSelfReferences[this].selfIndex));
+                    toUpdateInstances.push_front(renderPassInstances[selfReference]);
                     
                     renderPassInstances.pop_back();
                 }

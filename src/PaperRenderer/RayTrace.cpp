@@ -157,6 +157,9 @@ namespace PaperRenderer
             queuePipelineBuild = true;
         }
         materialReferences[&material]++;
+
+        //queue data transfer
+        toUpdateInstances.push_front(&(*asInstances.rbegin()));
     }
     
     void RayTraceRender::removeInstance(ModelInstance& instance)
@@ -169,6 +172,9 @@ namespace PaperRenderer
                 const uint32_t selfIndex = instance.rtRenderSelfReferences[this].selfIndex;
                 asInstances[selfIndex] = asInstances.back();
                 asInstances[selfIndex].instancePtr->rtRenderSelfReferences[this].selfIndex = selfIndex;
+
+                //queue data transfer
+                toUpdateInstances.push_front(&asInstances[selfIndex]);
                 
                 asInstances.pop_back();
             }
