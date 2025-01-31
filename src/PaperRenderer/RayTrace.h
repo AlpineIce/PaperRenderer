@@ -22,6 +22,15 @@ namespace PaperRenderer
         uint32_t customIndex:24 = 0;
         uint32_t mask:8 = 0xAA;
         VkGeometryInstanceFlagsKHR flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+        
+        bool operator<(const AccelerationStructureInstanceData& other)
+        {
+            return instancePtr < other.instancePtr;
+        }
+        bool operator==(const AccelerationStructureInstanceData& other)
+        {
+            return instancePtr == other.instancePtr;
+        }
     };
 
     class RayTraceRender
@@ -37,7 +46,7 @@ namespace PaperRenderer
 
         //instances
         std::vector<AccelerationStructureInstanceData> asInstances;
-        std::deque<AccelerationStructureInstanceData*> toUpdateInstances;
+        std::deque<AccelerationStructureInstanceData> toUpdateInstances;
 
         //shaders
         const ShaderDescription raygenShader;
@@ -49,6 +58,8 @@ namespace PaperRenderer
         void assignResourceOwner(const Queue& queue);
         
         class RenderEngine& renderer;
+
+        friend TLAS;
 
     public:
         RayTraceRender(

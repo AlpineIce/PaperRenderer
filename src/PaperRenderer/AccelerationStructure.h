@@ -152,7 +152,6 @@ namespace PaperRenderer
             }
         } instancesBufferSizes = {};
 
-        uint32_t nextUpdateSize = 0;
         const float instancesOverhead = 1.5;
 
         struct InstanceDescription
@@ -167,16 +166,18 @@ namespace PaperRenderer
         //ownership
         void assignResourceOwner(const Queue& queue) override;
 
+        const class RayTraceRender& rtRender;
+
         friend class ModelInstance;
         friend TLASInstanceBuildPipeline;
 
     public:
-        TLAS(RenderEngine& renderer);
+        TLAS(RenderEngine& renderer, const class RayTraceRender& rtRender);
         ~TLAS() override;
         TLAS(const TLAS&) = delete;
 
         //Updates the TLAS to the RayTraceRender instances according to the mode (either rebuild or update). Note that compaction is ignored for a TLAS
-        const Queue& updateTLAS(const class RayTraceRender& rtRender, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo);
+        const Queue& updateTLAS(const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo);
 
         const Buffer& getInstancesBuffer() const { return *instancesBuffer; }
         const ResourceDescriptor& getInstanceDescriptionsDescriptor() const { return instanceDescriptionsDescriptor; }

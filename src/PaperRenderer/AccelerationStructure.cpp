@@ -103,7 +103,7 @@ namespace PaperRenderer
         };
 
         //dispatch
-        computeShader.dispatch(cmdBuffer, descriptorBindings, glm::uvec3((tlas.nextUpdateSize / 128) + 1, 1, 1));
+        computeShader.dispatch(cmdBuffer, descriptorBindings, glm::uvec3((tlas.rtRender.getTLASInstanceData().size() / 128) + 1, 1, 1));
     }
 
     //----------AS BASE CLASS DEFINITIONS----------//
@@ -391,7 +391,7 @@ namespace PaperRenderer
 
     //----------TLAS DEFINITIONS----------//
     
-    TLAS::TLAS(RenderEngine& renderer)
+    TLAS::TLAS(RenderEngine& renderer, const RayTraceRender& rtRender)
         :AS(renderer),
         preprocessUniformBuffer(renderer, {
             .size = sizeof(TLASInstanceBuildPipeline::UBOInputData) * 2,
@@ -401,7 +401,8 @@ namespace PaperRenderer
         transferSemaphore(renderer.getDevice().getCommands().getTimelineSemaphore(transferSemaphoreValue)),
         uboDescriptor(renderer, renderer.getTLASPreprocessPipeline().getUboDescriptorLayout()),
         ioDescriptor(renderer, renderer.getTLASPreprocessPipeline().getIODescriptorLayout()),
-        instanceDescriptionsDescriptor(renderer, renderer.getDefaultDescriptorSetLayout(TLAS_INSTANCE_DESCRIPTIONS))
+        instanceDescriptionsDescriptor(renderer, renderer.getDefaultDescriptorSetLayout(TLAS_INSTANCE_DESCRIPTIONS)),
+        rtRender(rtRender)
     {
         //UBO descriptor write
         uboDescriptor.updateDescriptorSet({
@@ -448,7 +449,7 @@ namespace PaperRenderer
         };
 
         const VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo = {
-            .primitiveCount = nextUpdateSize,
+            .primitiveCount = (uint32_t)rtRender.getTLASInstanceData().size(),
             .primitiveOffset = 0,
             .firstVertex = 0,
             .transformOffset = 0
@@ -456,7 +457,7 @@ namespace PaperRenderer
 
         returnData->geometries.emplace_back(structureGeometry);
         returnData->buildRangeInfos.emplace_back(buildRangeInfo);
-        returnData->primitiveCounts.push_back(nextUpdateSize);
+        returnData->primitiveCounts.push_back(rtRender.getTLASInstanceData().size());
 
         return returnData;
     }
@@ -494,6 +495,9 @@ namespace PaperRenderer
 
             const VkDeviceSize newSize = newInstancesSize + newInstanceDescriptionsSize + newTLInstancesSize;
 
+            //create copy of old offsets and ranges for data copy
+            InstancesBufferSizes oldInstancesBufferSizes = instancesBufferSizes;
+
             //set offsets and ranges
             instancesBufferSizes = {
                 .instancesOffset = 0,
@@ -512,6 +516,48 @@ namespace PaperRenderer
                 .allocationFlags = 0
             };
             std::unique_ptr<Buffer> newInstancesBuffer = std::make_unique<Buffer>(renderer, instancesBufferInfo);
+
+            //----------DATA TRANSFER----------//
+
+            if(instancesBuffer)
+            {
+                VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(TRANSFER);
+            
+                const VkCommandBufferBeginInfo cmdBufferInfo = {
+                    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                    .pNext = NULL,
+                    .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+                    .pInheritanceInfo = NULL
+                };
+                vkBeginCommandBuffer(cmdBuffer, &cmdBufferInfo);
+
+                //copy instances
+                const VkBufferCopy instancesCopy = {
+                    .srcOffset = oldInstancesBufferSizes.instancesOffset,
+                    .dstOffset = instancesBufferSizes.instancesOffset,
+                    .size = oldInstancesBufferSizes.instancesRange
+                };
+                vkCmdCopyBuffer(cmdBuffer, instancesBuffer->getBuffer(), newInstancesBuffer->getBuffer(), 1, &instancesCopy);
+
+                //copy instance descriptions
+                const VkBufferCopy instanceDescriptionsCopy = {
+                    .srcOffset = oldInstancesBufferSizes.instanceDescriptionsOffset,
+                    .dstOffset = instancesBufferSizes.instanceDescriptionsOffset,
+                    .size = oldInstancesBufferSizes.instanceDescriptionsRange
+                };
+                vkCmdCopyBuffer(cmdBuffer, instancesBuffer->getBuffer(), newInstancesBuffer->getBuffer(), 1, &instanceDescriptionsCopy);
+
+                //end command buffer
+                vkEndCommandBuffer(cmdBuffer);
+
+                renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
+
+                //submit
+                const SynchronizationInfo syncInfo = {
+                    .queueType = TRANSFER
+                };
+                vkQueueWaitIdle(renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer }).queue);
+            }
             
             //replace old buffers
             instancesBuffer = std::move(newInstancesBuffer);
@@ -562,11 +608,11 @@ namespace PaperRenderer
     void TLAS::buildStructure(VkCommandBuffer cmdBuffer, AsBuildData& data, const CompactionQuery compactionQuery, const VkDeviceAddress scratchAddress)
     {
         //only rebuild/update a TLAS if any instances were updated
-        if(nextUpdateSize)
+        if(rtRender.getTLASInstanceData().size())
         {
             //update UBO
             const TLASInstanceBuildPipeline::UBOInputData uboInputData = {
-                .objectCount = nextUpdateSize
+                .objectCount = (uint32_t)rtRender.getTLASInstanceData().size()
             };
 
             const BufferWrite write = {
@@ -619,28 +665,27 @@ namespace PaperRenderer
         AS::assignResourceOwner(queue);
     }
 
-    const Queue& TLAS::updateTLAS(const class RayTraceRender& rtRender, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo)
+    const Queue& TLAS::updateTLAS(const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo)
     {
         //----------QUEUE INSTANCE TRANSFERS----------//
 
         //create timer
         Timer timer(renderer, "TLAS Build/Update", REGULAR);
 
-        //set next update size to 0
-        nextUpdateSize = 0;
-
         //verify buffer sizes before data transfer
         verifyInstancesBuffer(rtRender.getTLASInstanceData().size());
 
         //queue instance data
-        std::vector<char> newInstancesData(instancesBufferSizes.totalSize());
-        for(const AccelerationStructureInstanceData& instance : rtRender.getTLASInstanceData())
+        for(const AccelerationStructureInstanceData& instance : rtRender.toUpdateInstances)
         {
+            //check if instance is valid
+            if(!instance.instancePtr) continue;
+
             //get BLAS pointer
             BLAS const* blasPtr = instance.instancePtr->getUniqueGeometryData().blas ? instance.instancePtr->getUniqueGeometryData().blas.get() : (BLAS*)instance.instancePtr->getParentModel().getBlasPtr();
 
-            //skip if instance is NULL or has invalid BLAS
-            if(instance.instancePtr && blasPtr)
+            //skip if instance has invalid BLAS
+            if(blasPtr)
             {
                 //get sbt offset
                 uint32_t sbtOffset = 
@@ -650,27 +695,37 @@ namespace PaperRenderer
                 //write instance data
                 ModelInstance::AccelerationStructureInstance instanceShaderData = {
                     .blasReference = blasPtr->getASBufferAddress(),
-                    .selfIndex = instance.instancePtr->rendererSelfIndex,
                     .modelInstanceIndex = instance.instancePtr->rendererSelfIndex,
                     .customIndex = instance.customIndex,
                     .mask = instance.mask,
                     .recordOffset = sbtOffset,
                     .flags = instance.flags
                 };
-                memcpy(newInstancesData.data() + instancesBufferSizes.instancesOffset + (sizeof(ModelInstance::AccelerationStructureInstance) * nextUpdateSize), &instanceShaderData, sizeof(ModelInstance::AccelerationStructureInstance));
+
+                //queue transfer
+                std::vector<char> instanceData(sizeof(ModelInstance::AccelerationStructureInstance));
+                memcpy(instanceData.data(), &instanceShaderData, sizeof(ModelInstance::AccelerationStructureInstance));
+                renderer.getStagingBuffer().queueDataTransfers(
+                    *instancesBuffer,
+                    instancesBufferSizes.instancesOffset + (sizeof(ModelInstance::AccelerationStructureInstance) * instance.instancePtr->rtRenderSelfReferences[&rtRender].selfIndex),
+                    instanceData
+                );
 
                 //write description data
                 InstanceDescription descriptionShaderData = {
                     .modelDataOffset = (uint32_t)instance.instancePtr->getParentModel().getShaderDataLocation()
                 };
-                memcpy(newInstancesData.data() + instancesBufferSizes.instanceDescriptionsOffset + (sizeof(InstanceDescription) * nextUpdateSize), &descriptionShaderData, sizeof(InstanceDescription));
-
-                nextUpdateSize++;
+                
+                //queue transfer
+                std::vector<char> instanceDescriptionData(sizeof(InstanceDescription));
+                memcpy(instanceDescriptionData.data(), &descriptionShaderData, sizeof(InstanceDescription));
+                renderer.getStagingBuffer().queueDataTransfers(
+                    *instancesBuffer,
+                    instancesBufferSizes.instanceDescriptionsOffset + (sizeof(InstanceDescription) * instance.instancePtr->rtRenderSelfReferences[&rtRender].selfIndex),
+                    instanceDescriptionData
+                );
             }
         }
-
-        //queue data transfers
-        renderer.getStagingBuffer().queueDataTransfers(*instancesBuffer, 0, newInstancesData);
 
         //submit transfers
         const SynchronizationInfo transferSyncInfo = {

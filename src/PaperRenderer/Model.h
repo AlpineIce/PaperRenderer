@@ -178,12 +178,12 @@ namespace PaperRenderer
         struct AccelerationStructureInstance
         {
             uint64_t blasReference;
-            uint32_t selfIndex;
             uint32_t modelInstanceIndex;
-            uint32_t customIndex : 24;
-            uint32_t mask : 8 = 0xAA000000; //8 byte limit
-            uint32_t recordOffset : 24 = 0; //24 bit limit
-            VkGeometryInstanceFlagsKHR flags : 8 = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+            uint32_t customIndex:24;
+            uint32_t mask:8 = 0xAA000000;
+            uint32_t recordOffset:24 = 0;
+            VkGeometryInstanceFlagsKHR flags:8 = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+            uint32_t padding = 0;
         };
 
         ShaderModelInstance getShaderInstance() const;

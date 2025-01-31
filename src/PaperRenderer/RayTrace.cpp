@@ -17,7 +17,7 @@ namespace PaperRenderer
         :pcRanges(pcRanges),
         setLayouts(setLayouts),
         pipelineProperties(pipelineProperties),
-        tlas(renderer),
+        tlas(renderer, *this),
         raygenShader(raygenShader),
         missShaders(missShaders),
         callableShaders(callableShaders),
@@ -108,8 +108,19 @@ namespace PaperRenderer
             queuePipelineBuild = false;
         }
 
+        //sort instances; remove duplicates
+        std::sort(toUpdateInstances.begin(), toUpdateInstances.end());
+        auto sortedInstances = std::unique(toUpdateInstances.begin(), toUpdateInstances.end());
+        toUpdateInstances.erase(sortedInstances, toUpdateInstances.end());
+
         //update TLAS
-        return tlas.updateTLAS(*this, mode, flags, syncInfo);
+        const Queue& queue = tlas.updateTLAS(mode, flags, syncInfo);
+        
+        //clear toUpdateInstances
+        toUpdateInstances.clear();
+
+        //return queue used
+        return queue;
     }
 
     void RayTraceRender::rebuildPipeline()
@@ -157,7 +168,7 @@ namespace PaperRenderer
         materialReferences[&material]++;
 
         //queue data transfer
-        toUpdateInstances.push_front(&(*asInstances.rbegin()));
+        toUpdateInstances.push_front(*asInstances.rbegin());
     }
     
     void RayTraceRender::removeInstance(ModelInstance& instance)
@@ -172,13 +183,22 @@ namespace PaperRenderer
                 asInstances[selfIndex].instancePtr->rtRenderSelfReferences[this].selfIndex = selfIndex;
 
                 //queue data transfer
-                toUpdateInstances.push_front(&asInstances[selfIndex]);
+                toUpdateInstances.push_front(asInstances[selfIndex]);
                 
                 asInstances.pop_back();
             }
             else
             {
                 asInstances.clear();
+            }
+        }
+
+        //null out any instances that may be queued
+        for(AccelerationStructureInstanceData& thisInstance : toUpdateInstances)
+        {
+            if(thisInstance.instancePtr == &instance)
+            {
+                thisInstance.instancePtr = NULL;
             }
         }
 
