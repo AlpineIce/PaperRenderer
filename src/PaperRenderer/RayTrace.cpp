@@ -1,5 +1,4 @@
 #include "RayTrace.h"
-#include "AccelerationStructure.h"
 #include "PaperRenderer.h"
 #include "Camera.h"
 #include "Material.h"
@@ -8,7 +7,6 @@ namespace PaperRenderer
 {
     RayTraceRender::RayTraceRender(
         RenderEngine& renderer,
-        TLAS& accelerationStructure,
         const ShaderDescription& raygenShader,
         const std::vector<ShaderDescription>& missShaders,
         const std::vector<ShaderDescription>& callableShaders,
@@ -19,11 +17,11 @@ namespace PaperRenderer
         :pcRanges(pcRanges),
         setLayouts(setLayouts),
         pipelineProperties(pipelineProperties),
+        tlas(renderer),
         raygenShader(raygenShader),
         missShaders(missShaders),
         callableShaders(callableShaders),
-        renderer(renderer),
-        tlas(accelerationStructure)
+        renderer(renderer)
     {
     }
 

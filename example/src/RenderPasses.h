@@ -29,9 +29,6 @@ DepthBuffer getDepthBuffer(PaperRenderer::RenderEngine& renderer);
 class ExampleRayTracing
 {
 private:
-    //tlas
-    PaperRenderer::TLAS tlas;
-
     //descriptors
     VkDescriptorSetLayout rtDescriptorLayout;
     PaperRenderer::ResourceDescriptor rtDescriptor;

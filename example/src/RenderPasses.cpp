@@ -88,8 +88,7 @@ DepthBuffer getDepthBuffer(PaperRenderer::RenderEngine &renderer)
 //----------RAY TRACING----------//
 
 ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, const PaperRenderer::Camera& camera, const HDRBuffer& hdrBuffer, const LightingData& lightingData)
-    :tlas(renderer),
-    rtDescriptorLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
+    :rtDescriptorLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
         { //RT input data
             .binding = 0,
             .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
@@ -131,7 +130,6 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
     }),
     rtRenderPass(
         renderer,
-        tlas,
         generalShaders[0],
         { generalShaders[1], generalShaders[2] },
         {},
@@ -249,7 +247,7 @@ const PaperRenderer::Queue& ExampleRayTracing::rayTraceRender(const PaperRendere
             }
         },
         { //set 3 (instance descriptions)
-            .set = tlas.getInstanceDescriptionsDescriptor(),
+            .set = rtRenderPass.getTLAS().getInstanceDescriptionsDescriptor(),
             .binding = {
                 .bindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
                 .pipelineLayout = rtRenderPass.getPipeline().getLayout(),
@@ -275,7 +273,7 @@ void ExampleRayTracing::updateUBO() const
 {
     //update RT UBO
     const RayTraceInfo rtInfo = {
-        .tlasAddress = tlas.getAsDeviceAddress(),
+        .tlasAddress = rtRenderPass.getTLAS().getAsDeviceAddress(),
         .modelDataReference = renderer.getModelDataBuffer().getBufferDeviceAddress(),
         .frameNumber = renderer.getFramesRenderedCount(),
         .recursionDepth = rayRecursionDepth,

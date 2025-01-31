@@ -1,5 +1,6 @@
 #pragma once
 #include "Pipeline.h"
+#include "AccelerationStructure.h"
 #include "Descriptor.h"
 
 namespace PaperRenderer
@@ -29,6 +30,7 @@ namespace PaperRenderer
         const std::vector<VkPushConstantRange> pcRanges;
         const std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
         const RTPipelineProperties pipelineProperties;
+        TLAS tlas;
         std::unique_ptr<RTPipeline> pipeline;
         
         bool queuePipelineBuild = true;
@@ -47,12 +49,10 @@ namespace PaperRenderer
         void assignResourceOwner(const Queue& queue);
         
         class RenderEngine& renderer;
-        TLAS& tlas;
 
     public:
         RayTraceRender(
             RenderEngine& renderer,
-            TLAS& accelerationStructure,
             const ShaderDescription& raygenShader,
             const std::vector<ShaderDescription>& missShaders,
             const std::vector<ShaderDescription>& callableShaders,
