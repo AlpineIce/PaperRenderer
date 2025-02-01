@@ -8,14 +8,49 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Paper Renderer Documentation</title>
         <link rel="stylesheet" href="stylesheet.css">
+        <script src="script.js"></script> 
     </head>
     <body>
-        <div id="table-of-contents">
-            <h2>Table of Contents</h2>
-        </div>
+        <nav id="table-of-contents">
+            <h2 id="toc-header">Table of Contents</h2>
+            <div id="toc-br"><hr></div>
+            <ul id="toc-list">
+                <li><a href="#about">About</li></a>
+                <li><a href="#initialization">Initialization</li></a>
+            </ul>
+        </nav>
         <div id="content">
             <h1>Paper Renderer Documentation</h1>
-            <p>Coming soon!</p>
+            <hr>
+            <section class="chapter" id="about">
+                <h2>About Paper Renderer</h2>
+                <p>
+                    Paper Renderer is a collection of GPU driven abstractions for rendering with ray tracing and rasterization. It aims to not abstract too much away, but still be powerful 
+                    enough that the abstractions are worth using and could significantly speed up development of a higher level renderer abstraction. The GPU driven nature of these abstractions 
+                    means that static scenes use next to no CPU time, even for tens of thousands of objects.
+                </p>
+                <p>
+                    Some of the most useful abstractions include simplifying a render pass down to specifying a model instance, its material (and parameters through a material instance like UE), 
+                    and the attachments used. A very similar abstraction is used for ray tracing too, but parameters must be manually setup in your shaders, since ray tracing pipelines can only 
+                    be bound once per "pass". Models all have their own collection of LODs (technically optional) and can be instantiated and with their own unique transformations. Compute shaders 
+                    have a basic wrapper where you can specify its descriptors and shader. The abstractions mentioned aren't the only things that exist, and more will be mentioned further in 
+                    the documentation.
+                </p>
+                <p>
+                    Paper Renderer should work on both Windows and Linux as long as the graphics drivers are updated to the latest versions. Updating the drivers is very important since 
+                    development of this doesn't conform to any minimum version and expects people to be using up-to-date drivers unless otherwise specified. With that being said, development occurs 
+                    on Linux, so if the code doesn't compile on Windows, it's a genuine mistake and an posting an issue or PR fixing it would be appreciated. <strong>If your goal is to target as 
+                    much hardware as possible, this library probably isn't right for you. Any requests to "dumb" down features for supporting architecture that is years old at the cost of complexity 
+                    and worse performance (e.g. CPU culling) will likely be ignored (sorry).</strong>
+                </p>
+                <p>If any issues/ambiguities are found with this documentation, feel free to open an issue on the <a href="https://github.com/AlpineIce/PaperRenderer">github</a> page.</p>
+            </section>
+            <hr>
+            <section class="chapter" id="initialization">
+                <h2>Initialization</h2>
+                <p></p>
+            </section>
+            
         </div>
     </body>
 </html>
