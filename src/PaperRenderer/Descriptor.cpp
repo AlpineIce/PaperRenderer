@@ -110,7 +110,7 @@ namespace PaperRenderer
         if(result != VK_SUCCESS)
         {
             renderer.getLogger().recordLog({
-                .type = ERROR,
+                .type = CRITICAL_ERROR,
                 .text = "Failed to create descriptor pool"
             });
         }
@@ -176,7 +176,7 @@ namespace PaperRenderer
         if(result != VK_SUCCESS)
         {
             renderer.getLogger().recordLog({
-                .type = ERROR,
+                .type = CRITICAL_ERROR,
                 .text = "Failed to create descriptor set layout"
             });
         }

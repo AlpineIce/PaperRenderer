@@ -23,11 +23,11 @@ namespace PaperRenderer
         uint32_t mask:8 = 0xAA;
         VkGeometryInstanceFlagsKHR flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
         
-        bool operator<(const AccelerationStructureInstanceData& other)
+        bool operator<(const AccelerationStructureInstanceData& other) const
         {
             return instancePtr < other.instancePtr;
         }
-        bool operator==(const AccelerationStructureInstanceData& other)
+        bool operator==( const AccelerationStructureInstanceData& other) const
         {
             return instancePtr == other.instancePtr;
         }

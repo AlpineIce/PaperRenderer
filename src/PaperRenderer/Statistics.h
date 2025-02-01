@@ -13,7 +13,7 @@ namespace PaperRenderer
     {
         INFO, //potentially useful information for keeping track of resources or state
         WARNING, //essentially non-critical errors that should be dealt with
-        ERROR //errors that absolutely need to be dealt with
+        CRITICAL_ERROR //errors that absolutely need to be dealt with
     };
     
     struct LogEvent

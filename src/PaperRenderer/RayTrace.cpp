@@ -3,6 +3,8 @@
 #include "Camera.h"
 #include "Material.h"
 
+#include <algorithm>
+
 namespace PaperRenderer
 {
     RayTraceRender::RayTraceRender(

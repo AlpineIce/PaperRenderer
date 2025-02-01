@@ -365,7 +365,7 @@ namespace PaperRenderer
                     .indexType = VK_INDEX_TYPE_UINT32,
                     .indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = parentModel.getIBOAddress()}
                 } },
-                .flags = materialMesh.invokeAnyHit ? VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR : VK_GEOMETRY_OPAQUE_BIT_KHR
+                .flags = (VkGeometryFlagsKHR)(materialMesh.invokeAnyHit ? VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR : VK_GEOMETRY_OPAQUE_BIT_KHR)
             };
             
             const VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo = {
@@ -889,7 +889,7 @@ namespace PaperRenderer
                 {
                     //error handling for too big of a model
                     renderer.getLogger().recordLog({
-                        .type = ERROR,
+                        .type = CRITICAL_ERROR,
                         .text = "Tried to build a BLAS with a required scratch size of " + std::to_string(opRequiredScratchSize) + " which is larger than " + std::to_string(scratchBuffer->getSize())
                     });
                     continue;

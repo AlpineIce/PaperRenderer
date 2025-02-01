@@ -20,7 +20,7 @@ namespace PaperRenderer
         if(result != VK_SUCCESS)
         {
             renderer.getLogger().recordLog({
-                .type = ERROR,
+                .type = CRITICAL_ERROR,
                 .text = "Creation of shader module failed."
             });
         }
@@ -71,7 +71,7 @@ namespace PaperRenderer
         if(result != VK_SUCCESS)
         {
             renderer.getLogger().recordLog({
-                .type = ERROR,
+                .type = CRITICAL_ERROR,
                 .text = "Failed to create compute pipeline"
             });
         }
@@ -198,7 +198,7 @@ namespace PaperRenderer
         if(result != VK_SUCCESS)
         {
             renderer.getLogger().recordLog({
-                .type = ERROR,
+                .type = CRITICAL_ERROR,
                 .text = "Failed to create a graphics pipeline"
             });
         }
@@ -345,7 +345,7 @@ namespace PaperRenderer
         if(result != VK_SUCCESS)
         {
             renderer.getLogger().recordLog({
-                .type = ERROR,
+                .type = CRITICAL_ERROR,
                 .text = "Failed to create a ray tracing pipeline"
             });
         }

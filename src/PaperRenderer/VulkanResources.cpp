@@ -1,6 +1,8 @@
 #include "VulkanResources.h"
 #include "PaperRenderer.h"
 
+#include <algorithm>
+
 namespace PaperRenderer
 {
     //----------RESOURCE BASE CLASS DEFINITIONS----------//
@@ -47,7 +49,7 @@ namespace PaperRenderer
         if(!queueFamilyIndices.size())
         {
             renderer.getLogger().recordLog({
-                .type = ERROR,
+                .type = CRITICAL_ERROR,
                 .text = "Tried to create buffer with no queue family indices referenced"
             });
         }

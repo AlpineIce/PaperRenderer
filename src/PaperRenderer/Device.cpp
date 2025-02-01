@@ -86,8 +86,13 @@ namespace PaperRenderer
 
         //instance creation
         VkResult result = vkCreateInstance(&instanceInfo, nullptr, &instance);
-        if(result != VK_SUCCESS) throw std::runtime_error("VkResult: " + std::to_string(result) + "Failed to create Vulkan instance");
-
+        if(result != VK_SUCCESS)
+        {
+            renderer.getLogger().recordLog({
+                .type = CRITICAL_ERROR,
+                .text = "Failed to create Vulkan instance"
+            });
+        }
         volkLoadInstance(instance);
     }
 
@@ -181,6 +186,10 @@ namespace PaperRenderer
         }
         else if(!deviceFound)
         {
+            renderer.getLogger().recordLog({
+                .type = CRITICAL_ERROR,
+                .text = "Couldn't find suitable GPU"
+            });
             throw std::runtime_error("Couldn't find suitable GPU");
         }
 
@@ -226,7 +235,14 @@ namespace PaperRenderer
         }
 
         //now fill in any queues that need to be filled
-        if(!queues.count(QueueType::GRAPHICS)) throw std::runtime_error("No suitable graphics queue family from selected GPU"); //error if no graphics
+        if(!queues.count(QueueType::GRAPHICS))
+        {
+            renderer.getLogger().recordLog({
+                .type = CRITICAL_ERROR,
+                .text = "No suitable graphics queue family from selected GPU"
+            });
+            throw std::runtime_error("No suitable graphics queue family from selected GPU"); //error if no graphics
+        }
         if(!queues.count(QueueType::COMPUTE))
         {
             queues[QueueType::COMPUTE].queueFamilyIndex = queues.at(QueueType::GRAPHICS).queueFamilyIndex; //shared graphics/compute queue family
@@ -247,10 +263,6 @@ namespace PaperRenderer
                     queues[QueueType::PRESENT].queueFamilyIndex = i;
                     break;
                 }
-            }
-            if(!queues.count(QueueType::PRESENT))
-            {
-                throw std::runtime_error("No surface support");
             }
         }
     }
@@ -324,7 +336,7 @@ namespace PaperRenderer
         }
         else if(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
         {
-            type = ERROR;
+            type = CRITICAL_ERROR;
         }
 
         //log error
@@ -487,7 +499,7 @@ namespace PaperRenderer
             else
             {
                 renderer.getLogger().recordLog({
-                    .type = ERROR,
+                    .type = CRITICAL_ERROR,
                     .text = "Device creation returned an error that's probably unrelated to missing extensions"
                 });
             }

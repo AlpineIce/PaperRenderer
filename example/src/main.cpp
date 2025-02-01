@@ -371,7 +371,7 @@ int main()
         case PaperRenderer::LogType::WARNING:
             std::cout << beginString << "\033[1;33m--WARNING--: \033[0m";
             break;
-        case PaperRenderer::LogType::ERROR:
+        case PaperRenderer::LogType::CRITICAL_ERROR:
             std::cout << beginString << "\033[1;31m--ERROR--: \033[0m";
             break;
         }
