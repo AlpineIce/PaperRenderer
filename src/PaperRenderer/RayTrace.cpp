@@ -144,6 +144,10 @@ namespace PaperRenderer
             .properties = pipelineProperties
         };
         pipeline = renderer.getPipelineBuilder().buildRTPipeline(pipelineBuildInfo);
+
+        //invalidate all instances
+        toUpdateInstances.clear();
+        toUpdateInstances.insert(toUpdateInstances.end(), asInstances.begin(), asInstances.end());
     }
 
     void RayTraceRender::assignResourceOwner(const Queue &queue)
