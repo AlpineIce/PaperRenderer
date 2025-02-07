@@ -16,6 +16,7 @@
             <div id="toc-br"><hr></div>
             <ul id="toc-list">
                 <li><a href="#about">About</li></a>
+                <li><a href="#setup">Library Setup</li></a>
                 <li><a href="#initialization">Initialization</li></a>
             </ul>
         </nav>
@@ -46,9 +47,30 @@
                 <p>If any issues/ambiguities are found with this documentation, feel free to open an issue on the <a href="https://github.com/AlpineIce/PaperRenderer">github</a> page.</p>
             </section>
             <hr>
+            <section class="chapter" id="setup">
+                <h2>Library Setup</h2>
+                <p>
+                    Integrating Paper Renderer into a C++ project is relatively simple. Clone the repo, including its submodules, and add the project to your cmake build system. Set an include 
+                    directory to the /src folder too. Remember to have VulkanSDK installed, or else the project may not compile.
+                </p>
+                <p>
+                    There is honestly not anything unique about setting this project up, so it should be trivial if you've setup C++ source libraries before. It is probably worth noting that binary 
+                    distributions are not avaliable for this.
+                </p>
+            </section>
+            <hr>
             <section class="chapter" id="initialization">
                 <h2>Initialization</h2>
-                <p></p>
+                <p>
+                    The first step in initialization is creating the <span class="code">RenderEngine</span> object. The constructor for this object takes in a struct of type 
+                    <span class="code">PaperRenderer::PaperRendererInfo</span>. The important parts of this struct are the 2 shader binary data vectors, and the callback functions. Shader binary datas 
+                    should be loaded through the .spv results of the shaders, which should automatically be output. The callback functions are technically not required, but should still be used, no 
+                    matter what. Recording the logging of the renderer is critical for debugging problems, and setting a swapchain resize callback is necessary for handling anything that depends on 
+                    the swapchain, such as its extent.
+                </p>
+                <p>
+                    The other parameters in this struct have comments explaining their purpose, so it shouldn't be too hard to understand what to put in them.
+                </p>
             </section>
             
         </div>
