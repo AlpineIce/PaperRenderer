@@ -1,5 +1,5 @@
-# PaperRenderer
-PaperRenderer is a (mostly complete) renderer abstraction which aims to integrate tradiitonal raster and raytracing together nicely, while deferring much of the work (mainly draw instance call counts and TLAS instances) to compute shaders. Multithreading is also supported for command buffer recording, descriptor set allocation, and queue submission.
+# Paper Renderer
+Paper Renderer is a (mostly complete) renderer abstraction which aims to integrate traditonal raster and raytracing together nicely, while deferring much of the work (mainly draw instance call counts and TLAS instances) to compute shaders. Multithreading is also supported for command buffer recording, descriptor set allocation, and queue submission.
 
 #### Some of the features include, but aren't limited to
 * Model & Model Instance creation
@@ -13,7 +13,7 @@ PaperRenderer is a (mostly complete) renderer abstraction which aims to integrat
 * A bit more stuff that either isn't mentioned because it isn't that impressive or is just incomplete
 
 #### --- Image from the example ---
-![PaperRenderer Example Image](example/PaperRendererExampleImage.png)
+![Paper Renderer Example Image](example/PaperRendererExampleImage.png)
 
 ## Dependencies
 * CMake
@@ -26,4 +26,4 @@ PaperRenderer is a (mostly complete) renderer abstraction which aims to integrat
 3. Run CMake, which will compile the C++ code and shaders, the latter of which gets output into "${PROJECT_BINARY_DIR}/resources/shaders/". If the example is built, it will be put into the example directory within the build directory.
 
 ## Documentation
-Honestly I'm not sure when I will ever get to this, but if even a few people seem interested in this project I'll be happy to, so... *Coming Soon! (maybe)*
+Incomplete documentation is available in the /docs folder as HTML. Refer to that and the example for for setting up your own project integrating Paper Renderer
