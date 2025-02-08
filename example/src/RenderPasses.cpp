@@ -883,7 +883,7 @@ void BufferCopyPass::BufferCopyMaterial::updateUBO() const
         .contrast = 1.0f,
         .brightness = 0.0f,
         .saturation = 1.0f,
-        .gammaCorrection = renderer.getSwapchain().getWindowState().surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR ? 2.2f : 1.0f
+        .gammaCorrection = renderer.getSwapchain().getWindowState().surfaceFormat.format == VK_FORMAT_R8G8B8A8_SRGB ? 2.2f : 1.0f
     };
 
     const PaperRenderer::BufferWrite uboWrite = {

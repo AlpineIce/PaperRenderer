@@ -236,17 +236,17 @@ namespace PaperRenderer
             });
             
             //use sRGB if no HDR format is available; use UNORM if sRGB isnt avaliable
-            for(VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
+            for(const VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
             {
                 if(surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) //SRGB color space
                 {
-                    if(surfaceFormat.format == VK_FORMAT_B8G8R8A8_SRGB)
+                    if(surfaceFormat.format == VK_FORMAT_R8G8B8A8_SRGB)
                     {
                         windowState.surfaceFormat = surfaceFormat;
                         formatFound = true;
                         break;
                     }
-                    else if(surfaceFormat.format == VK_FORMAT_B8G8R8A8_UNORM)
+                    else if(surfaceFormat.format == VK_FORMAT_R8G8B8A8_UNORM)
                     {
                         windowState.surfaceFormat = surfaceFormat;
                         formatFound = true;
