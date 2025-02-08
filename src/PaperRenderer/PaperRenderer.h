@@ -33,12 +33,12 @@ namespace PaperRenderer
     //struct for RenderEngine
     struct PaperRendererInfo
     {
-        const std::function<void(RenderEngine&, const LogEvent&)>& logEventCallbackFunction = NULL;
-        const std::function<void(RenderEngine&, VkExtent2D newExtent)>& swapchainRebuildCallbackFunction = NULL;
-        const std::vector<uint32_t>& rasterPreprocessSpirv; //takes in compiled IndirectDrawBuild.comp spirv data
-        const std::vector<uint32_t>& rtPreprocessSpirv; //takes in compiled TLASInstBuild.comp spirv data
-        const DeviceInstanceInfo& deviceInstanceInfo = {};
-        const WindowState& windowState = {};
+        std::function<void(RenderEngine&, const LogEvent&)> logEventCallbackFunction = NULL;
+        std::function<void(RenderEngine&, VkExtent2D newExtent)> swapchainRebuildCallbackFunction = NULL;
+        std::vector<uint32_t> rasterPreprocessSpirv {}; //takes in compiled IndirectDrawBuild.comp spirv data
+        std::vector<uint32_t> rtPreprocessSpirv {}; //takes in compiled TLASInstBuild.comp spirv data
+        DeviceInstanceInfo deviceInstanceInfo = {};
+        WindowState windowState = {};
     };
     
     //main renderer class

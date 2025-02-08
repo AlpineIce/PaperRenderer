@@ -799,7 +799,7 @@ BufferCopyPass::BufferCopyMaterial::BufferCopyMaterial(PaperRenderer::RenderEngi
                     }
                 },
                 .colorAttachmentFormats = { 
-                    { renderer.getSwapchain().getFormat() }
+                    { renderer.getSwapchain().getWindowState().surfaceFormat.format }
                 },
                 .rasterInfo = {
                     .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
@@ -883,7 +883,7 @@ void BufferCopyPass::BufferCopyMaterial::updateUBO() const
         .contrast = 1.0f,
         .brightness = 0.0f,
         .saturation = 1.0f,
-        .gammaCorrection = renderer.getSwapchain().getIsUsingHDR() ? 1.0f : 2.2f
+        .gammaCorrection = renderer.getSwapchain().getWindowState().surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR ? 2.2f : 1.0f
     };
 
     const PaperRenderer::BufferWrite uboWrite = {

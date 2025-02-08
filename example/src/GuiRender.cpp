@@ -35,7 +35,7 @@ GuiContext initImGui(PaperRenderer::RenderEngine& renderer, DefaultMaterialInsta
             .pNext = NULL,
             .viewMask = 0,
             .colorAttachmentCount = 1,
-            .pColorAttachmentFormats = &renderer.getSwapchain().getFormat(),
+            .pColorAttachmentFormats = &renderer.getSwapchain().getWindowState().surfaceFormat.format,
             .depthAttachmentFormat = VK_FORMAT_UNDEFINED,
             .stencilAttachmentFormat = VK_FORMAT_UNDEFINED
         }

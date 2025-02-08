@@ -422,7 +422,12 @@ int main()
         },
         .windowState = {
             .windowName = "PaperRenderer Example",
-            .enableVsync = false
+            .surfaceFormat = {
+                .format = VK_FORMAT_R8G8B8A8_SRGB,
+                .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+            },
+            .presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR,
+            .imageUsageFlags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
         }
     };
     PaperRenderer::RenderEngine renderer(rendererInfo);
