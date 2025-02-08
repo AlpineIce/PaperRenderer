@@ -54,6 +54,8 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
             //only one LOD will be used in this example
             PaperRenderer::ModelLODInfo modelLOD;
 
+            PaperRenderer::AABB aabb = {};
+
             //iterate mesh primitives
             for(const tinygltf::Primitive& primitive : gltfModel.meshes[node.mesh].primitives)
             {
@@ -67,28 +69,76 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
 
                 for(uint32_t i = 0; i < gltfModel.accessors[primitive.attributes.at("POSITION")].count; i++)
                 {
+                    //get vertex data
                     Vertex vertex = {
                         .position = *(glm::vec3*)(gltfModel.buffers[0].data.data() + vertexPositions.byteOffset + (12 * i)),
                         .normal =   *(glm::vec3*)(gltfModel.buffers[0].data.data() + vertexNormals.byteOffset   + (12 * i)),
                         .uv =       *(glm::vec2*)(gltfModel.buffers[0].data.data() + vertexUVs.byteOffset       + (8  * i))
                     };
                     memcpy(vertexData.data() + (sizeof(Vertex) * i), &vertex, sizeof(Vertex));
+
+                    //AABB processing
+                    aabb.posX = std::max(vertex.position.x, aabb.posX);
+                    aabb.negX = std::min(vertex.position.x, aabb.negX);
+                    aabb.posY = std::max(vertex.position.y, aabb.posY);
+                    aabb.negY = std::min(vertex.position.y, aabb.negY);
+                    aabb.posZ = std::max(vertex.position.z, aabb.posZ);
+                    aabb.negZ = std::min(vertex.position.z, aabb.negZ);
                 }
 
                 //fill in a vector with index data
                 const tinygltf::BufferView& indices = gltfModel.bufferViews[primitive.indices];
                 const uint32_t indexStride = tinygltf::GetComponentSizeInBytes(gltfModel.accessors[primitive.indices].componentType);
-                std::vector<uint32_t> indexData(gltfModel.accessors[primitive.indices].count);
+                std::vector<char> indexData(indexStride * gltfModel.accessors[primitive.indices].count);
+                memcpy(indexData.data(), gltfModel.buffers[0].data.data() + indices.byteOffset, gltfModel.accessors[primitive.indices].count * indexStride);
 
-                for(uint32_t i = 0; i < gltfModel.accessors[primitive.indices].count; i++)
+                //get index type
+                VkIndexType indexType;
+                switch(indexStride)
                 {
-                    memcpy(indexData.data() + i, gltfModel.buffers[0].data.data() + indices.byteOffset + (i * indexStride), indexStride);
+                    case sizeof(uint8_t):
+                        indexType = VK_INDEX_TYPE_UINT8;
+                        break;
+                    case sizeof(uint16_t):
+                        indexType = VK_INDEX_TYPE_UINT16;
+                        break;
+                    case sizeof(uint32_t):
+                        indexType = VK_INDEX_TYPE_UINT32;
+                        break;
+                    default:
+                        throw std::runtime_error("Bad index stride");
                 }
 
                 //push data to LOD
                 modelLOD.lodData[matIndex] = {
+                    .vertexAttributes = {
+                        {
+                            .location = 0,
+                            .binding = 0,
+                            .format = VK_FORMAT_R32G32B32_SFLOAT,
+                            .offset = offsetof(Vertex, position)
+                        },
+                        {
+                            .location = 1,
+                            .binding = 0,
+                            .format = VK_FORMAT_R32G32B32_SFLOAT,
+                            .offset = offsetof(Vertex, normal)
+                        },
+                        {
+                            .location = 2,
+                            .binding = 0,
+                            .format = VK_FORMAT_R32G32_SFLOAT,
+                            .offset = offsetof(Vertex, uv)
+                        }
+                    },
+                    .vertexDescription = {
+                        .binding = 0,
+                        .stride = sizeof(Vertex),
+                        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+                    },
                     .verticesData = std::move(vertexData),
-                    .indices = std::move(indexData),
+                    .indexType = indexType,
+                    .indicesData = std::move(indexData),
                     .opaque = gltfModel.materials[matIndex].alphaMode == "OPAQUE"
                 };
 
@@ -97,35 +147,10 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
             }
 
             const PaperRenderer::ModelCreateInfo modelInfo = {
-                .vertexAttributes = {
-                    {
-                        .location = 0,
-                        .binding = 0,
-                        .format = VK_FORMAT_R32G32B32_SFLOAT,
-                        .offset = offsetof(Vertex, position)
-                    },
-                    {
-                        .location = 1,
-                        .binding = 0,
-                        .format = VK_FORMAT_R32G32B32_SFLOAT,
-                        .offset = offsetof(Vertex, normal)
-                    },
-                    {
-                        .location = 2,
-                        .binding = 0,
-                        .format = VK_FORMAT_R32G32_SFLOAT,
-                        .offset = offsetof(Vertex, uv)
-                    }
-                },
-                .vertexDescription = {
-                    .binding = 0,
-                    .stride = sizeof(Vertex),
-                    .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
-                },
                 .LODs = { modelLOD },
                 .createBLAS = true,
                 .modelName = modelName,
-                .bounds = {}
+                .bounds = aabb
             };
 
             returnData.models[modelName] = std::make_unique<PaperRenderer::Model>(renderer, modelInfo);

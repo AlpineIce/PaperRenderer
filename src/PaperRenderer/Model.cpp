@@ -11,34 +11,17 @@ namespace PaperRenderer
 
     Model::Model(RenderEngine& renderer, const ModelCreateInfo& creationInfo)
         :modelName(creationInfo.modelName),
+		aabb(creationInfo.bounds),
 		renderer(renderer)
     {
 		//Timer
         Timer timer(renderer, "Create Model", IRREGULAR);
 
 		//temporary variables for creating the singular vertex and index buffer
-		std::vector<char> creationVerticesData;
-		std::vector<uint32_t> creationIndices;
-
-		//AABB processing
-		const AABB defaultAABB = {};
-		const bool constructAABB = creationInfo.bounds == defaultAABB;
-		if(constructAABB)
-		{
-			aabb.posX = -1000000.0f;
-			aabb.negX = 1000000.0f;
-			aabb.posY = -1000000.0f;
-			aabb.negY = 1000000.0f;
-			aabb.posZ = -1000000.0f;
-			aabb.negZ = 1000000.0f;
-		}
-
-		//vertex data
-		vertexAttributes = creationInfo.vertexAttributes;
-		vertexDescription = creationInfo.vertexDescription;
+		std::vector<char> creationVertices;
+		std::vector<char> creationIndices;
 
 		//fill in variables with the input LOD data
-		VkDeviceSize dynamicVertexOffset = 0;
 		for(const ModelLODInfo& lod : creationInfo.LODs)
 		{
 			LOD returnLOD = {};
@@ -47,38 +30,40 @@ namespace PaperRenderer
 			//iterate materials in LOD
 			for(const auto& [matIndex, meshGroup] : lod.lodData)
 			{
+				//get IBO stride
+				uint32_t iboStride = 0;
+				switch(meshGroup.indexType)
+				{
+				case VK_INDEX_TYPE_UINT16:
+					iboStride = sizeof(uint16_t);
+					break;
+				case VK_INDEX_TYPE_UINT32:
+					iboStride = sizeof(uint32_t);
+					break;
+				case VK_INDEX_TYPE_UINT8:
+					iboStride = sizeof(uint8_t);
+					break;
+				default:
+					renderer.getLogger().recordLog({
+						.type = CRITICAL_ERROR,
+						.text = "Invalid VkIndexType used for model " + modelName
+					});
+				}
+
 				//process mesh data
-				const MaterialMesh materialMesh = {
-					.mesh = {
-						.vboOffset = (uint32_t)dynamicVertexOffset,
-						.vertexCount =  (uint32_t)meshGroup.verticesData.size() / vertexDescription.stride,
-						.iboOffset = (uint32_t)creationIndices.size(),
-						.indexCount =  (uint32_t)meshGroup.indices.size()
-					},
-					.invokeAnyHit = !meshGroup.opaque
+				const LODMesh materialMesh = {
+					.vertexStride = meshGroup.vertexDescription.stride,
+					.indexStride = iboStride,
+					.vboOffset = (uint32_t)creationVertices.size(),
+					.verticesSize =  (uint32_t)meshGroup.verticesData.size(),
+					.iboOffset = (uint32_t)creationIndices.size(),
+					.indicesSize =  (uint32_t)meshGroup.indicesData.size(),
+					.invokeAnyHit = !meshGroup.opaque,
+					.indexType = meshGroup.indexType
 				};
 
-				creationVerticesData.insert(creationVerticesData.end(), meshGroup.verticesData.begin(), meshGroup.verticesData.end());
-				creationIndices.insert(creationIndices.end(), meshGroup.indices.begin(), meshGroup.indices.end());
-
-				dynamicVertexOffset += materialMesh.mesh.vertexCount;
-
-				//AABB processing
-				if(constructAABB)
-				{
-					uint32_t vertexCount = creationVerticesData.size() / vertexDescription.stride;
-					for(uint32_t i = 0; i < vertexCount; i++)
-					{
-						const glm::vec3& vertexPosition = *(glm::vec3*)(creationVerticesData.data() + (i * vertexDescription.stride));
-
-						aabb.posX = std::max(vertexPosition.x, aabb.posX);
-						aabb.negX = std::min(vertexPosition.x, aabb.negX);
-						aabb.posY = std::max(vertexPosition.y, aabb.posY);
-						aabb.negY = std::min(vertexPosition.y, aabb.negY);
-						aabb.posZ = std::max(vertexPosition.z, aabb.posZ);
-						aabb.negZ = std::min(vertexPosition.z, aabb.negZ);
-					}
-				}
+				creationVertices.insert(creationVertices.end(), meshGroup.verticesData.begin(), meshGroup.verticesData.end());
+				creationIndices.insert(creationIndices.end(), meshGroup.indicesData.begin(), meshGroup.indicesData.end());
 
 				//push data
 				returnLOD.materialMeshes.push_back(materialMesh);
@@ -86,8 +71,8 @@ namespace PaperRenderer
 			LODs.push_back(returnLOD);
 		}
 		
-		vbo = createDeviceLocalBuffer(creationVerticesData.size(), creationVerticesData.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
-		ibo = createDeviceLocalBuffer(sizeof(uint32_t) * creationIndices.size(), creationIndices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+		vbo = createDeviceLocalBuffer(creationVertices.size(), creationVertices.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+		ibo = createDeviceLocalBuffer(creationIndices.size(), creationIndices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
 
 		//set shader data and add to renderer
 		setShaderData();
@@ -123,13 +108,13 @@ namespace PaperRenderer
 		dynamicOffset += sizeof(ShaderModel);
 		newData.resize(dynamicOffset);
 
-		ShaderModel shaderModel = {};
-		shaderModel.bounds = aabb;
-		shaderModel.vertexAddress = vbo->getBufferDeviceAddress();
-		shaderModel.indexAddress = ibo->getBufferDeviceAddress();
-		shaderModel.lodCount = LODs.size();
-		shaderModel.lodsOffset = dynamicOffset;
-		shaderModel.vertexStride = vertexDescription.stride;
+		const ShaderModel shaderModel = {
+			.bounds = aabb,
+			.vertexAddress = vbo->getBufferDeviceAddress(),
+			.indexAddress = ibo->getBufferDeviceAddress(),
+			.lodCount = (uint32_t)LODs.size(),
+			.lodsOffset = dynamicOffset
+		};
 
 		memcpy(newData.data(), &shaderModel, sizeof(ShaderModel));
 
@@ -139,9 +124,10 @@ namespace PaperRenderer
 
 		for(uint32_t lodIndex = 0; lodIndex < LODs.size(); lodIndex++)
 		{
-			ShaderModelLOD modelLOD = {};
-			modelLOD.materialCount = LODs.at(lodIndex).materialMeshes.size();
-			modelLOD.meshGroupsOffset = dynamicOffset;
+			const ShaderModelLOD modelLOD = {
+				.materialCount = (uint32_t)LODs[lodIndex].materialMeshes.size(),
+				.meshGroupsOffset = dynamicOffset
+			};
 
 			memcpy(newData.data() + shaderModel.lodsOffset + sizeof(ShaderModelLOD) * lodIndex, &modelLOD, sizeof(ShaderModelLOD));
 			
@@ -151,9 +137,15 @@ namespace PaperRenderer
 
 			for(uint32_t matIndex = 0; matIndex < LODs.at(lodIndex).materialMeshes.size(); matIndex++)
 			{
-				ShaderModelLODMeshGroup materialMeshGroup = {};
-				materialMeshGroup.iboOffset = LODs.at(lodIndex).materialMeshes.at(matIndex).mesh.iboOffset;
-				materialMeshGroup.vboOffset = LODs.at(lodIndex).materialMeshes.at(matIndex).mesh.vboOffset;
+				//fill in material mesh group data
+				const ShaderModelLODMeshGroup materialMeshGroup = {
+					.vboOffset = LODs[lodIndex].materialMeshes[matIndex].vboOffset,
+					.vboSize = LODs[lodIndex].materialMeshes[matIndex].verticesSize,
+					.vboStride = LODs[lodIndex].materialMeshes[matIndex].vertexStride,
+					.iboOffset = LODs[lodIndex].materialMeshes[matIndex].iboOffset,
+					.iboSize = LODs[lodIndex].materialMeshes[matIndex].indicesSize,
+					.iboStride = LODs[lodIndex].materialMeshes[matIndex].indexStride
+				};
 
 				memcpy(newData.data() + modelLOD.meshGroupsOffset + sizeof(ShaderModelLODMeshGroup) * matIndex, &materialMeshGroup, sizeof(ShaderModelLODMeshGroup));
 			}
@@ -200,13 +192,6 @@ namespace PaperRenderer
 
 		return buffer;
     }
-
-    void Model::bindBuffers(const VkCommandBuffer& cmdBuffer) const
-	{
-		VkDeviceSize offsets[1] = { 0 };
-		vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vbo->getBuffer(), offsets);
-		vkCmdBindIndexBuffer(cmdBuffer, ibo->getBuffer(), 0, VK_INDEX_TYPE_UINT32);
-	}
 
 	//----------MODEL INSTANCE DEFINITIONS----------//
 
@@ -279,8 +264,9 @@ namespace PaperRenderer
 		{
 			dynamicOffset = Device::getAlignment(dynamicOffset, 8);
 
-			LODMaterialData lodMaterialData = {};
-			lodMaterialData.meshGroupsOffset = dynamicOffset;
+			const LODMaterialData lodMaterialData = {
+				.meshGroupsOffset = dynamicOffset
+			};
 
 			memcpy(newData.data() + sizeof(LODMaterialData) * lodIndex, &lodMaterialData, sizeof(LODMaterialData));
 			
@@ -294,18 +280,19 @@ namespace PaperRenderer
 				newData.resize(dynamicOffset);
 
 				//pointers
-				LODMesh const* lodMeshPtr = &parentModel.getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh;
-				CommonMeshGroup const* meshGroupPtr = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&parentModel.getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh);
+				LODMesh const* lodMeshPtr = &parentModel.getLODs().at(lodIndex).materialMeshes.at(matIndex);
+				CommonMeshGroup const* meshGroupPtr = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&parentModel.getLODs().at(lodIndex).materialMeshes.at(matIndex));
 				ModelInstance const* instancePtr = uniqueGeometryData.isUsed ? this : NULL;
 
 				//material mesh group data
-				MaterialMeshGroup materialMeshGroup = {};
-				materialMeshGroup.drawCommandAddress = 
-					meshGroupPtr->getDrawCommandsBuffer().getBufferDeviceAddress() + 
-					(meshGroupPtr->getInstanceMeshesData().at(instancePtr).at(lodMeshPtr).drawCommandIndex * sizeof(DrawCommand));
-				materialMeshGroup.matricesBufferAddress = 
-					meshGroupPtr->getModelMatricesBuffer().getBufferDeviceAddress() + 
-					(meshGroupPtr->getInstanceMeshesData().at(instancePtr).at(lodMeshPtr).matricesStartIndex * sizeof(ShaderOutputObject));
+				const MaterialMeshGroup materialMeshGroup = {
+					.drawCommandAddress = 
+						meshGroupPtr->getDrawCommandsBuffer().getBufferDeviceAddress() + 
+						(meshGroupPtr->getInstanceMeshesData().at(instancePtr).at(lodMeshPtr).drawCommandIndex * sizeof(DrawCommand)),
+					.matricesBufferAddress = 
+						meshGroupPtr->getModelMatricesBuffer().getBufferDeviceAddress() + 
+						(meshGroupPtr->getInstanceMeshesData().at(instancePtr).at(lodMeshPtr).matricesStartIndex * sizeof(ShaderOutputObject))
+				};
 
 				memcpy(newData.data() + lodMaterialData.meshGroupsOffset + sizeof(MaterialMeshGroup) * matIndex, &materialMeshGroup, sizeof(MaterialMeshGroup));
 			}
@@ -351,19 +338,5 @@ namespace PaperRenderer
     void ModelInstance::invalidateGeometry(const VkBuildAccelerationStructureFlagsKHR flags) const
     {
 		queueBLAS(flags);
-    }
-
-    void ModelInstance::bindBuffers(const VkCommandBuffer &cmdBuffer) const
-    {
-		if(uniqueGeometryData.isUsed)
-		{
-			VkDeviceSize offsets[1] = { 0 };
-			vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &uniqueGeometryData.uniqueVBO->getBuffer(), offsets);
-			vkCmdBindIndexBuffer(cmdBuffer, parentModel.ibo->getBuffer(), 0, VK_INDEX_TYPE_UINT32);
-		}
-		else
-		{
-			parentModel.bindBuffers(cmdBuffer);
-		}
     }
 }

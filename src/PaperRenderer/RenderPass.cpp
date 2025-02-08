@@ -678,10 +678,19 @@ namespace PaperRenderer
                     materialInstance->bind(cmdBuffer);
 
                     //get mesh data ptr
-                    const LODMesh& meshData = sortedInstances[i]->instance->getParentModel().getLODs()[lodIndex].materialMeshes[matSlot].mesh;
+                    const LODMesh& meshData = sortedInstances[i]->instance->getParentModel().getLODs()[lodIndex].materialMeshes[matSlot];
 
-                    //bind vbo and ibo and send draw calls (draw calls should be computed in the performCulling() function)
-                    sortedInstances[i]->instance->bindBuffers(cmdBuffer);
+                    //bind vbo and ibo
+                    const VkDeviceSize offsets[1] = { meshData.vboOffset };
+                    if(sortedInstances[i]->instance->getUniqueGeometryData().uniqueVBO)
+                    {
+                        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &sortedInstances[i]->instance->getUniqueGeometryData().uniqueVBO->getBuffer(), offsets);
+                    }
+                    else
+                    {
+                        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &sortedInstances[i]->instance->getParentModel().getVBO().getBuffer(), offsets);
+                    }
+                    vkCmdBindIndexBuffer(cmdBuffer, sortedInstances[i]->instance->getParentModel().getIBO().getBuffer(), meshData.iboOffset, meshData.indexType);
 
                     //bind descriptor
                     const DescriptorBinding binding = {
@@ -695,10 +704,10 @@ namespace PaperRenderer
                     //draw
                     vkCmdDrawIndexed(
                         cmdBuffer,
-                        meshData.indexCount,
+                        meshData.indicesSize / meshData.indexStride,
                         1,
-                        meshData.iboOffset,
-                        meshData.vboOffset,
+                        0,
+                        0,
                         i //first index at i because we want the same behavior as the normal drawing method
                     );
                 }
@@ -762,7 +771,7 @@ namespace PaperRenderer
                     }
 
                     //get mesh using same material
-                    const LODMesh& similarMesh = instance.getParentModel().getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh;
+                    const LODMesh& similarMesh = instance.getParentModel().getLODs().at(lodIndex).materialMeshes.at(matIndex);
 
                     //check if mesh group class is created
                     if(!renderTree[(Material*)&materialInstance->getBaseMaterial()].count(materialInstance))
@@ -773,7 +782,7 @@ namespace PaperRenderer
                     //add references
                     renderTree[(Material*)&materialInstance->getBaseMaterial()].at(materialInstance).addInstanceMesh(instance, similarMesh);
 
-                    instance.renderPassSelfReferences[this].meshGroupReferences[&instance.getParentModel().getLODs().at(lodIndex).materialMeshes.at(matIndex).mesh] = 
+                    instance.renderPassSelfReferences[this].meshGroupReferences[&instance.getParentModel().getLODs().at(lodIndex).materialMeshes.at(matIndex)] = 
                         &renderTree.at((Material*)&materialInstance->getBaseMaterial()).at(materialInstance);
                 }
             }

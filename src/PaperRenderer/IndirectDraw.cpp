@@ -125,10 +125,10 @@ namespace PaperRenderer
                 //get command data
                 const DrawCommand command = {
                     .command = {
-                        .indexCount = mesh->indexCount,
+                        .indexCount = mesh->indicesSize / mesh->indexStride,
                         .instanceCount = 0,
-                        .firstIndex = mesh->iboOffset,
-                        .vertexOffset = (int32_t)mesh->vboOffset,
+                        .firstIndex = 0,
+                        .vertexOffset = 0,
                         .firstInstance = meshInstancesData.matricesStartIndex
                     }
                 };
@@ -209,14 +209,16 @@ namespace PaperRenderer
             for(const auto& [mesh, meshData] : meshesData)
             {
                 //bind vbo and ibo
-                if(instance)
+                const VkDeviceSize offsets[1] = { mesh->vboOffset };
+                if(instance && instance->getUniqueGeometryData().uniqueVBO)
                 {
-                    instance->bindBuffers(cmdBuffer);
+                    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &instance->getUniqueGeometryData().uniqueVBO->getBuffer(), offsets);
                 }
                 else
                 {
-                    meshData.parentModelPtr->bindBuffers(cmdBuffer);
+                    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &meshData.parentModelPtr->getVBO().getBuffer(), offsets);
                 }
+                vkCmdBindIndexBuffer(cmdBuffer, meshData.parentModelPtr->getIBO().getBuffer(), mesh->iboOffset, mesh->indexType);
 
                 //draw
                 vkCmdDrawIndexedIndirect(

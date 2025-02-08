@@ -342,13 +342,11 @@ namespace PaperRenderer
         std::unique_ptr<AsGeometryBuildData> returnData = std::make_unique<AsGeometryBuildData>();
 
         //get per material group geometry data
-        for(const MaterialMesh& materialMesh : parentModel.getLODs()[0].materialMeshes) //use LOD 0 for BLAS
+        for(const LODMesh& materialMesh : parentModel.getLODs()[0].materialMeshes) //use LOD 0 for BLAS
         {
             //mesh data
-            const uint32_t vertexCount = materialMesh.mesh.vertexCount;
-            const uint32_t indexCount = materialMesh.mesh.indexCount;
-            const uint32_t vertexOffset = materialMesh.mesh.vboOffset;
-            const uint32_t indexOffset = materialMesh.mesh.iboOffset;
+            const uint32_t vertexCount = materialMesh.verticesSize / materialMesh.vertexStride;
+            const uint32_t indexCount = materialMesh.indicesSize / materialMesh.indexStride;
 
             //geometry
             const VkAccelerationStructureGeometryKHR structureGeometry = {
@@ -359,19 +357,19 @@ namespace PaperRenderer
                     .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
                     .pNext = NULL,
                     .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
-                    .vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = vboPtr->getBufferDeviceAddress()},
-                    .vertexStride = parentModel.getVertexDescription().stride,
+                    .vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = vboPtr->getBufferDeviceAddress() + materialMesh.vboOffset},
+                    .vertexStride = materialMesh.vertexStride,
                     .maxVertex = vertexCount,
-                    .indexType = VK_INDEX_TYPE_UINT32,
-                    .indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = parentModel.getIBOAddress()}
+                    .indexType = materialMesh.indexType,
+                    .indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = parentModel.getIBO().getBufferDeviceAddress() + materialMesh.iboOffset}
                 } },
                 .flags = (VkGeometryFlagsKHR)(materialMesh.invokeAnyHit ? VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR : VK_GEOMETRY_OPAQUE_BIT_KHR)
             };
             
             const VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo = {
                 .primitiveCount = indexCount / 3,
-                .primitiveOffset = indexOffset * (uint32_t)sizeof(uint32_t),
-                .firstVertex = vertexOffset,
+                .primitiveOffset = 0,
+                .firstVertex = 0,
                 .transformOffset = 0
             };
 

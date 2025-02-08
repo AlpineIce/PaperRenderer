@@ -22,7 +22,6 @@ struct Model
     uint64_t indexAddress;
     uint lodCount;
     uint lodsOffset;
-    uint vertexStride;
 };
 
 layout(scalar, buffer_reference) readonly buffer InputModel
@@ -45,8 +44,12 @@ layout(scalar, buffer_reference) readonly buffer ModelLODs
 //mesh group
 struct ModelLODMeshGroup
 {
-    uint iboOffset; //only used for ray tracing
-    uint vboOffset; //only used for ray tracing
+    uint vboOffset;
+    uint vboSize;
+    uint vboStride;
+    uint iboOffset;
+    uint iboSize;
+    uint iboStride;
 };
 
 layout(scalar, buffer_reference) readonly buffer ModelLODMeshGroups

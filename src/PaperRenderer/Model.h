@@ -34,8 +34,11 @@ namespace PaperRenderer
 
     struct MaterialMeshInfo
     {
-        std::vector<char> verticesData; //DEEP COPY WARNING! USE STD::MOVE why is it like this? because theres a high risk of accidential dangling pointers
-        std::vector<uint32_t> indices; //DEEP COPY WARNING! USE STD::MOVE why is it like this? because theres a high risk of accidential dangling pointers
+        std::vector<VkVertexInputAttributeDescription> vertexAttributes = {};
+        VkVertexInputBindingDescription vertexDescription = {};
+        std::vector<char> verticesData = {};
+        VkIndexType indexType = VK_INDEX_TYPE_UINT32;
+        std::vector<char> indicesData = {};
         bool opaque = true; //set to false if geometry will invoke any hit shaders in ray tracing
     };
 
@@ -46,33 +49,29 @@ namespace PaperRenderer
 
     struct ModelCreateInfo
     {
-        std::vector<VkVertexInputAttributeDescription> vertexAttributes;
-        VkVertexInputBindingDescription vertexDescription;
-        const std::vector<ModelLODInfo>& LODs;
+        std::vector<ModelLODInfo> LODs = {};
         bool createBLAS = true; //create a default BLAS
-        const std::string& modelName;
-        AABB bounds = {}; //ignore/default construct to auto construct AABB; used for raster culling and is accessible in shaders
+        std::string modelName = "Untitled";
+        AABB bounds = {};
     };
 
     //----------MODEL INFORMATION----------//
 
     struct LODMesh
     {
-        uint32_t vboOffset;
-        uint32_t vertexCount;
-        uint32_t iboOffset;
-        uint32_t indexCount;
-    };
-
-    struct MaterialMesh
-    {
-        LODMesh mesh;
-        bool invokeAnyHit;
+        uint32_t vertexStride = 0;
+        uint32_t indexStride = 0;
+        uint32_t vboOffset = 0;
+        uint32_t verticesSize = 0;
+        uint32_t iboOffset = 0;
+        uint32_t indicesSize = 0;
+        uint32_t invokeAnyHit = false;
+        VkIndexType indexType = VK_INDEX_TYPE_NONE_KHR;
     };
 
     struct LOD //acts more like an individual model
     {
-        std::vector<MaterialMesh> materialMeshes; //material index, mesh in material slot
+        std::vector<LODMesh> materialMeshes; //material index, mesh in material slot
     };
 
     struct ModelTransformation
@@ -87,8 +86,6 @@ namespace PaperRenderer
     class Model //Immutable collection of LODs with unique Material-Mesh groups
     {
     private:
-        std::vector<VkVertexInputAttributeDescription> vertexAttributes;
-        VkVertexInputBindingDescription vertexDescription;
         const std::string modelName;
 
         std::vector<LOD> LODs;
@@ -102,24 +99,27 @@ namespace PaperRenderer
         //shader data
         struct ShaderModel
         {
-            AABB bounds;
-            uint64_t vertexAddress;
-            uint64_t indexAddress;
-            uint32_t lodCount;
-            uint32_t lodsOffset;
-            uint32_t vertexStride;
+            AABB bounds = {};
+            uint64_t vertexAddress = 0;
+            uint64_t indexAddress = 0;
+            uint32_t lodCount = 0;
+            uint32_t lodsOffset = 0;
         };
 
         struct ShaderModelLOD
         {
-            uint32_t materialCount;
-            uint32_t meshGroupsOffset;
+            uint32_t materialCount = 0;
+            uint32_t meshGroupsOffset = 0;
         };
 
         struct ShaderModelLODMeshGroup
         {
-            uint32_t iboOffset; //for ray tracing
-            uint32_t vboOffset; //for ray tracing
+            uint32_t vboOffset = 0;
+            uint32_t vboSize = 0;
+            uint32_t vboStride = 0;
+            uint32_t iboOffset = 0;
+            uint32_t iboSize = 0;
+            uint32_t iboStride = 0;
         };
 
         uint64_t selfIndex;
@@ -140,12 +140,8 @@ namespace PaperRenderer
         ~Model();
         Model(const Model&) = delete;
 
-        void bindBuffers(const VkCommandBuffer& cmdBuffer) const;
-
-        const std::vector<VkVertexInputAttributeDescription>& getVertexAttributes() const { return vertexAttributes; }
-        const VkVertexInputBindingDescription& getVertexDescription() const { return vertexDescription; }
-        VkDeviceAddress getVBOAddress() const { return vbo->getBufferDeviceAddress(); }
-        VkDeviceAddress getIBOAddress() const { return ibo->getBufferDeviceAddress(); }
+        const Buffer& getVBO() const { return *vbo; }
+        const Buffer& getIBO() const { return *ibo; }
         BLAS const* getBlasPtr() const { return defaultBLAS ? defaultBLAS.get() : NULL; }
         const AABB& getAABB() const { return aabb; }
         const std::vector<LOD>& getLODs() const { return LODs; }
@@ -259,7 +255,6 @@ namespace PaperRenderer
 
         void setTransformation(const ModelTransformation& newTransformation);
         void invalidateGeometry(const VkBuildAccelerationStructureFlagsKHR flags) const; //call this to queue an update of it's acceleration structure for the next AS builder call
-        void bindBuffers(const VkCommandBuffer& cmdBuffer) const; //binds the parent models buffers if not using unique geometry, but binds unique VBO (not including IBO) if used
         
         const Model& getParentModel() const { return parentModel; }
         const InstanceUniqueGeometry& getUniqueGeometryData() const { return uniqueGeometryData; }
