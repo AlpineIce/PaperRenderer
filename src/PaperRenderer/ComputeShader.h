@@ -22,6 +22,6 @@ namespace PaperRenderer
         void dispatch(const VkCommandBuffer& cmdBuffer,
             const std::vector<SetBinding>& descriptorSetsBindings,
             const glm::uvec3& workGroupSizes
-        );
+        ) const;
     };
 }

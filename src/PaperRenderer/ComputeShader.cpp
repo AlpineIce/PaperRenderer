@@ -17,7 +17,7 @@ namespace PaperRenderer
     void ComputeShader::dispatch(const VkCommandBuffer& cmdBuffer,
         const std::vector<SetBinding>& descriptorSetsBindings,
         const glm::uvec3& workGroupSizes
-    )
+    ) const
     {
         //bind pipeline
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->getPipeline());
