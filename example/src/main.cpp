@@ -629,7 +629,8 @@ int main()
             .instancePtr = &instance,
             .customIndex = customIndexOverride == UINT32_MAX ? (uint32_t)instanceRTMaterialDefinitions.size() : customIndexOverride, //set custom index to the first material index in the buffer
             .mask = 0xFF,
-            .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
+            .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
+            .owners = { &exampleRayTrace.getTLAS() }
         };
         exampleRayTrace.getRTRender().addInstance(asInstanceData, rtMaterial);
 
@@ -925,7 +926,7 @@ int main()
                 .timelineWaitPairs = { { renderingSemaphore[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValue[renderer.getBufferIndex()] + 2 } },
                 .timelineSignalPairs = { { renderingSemaphore[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, finalSemaphoreValue[renderer.getBufferIndex()] + 3 } }
             };
-            exampleRayTrace.getRTRender().updateTLAS(VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR, tlasSyncInfo);
+            exampleRayTrace.getRTRender().updateTLAS(exampleRayTrace.getTLAS(), VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR, tlasSyncInfo);
 
             //update UBO after TLAS is built
             exampleRayTrace.updateUBO();

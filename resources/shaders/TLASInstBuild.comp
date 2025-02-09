@@ -67,5 +67,5 @@ void main()
     const InputASInstance inputASInstance = inputASInstances.instances[gID];
     const ModelInstance modelInstance = inputInstances.modelInstances[inputASInstance.modelInstanceIndex];
     
-    asInstances.objects[inputASInstance.modelInstanceIndex] = buildASInstance(inputASInstance, modelInstance);
+    asInstances.objects[gID] = buildASInstance(inputASInstance, modelInstance);
 }

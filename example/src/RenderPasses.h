@@ -57,6 +57,7 @@ private:
     
     //render pass
     PaperRenderer::RayTraceRender rtRenderPass;
+    std::unique_ptr<PaperRenderer::TLAS> primaryTLAS; //note that multiple TLAS' can be used strategically, but this example uses 1
 
     PaperRenderer::RenderEngine& renderer;
     const PaperRenderer::Camera& camera;
@@ -73,6 +74,7 @@ public:
     void updateMaterialBuffer(const PaperRenderer::Buffer& materialDataBuffer);
 
     PaperRenderer::RayTraceRender& getRTRender() { return rtRenderPass; }
+    PaperRenderer::TLAS& getTLAS() { return *primaryTLAS; }
 };
 
 //----------RASTER----------//

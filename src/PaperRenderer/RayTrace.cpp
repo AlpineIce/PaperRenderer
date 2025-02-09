@@ -19,7 +19,6 @@ namespace PaperRenderer
         :pcRanges(pcRanges),
         setLayouts(setLayouts),
         pipelineProperties(pipelineProperties),
-        tlas(renderer, *this),
         raygenShader(raygenShader),
         missShaders(missShaders),
         callableShaders(callableShaders),
@@ -32,7 +31,7 @@ namespace PaperRenderer
         pipeline.reset();
     }
 
-    const Queue& RayTraceRender::render(RayTraceRenderInfo rtRenderInfo, SynchronizationInfo syncInfo)
+    const Queue& RayTraceRender::render(const RayTraceRenderInfo& rtRenderInfo, const SynchronizationInfo& syncInfo)
     {
         //Timer
         Timer timer(renderer, "RayTraceRender Record", REGULAR);
@@ -55,30 +54,26 @@ namespace PaperRenderer
             vkCmdPipelineBarrier2(cmdBuffer, rtRenderInfo.preRenderBarriers);
         }
 
-        //only trace rays if acceleration structure is valid
-        if(tlas.getAccelerationStructure())
+        //bind pipeline
+        vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline->getPipeline());
+
+        //bind descriptors
+        for(const SetBinding& setBinding : rtRenderInfo.descriptorBindings)
         {
-            //bind pipeline
-            vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline->getPipeline());
-
-            //bind descriptors
-            for(const SetBinding& setBinding : rtRenderInfo.descriptorBindings)
-            {
-                setBinding.set.bindDescriptorSet(cmdBuffer, setBinding.binding);
-            }
-
-            //trace rays
-            vkCmdTraceRaysKHR(
-                cmdBuffer,
-                &pipeline->getShaderBindingTableData().raygenShaderBindingTable,
-                &pipeline->getShaderBindingTableData().missShaderBindingTable,
-                &pipeline->getShaderBindingTableData().hitShaderBindingTable,
-                &pipeline->getShaderBindingTableData().callableShaderBindingTable,
-                rtRenderInfo.image.getExtent().width,
-                rtRenderInfo.image.getExtent().height,
-                rtRenderInfo.image.getExtent().depth
-            );
+            setBinding.set.bindDescriptorSet(cmdBuffer, setBinding.binding);
         }
+
+        //trace rays
+        vkCmdTraceRaysKHR(
+            cmdBuffer,
+            &pipeline->getShaderBindingTableData().raygenShaderBindingTable,
+            &pipeline->getShaderBindingTableData().missShaderBindingTable,
+            &pipeline->getShaderBindingTableData().hitShaderBindingTable,
+            &pipeline->getShaderBindingTableData().callableShaderBindingTable,
+            rtRenderInfo.image.getExtent().width,
+            rtRenderInfo.image.getExtent().height,
+            rtRenderInfo.image.getExtent().depth
+        );
 
         //post-render barriers
         if(rtRenderInfo.postRenderBarriers)
@@ -101,7 +96,7 @@ namespace PaperRenderer
         return  queue;
     }
 
-    const Queue& RayTraceRender::updateTLAS(VkBuildAccelerationStructureModeKHR mode, VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo)
+    const Queue& RayTraceRender::updateTLAS(TLAS& tlas, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, const SynchronizationInfo& syncInfo)
     {
         //update RT pipeline if needed (required to access SBT offsets for TLAS)
         if(queuePipelineBuild)
@@ -111,15 +106,15 @@ namespace PaperRenderer
         }
 
         //sort instances; remove duplicates
-        std::sort(toUpdateInstances.begin(), toUpdateInstances.end());
-        auto sortedInstances = std::unique(toUpdateInstances.begin(), toUpdateInstances.end());
-        toUpdateInstances.erase(sortedInstances, toUpdateInstances.end());
+        std::sort(tlasData[&tlas].toUpdateInstances.begin(), tlasData[&tlas].toUpdateInstances.end());
+        auto sortedInstances = std::unique(tlasData[&tlas].toUpdateInstances.begin(), tlasData[&tlas].toUpdateInstances.end());
+        tlasData[&tlas].toUpdateInstances.erase(sortedInstances, tlasData[&tlas].toUpdateInstances.end());
 
         //update TLAS
         const Queue& queue = tlas.updateTLAS(mode, flags, syncInfo);
         
         //clear toUpdateInstances
-        toUpdateInstances.clear();
+        tlasData[&tlas].toUpdateInstances.clear();
 
         //return queue used
         return queue;
@@ -148,8 +143,11 @@ namespace PaperRenderer
         pipeline = renderer.getPipelineBuilder().buildRTPipeline(pipelineBuildInfo);
 
         //invalidate all instances
-        toUpdateInstances.clear();
-        toUpdateInstances.insert(toUpdateInstances.end(), asInstances.begin(), asInstances.end());
+        for(auto& [tlas, data] : tlasData)
+        {
+            data.toUpdateInstances.clear();
+            data.toUpdateInstances.insert(data.toUpdateInstances.end(), data.instances.begin(), data.instances.end());
+        }
     }
 
     void RayTraceRender::assignResourceOwner(const Queue &queue)
@@ -157,14 +155,42 @@ namespace PaperRenderer
         pipeline->assignOwner(queue);
     }
 
-    void RayTraceRender::addInstance(AccelerationStructureInstanceData instanceData, const RTMaterial& material)
+    std::unique_ptr<TLAS> RayTraceRender::addNewTLAS()
     {
-        //add reference
+        //create new TLAS and get its reference
+        std::unique_ptr<TLAS> newTLAS = std::make_unique<TLAS>(renderer, *this);
+        tlasData[newTLAS.get()] = {};
+
+        //return new TLAS and its ownership
+        return newTLAS;
+    }
+
+    void RayTraceRender::addInstance(AccelerationStructureInstanceData instanceData, const RTMaterial &material)
+    {
+        //log warning if no TLAS is specified
+        if(!instanceData.owners.size())
+        {
+            renderer.getLogger().recordLog({
+                .type = WARNING,
+                .text = "Adding instance to RT render without any specified TLAS means this instance will do nothing"
+            });
+        }
+
+        //add RT reference
         instanceData.instancePtr->rtRenderSelfReferences[this] = {
             .material = &material,
             .selfIndex = (uint32_t)asInstances.size()
         };
         asInstances.push_back(instanceData);
+
+        //add TLAS references
+        for(TLAS* tlas : instanceData.owners)
+        {
+            instanceData.instancePtr->tlasSelfReferences[tlas] = tlasData[tlas].instances.size();
+            tlasData[tlas].instances.push_back(instanceData);
+
+            tlasData[tlas].toUpdateInstances.push_front(*asInstances.rbegin());
+        }
 
         //increment material reference counter and rebuild pipeline if needed
         if(!materialReferences.count(&material))
@@ -172,24 +198,51 @@ namespace PaperRenderer
             queuePipelineBuild = true;
         }
         materialReferences[&material]++;
-
-        //queue data transfer
-        toUpdateInstances.push_front(*asInstances.rbegin());
     }
     
     void RayTraceRender::removeInstance(ModelInstance& instance)
     {
-        //shift AS instances locations
         if(instance.rtRenderSelfReferences.count(this))
         {
+            //shift TLAS instances locations
+            for(TLAS* tlas : asInstances[instance.rtRenderSelfReferences[this].selfIndex].owners)
+            {
+                if(instance.tlasSelfReferences.count(tlas))
+                {
+                    if(tlasData[tlas].instances.size() > 1)
+                    {
+                        const uint32_t selfIndex = instance.tlasSelfReferences[tlas];
+
+                        tlasData[tlas].instances[selfIndex] = tlasData[tlas].instances.back();
+                        tlasData[tlas].instances[selfIndex].instancePtr->tlasSelfReferences[tlas] = selfIndex;
+                        
+                        tlasData[tlas].instances.pop_back();
+
+                        tlasData[tlas].toUpdateInstances.push_front(asInstances[instance.rtRenderSelfReferences[this].selfIndex]);
+                    }
+                    else
+                    {
+                        tlasData[tlas].instances.clear();
+                    }
+
+                    //null out any instances that may be queued
+                    for(AccelerationStructureInstanceData& thisInstance : tlasData[tlas].toUpdateInstances)
+                    {
+                        if(thisInstance.instancePtr == &instance)
+                        {
+                            thisInstance.instancePtr = NULL;
+                        }
+                    }
+                }
+            }
+
+            //shift AS instances locations
             if(asInstances.size() > 1)
             {
                 const uint32_t selfIndex = instance.rtRenderSelfReferences[this].selfIndex;
+
                 asInstances[selfIndex] = asInstances.back();
                 asInstances[selfIndex].instancePtr->rtRenderSelfReferences[this].selfIndex = selfIndex;
-
-                //queue data transfer
-                toUpdateInstances.push_front(asInstances[selfIndex]);
                 
                 asInstances.pop_back();
             }
@@ -197,29 +250,20 @@ namespace PaperRenderer
             {
                 asInstances.clear();
             }
-        }
 
-        //null out any instances that may be queued
-        for(AccelerationStructureInstanceData& thisInstance : toUpdateInstances)
-        {
-            if(thisInstance.instancePtr == &instance)
+            //remove material reference
+            if(materialReferences.count(instance.rtRenderSelfReferences[this].material))
             {
-                thisInstance.instancePtr = NULL;
-            }
-        }
+                //decrement material reference and check size to see if material entry should be deleted
+                materialReferences[instance.rtRenderSelfReferences[this].material]--;
+                if(!materialReferences[instance.rtRenderSelfReferences[this].material])
+                {
+                    materialReferences.erase(instance.rtRenderSelfReferences[this].material);
+                    queuePipelineBuild = true;
+                }
 
-        //remove reference
-        if(instance.rtRenderSelfReferences.count(this) && materialReferences.count(instance.rtRenderSelfReferences[this].material))
-        {
-            //decrement material reference and check size to see if material entry should be deleted
-            materialReferences[instance.rtRenderSelfReferences[this].material]--;
-            if(!materialReferences[instance.rtRenderSelfReferences[this].material])
-            {
-                materialReferences.erase(instance.rtRenderSelfReferences[this].material);
-                queuePipelineBuild = true;
+                instance.rtRenderSelfReferences.erase(this);
             }
-
-            instance.rtRenderSelfReferences.erase(this);
         }
     }
 }

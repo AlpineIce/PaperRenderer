@@ -22,6 +22,7 @@ namespace PaperRenderer
         uint32_t customIndex:24 = 0;
         uint32_t mask:8 = 0xAA;
         VkGeometryInstanceFlagsKHR flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+        std::vector<TLAS*> owners = {}; //instance will only be used in the TLAS' specified
         
         bool operator<(const AccelerationStructureInstanceData& other) const
         {
@@ -39,14 +40,20 @@ namespace PaperRenderer
         const std::vector<VkPushConstantRange> pcRanges;
         const std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
         const RTPipelineProperties pipelineProperties;
-        TLAS tlas;
         std::unique_ptr<RTPipeline> pipeline;
-        
+
         bool queuePipelineBuild = true;
+
+        //TLAS instance data
+        struct TLASInstanceData
+        {
+            std::vector<AccelerationStructureInstanceData> instances = {};
+            std::deque<AccelerationStructureInstanceData> toUpdateInstances = {};
+        };
+        std::unordered_map<TLAS*, TLASInstanceData> tlasData = {};
 
         //instances
         std::vector<AccelerationStructureInstanceData> asInstances;
-        std::deque<AccelerationStructureInstanceData> toUpdateInstances;
 
         //shaders
         const ShaderDescription raygenShader;
@@ -74,14 +81,18 @@ namespace PaperRenderer
         ~RayTraceRender();
         RayTraceRender(const RayTraceRender&) = delete;
 
-        const Queue& render(RayTraceRenderInfo rtRenderInfo, SynchronizationInfo syncInfo);
-        const Queue& updateTLAS(VkBuildAccelerationStructureModeKHR mode, VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo); //MUST CALL BEFORE RENDERING TO REFIT TLAS TO THIS RENDER PASS
+        //Invokes vkCmdTraceRaysKHR at the listed entryTLAS. All acceleration structures used should be updated with updateTLAS() before rendering
+        const Queue& render(const RayTraceRenderInfo& rtRenderInfo, const SynchronizationInfo& syncInfo);
+        //Updates the transformation, addition/removal, and sbt offsets of all instances used
+        const Queue& updateTLAS(TLAS& tlas, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, const SynchronizationInfo& syncInfo);
 
+        //Please keep track of the return value; ownership is transfered to return value
+        [[nodiscard]] std::unique_ptr<TLAS> addNewTLAS();
         void addInstance(AccelerationStructureInstanceData instanceData, const class RTMaterial& material);
         void removeInstance(class ModelInstance& instance);
 
         const RTPipeline& getPipeline() const { return *pipeline; }
-        const std::vector<AccelerationStructureInstanceData>& getTLASInstanceData() const { return asInstances; }
-        const TLAS& getTLAS() const { return tlas; } //this class doesn't own TLAS, but it can be useful to retrieve which TLAS it is referencing
+        const std::vector<AccelerationStructureInstanceData>& getInstanceData() const { return asInstances; }
+        const std::unordered_map<TLAS*, TLASInstanceData>& getTLASData() const { return tlasData; }
     };
 }

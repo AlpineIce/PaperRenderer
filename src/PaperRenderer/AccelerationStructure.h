@@ -25,7 +25,7 @@ namespace PaperRenderer
             float padding[15];
         };
 
-        void submit(VkCommandBuffer cmdBuffer, const TLAS& tlas);
+        void submit(VkCommandBuffer cmdBuffer, const TLAS& tlas, const uint32_t count) const;
 
         const VkDescriptorSetLayout& getUboDescriptorLayout() const { return uboSetLayout; }
         const VkDescriptorSetLayout& getIODescriptorLayout() const { return ioSetLayout; }
@@ -166,13 +166,13 @@ namespace PaperRenderer
         //ownership
         void assignResourceOwner(const Queue& queue) override;
 
-        const class RayTraceRender& rtRender;
+        class RayTraceRender& rtRender;
 
         friend class ModelInstance;
         friend TLASInstanceBuildPipeline;
 
     public:
-        TLAS(RenderEngine& renderer, const class RayTraceRender& rtRender);
+        TLAS(RenderEngine& renderer, class RayTraceRender& rtRender);
         ~TLAS() override;
         TLAS(const TLAS&) = delete;
 

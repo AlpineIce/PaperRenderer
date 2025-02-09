@@ -144,6 +144,7 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
         },
         {}
     ),
+    primaryTLAS(rtRenderPass.addNewTLAS()),
     renderer(renderer),
     camera(camera),
     hdrBuffer(hdrBuffer),
@@ -247,7 +248,7 @@ const PaperRenderer::Queue& ExampleRayTracing::rayTraceRender(const PaperRendere
             }
         },
         { //set 3 (instance descriptions)
-            .set = rtRenderPass.getTLAS().getInstanceDescriptionsDescriptor(),
+            .set = primaryTLAS->getInstanceDescriptionsDescriptor(),
             .binding = {
                 .bindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
                 .pipelineLayout = rtRenderPass.getPipeline().getLayout(),
@@ -273,7 +274,7 @@ void ExampleRayTracing::updateUBO() const
 {
     //update RT UBO
     const RayTraceInfo rtInfo = {
-        .tlasAddress = rtRenderPass.getTLAS().getAsDeviceAddress(),
+        .tlasAddress = primaryTLAS->getAsDeviceAddress(),
         .modelDataReference = renderer.getModelDataBuffer().getBufferDeviceAddress(),
         .frameNumber = renderer.getFramesRenderedCount(),
         .recursionDepth = rayRecursionDepth,
