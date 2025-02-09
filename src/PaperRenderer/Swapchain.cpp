@@ -254,6 +254,13 @@ namespace PaperRenderer
                 }
             }
 
+            //very bad, just use the first one found
+            if(!formatFound && surfaceFormats.size())
+            {
+                windowState.surfaceFormat = surfaceFormats[0];
+                formatFound = true;
+            }
+
             //throw error if format not found
             if(!formatFound) throw std::runtime_error("No good surface format found");
         }
