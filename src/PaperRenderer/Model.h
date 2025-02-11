@@ -34,8 +34,7 @@ namespace PaperRenderer
 
     struct MaterialMeshInfo
     {
-        std::vector<VkVertexInputAttributeDescription> vertexAttributes = {};
-        VkVertexInputBindingDescription vertexDescription = {};
+        uint32_t vertexStride = 0;
         std::vector<char> verticesData = {};
         VkIndexType indexType = VK_INDEX_TYPE_UINT32;
         std::vector<char> indicesData = {};

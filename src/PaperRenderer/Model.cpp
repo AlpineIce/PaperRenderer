@@ -52,7 +52,7 @@ namespace PaperRenderer
 
 				//process mesh data
 				const LODMesh materialMesh = {
-					.vertexStride = meshGroup.vertexDescription.stride,
+					.vertexStride = meshGroup.vertexStride,
 					.indexStride = iboStride,
 					.vboOffset = (uint32_t)creationVertices.size(),
 					.verticesSize =  (uint32_t)meshGroup.verticesData.size(),
