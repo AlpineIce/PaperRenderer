@@ -35,11 +35,9 @@ namespace PaperRenderer
                 .pImmutableSamplers = NULL
             }
         })),
+        shader(renderer, shaderData),
         computeShader(renderer, {
-            .shaderInfo = {
-                .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-                .data = shaderData
-            },
+            .shader = &shader,
             .descriptorSets = {
                 { TLAS::TLASDescriptorIndices::UBO, uboSetLayout },
                 { TLAS::TLASDescriptorIndices::INSTANCES, renderer.getDefaultDescriptorSetLayout(INSTANCES) },

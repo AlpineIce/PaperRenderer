@@ -10,6 +10,7 @@ namespace PaperRenderer
     private:
         VkDescriptorSetLayout uboSetLayout;
         VkDescriptorSetLayout ioSetLayout;
+        Shader shader;
         ComputeShader computeShader;
 
         class RenderEngine& renderer;

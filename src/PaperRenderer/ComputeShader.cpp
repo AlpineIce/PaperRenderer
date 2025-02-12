@@ -3,15 +3,14 @@
 
 namespace PaperRenderer
 {
-    ComputeShader::ComputeShader(RenderEngine& renderer, const ComputePipelineBuildInfo& pipelineInfo)
-        :pipeline(renderer.getPipelineBuilder().buildComputePipeline(pipelineInfo)),
+    ComputeShader::ComputeShader(RenderEngine& renderer, const ComputePipelineInfo& pipelineInfo)
+        :pipeline(renderer, pipelineInfo),
         renderer(renderer)
     {
     }
 
     ComputeShader::~ComputeShader()
     {
-        pipeline.reset();
     }
 
     void ComputeShader::dispatch(const VkCommandBuffer& cmdBuffer,
@@ -20,7 +19,7 @@ namespace PaperRenderer
     ) const
     {
         //bind pipeline
-        vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->getPipeline());
+        vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getPipeline());
 
         //bind descriptors
         for(const SetBinding& setBinding : descriptorSetsBindings)

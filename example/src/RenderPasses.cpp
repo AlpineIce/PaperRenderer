@@ -340,15 +340,17 @@ ExampleRaster::ExampleRaster(PaperRenderer::RenderEngine &renderer, const PaperR
         }
     })),
     parametersDescriptor(renderer, parametersDescriptorSetLayout),
+    defaultVertShader(renderer, readFromFile("resources/shaders/Default_vert.spv")),
+    defaultFragShader(renderer, readFromFile("resources/shaders/Default_frag.spv")),
     baseMaterial(renderer, {
-            .shaderInfo = {
+            .shaders = {
                 {
                     .stage = VK_SHADER_STAGE_VERTEX_BIT,
-                    .data = readFromFile("resources/shaders/Default_vert.spv")
+                    .shader = &defaultVertShader
                 },
                 {
                     .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-                    .data = readFromFile("resources/shaders/Default_frag.spv")
+                    .shader = &defaultFragShader
                 }
             },
             .descriptorSets = {
@@ -766,18 +768,20 @@ const PaperRenderer::Queue& BufferCopyPass::render(const PaperRenderer::Synchron
 }
 
 BufferCopyPass::BufferCopyMaterial::BufferCopyMaterial(PaperRenderer::RenderEngine &renderer, const HDRBuffer &hdrBuffer, VkDescriptorSetLayout setLayout)
-    :descriptor(renderer, setLayout),
+    :vertShader(renderer, readFromFile("resources/shaders/Quad.spv")),
+    fragShader(renderer, readFromFile("resources/shaders/BufferCopy.spv")),
+    descriptor(renderer, setLayout),
     material(
         renderer, 
         {
-            .shaderInfo = {
+            .shaders = {
                 {
                     .stage = VK_SHADER_STAGE_VERTEX_BIT,
-                    .data = readFromFile("resources/shaders/Quad.spv")
+                    .shader = &vertShader
                 },
                 {
                     .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-                    .data = readFromFile("resources/shaders/BufferCopy.spv")
+                    .shader = &fragShader
                 }
             },
             .descriptorSets = {

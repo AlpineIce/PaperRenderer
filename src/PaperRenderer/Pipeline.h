@@ -10,18 +10,6 @@ namespace PaperRenderer
 {   
     //----------SHADER DECLARATIONS----------//
 
-    struct ShaderPair
-    {
-        VkShaderStageFlagBits stage = VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
-        std::vector<uint32_t> data;
-    };
-
-    struct ShaderDescription
-    {
-        VkShaderStageFlagBits stage = VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
-        class Shader const* shader = NULL;
-    };
-
     class Shader
     {
     private:
@@ -37,28 +25,26 @@ namespace PaperRenderer
         VkShaderModule getModule() const { return program; }
     };
 
-    //----------PIPELINE DECLARATIONS----------//
-
-    //Pipeline base class
-    struct PipelineCreationInfo
+    struct ShaderDescription
     {
-        class RenderEngine& renderer;
-        VkPipelineCache cache;
-        std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
-        std::vector<VkPushConstantRange> pcRanges;
-        VkPipelineLayout pipelineLayout;
+        VkShaderStageFlagBits stage = VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
+        Shader const* shader = NULL;
     };
+
+    //----------PIPELINE BASE CLASS DECLARATIONS----------//
 
     class Pipeline
     {
     protected:
-        VkPipeline pipeline;
-        VkPipelineLayout pipelineLayout;
+        VkPipeline pipeline = VK_NULL_HANDLE;
+        VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+
+        VkPipelineLayout createPipelineLayout(class RenderEngine& renderer, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, const std::vector<VkPushConstantRange>& pcRanges) const noexcept;
 
         class RenderEngine& renderer;
         
     public:
-        Pipeline(const PipelineCreationInfo& creationInfo);
+        Pipeline(class RenderEngine& renderer, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, const std::vector<VkPushConstantRange>& pcRanges);
         virtual ~Pipeline();
         Pipeline(const Pipeline&) = delete;
         
@@ -66,17 +52,13 @@ namespace PaperRenderer
         VkPipelineLayout getLayout() const { return pipelineLayout; }
     };
 
-    //compute pipeline
-    struct ComputePipelineCreationInfo : public PipelineCreationInfo
-    {
-        std::shared_ptr<Shader> shader;
-    };
+    //----------COMPUTE PIPELINE DECLARATIONS----------//
 
-    struct ComputePipelineBuildInfo
+    struct ComputePipelineInfo
     {
-        const ShaderPair& shaderInfo;
-        const std::unordered_map<uint32_t, VkDescriptorSetLayout>& descriptorSets; //set, bindings
-        const std::vector<VkPushConstantRange>& pcRanges;
+        Shader const* shader = NULL;
+        std::unordered_map<uint32_t, VkDescriptorSetLayout> descriptorSets = {}; //set, bindings
+        std::vector<VkPushConstantRange> pcRanges = {};
     };
 
     class ComputePipeline : public Pipeline
@@ -84,17 +66,12 @@ namespace PaperRenderer
     private:
 
     public:
-        ComputePipeline(const ComputePipelineCreationInfo& creationInfo);
+        ComputePipeline(class RenderEngine& renderer, const ComputePipelineInfo& creationInfo);
         ~ComputePipeline() override;
         ComputePipeline(const ComputePipeline&) = delete;
     };
 
-    //raster pipeline
-    struct RasterPipelineCreationInfo : public PipelineCreationInfo
-    {
-        std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaders;
-        const uint32_t drawDescriptorIndex;
-    };
+    //----------RASTER PIPELINE DECLARATIONS----------//
 
     struct RasterPipelineProperties
     {
@@ -141,9 +118,9 @@ namespace PaperRenderer
         };
     };
 
-    struct RasterPipelineBuildInfo
+    struct RasterPipelineInfo
     {
-        std::vector<ShaderPair> shaderInfo = {};
+        std::vector<ShaderDescription> shaders = {};
         std::unordered_map<uint32_t, VkDescriptorSetLayout> descriptorSets = {}; //includes all descriptors that will be used in the pipeline
         std::vector<VkPushConstantRange> pcRanges = {};
         RasterPipelineProperties properties = {};
@@ -155,36 +132,29 @@ namespace PaperRenderer
         const RasterPipelineProperties pipelineProperties;
 
     public:
-        RasterPipeline(const RasterPipelineCreationInfo& creationInfo, const RasterPipelineProperties& pipelineProperties);
+        RasterPipeline(class RenderEngine& renderer, const RasterPipelineInfo& creationInfo);
         ~RasterPipeline() override;
         RasterPipeline(const RasterPipeline&) = delete;
 
         const RasterPipelineProperties& getPipelineProperties() const { return pipelineProperties; }
     };
 
-    //ray tracing pipeline
-    struct RTPipelineCreationInfo : public PipelineCreationInfo
-    {
-        const std::vector<class RTMaterial*>& materials;
-        const ShaderDescription& raygenShader;
-        const std::vector<ShaderDescription>& missShaders;
-        const std::vector<ShaderDescription>& callableShaders;
-    };
+    //----------RAY TRACING PIPELINE DECLARATIONS----------//
 
     struct RTPipelineProperties
     {
         uint32_t maxRecursionDepth = 1;
     };
 
-    struct RTPipelineBuildInfo
+    struct RTPipelineInfo
     {
-        const std::vector<class RTMaterial*>& materials;
-        const ShaderDescription& raygenShader;
-        const std::vector<ShaderDescription>& missShaders;
-        const std::vector<ShaderDescription>& callableShaders;
-        const std::unordered_map<uint32_t, VkDescriptorSetLayout>& descriptorSets;
-        const std::vector<VkPushConstantRange>& pcRanges;
-        const RTPipelineProperties& properties;
+        std::vector<class RTMaterial*> materials = {};
+        ShaderDescription raygenShader = {};
+        std::vector<ShaderDescription> missShaders = {};
+        std::vector<ShaderDescription> callableShaders = {};
+        std::unordered_map<uint32_t, VkDescriptorSetLayout> descriptorSets = {};
+        std::vector<VkPushConstantRange> pcRanges = {};
+        RTPipelineProperties properties = {};
     };
     
     struct RTShaderBindingTableOffsets
@@ -222,7 +192,7 @@ namespace PaperRenderer
         void rebuildSBTBuffer(RenderEngine& renderer);
 
     public:
-        RTPipeline(const RTPipelineCreationInfo& creationInfo, const RTPipelineProperties& properties);
+        RTPipeline(class RenderEngine& renderer, const RTPipelineInfo& creationInfo);
         ~RTPipeline() override;
         RTPipeline(const RTPipeline&) = delete;
 
@@ -230,27 +200,5 @@ namespace PaperRenderer
 
         const RTPipelineProperties& getPipelineProperties() const { return pipelineProperties; }
         const RTShaderBindingTableData& getShaderBindingTableData() const { return shaderBindingTableData; }
-    };
-
-    //----------PIPELINE BUILDER DECLARATIONS----------//
-
-    class PipelineBuilder
-    {
-    private:
-        VkPipelineCache cache = VK_NULL_HANDLE;
-
-        VkPipelineLayout createPipelineLayout(const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, const std::vector<VkPushConstantRange>& pcRanges) const;
-
-        class RenderEngine& renderer;
-
-    public:
-        PipelineBuilder(RenderEngine& renderer);
-        ~PipelineBuilder();
-        PipelineBuilder(const PipelineBuilder&) = delete;
-        
-        const VkPipelineCache& getPipelineCache() const { return cache; }
-        std::unique_ptr<ComputePipeline> buildComputePipeline(const ComputePipelineBuildInfo& info) const;
-        std::unique_ptr<RasterPipeline> buildRasterPipeline(const RasterPipelineBuildInfo& info) const;
-        std::unique_ptr<RTPipeline> buildRTPipeline(const RTPipelineBuildInfo& info) const;
     };
 }

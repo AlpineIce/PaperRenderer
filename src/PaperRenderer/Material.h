@@ -12,7 +12,7 @@ namespace PaperRenderer
     {
     private:
         const std::function<void(VkCommandBuffer, const class Camera&)> bindFunction;
-        std::unique_ptr<RasterPipeline> rasterPipeline;
+        RasterPipeline rasterPipeline;
         uint32_t indirectDrawMatricesLocation = 0xFFFFFFFF;
     
         class RenderEngine& renderer;
@@ -21,15 +21,15 @@ namespace PaperRenderer
         //materialDescriptorSets refers to the descriptor sets that will be bound in the scope of this material only
         Material(
             class RenderEngine& renderer,
-            const RasterPipelineBuildInfo& pipelineInfo,
-            const std::function<void(VkCommandBuffer, const class Camera&)>& bindFunction
+            const RasterPipelineInfo& pipelineInfo,
+            const std::function<void(VkCommandBuffer, const class Camera&)>& binFdunction
         );
         ~Material();
         Material(const Material&) = delete;
 
         void bind(VkCommandBuffer cmdBuffer, const class Camera& camera) const;
         
-        const RasterPipeline& getRasterPipeline() const { return *rasterPipeline; }
+        const RasterPipeline& getRasterPipeline() const { return rasterPipeline; }
         uint32_t getDrawMatricesDescriptorIndex() const { return indirectDrawMatricesLocation; }
     };
 

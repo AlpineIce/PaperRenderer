@@ -7,16 +7,16 @@ namespace PaperRenderer
     class ComputeShader
     {
     private:
-        std::unique_ptr<ComputePipeline> pipeline;
+        const ComputePipeline pipeline;
 
         class RenderEngine& renderer;
 
     public:
-        ComputeShader(class RenderEngine& renderer, const ComputePipelineBuildInfo& pipelineInfo);
+        ComputeShader(class RenderEngine& renderer, const ComputePipelineInfo& pipelineInfo);
         ~ComputeShader();
         ComputeShader(const ComputeShader&) = delete;
 
-        const ComputePipeline& getPipeline() const { return *pipeline; }
+        const ComputePipeline& getPipeline() const { return pipeline; }
 
         //binds pipeline, writes descriptors, and does vkCmdDispatch on work group size
         void dispatch(const VkCommandBuffer& cmdBuffer,

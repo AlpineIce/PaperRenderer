@@ -17,7 +17,6 @@ namespace PaperRenderer
         device(*this, creationInfo.deviceInstanceInfo),
         swapchain(*this, creationInfo.swapchainRebuildCallbackFunction, creationInfo.windowState),
         descriptors(*this),
-        pipelineBuilder(*this),
         defaultDescriptorLayouts({
             descriptors.createDescriptorSetLayout({ { //INDIRECT_DRAW_MATRICES
                 .binding = 0,

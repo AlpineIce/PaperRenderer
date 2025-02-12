@@ -6,13 +6,11 @@ namespace PaperRenderer
 {
     //----------MATERIAL DEFINITIONS----------//
 
-    Material::Material(RenderEngine& renderer, const RasterPipelineBuildInfo& pipelineInfo, const std::function<void(VkCommandBuffer, const Camera&)>& bindFunction)
+    Material::Material(RenderEngine& renderer, const RasterPipelineInfo& pipelineInfo, const std::function<void(VkCommandBuffer, const Camera&)>& bindFunction)
         :bindFunction(bindFunction),
+        rasterPipeline(renderer, pipelineInfo),
         renderer(renderer)
     {
-        //build pipeline
-        rasterPipeline = renderer.getPipelineBuilder().buildRasterPipeline(pipelineInfo);
-
         //assign indirect draw matrices descriptor index if used
         for(const auto& [index, layout] : pipelineInfo.descriptorSets)
         {
@@ -26,13 +24,11 @@ namespace PaperRenderer
 
     Material::~Material()
     {
-        //destroy graphics pipeline
-        rasterPipeline.reset();
     }
 
     void Material::bind(VkCommandBuffer cmdBuffer, const Camera& camera) const
     {
-        vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline->getPipeline());
+        vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, rasterPipeline.getPipeline());
         if(bindFunction) bindFunction(cmdBuffer, camera);
     }
 

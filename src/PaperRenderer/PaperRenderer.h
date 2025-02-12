@@ -50,7 +50,6 @@ namespace PaperRenderer
         Device device;
         Swapchain swapchain;
         DescriptorAllocator descriptors;
-        PipelineBuilder pipelineBuilder;
         std::array<VkDescriptorSetLayout, 4> defaultDescriptorLayouts;
         RasterPreprocessPipeline rasterPreprocessPipeline;
         TLASInstanceBuildPipeline tlasInstanceBuildPipeline;
@@ -117,7 +116,6 @@ namespace PaperRenderer
         RasterPreprocessPipeline& getRasterPreprocessPipeline() { return rasterPreprocessPipeline; }
         TLASInstanceBuildPipeline& getTLASPreprocessPipeline() { return tlasInstanceBuildPipeline; }
         DescriptorAllocator& getDescriptorAllocator() { return descriptors; }
-        PipelineBuilder& getPipelineBuilder() { return pipelineBuilder; }
         Swapchain& getSwapchain() { return swapchain; }
         RendererStagingBuffer& getStagingBuffer() { return *stagingBuffer[getBufferIndex()]; }
         AccelerationStructureBuilder& getAsBuilder() { return asBuilder; }

@@ -30,11 +30,9 @@ namespace PaperRenderer
                 .pImmutableSamplers = NULL
             }
         })),
+        shader(renderer, shaderData),
         computeShader(renderer, {
-            .shaderInfo = {
-                .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-                .data = shaderData
-            },
+            .shader = &shader,
             .descriptorSets = {
                 { RenderPass::RenderPassDescriptorIndices::UBO, uboSetLayout },
                 { RenderPass::RenderPassDescriptorIndices::INSTANCES, renderer.getDefaultDescriptorSetLayout(INSTANCES) },

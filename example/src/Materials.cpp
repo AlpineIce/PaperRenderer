@@ -2,7 +2,7 @@
 
 //----------RASTER MATERIALS----------//
 
-DefaultMaterial::DefaultMaterial(PaperRenderer::RenderEngine &renderer, const PaperRenderer::RasterPipelineBuildInfo &pipelineInfo, const LightingData& lightingData)
+DefaultMaterial::DefaultMaterial(PaperRenderer::RenderEngine& renderer, const PaperRenderer::RasterPipelineInfo& pipelineInfo, const LightingData& lightingData)
     :lightingData(lightingData),
     material(renderer, pipelineInfo, [this](VkCommandBuffer cmdBuffer, const PaperRenderer::Camera& camera) { bind(cmdBuffer, camera); }),
     renderer(renderer)

@@ -175,7 +175,7 @@ namespace PaperRenderer
             uint64_t blasReference;
             uint32_t modelInstanceIndex;
             uint32_t customIndex:24;
-            uint32_t mask:8 = 0xAA000000;
+            uint32_t mask:8 = (uint8_t)0xFF;
             uint32_t recordOffset:24 = 0;
             VkGeometryInstanceFlagsKHR flags:8 = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
             uint32_t padding = 0;

@@ -131,7 +131,7 @@ namespace PaperRenderer
         }
 
         //rebuild pipeline
-        RTPipelineBuildInfo pipelineBuildInfo = {
+        const RTPipelineInfo pipelineBuildInfo = {
             .materials = materials,
             .raygenShader = raygenShader,
             .missShaders = missShaders,
@@ -140,7 +140,7 @@ namespace PaperRenderer
             .pcRanges = pcRanges,
             .properties = pipelineProperties
         };
-        pipeline = renderer.getPipelineBuilder().buildRTPipeline(pipelineBuildInfo);
+        pipeline = std::make_unique<RTPipeline>(renderer, pipelineBuildInfo);
 
         //invalidate all instances
         for(auto& [tlas, data] : tlasData)

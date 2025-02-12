@@ -86,6 +86,10 @@ private:
     const VkDescriptorSetLayout parametersDescriptorSetLayout;
     const PaperRenderer::ResourceDescriptor parametersDescriptor;
 
+    //default material shaders
+    const PaperRenderer::Shader defaultVertShader;
+    const PaperRenderer::Shader defaultFragShader;
+
     //base raster material
     DefaultMaterial baseMaterial;
 
@@ -109,6 +113,7 @@ public:
     
     const VkDescriptorSetLayout& getParametersDescriptorSetLayout() const { return parametersDescriptorSetLayout; }
     const PaperRenderer::ResourceDescriptor& getParametersDescriptor() const { return parametersDescriptor; }
+    const PaperRenderer::Shader& getDefaultVertShader() const { return defaultVertShader; }
     DefaultMaterial& getDefaultMaterial() { return baseMaterial; }
     PaperRenderer::RenderPass& getRenderPass() { return renderPass; }
 };
@@ -126,7 +131,8 @@ private:
     class BufferCopyMaterial
     {
     private:
-        //descriptor
+        const PaperRenderer::Shader vertShader;
+        const PaperRenderer::Shader fragShader;
         const PaperRenderer::ResourceDescriptor descriptor;
 
         //UBO

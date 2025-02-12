@@ -47,7 +47,7 @@ private:
     PaperRenderer::RenderEngine& renderer;
 
 public:
-    DefaultMaterial(PaperRenderer::RenderEngine& renderer, const PaperRenderer::RasterPipelineBuildInfo& pipelineInfo, const LightingData& lightingData);
+    DefaultMaterial(PaperRenderer::RenderEngine& renderer, const PaperRenderer::RasterPipelineInfo& pipelineInfo, const LightingData& lightingData);
     ~DefaultMaterial();
 
     PaperRenderer::Material& getMaterial() { return material; }
