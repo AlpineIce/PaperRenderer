@@ -37,7 +37,6 @@ private:
     const PaperRenderer::Shader rgenShader;
     const PaperRenderer::Shader rmissShader;
     const PaperRenderer::Shader rshadowShader;
-    const std::vector<PaperRenderer::ShaderDescription> generalShaders;
     const uint32_t rayRecursionDepth;
 
     //ubo

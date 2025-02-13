@@ -115,13 +115,6 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
     rgenShader(renderer, readFromFile("resources/shaders/raytrace_rgen.spv")),
     rmissShader(renderer, readFromFile("resources/shaders/raytrace_rmiss.spv")),
     rshadowShader(renderer, readFromFile("resources/shaders/raytraceShadow_rmiss.spv")),
-    generalShaders({
-        //rgen
-        { VK_SHADER_STAGE_RAYGEN_BIT_KHR, &rgenShader },
-        //miss
-        { VK_SHADER_STAGE_MISS_BIT_KHR, &rmissShader },
-        { VK_SHADER_STAGE_MISS_BIT_KHR, &rshadowShader }
-    }),
     rayRecursionDepth(std::min((uint32_t)2, renderer.getDevice().getRTproperties().maxRayRecursionDepth)),
     rtInfoUBO(renderer, {
         .size = sizeof(RayTraceInfo) * 2,
@@ -130,8 +123,8 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
     }),
     rtRenderPass(
         renderer,
-        generalShaders[0],
-        { generalShaders[1], generalShaders[2] },
+        rgenShader,
+        { &rmissShader, &rshadowShader },
         {},
         {
             { 0, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::CAMERA_MATRICES) },

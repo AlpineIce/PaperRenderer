@@ -149,9 +149,9 @@ namespace PaperRenderer
     struct RTPipelineInfo
     {
         std::vector<class RTMaterial*> materials = {};
-        ShaderDescription raygenShader = {};
-        std::vector<ShaderDescription> missShaders = {};
-        std::vector<ShaderDescription> callableShaders = {};
+        Shader const* raygenShader = NULL;
+        std::vector<Shader const*> missShaders = {};
+        std::vector<Shader const*> callableShaders = {};
         std::unordered_map<uint32_t, VkDescriptorSetLayout> descriptorSets = {};
         std::vector<VkPushConstantRange> pcRanges = {};
         RTPipelineProperties properties = {};
@@ -183,7 +183,7 @@ namespace PaperRenderer
         std::unique_ptr<Buffer> sbtBuffer;
 
         void enumerateShaders(
-            const std::vector<ShaderDescription>& shaders,
+            const std::vector<Shader const*>& shaders,
             std::unordered_map<Shader const*, uint32_t>& offsets,
             std::vector<VkRayTracingShaderGroupCreateInfoKHR>& shaderGroups,
             std::vector<VkPipelineShaderStageCreateInfo>& shaderStages,

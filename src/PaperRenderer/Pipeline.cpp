@@ -412,7 +412,7 @@ namespace PaperRenderer
     }
 
     void RTPipeline::enumerateShaders(
-        const std::vector<ShaderDescription>& shaders,
+        const std::vector<Shader const*>& shaders,
         std::unordered_map<Shader const*, uint32_t>& offsets,
         std::vector<VkRayTracingShaderGroupCreateInfoKHR>& shaderGroups,
         std::vector<VkPipelineShaderStageCreateInfo>& shaderStages,
@@ -420,15 +420,15 @@ namespace PaperRenderer
     )
     {
         //general shader groups (easy because there's 1 shader per group)
-        for(uint32_t i = 0; i < shaders.size(); i++)//const ShaderDescription& shader : creationInfo.generalShaders)
+        for(uint32_t i = 0; i < shaders.size(); i++)
         {
-            if(!shaders[i].shader)
+            if(!shaders[i])
             {
                 continue;
             }
 
             //set offset
-            offsets[shaders[i].shader] = i;
+            offsets[shaders[i]] = i;
             
             //setup group (1 to 1 with shader)
             VkRayTracingShaderGroupCreateInfoKHR groupInfo = {
@@ -448,8 +448,8 @@ namespace PaperRenderer
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .pNext = NULL,
                 .flags = 0,
-                .stage = shaders[i].stage,
-                .module = shaders[i].shader->getModule(),
+                .stage = stage,
+                .module = shaders[i]->getModule(),
                 .pName = "main", //use main() function in shaders
                 .pSpecializationInfo = NULL
             });

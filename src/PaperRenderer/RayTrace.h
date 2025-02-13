@@ -56,9 +56,9 @@ namespace PaperRenderer
         std::vector<AccelerationStructureInstanceData> asInstances;
 
         //shaders
-        const ShaderDescription raygenShader;
-        const std::vector<ShaderDescription> missShaders;
-        const std::vector<ShaderDescription> callableShaders;
+        const Shader& raygenShader;
+        const std::vector<Shader const*> missShaders;
+        const std::vector<Shader const*> callableShaders;
         std::unordered_map<RTMaterial const*, uint32_t> materialReferences; //uint32_t is the number of instances using it
 
         void rebuildPipeline();
@@ -71,9 +71,9 @@ namespace PaperRenderer
     public:
         RayTraceRender(
             RenderEngine& renderer,
-            const ShaderDescription& raygenShader,
-            const std::vector<ShaderDescription>& missShaders,
-            const std::vector<ShaderDescription>& callableShaders,
+            const Shader& raygenShader,
+            const std::vector<Shader const*>& missShaders,
+            const std::vector<Shader const*>& callableShaders,
             const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts,
             const RTPipelineProperties& pipelineProperties,
             const std::vector<VkPushConstantRange>& pcRanges
