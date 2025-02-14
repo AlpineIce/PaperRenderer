@@ -13,7 +13,7 @@ namespace PaperRenderer
         :uboSetLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
             {
                 .binding = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
                 .pImmutableSamplers = NULL
@@ -77,7 +77,7 @@ namespace PaperRenderer
                     .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
                     .pipelineLayout = computeShader.getPipeline().getLayout(),
                     .descriptorSetIndex = TLAS::TLASDescriptorIndices::UBO,
-                    .dynamicOffsets = { (uint32_t)sizeof(UBOInputData) * renderer.getBufferIndex() }
+                    .dynamicOffsets = {}
                 }
             },
             { //set 1 (Renderer Instances)
@@ -390,9 +390,9 @@ namespace PaperRenderer
     TLAS::TLAS(RenderEngine& renderer, RayTraceRender& rtRender)
         :AS(renderer),
         preprocessUniformBuffer(renderer, {
-            .size = sizeof(TLASInstanceBuildPipeline::UBOInputData) * 2,
-            .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
-            .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
+            .size = sizeof(TLASInstanceBuildPipeline::UBOInputData),
+            .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT,
+            .allocationFlags = 0
         }),
         transferSemaphore(renderer.getDevice().getCommands().getTimelineSemaphore(transferSemaphoreValue)),
         uboDescriptor(renderer, renderer.getTLASPreprocessPipeline().getUboDescriptorLayout()),
@@ -409,7 +409,7 @@ namespace PaperRenderer
                         .offset = 0,
                         .range = sizeof(TLASInstanceBuildPipeline::UBOInputData)
                     } },
-                    .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                    .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                     .binding = 0
                 }
             }
@@ -609,18 +609,13 @@ namespace PaperRenderer
         //only rebuild/update a TLAS if any instances were updated
         if(rtRender.tlasData[this].instances.size())
         {
-            //update UBO
+            //queue update of preprocess UBO data
             const TLASInstanceBuildPipeline::UBOInputData uboInputData = {
                 .objectCount = (uint32_t)rtRender.tlasData[this].instances.size()
             };
-
-            const BufferWrite write = {
-                .offset = sizeof(TLASInstanceBuildPipeline::UBOInputData) * renderer.getBufferIndex(),
-                .size = sizeof(TLASInstanceBuildPipeline::UBOInputData),
-                .readData = &uboInputData
-            };
-
-            preprocessUniformBuffer.writeToBuffer({ write });
+            std::vector<char> uboData(sizeof(TLASInstanceBuildPipeline::UBOInputData));
+            memcpy(uboData.data(), &uboInputData, sizeof(TLASInstanceBuildPipeline::UBOInputData));
+            renderer.getStagingBuffer().queueDataTransfers(preprocessUniformBuffer, 0, uboData);
 
             //submit
             renderer.tlasInstanceBuildPipeline.submit(cmdBuffer, *this, rtRender.tlasData[this].instances.size());
@@ -727,14 +722,6 @@ namespace PaperRenderer
             }
         }
 
-        //submit transfers
-        const SynchronizationInfo transferSyncInfo = {
-            .queueType = TRANSFER,
-            .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } }, //wait on self
-            .timelineSignalPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue + 1 } }
-        };
-        renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
-
         //start command buffer
         VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(COMPUTE);
 
@@ -773,8 +760,16 @@ namespace PaperRenderer
 
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
+        //submit transfers
+        const SynchronizationInfo transferSyncInfo = {
+            .queueType = TRANSFER,
+            .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } }, //wait on self
+            .timelineSignalPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue + 1 } }
+        };
+        renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
+
         //append transfer semaphore to syncInfo
-        syncInfo.timelineWaitPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 1});
+        syncInfo.timelineWaitPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 1});
         syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 2});
         transferSemaphoreValue += 2;
         

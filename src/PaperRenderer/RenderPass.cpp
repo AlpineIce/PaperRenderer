@@ -15,7 +15,7 @@ namespace PaperRenderer
         :uboSetLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
             {
                 .binding = 0,
-                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
                 .pImmutableSamplers = NULL
@@ -73,7 +73,7 @@ namespace PaperRenderer
                     .bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE,
                     .pipelineLayout = computeShader.getPipeline().getLayout(),
                     .descriptorSetIndex = RenderPass::RenderPassDescriptorIndices::UBO,
-                    .dynamicOffsets = { (uint32_t)sizeof(UBOInputData) * renderer.getBufferIndex() }
+                    .dynamicOffsets = {}
                 }
             },
             { //set 1 (Instances)
@@ -113,9 +113,9 @@ namespace PaperRenderer
 
     RenderPass::RenderPass(RenderEngine& renderer, MaterialInstance& defaultMaterialInstance)
         :preprocessUniformBuffer(renderer, {
-            .size = sizeof(RasterPreprocessPipeline::UBOInputData) * 2,
-            .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
-            .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT,
+            .size = sizeof(RasterPreprocessPipeline::UBOInputData),
+            .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT,
+            .allocationFlags = 0, //doesnt need to be host visible since updated via staging buffer
         }),
         transferSemaphore(renderer.getDevice().getCommands().getTimelineSemaphore(transferSemaphoreValue)),
         uboDescriptor(renderer, renderer.getRasterPreprocessPipeline().getUboDescriptorLayout()),
@@ -133,7 +133,7 @@ namespace PaperRenderer
                         .offset = 0,
                         .range = sizeof(RasterPreprocessPipeline::UBOInputData)
                     } },
-                    .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                    .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                     .binding = 0
                 }
             }
@@ -377,14 +377,6 @@ namespace PaperRenderer
 
         //clear deques
         toUpdateInstances.clear();
-
-        //submit
-        const SynchronizationInfo syncInfo = {
-            .queueType = TRANSFER,
-            .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } }, //wait on self
-            .timelineSignalPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue + 1 } }
-        };
-        renderer.getStagingBuffer().submitQueuedTransfers(syncInfo);
     }
 
     void RenderPass::handleMaterialDataCompaction(const std::vector<CompactionResult>& results)
@@ -477,21 +469,16 @@ namespace PaperRenderer
         //preprocess
         if(renderPassInstances.size())
         {
-            //update UBO data
+            //queue update of preprocess UBO data
             const RasterPreprocessPipeline::UBOInputData uboInputData = {
                 .materialDataPtr = instancesDataBuffer->getBuffer().getBufferDeviceAddress(),
                 .modelDataPtr = renderer.modelDataBuffer->getBuffer().getBufferDeviceAddress(),
                 .objectCount = (uint32_t)renderPassInstances.size(),
                 .doCulling = true
             };
-
-            const BufferWrite write = {
-                .offset = sizeof(RasterPreprocessPipeline::UBOInputData) * renderer.getBufferIndex(),
-                .size = sizeof(RasterPreprocessPipeline::UBOInputData),
-                .readData = &uboInputData
-            };
-
-            preprocessUniformBuffer.writeToBuffer({ write });
+            std::vector<char> uboData(sizeof(RasterPreprocessPipeline::UBOInputData));
+            memcpy(uboData.data(), &uboInputData, sizeof(RasterPreprocessPipeline::UBOInputData));
+            renderer.getStagingBuffer().queueDataTransfers(preprocessUniformBuffer, 0, uboData);
 
             //compute shader
             renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this, renderPassInfo.camera);
@@ -726,7 +713,15 @@ namespace PaperRenderer
 
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
-        //append transfer semaphore
+        //submit transfers
+        const SynchronizationInfo transferSyncInfo = {
+            .queueType = TRANSFER,
+            .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } }, //wait on self
+            .timelineSignalPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue + 1 } }
+        };
+        renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
+
+        //append transfer semaphore to renderer submission
         syncInfo.timelineWaitPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 1 });
         syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT, transferSemaphoreValue + 2 });
         transferSemaphoreValue += 2;
