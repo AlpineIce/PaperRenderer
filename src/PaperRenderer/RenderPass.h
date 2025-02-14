@@ -16,8 +16,8 @@ namespace PaperRenderer
     class RasterPreprocessPipeline
     {
     private:
-        VkDescriptorSetLayout uboSetLayout;
-        VkDescriptorSetLayout ioSetLayout;
+        DescriptorSetLayout uboSetLayout;
+        DescriptorSetLayout ioSetLayout;
         Shader shader;
         ComputeShader computeShader;
 
@@ -39,8 +39,8 @@ namespace PaperRenderer
 
         void submit(VkCommandBuffer cmdBuffer, const RenderPass& renderPass, const Camera& camera);
 
-        const VkDescriptorSetLayout& getUboDescriptorLayout() const { return uboSetLayout; }
-        const VkDescriptorSetLayout& getIODescriptorLayout() const { return ioSetLayout; }
+        const VkDescriptorSetLayout& getUboDescriptorLayout() const { return uboSetLayout.getSetLayout(); }
+        const VkDescriptorSetLayout& getIODescriptorLayout() const { return ioSetLayout.getSetLayout(); }
     };
     
     //----------RENDER PASS----------//

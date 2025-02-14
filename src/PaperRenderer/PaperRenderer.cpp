@@ -18,40 +18,40 @@ namespace PaperRenderer
         swapchain(*this, creationInfo.swapchainRebuildCallbackFunction, creationInfo.windowState),
         descriptors(*this),
         defaultDescriptorLayouts({
-            descriptors.createDescriptorSetLayout({ { //INDIRECT_DRAW_MATRICES
+            DescriptorSetLayout(*this, {{ //INDIRECT_DRAW_MATRICES
                 .binding = 0,
                 .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
                 .pImmutableSamplers = NULL
-            } }),
-            descriptors.createDescriptorSetLayout({ { //CAMERA_MATRICES
+            }}),
+            DescriptorSetLayout(*this, { { //CAMERA_MATRICES
                 .binding = 0,
                 .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_ALL,
                 .pImmutableSamplers = NULL
-            } }),
-            descriptors.createDescriptorSetLayout({ { //TLAS_INSTANCE_DESCRIPTIONS
+            }}),
+            DescriptorSetLayout(*this, { { //TLAS_INSTANCE_DESCRIPTIONS
                 .binding = 0,
                 .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR,
                 .pImmutableSamplers = NULL
-            } }),
-            descriptors.createDescriptorSetLayout({ { //INSTANCES
+            }}),
+            DescriptorSetLayout(*this, { { //INSTANCES
                 .binding = 0,
                 .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 .descriptorCount = 1,
                 .stageFlags = VK_SHADER_STAGE_ALL,
                 .pImmutableSamplers = NULL
-            } }),
+            }})
         }),
         rasterPreprocessPipeline(*this, creationInfo.rasterPreprocessSpirv),
         tlasInstanceBuildPipeline(*this, creationInfo.rtPreprocessSpirv),
         asBuilder(*this),
         stagingBuffer({ std::make_unique<RendererStagingBuffer>(*this), std::make_unique<RendererStagingBuffer>(*this) }),
-        instancesBufferDescriptor(*this, defaultDescriptorLayouts[INSTANCES])
+        instancesBufferDescriptor(*this, defaultDescriptorLayouts[INSTANCES].getSetLayout())
     {
         //initialize buffers
         rebuildModelDataBuffer();
@@ -71,12 +71,6 @@ namespace PaperRenderer
     RenderEngine::~RenderEngine()
     {
         vkDeviceWaitIdle(device.getDevice());
-
-        //destroy default set layouts
-        for(VkDescriptorSetLayout layout : defaultDescriptorLayouts)
-        {
-            vkDestroyDescriptorSetLayout(device.getDevice(), layout, nullptr);
-        }
     
         //destroy buffers
         modelDataBuffer.reset();

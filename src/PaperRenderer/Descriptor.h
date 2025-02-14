@@ -77,12 +77,11 @@ namespace PaperRenderer
 
         void updateDescriptorSet(VkDescriptorSet set, const DescriptorWrites& descriptorWritesInfo) const;
         
-        VkDescriptorSetLayout createDescriptorSetLayout(const std::vector<VkDescriptorSetLayoutBinding>& bindings) const;
         VkDescriptorSet getDescriptorSet(VkDescriptorSetLayout setLayout);
         void freeDescriptorSet(VkDescriptorSet set);
     };
 
-    //----------RAII DESCRIPTOR WRAPPER----------//
+    //----------RAII DESCRIPTOR WRAPPERS----------//
 
     struct SetBinding
     {
@@ -108,5 +107,19 @@ namespace PaperRenderer
 
         const VkDescriptorSetLayout& getLayout() const { return layout; }
         const VkDescriptorSet& getDescriptorSet() const { return set; }
+    };
+
+    class DescriptorSetLayout
+    {
+    private:
+        VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
+
+        class RenderEngine& renderer;
+    public:
+        DescriptorSetLayout(class RenderEngine& renderer, const std::vector<VkDescriptorSetLayoutBinding>& bindings);
+        ~DescriptorSetLayout();
+        DescriptorSetLayout(const DescriptorSetLayout&) = delete;
+
+        const VkDescriptorSetLayout& getSetLayout() const { return setLayout; }
     };
 }

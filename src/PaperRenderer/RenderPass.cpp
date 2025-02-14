@@ -12,7 +12,7 @@ namespace PaperRenderer
     //----------PREPROCESS PIPELINES DEFINITIONS----------//
 
     RasterPreprocessPipeline::RasterPreprocessPipeline(RenderEngine& renderer, const std::vector<uint32_t>& shaderData)
-        :uboSetLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
+        :uboSetLayout(renderer, {
             {
                 .binding = 0,
                 .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -20,8 +20,8 @@ namespace PaperRenderer
                 .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
                 .pImmutableSamplers = NULL
             }
-        })),
-        ioSetLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
+        }),
+        ioSetLayout(renderer, {
             {
                 .binding = 0,
                 .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -29,14 +29,14 @@ namespace PaperRenderer
                 .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
                 .pImmutableSamplers = NULL
             }
-        })),
+        }),
         shader(renderer, shaderData),
         computeShader(renderer, {
             .shader = &shader,
             .descriptorSets = {
-                { RenderPass::RenderPassDescriptorIndices::UBO, uboSetLayout },
+                { RenderPass::RenderPassDescriptorIndices::UBO, uboSetLayout.getSetLayout() },
                 { RenderPass::RenderPassDescriptorIndices::INSTANCES, renderer.getDefaultDescriptorSetLayout(INSTANCES) },
-                { RenderPass::RenderPassDescriptorIndices::IO, ioSetLayout },
+                { RenderPass::RenderPassDescriptorIndices::IO, ioSetLayout.getSetLayout() },
                 { RenderPass::RenderPassDescriptorIndices::CAMERA, renderer.getDefaultDescriptorSetLayout(CAMERA_MATRICES) }
             },
             .pcRanges = {}
@@ -52,10 +52,6 @@ namespace PaperRenderer
     
     RasterPreprocessPipeline::~RasterPreprocessPipeline()
     {
-        //destroy descriptor layouts
-        vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), uboSetLayout, nullptr);
-        vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), ioSetLayout, nullptr);
-
         //log destructor
         renderer.getLogger().recordLog({
             .type = INFO,

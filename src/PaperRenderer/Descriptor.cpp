@@ -161,29 +161,6 @@ namespace PaperRenderer
         return returnSet;
     }
 
-    VkDescriptorSetLayout DescriptorAllocator::createDescriptorSetLayout(const std::vector<VkDescriptorSetLayoutBinding>& bindings) const
-    {
-        const VkDescriptorSetLayoutCreateInfo descriptorLayoutInfo = {
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .bindingCount = (uint32_t)bindings.size(),
-            .pBindings = bindings.data()
-        };
-        
-        VkDescriptorSetLayout setLayout;
-        VkResult result = vkCreateDescriptorSetLayout(renderer.getDevice().getDevice(), &descriptorLayoutInfo, nullptr, &setLayout);
-        if(result != VK_SUCCESS)
-        {
-            renderer.getLogger().recordLog({
-                .type = CRITICAL_ERROR,
-                .text = "Failed to create descriptor set layout"
-            });
-        }
-
-        return setLayout;
-    }
-
     void DescriptorAllocator::freeDescriptorSet(VkDescriptorSet set)
     {
         //free
@@ -334,5 +311,31 @@ namespace PaperRenderer
             binding.dynamicOffsets.size(),
             binding.dynamicOffsets.data()
         );
+    }
+
+    DescriptorSetLayout::DescriptorSetLayout(RenderEngine& renderer, const std::vector<VkDescriptorSetLayoutBinding>& bindings)
+        :renderer(renderer)
+    {
+        const VkDescriptorSetLayoutCreateInfo descriptorLayoutInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .bindingCount = (uint32_t)bindings.size(),
+            .pBindings = bindings.data()
+        };
+        
+        VkResult result = vkCreateDescriptorSetLayout(renderer.getDevice().getDevice(), &descriptorLayoutInfo, nullptr, &setLayout);
+        if(result != VK_SUCCESS)
+        {
+            renderer.getLogger().recordLog({
+                .type = CRITICAL_ERROR,
+                .text = "Failed to create descriptor set layout"
+            });
+        }
+    }
+
+    DescriptorSetLayout::~DescriptorSetLayout()
+    {
+        if(setLayout) vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), setLayout, nullptr);
     }
 }

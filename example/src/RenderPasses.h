@@ -30,7 +30,7 @@ class ExampleRayTracing
 {
 private:
     //descriptors
-    VkDescriptorSetLayout rtDescriptorLayout;
+    PaperRenderer::DescriptorSetLayout rtDescriptorLayout;
     PaperRenderer::ResourceDescriptor rtDescriptor;
 
     //general shaders
@@ -82,7 +82,7 @@ class ExampleRaster
 {
 private:
     //descriptors for base material
-    const VkDescriptorSetLayout parametersDescriptorSetLayout;
+    const PaperRenderer::DescriptorSetLayout parametersDescriptorSetLayout;
     const PaperRenderer::ResourceDescriptor parametersDescriptor;
 
     //default material shaders
@@ -110,7 +110,7 @@ public:
 
     const PaperRenderer::Queue& rasterRender(PaperRenderer::SynchronizationInfo syncInfo);
     
-    const VkDescriptorSetLayout& getParametersDescriptorSetLayout() const { return parametersDescriptorSetLayout; }
+    const VkDescriptorSetLayout& getParametersDescriptorSetLayout() const { return parametersDescriptorSetLayout.getSetLayout(); }
     const PaperRenderer::ResourceDescriptor& getParametersDescriptor() const { return parametersDescriptor; }
     const PaperRenderer::Shader& getDefaultVertShader() const { return defaultVertShader; }
     DefaultMaterial& getDefaultMaterial() { return baseMaterial; }
@@ -124,7 +124,7 @@ class BufferCopyPass
 {
 private:
     //descriptor layout
-    const VkDescriptorSetLayout setLayout;
+    const PaperRenderer::DescriptorSetLayout setLayout;
 
     //buffer copy material
     class BufferCopyMaterial

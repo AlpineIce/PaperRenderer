@@ -273,7 +273,7 @@ LightingData createLightingData(PaperRenderer::RenderEngine& renderer)
     std::unique_ptr<PaperRenderer::Buffer> lightingUniformBuffer = createLightInfoUniformBuffer(renderer);
 
     //descriptor layout
-    VkDescriptorSetLayout lightingDescriptorLayout = renderer.getDescriptorAllocator().createDescriptorSetLayout({
+    std::unique_ptr<PaperRenderer::DescriptorSetLayout> lightingDescriptorLayout = std::make_unique<PaperRenderer::DescriptorSetLayout>(renderer, std::vector<VkDescriptorSetLayoutBinding>({
         {
             .binding = 0,
             .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -288,10 +288,10 @@ LightingData createLightingData(PaperRenderer::RenderEngine& renderer)
             .stageFlags = VK_SHADER_STAGE_ALL,
             .pImmutableSamplers = NULL
         }
-    });
+    }));
 
     //descriptor
-    std::unique_ptr<PaperRenderer::ResourceDescriptor> lightingDescriptor = std::make_unique<PaperRenderer::ResourceDescriptor>(renderer, lightingDescriptorLayout);
+    std::unique_ptr<PaperRenderer::ResourceDescriptor> lightingDescriptor = std::make_unique<PaperRenderer::ResourceDescriptor>(renderer, lightingDescriptorLayout->getSetLayout());
 
     //descriptor writes
     lightingDescriptor->updateDescriptorSet({
@@ -321,7 +321,7 @@ LightingData createLightingData(PaperRenderer::RenderEngine& renderer)
     return {
         std::move(lightingUniformBuffer),
         std::move(pointLightsBuffer),
-        lightingDescriptorLayout,
+        std::move(lightingDescriptorLayout),
         std::move(lightingDescriptor),
     };
 }
@@ -480,7 +480,7 @@ int main()
             },
             .descriptorSets = {
                 { 0, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::CAMERA_MATRICES) },
-                { 1, lightingData.lightingDescriptorLayout },
+                { 1, lightingData.lightingDescriptorLayout->getSetLayout() },
                 { 2, exampleRaster.getParametersDescriptorSetLayout() }, //ownership of this one is kinda weird, I will admit that
                 { 3, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::INDIRECT_DRAW_MATRICES) }
             },
@@ -968,7 +968,8 @@ int main()
     //destroy light buffers and descriptors
     lightingData.lightingUBO.reset();
     lightingData.pointLightsBuffer.reset();
-    vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), lightingData.lightingDescriptorLayout, nullptr);
+    lightingData.lightingDescriptor.reset();
+    lightingData.lightingDescriptorLayout.reset();
 
     //destroy some stuff
     for(uint32_t i = 0; i < 2; i++)

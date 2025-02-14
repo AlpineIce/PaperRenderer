@@ -88,7 +88,7 @@ DepthBuffer getDepthBuffer(PaperRenderer::RenderEngine &renderer)
 //----------RAY TRACING----------//
 
 ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, const PaperRenderer::Camera& camera, const HDRBuffer& hdrBuffer, const LightingData& lightingData)
-    :rtDescriptorLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
+    :rtDescriptorLayout(renderer, {
         { //RT input data
             .binding = 0,
             .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
@@ -110,8 +110,8 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
             .stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR,
             .pImmutableSamplers = NULL
         }
-    })),
-    rtDescriptor(renderer, rtDescriptorLayout),
+    }),
+    rtDescriptor(renderer, rtDescriptorLayout.getSetLayout()),
     rgenShader(renderer, readFromFile("resources/shaders/raytrace_rgen.spv")),
     rmissShader(renderer, readFromFile("resources/shaders/raytrace_rmiss.spv")),
     rshadowShader(renderer, readFromFile("resources/shaders/raytraceShadow_rmiss.spv")),
@@ -128,8 +128,8 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
         {},
         {
             { 0, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::CAMERA_MATRICES) },
-            { 1, lightingData.lightingDescriptorLayout },
-            { 2, rtDescriptorLayout },
+            { 1, lightingData.lightingDescriptorLayout->getSetLayout() },
+            { 2, rtDescriptorLayout.getSetLayout() },
             { 3, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::TLAS_INSTANCE_DESCRIPTIONS) }
         },
         {
@@ -170,7 +170,6 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
 
 ExampleRayTracing::~ExampleRayTracing()
 {
-    vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), rtDescriptorLayout, nullptr);
 }
 
 const PaperRenderer::Queue& ExampleRayTracing::rayTraceRender(const PaperRenderer::SynchronizationInfo &syncInfo, const PaperRenderer::Buffer& materialDefinitionsBuffer)
@@ -323,7 +322,7 @@ void ExampleRayTracing::updateMaterialBuffer(const PaperRenderer::Buffer& materi
 //----------RASTER----------//
 
 ExampleRaster::ExampleRaster(PaperRenderer::RenderEngine &renderer, const PaperRenderer::Camera& camera, const HDRBuffer& hdrBuffer, const DepthBuffer& depthBuffer, const LightingData& lightingData)
-    :parametersDescriptorSetLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
+    :parametersDescriptorSetLayout(renderer, {
         {
             .binding = 0,
             .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
@@ -331,8 +330,8 @@ ExampleRaster::ExampleRaster(PaperRenderer::RenderEngine &renderer, const PaperR
             .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
             .pImmutableSamplers = NULL,
         }
-    })),
-    parametersDescriptor(renderer, parametersDescriptorSetLayout),
+    }),
+    parametersDescriptor(renderer, parametersDescriptorSetLayout.getSetLayout()),
     defaultVertShader(renderer, readFromFile("resources/shaders/Default_vert.spv")),
     defaultFragShader(renderer, readFromFile("resources/shaders/Default_frag.spv")),
     baseMaterial(renderer, {
@@ -348,8 +347,8 @@ ExampleRaster::ExampleRaster(PaperRenderer::RenderEngine &renderer, const PaperR
             },
             .descriptorSets = {
                 { 0, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::CAMERA_MATRICES) },
-                { 1, lightingData.lightingDescriptorLayout },
-                { 2, parametersDescriptorSetLayout },
+                { 1, lightingData.lightingDescriptorLayout->getSetLayout() },
+                { 2, parametersDescriptorSetLayout.getSetLayout() },
                 { 3, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::INDIRECT_DRAW_MATRICES) }
             },
             .pcRanges = {}, //no push constants
@@ -422,7 +421,7 @@ ExampleRaster::ExampleRaster(PaperRenderer::RenderEngine &renderer, const PaperR
             .roughness = 0.5f,
             .metallic = 0.0f
         },
-        parametersDescriptorSetLayout
+        parametersDescriptorSetLayout.getSetLayout()
     ),
     renderPass(renderer, defaultMaterialInstance.getMaterialInstance()),
     renderer(renderer),
@@ -435,7 +434,6 @@ ExampleRaster::ExampleRaster(PaperRenderer::RenderEngine &renderer, const PaperR
 
 ExampleRaster::~ExampleRaster()
 {
-    vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), parametersDescriptorSetLayout, nullptr);
 }
 
 const PaperRenderer::Queue& ExampleRaster::rasterRender(PaperRenderer::SynchronizationInfo syncInfo)
@@ -547,7 +545,7 @@ const PaperRenderer::Queue& ExampleRaster::rasterRender(PaperRenderer::Synchroni
 //----------BUFFER COPY PASS----------//
 
 BufferCopyPass::BufferCopyPass(PaperRenderer::RenderEngine &renderer, const PaperRenderer::Camera &camera, const HDRBuffer &hdrBuffer)
-    :setLayout(renderer.getDescriptorAllocator().createDescriptorSetLayout({
+    :setLayout(renderer, {
         { //UBO
             .binding = 0,
             .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
@@ -561,8 +559,8 @@ BufferCopyPass::BufferCopyPass(PaperRenderer::RenderEngine &renderer, const Pape
             .descriptorCount = 1,
             .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
         }
-    })),
-    material(renderer, hdrBuffer, setLayout),
+    }),
+    material(renderer, hdrBuffer, setLayout.getSetLayout()),
     renderer(renderer),
     camera(camera),
     hdrBuffer(hdrBuffer)
@@ -571,7 +569,6 @@ BufferCopyPass::BufferCopyPass(PaperRenderer::RenderEngine &renderer, const Pape
 
 BufferCopyPass::~BufferCopyPass()
 {
-    vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), setLayout, nullptr);
 }
 
 const PaperRenderer::Queue& BufferCopyPass::render(const PaperRenderer::SynchronizationInfo &syncInfo, bool fromRaster)
