@@ -303,19 +303,18 @@ namespace PaperRenderer
         {
             //skip if instance is NULL
             if(!instance) continue;
-
-            ModelInstance::ShaderModelInstance shaderInstance = instance->getShaderInstance();
-
-            //write data
-            std::vector<char> data(sizeof(ModelInstance::ShaderModelInstance));
-            memcpy(data.data(), &shaderInstance, data.size());
             
-            getStagingBuffer().queueDataTransfers(*instancesDataBuffer, sizeof(ModelInstance::ShaderModelInstance) * instance->rendererSelfIndex, data);
+            //write instance data
+            getStagingBuffer().queueDataTransfers(*instancesDataBuffer, sizeof(ModelInstance::ShaderModelInstance) * instance->rendererSelfIndex, instance->getShaderInstance());
         }
 
         //queue model data
         for(Model* model : toUpdateModels)
         {
+            //skip if model is NULL
+            if(!model) continue;
+
+            //write model data
             getStagingBuffer().queueDataTransfers(modelDataBuffer->getBuffer(), model->shaderDataLocation, model->getShaderData());
         }
 

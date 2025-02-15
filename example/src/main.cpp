@@ -748,12 +748,8 @@ int main()
     };
     PaperRenderer::Buffer rtMaterialDefinitionsBuffer(renderer, rtMaterialDefinitionsBufferInfo);
 
-    //convert material data vector to char vector (honestly there can be a better way around this but im lazy)
-    std::vector<char> instanceRTMaterialDefinitionsData(instanceRTMaterialDefinitions.size() * sizeof(DefaultRTMaterialDefinition));
-    memcpy(instanceRTMaterialDefinitionsData.data(), instanceRTMaterialDefinitions.data(), instanceRTMaterialDefinitions.size() * sizeof(DefaultRTMaterialDefinition));
-
     //queue data transfer for RT material data
-    renderer.getStagingBuffer().queueDataTransfers(rtMaterialDefinitionsBuffer, 0, instanceRTMaterialDefinitionsData);
+    renderer.getStagingBuffer().queueDataTransfers(rtMaterialDefinitionsBuffer, 0, instanceRTMaterialDefinitions);
 
     //update descriptor
     exampleRayTrace.updateMaterialBuffer(rtMaterialDefinitionsBuffer);
@@ -884,10 +880,7 @@ int main()
                 .transmission = glm::vec3(0.0f),
                 .ior = 1.45f
             };
-
-            std::vector<char> adjustableMaterialNewData(sizeof(DefaultRTMaterialDefinition));
-            memcpy(adjustableMaterialNewData.data(), &newData, sizeof(DefaultRTMaterialDefinition));
-            renderer.getStagingBuffer().queueDataTransfers(rtMaterialDefinitionsBuffer, adjustableMaterialIndex * sizeof(DefaultRTMaterialDefinition), adjustableMaterialNewData);
+            renderer.getStagingBuffer().queueDataTransfers(rtMaterialDefinitionsBuffer, adjustableMaterialIndex * sizeof(DefaultRTMaterialDefinition), newData);
 
             //build queued BLAS's (wait on transfer, signal rendering semaphore
             const PaperRenderer::SynchronizationInfo blasSyncInfo = {

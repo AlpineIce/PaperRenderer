@@ -29,20 +29,6 @@ namespace PaperRenderer
         stackLocation = 0;
     }
 
-    void RendererStagingBuffer::queueDataTransfers(const Buffer &dstBuffer, VkDeviceSize dstOffset, const std::vector<char> &data)
-    {
-        //lock mutex
-        std::lock_guard guard(stagingBufferMutex);
-
-        //push transfer to queue
-        transferQueue.emplace_front(
-            dstOffset,
-            data,
-            dstBuffer
-        );
-        queueSize += data.size();
-    }
-
     std::set<Buffer*> RendererStagingBuffer::submitQueuedTransfers(VkCommandBuffer cmdBuffer)
     {
         //timer

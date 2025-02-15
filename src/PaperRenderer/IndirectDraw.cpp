@@ -133,14 +133,11 @@ namespace PaperRenderer
                     }
                 };
 
-                std::vector<char> data(sizeof(DrawCommand));
-                memcpy(data.data(), &command, sizeof(DrawCommand));
-
                 //queue data transfer
                 renderer.getStagingBuffer().queueDataTransfers(
                     *drawCommandsBuffer,
                     sizeof(DrawCommand) * meshInstancesData.drawCommandIndex,
-                    data
+                    command
                 );
             }
         }

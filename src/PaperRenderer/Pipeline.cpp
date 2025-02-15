@@ -501,7 +501,6 @@ namespace PaperRenderer
             .size = sbtRawData.size(),
             .usageFlags = VK_BUFFER_USAGE_2_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR,
             .allocationFlags = 0
-            
         };
         sbtBuffer = std::make_unique<Buffer>(renderer, sbtBufferInfo);
 

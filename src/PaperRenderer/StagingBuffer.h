@@ -13,7 +13,7 @@ namespace PaperRenderer
         struct QueuedTransfer
         {
             VkDeviceSize dstOffset;
-            std::vector<char> data;
+            std::vector<uint8_t> data;
             const Buffer& dstBuffer;
         };
 
@@ -30,7 +30,44 @@ namespace PaperRenderer
         ~RendererStagingBuffer();
         
         void resetBuffer();
-        void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<char>& data); //do not submit more than 1 transfer with the same destination! undefined behavior!
         const Queue& submitQueuedTransfers(SynchronizationInfo syncInfo); //Submits all queued transfers and clears the queue
+
+        template<typename T>
+        void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<T>& data) //do not submit more than 1 transfer with the same destination! undefined behavior!
+        {
+            //lock mutex
+            std::lock_guard guard(stagingBufferMutex);
+
+            //transform data
+            std::vector<uint8_t> transferData(data.size() * sizeof(T));
+            memcpy(transferData.data(), data.data(), transferData.size());
+
+            //push transfer to queue
+            transferQueue.emplace_front(
+                dstOffset,
+                std::move(transferData),
+                dstBuffer
+            );
+            queueSize += data.size() * sizeof(T);
+        }
+
+        template<typename T>
+        void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const T& data)
+        {
+            //lock mutex
+            std::lock_guard guard(stagingBufferMutex);
+
+            //create vector of one element
+            std::vector<uint8_t> transferData(sizeof(T));
+            memcpy(transferData.data(), &data, transferData.size());
+
+            //push transfer to queue
+            transferQueue.emplace_front(
+                dstOffset,
+                std::move(transferData),
+                dstBuffer
+            );
+            queueSize += sizeof(T);
+        }
     };
 }

@@ -609,9 +609,7 @@ namespace PaperRenderer
             const TLASInstanceBuildPipeline::UBOInputData uboInputData = {
                 .objectCount = (uint32_t)rtRender.tlasData[this].instances.size()
             };
-            std::vector<char> uboData(sizeof(TLASInstanceBuildPipeline::UBOInputData));
-            memcpy(uboData.data(), &uboInputData, sizeof(TLASInstanceBuildPipeline::UBOInputData));
-            renderer.getStagingBuffer().queueDataTransfers(preprocessUniformBuffer, 0, uboData);
+            renderer.getStagingBuffer().queueDataTransfers(preprocessUniformBuffer, 0, uboInputData);
 
             //submit
             renderer.tlasInstanceBuildPipeline.submit(cmdBuffer, *this, rtRender.tlasData[this].instances.size());
@@ -682,7 +680,7 @@ namespace PaperRenderer
                         rtRender.getPipeline().getShaderBindingTableData().shaderBindingTableOffsets.
                         materialShaderGroupOffsets.at(instance.instancePtr->rtRenderSelfReferences.at(&rtRender).material);
 
-                    //write instance data
+                    //queue transfer of instance data
                     ModelInstance::AccelerationStructureInstance instanceShaderData = {
                         .blasReference = blasPtr->getASBufferAddress(),
                         .modelInstanceIndex = instance.instancePtr->rendererSelfIndex,
@@ -691,28 +689,20 @@ namespace PaperRenderer
                         .recordOffset = sbtOffset,
                         .flags = instance.flags
                     };
-
-                    //queue transfer
-                    std::vector<char> instanceData(sizeof(ModelInstance::AccelerationStructureInstance));
-                    memcpy(instanceData.data(), &instanceShaderData, sizeof(ModelInstance::AccelerationStructureInstance));
                     renderer.getStagingBuffer().queueDataTransfers(
                         *instancesBuffer,
                         instancesBufferSizes.instancesOffset + (sizeof(ModelInstance::AccelerationStructureInstance) * instance.instancePtr->rtRenderSelfReferences[&rtRender].selfIndex),
-                        instanceData
+                        instanceShaderData
                     );
 
-                    //write description data
+                    //queue transfer of description data
                     InstanceDescription descriptionShaderData = {
                         .modelDataOffset = (uint32_t)instance.instancePtr->getParentModel().getShaderDataLocation()
                     };
-                    
-                    //queue transfer
-                    std::vector<char> instanceDescriptionData(sizeof(InstanceDescription));
-                    memcpy(instanceDescriptionData.data(), &descriptionShaderData, sizeof(InstanceDescription));
                     renderer.getStagingBuffer().queueDataTransfers(
                         *instancesBuffer,
                         instancesBufferSizes.instanceDescriptionsOffset + (sizeof(InstanceDescription) * instance.instancePtr->rtRenderSelfReferences[&rtRender].selfIndex),
-                        instanceDescriptionData
+                        descriptionShaderData
                     );
                 }
             }

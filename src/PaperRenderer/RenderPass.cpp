@@ -357,18 +357,13 @@ namespace PaperRenderer
             const std::vector<char>& materialData = instance->getRenderPassInstanceData(this);
             renderer.getStagingBuffer().queueDataTransfers(instancesDataBuffer->getBuffer(), instance->renderPassSelfReferences[this].LODsMaterialDataOffset, materialData);
 
-            //write instance data
+            //queue instance data transfer
             const ModelInstance::RenderPassInstance instanceShaderData = {
                 .modelInstanceIndex = instance->rendererSelfIndex,
                 .LODsMaterialDataOffset = (uint32_t)instance->renderPassSelfReferences[this].LODsMaterialDataOffset,
                 .isVisible = true
             };
-
-            std::vector<char> instanceData(sizeof(ModelInstance::RenderPassInstance));
-            memcpy(instanceData.data(), &instanceShaderData, instanceData.size());
-            
-            //queue data transfer
-            renderer.getStagingBuffer().queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::RenderPassInstance) * instance->renderPassSelfReferences[this].selfIndex, instanceData);
+            renderer.getStagingBuffer().queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::RenderPassInstance) * instance->renderPassSelfReferences[this].selfIndex, instanceShaderData);
         }
 
         //clear deques
@@ -472,9 +467,7 @@ namespace PaperRenderer
                 .objectCount = (uint32_t)renderPassInstances.size(),
                 .doCulling = true
             };
-            std::vector<char> uboData(sizeof(RasterPreprocessPipeline::UBOInputData));
-            memcpy(uboData.data(), &uboInputData, sizeof(RasterPreprocessPipeline::UBOInputData));
-            renderer.getStagingBuffer().queueDataTransfers(preprocessUniformBuffer, 0, uboData);
+            renderer.getStagingBuffer().queueDataTransfers(preprocessUniformBuffer, 0, uboInputData);
 
             //compute shader
             renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this, renderPassInfo.camera);
