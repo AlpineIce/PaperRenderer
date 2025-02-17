@@ -251,9 +251,9 @@ namespace PaperRenderer
         pipelineProperties(creationInfo.properties)
     {
         //SBT important alignments and sizes
-        const uint32_t handleSize = renderer.getDevice().getRTproperties().shaderGroupHandleSize;
-        const uint32_t handleAlignment = renderer.getDevice().getRTproperties().shaderGroupHandleAlignment;
-        const uint32_t groupBaseAlignment = renderer.getDevice().getRTproperties().shaderGroupBaseAlignment;
+        const uint32_t handleSize = renderer.getDevice().getGPUFeaturesAndProperties().rtPipelineProperties.shaderGroupHandleSize;
+        const uint32_t handleAlignment = renderer.getDevice().getGPUFeaturesAndProperties().rtPipelineProperties.shaderGroupHandleAlignment;
+        const uint32_t groupBaseAlignment = renderer.getDevice().getGPUFeaturesAndProperties().rtPipelineProperties.shaderGroupBaseAlignment;
         const uint32_t alignedGroupSize = renderer.getDevice().getAlignment(handleSize, handleAlignment);
 
         //clear old SBT data
@@ -458,9 +458,9 @@ namespace PaperRenderer
 
     uint32_t RTPipeline::insertGroupSBTData(std::vector<char>& toInsertData, uint32_t groupOffset, uint32_t handleCount) const
     {
-        const uint32_t handleSize = renderer.getDevice().getRTproperties().shaderGroupHandleSize;
-        const uint32_t handleAlignment = renderer.getDevice().getRTproperties().shaderGroupHandleAlignment;
-        const uint32_t groupBaseAlignment = renderer.getDevice().getRTproperties().shaderGroupBaseAlignment;
+        const uint32_t handleSize = renderer.getDevice().getGPUFeaturesAndProperties().rtPipelineProperties.shaderGroupHandleSize;
+        const uint32_t handleAlignment = renderer.getDevice().getGPUFeaturesAndProperties().rtPipelineProperties.shaderGroupHandleAlignment;
+        const uint32_t groupBaseAlignment = renderer.getDevice().getGPUFeaturesAndProperties().rtPipelineProperties.shaderGroupBaseAlignment;
         const uint32_t alignedGroupSize = renderer.getDevice().getAlignment(handleSize, handleAlignment);
 
         //pad toInsertData to the group base alignment

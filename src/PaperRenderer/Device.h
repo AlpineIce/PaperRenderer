@@ -22,31 +22,38 @@ namespace PaperRenderer
         uint32_t appVersion = VK_API_VERSION_MAJOR(1);
         std::string engineName = "Set engine name in deviceInstanceInfo in renderer creation";
         uint32_t engineVersion = VK_API_VERSION_MAJOR(1);
+        std::vector<const char*> extraInstanceExtensions = {};
+        std::vector<const char*> extraDeviceExtensions = {};
+        void* devicepNext = NULL;
+    };
+
+    struct DeviceFeaturesAndProperties
+    {
+        VkPhysicalDeviceFeatures2 gpuFeatures = {};
+        VkPhysicalDeviceProperties2 gpuProperties = {};
+        VkPhysicalDeviceAccelerationStructurePropertiesKHR asProperties = {};
+        VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtPipelineProperties = {};
+        std::vector<const char*> enabledExtensions = {};
+        bool rtSupport = false;
     };
 
     class Device
     {
     private:
+        void* devicepNext;
         VkInstance instance = VK_NULL_HANDLE;
         VkPhysicalDevice GPU = VK_NULL_HANDLE;
-        VmaAllocator allocator = NULL;
-        VkDebugUtilsMessengerEXT debugUtilsMessenger = VK_NULL_HANDLE;
-        std::vector<VkExtensionProperties> extensions;
-        VkPhysicalDeviceProperties2 gpuProperties;
-        VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtPipelineProperties = {};
-        VkPhysicalDeviceAccelerationStructurePropertiesKHR asProperties = {};
-        VkPhysicalDeviceFeatures gpuFeatures;
-        std::unordered_map<uint32_t, std::vector<Queue>> familyQueues;
-        std::unordered_map<QueueType, QueuesInFamily> queues;
-        std::unique_ptr<Commands> commands;
         VkDevice device = VK_NULL_HANDLE;
         VkSurfaceKHR surface = VK_NULL_HANDLE;
-        bool rtSupport = false;
-
-        class RenderEngine& renderer;
+        VmaAllocator allocator = NULL;
+        VkDebugUtilsMessengerEXT debugUtilsMessenger = VK_NULL_HANDLE;
+        std::unique_ptr<Commands> commands = NULL;
+        DeviceFeaturesAndProperties featuresAndProperties = {};
+        std::unordered_map<uint32_t, std::vector<Queue>> familyQueues = {};
+        std::unordered_map<QueueType, QueuesInFamily> queues = {};
 
         void createContext(const DeviceInstanceInfo& instanceData);
-        void findGPU();
+        void findGPU(std::vector<const char*> extensions);
         void findQueueFamilies(uint32_t& queueFamilyCount, std::vector<VkQueueFamilyProperties>& queueFamiliesProperties);
         void createQueues(std::unordered_map<uint32_t, VkDeviceQueueCreateInfo>& queuesCreationInfo,
                           const std::vector<VkQueueFamilyProperties>& queueFamiliesProperties, 
@@ -58,6 +65,8 @@ namespace PaperRenderer
             const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
             void* pUserData
         );
+
+        class RenderEngine& renderer;
         
     public:
         Device(class RenderEngine& renderer, const DeviceInstanceInfo& instanceInfo);
@@ -72,11 +81,7 @@ namespace PaperRenderer
         const VkSurfaceKHR& getSurface() const { return surface; }
         const VkInstance& getInstance() const { return instance; }
         const VkPhysicalDevice& getGPU() const { return GPU; }
-        const VkPhysicalDeviceProperties2& getGPUProperties() const { return gpuProperties; }
-        const VkPhysicalDeviceFeatures& getGPUFeatures() const { return gpuFeatures; }
-        const bool& getRTSupport() const { return rtSupport; }
-        const VkPhysicalDeviceRayTracingPipelinePropertiesKHR& getRTproperties() const { return rtPipelineProperties; }
-        const VkPhysicalDeviceAccelerationStructurePropertiesKHR& getASproperties() const { return asProperties; }
+        const DeviceFeaturesAndProperties& getGPUFeaturesAndProperties() const { return featuresAndProperties; }
         std::unordered_map<QueueType, QueuesInFamily>& getQueues() { return queues; }
         Commands& getCommands() { return *commands; }
         QueueFamiliesIndices getQueueFamiliesIndices() const;

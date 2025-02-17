@@ -33,7 +33,7 @@ namespace PaperRenderer
 
     struct QueuesInFamily
     {
-        uint32_t queueFamilyIndex;
+        uint32_t queueFamilyIndex = 0xFFFFFFFF;
         std::vector<Queue*> queues;
     };
 

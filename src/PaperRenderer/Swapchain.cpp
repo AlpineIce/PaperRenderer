@@ -49,7 +49,10 @@ namespace PaperRenderer
         VkResult result = glfwCreateWindowSurface(renderer.getDevice().getInstance(), window, nullptr, (VkSurfaceKHR*)(&renderer.getDevice().getSurface()));
         if(result != VK_SUCCESS)
         {
-            throw std::runtime_error("VkResult: " + std::to_string(result) + " Window surface creation failed");
+            renderer.getLogger().recordLog({
+                .type = CRITICAL_ERROR,
+                .text = "Failed to create window surface"
+            });
         }
         renderer.getDevice().createDevice();
 

@@ -79,7 +79,7 @@ namespace PaperRenderer
 		renderer.addModelData(this);
 
 		//create BLAS
-		if(creationInfo.createBLAS && renderer.getDevice().getRTSupport())
+		if(creationInfo.createBLAS && renderer.getDevice().getGPUFeaturesAndProperties().rtSupport)
 		{
 			defaultBLAS = std::make_unique<BLAS>(renderer, *this, vbo.get());
 			const BLASBuildOp op = {
@@ -175,7 +175,7 @@ namespace PaperRenderer
 		bufferInfo.allocationFlags = 0;
 		bufferInfo.size = size;
 		bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | usageFlags;
-		if(renderer.getDevice().getRTSupport()) bufferInfo.usageFlags = bufferInfo.usageFlags | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+		if(renderer.getDevice().getGPUFeaturesAndProperties().rtSupport) bufferInfo.usageFlags = bufferInfo.usageFlags | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
 		std::unique_ptr<Buffer> buffer = std::make_unique<Buffer>(renderer, bufferInfo);
 
 		//copy
@@ -203,7 +203,7 @@ namespace PaperRenderer
 		renderer.addObject(this);
 		
 		//create unique VBO and BLAS if requested
-		if((uniqueGeometry || !parentModel.defaultBLAS) && renderer.getDevice().getRTSupport())
+		if((uniqueGeometry || !parentModel.defaultBLAS) && renderer.getDevice().getGPUFeaturesAndProperties().rtSupport)
 		{
 			//new vertex buffer
 			const BufferInfo bufferInfo = {
@@ -317,7 +317,7 @@ namespace PaperRenderer
 
 	void ModelInstance::queueBLAS(const VkBuildAccelerationStructureFlagsKHR flags) const
     {
-		if(renderer.getDevice().getRTSupport() && uniqueGeometryData.isUsed)
+		if(renderer.getDevice().getGPUFeaturesAndProperties().rtSupport && uniqueGeometryData.isUsed)
 		{
 			//queue operation
 			const BLASBuildOp op = {

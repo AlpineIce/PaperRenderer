@@ -101,7 +101,7 @@ namespace PaperRenderer
             .pNext = NULL,
             .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
             .maxSets = descriptorCount,
-            .poolSizeCount = (uint32_t)(renderer.getDevice().getRTSupport() ? poolSizes.size() : poolSizes.size() - 1),
+            .poolSizeCount = (uint32_t)(renderer.getDevice().getGPUFeaturesAndProperties().rtSupport ? poolSizes.size() : poolSizes.size() - 1),
             .pPoolSizes = poolSizes.data()
         };
 

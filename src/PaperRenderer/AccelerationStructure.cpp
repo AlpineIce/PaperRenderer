@@ -471,21 +471,21 @@ namespace PaperRenderer
             const VkDeviceSize newInstancesSize = Device::getAlignment(
                 std::max((VkDeviceSize)((instanceCount + 1) * sizeof(ModelInstance::AccelerationStructureInstance) * instancesOverhead),
                 (VkDeviceSize)(sizeof(ModelInstance::AccelerationStructureInstance) * 64)),
-                renderer.getDevice().getGPUProperties().properties.limits.minStorageBufferOffsetAlignment
+                renderer.getDevice().getGPUFeaturesAndProperties().gpuProperties.properties.limits.minStorageBufferOffsetAlignment
             );
 
             //instances description
             const VkDeviceSize newInstanceDescriptionsSize = Device::getAlignment(
                 std::max((VkDeviceSize)((instanceCount + 1) * sizeof(InstanceDescription) * instancesOverhead),
                 (VkDeviceSize)(sizeof(InstanceDescription) * 64)),
-                renderer.getDevice().getGPUProperties().properties.limits.minStorageBufferOffsetAlignment
+                renderer.getDevice().getGPUFeaturesAndProperties().gpuProperties.properties.limits.minStorageBufferOffsetAlignment
             );
 
             //tl instances
             const VkDeviceSize newTLInstancesSize = Device::getAlignment(
                 std::max((VkDeviceSize)((instanceCount + 1) * sizeof(VkAccelerationStructureInstanceKHR) * instancesOverhead),
                 (VkDeviceSize)(sizeof(VkAccelerationStructureInstanceKHR) * 64)),
-                renderer.getDevice().getGPUProperties().properties.limits.minStorageBufferOffsetAlignment
+                renderer.getDevice().getGPUFeaturesAndProperties().gpuProperties.properties.limits.minStorageBufferOffsetAlignment
             );
 
             const VkDeviceSize newSize = newInstancesSize + newInstanceDescriptionsSize + newTLInstancesSize;
@@ -916,7 +916,7 @@ namespace PaperRenderer
 
             //set scratch offset
             scratchOffset += buildData.buildSizeInfo.buildScratchSize;
-            scratchOffset = renderer.getDevice().getAlignment(scratchOffset, renderer.getDevice().getASproperties().minAccelerationStructureScratchOffsetAlignment);
+            scratchOffset = renderer.getDevice().getAlignment(scratchOffset, renderer.getDevice().getGPUFeaturesAndProperties().asProperties.minAccelerationStructureScratchOffsetAlignment);
         }
 
         //end command buffer and submit

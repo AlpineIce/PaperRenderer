@@ -115,7 +115,7 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
     rgenShader(renderer, readFromFile("resources/shaders/raytrace_rgen.spv")),
     rmissShader(renderer, readFromFile("resources/shaders/raytrace_rmiss.spv")),
     rshadowShader(renderer, readFromFile("resources/shaders/raytraceShadow_rmiss.spv")),
-    rayRecursionDepth(std::min((uint32_t)2, renderer.getDevice().getRTproperties().maxRayRecursionDepth)),
+    rayRecursionDepth(std::min((uint32_t)2, renderer.getDevice().getGPUFeaturesAndProperties().rtPipelineProperties.maxRayRecursionDepth)),
     rtInfoUBO(renderer, {
         .size = sizeof(RayTraceInfo) * 2,
         .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,

@@ -7,13 +7,19 @@
 namespace PaperRenderer
 {
     Device::Device(RenderEngine& renderer, const DeviceInstanceInfo& instanceInfo)
-        :renderer(renderer)
+        :devicepNext(instanceInfo.devicepNext),
+        renderer(renderer)
     {
-        //volk
-        VkResult result = volkInitialize();
+        if(volkInitialize() != VK_SUCCESS)
+        {
+            renderer.getLogger().recordLog({
+                .type = CRITICAL_ERROR,
+                .text = "Failed to initialize Volk (vulkan function loader)"
+            });
+        }
         glfwInit();
         createContext(instanceInfo);
-        findGPU();
+        findGPU(instanceInfo.extraDeviceExtensions);
     }
 
     Device::~Device()
@@ -35,7 +41,13 @@ namespace PaperRenderer
     {
         //----------INSTANCE CREATION----------//
 
-        //extensions
+        //reserved extensions
+        std::vector<const char*> extensionNames = {
+            VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME,
+            VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+        };
+
+        //glfw extensions
         unsigned int glfwExtensionCount = 0;
         glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
         std::vector<const char*> glfwExtensions(glfwExtensionCount);
@@ -44,11 +56,9 @@ namespace PaperRenderer
             glfwExtensions[i] = glfwGetRequiredInstanceExtensions(&glfwExtensionCount)[i];
         }
 
-        std::vector<const char*> extensionNames = {
-            VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME,
-            VK_EXT_DEBUG_UTILS_EXTENSION_NAME
-        };
+        //insert glfw and extra extensions
         extensionNames.insert(extensionNames.end(), glfwExtensions.begin(), glfwExtensions.end());
+        extensionNames.insert(extensionNames.end(), instanceData.extraInstanceExtensions.begin(), instanceData.extraInstanceExtensions.end());
 
         //log all extension names
         for(const char* extension : extensionNames)
@@ -73,7 +83,8 @@ namespace PaperRenderer
         };
         vkEnumerateInstanceVersion(&appInfo.apiVersion);
 
-        VkInstanceCreateInfo instanceInfo = {
+        //instance info
+        const VkInstanceCreateInfo instanceInfo = {
             .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
             .pNext = NULL,
             .flags = 0,
@@ -96,37 +107,55 @@ namespace PaperRenderer
         volkLoadInstance(instance);
     }
 
-    void Device::findGPU()
+    void Device::findGPU(std::vector<const char*> extensions)
     {
+        //get list of physical devices
         uint32_t deviceCount;
         vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
         std::vector<VkPhysicalDevice> physicalDevices(deviceCount);
         vkEnumeratePhysicalDevices(instance, &deviceCount, physicalDevices.data());
+        
+        DeviceFeaturesAndProperties tempFeaturesAndProperties = {};
 
         bool deviceFound = false;
         for(VkPhysicalDevice physicalDevice : physicalDevices)
         {
-            asProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR;
-            asProperties.pNext = NULL;
-            
-            rtPipelineProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
-            rtPipelineProperties.pNext = &asProperties;
-
+            //get physical device properties
+            VkPhysicalDeviceAccelerationStructurePropertiesKHR asProperties = {
+                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR,
+                .pNext = NULL
+            };
+            VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtPipelineProperties = {
+                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR,
+                .pNext = &asProperties
+            };
             VkPhysicalDeviceProperties2 properties = {
                 .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
                 .pNext = &rtPipelineProperties
             };
             vkGetPhysicalDeviceProperties2(physicalDevice, &properties);
-
+            
+            //get physical device features
+            VkPhysicalDeviceFeatures2 features = {
+                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+                .pNext = NULL
+            };
+            vkGetPhysicalDeviceFeatures2(physicalDevice, &features);
+            
+            //get all available extensions
             uint32_t extensionCount;
             vkEnumerateDeviceExtensionProperties(physicalDevice, NULL, &extensionCount, NULL);
-            extensions.resize(extensionCount);
-            vkEnumerateDeviceExtensionProperties(physicalDevice, NULL, &extensionCount, extensions.data());
+            std::vector<VkExtensionProperties> extensionProperties(extensionCount);
+            vkEnumerateDeviceExtensionProperties(physicalDevice, NULL, &extensionCount, extensionProperties.data());
 
-            //raster extensions
+            //required extensions
+            //extensions enabled by default
             bool hasSwapchain = false;
-            bool hasDynamicRendering = false;
-            bool hasSync2 = false;
+            bool hasDynamicState3 = false;
+            extensions.insert(extensions.end(), {
+                VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+                VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME
+            });
 
             //rt extensions
             bool hasDeferredOps = false;
@@ -134,16 +163,31 @@ namespace PaperRenderer
             bool hasRTPipeline = false;
             bool hasRayQuery = false;
             bool hasMaintFeatures = false;
+            extensions.insert(extensions.end(), {
+                VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+                VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+                VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+                VK_KHR_RAY_QUERY_EXTENSION_NAME,
+                VK_KHR_RAY_TRACING_MAINTENANCE_1_EXTENSION_NAME
+            });
 
             //check extensions
-            for(VkExtensionProperties properties : extensions)
+            std::set<const char*> enabledExtensions = {};
+            for(const VkExtensionProperties& properties : extensionProperties)
             {
-                //required for raster
-                hasSwapchain = hasSwapchain || std::string(properties.extensionName).find(VK_KHR_SWAPCHAIN_EXTENSION_NAME) != std::string::npos;
-                hasDynamicRendering = hasDynamicRendering || std::string(properties.extensionName).find(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) != std::string::npos;
-                hasSync2 = hasSync2 || std::string(properties.extensionName).find(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) != std::string::npos;
+                for(const char* extensionName : extensions)
+                {
+                    if(std::string(properties.extensionName).find(extensionName) != std::string::npos)
+                    {
+                        enabledExtensions.insert(extensionName);
+                    }
+                }
 
-                //optional extensions for RT
+                //required extensions
+                hasSwapchain = hasSwapchain || std::string(properties.extensionName).find(VK_KHR_SWAPCHAIN_EXTENSION_NAME) != std::string::npos;
+                hasDynamicState3 = hasDynamicState3 || std::string(properties.extensionName).find(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME) != std::string::npos;
+                
+                //required extensions for RT
                 hasDeferredOps = hasDeferredOps || std::string(properties.extensionName).find(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) != std::string::npos;
                 hasAccelStructure = hasAccelStructure || std::string(properties.extensionName).find(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) != std::string::npos;
                 hasRTPipeline = hasRTPipeline || std::string(properties.extensionName).find(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) != std::string::npos;
@@ -151,53 +195,61 @@ namespace PaperRenderer
                 hasMaintFeatures = hasMaintFeatures || std::string(properties.extensionName).find(VK_KHR_RAY_TRACING_MAINTENANCE_1_EXTENSION_NAME) != std::string::npos;
             }
 
-            bool hasRequiredRasterExtensions = hasSwapchain && hasDynamicRendering && hasSync2;
-            bool hasRequiredRTExtensions = hasDeferredOps && hasAccelStructure && hasRTPipeline && hasRayQuery && hasMaintFeatures;
-            if(hasRequiredRasterExtensions) //only needs raster extensions to run
+            const auto setGPUData = [&]()
             {
-                rtSupport = hasRequiredRTExtensions; //enable rt if all required extensions are satisfied
-                if(properties.properties.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-                {
-                    gpuProperties = properties;
-                    GPU = physicalDevice;
-                    vkGetPhysicalDeviceFeatures(GPU, &gpuFeatures);
-                    deviceFound = true;
+                //set found "flag"
+                deviceFound = true;
 
-                    break; //break prefers discrete gpu over other gpu types
-                }
-                else
-                {
-                    gpuProperties = properties;
-                    GPU = physicalDevice;
-                    vkGetPhysicalDeviceFeatures(GPU, &gpuFeatures);
-                    deviceFound = true;
-                }
+                //set GPU handle
+                GPU = physicalDevice;
+
+                //set features and properties struct
+                featuresAndProperties = {
+                    .gpuFeatures = features,
+                    .gpuProperties = properties,
+                    .asProperties = asProperties,
+                    .rtPipelineProperties = rtPipelineProperties,
+                    .enabledExtensions = std::vector<const char*>(enabledExtensions.begin(), enabledExtensions.end()),
+                    .rtSupport = hasDeferredOps && hasAccelStructure && hasRTPipeline && hasRayQuery && hasMaintFeatures
+                };
+            };
+            
+            //handle break or not
+            if(properties.properties.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU && hasSwapchain && hasDynamicState3)
+            {
+                setGPUData();
+
+                break; //break prefers discrete gpu over other gpu types
+            }
+            else if(hasSwapchain && hasDynamicState3)
+            {
+                setGPUData();
             }
         }
 
-        if(!deviceFound && physicalDevices.size() > 0)
+        //log warning if requested extension sizes dont match
+        if(featuresAndProperties.enabledExtensions.size() != extensions.size())
         {
-            gpuProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-            gpuProperties.pNext = &rtPipelineProperties;
-            
-            vkGetPhysicalDeviceProperties2(physicalDevices.at(0), &gpuProperties);
-            GPU = physicalDevices.at(0);
-            vkGetPhysicalDeviceFeatures(GPU, &gpuFeatures);
+            renderer.getLogger().recordLog({
+                .type = WARNING,
+                .text = "Not all requested extensions were found"
+            });
         }
-        else if(!deviceFound)
+
+        //log error if no suitable GPU was found
+        if(!deviceFound)
         {
             renderer.getLogger().recordLog({
                 .type = CRITICAL_ERROR,
                 .text = "Couldn't find suitable GPU"
             });
-            throw std::runtime_error("Couldn't find suitable GPU");
         }
 
         //record log
         renderer.getLogger().recordLog({
-                .type = INFO,
-                .text = std::string("Using GPU: ") + gpuProperties.properties.deviceName
-            });
+            .type = INFO,
+            .text = std::string("Using GPU: ") + featuresAndProperties.gpuProperties.properties.deviceName
+        });
     }
 
     void Device::findQueueFamilies(uint32_t& queueFamilyCount, std::vector<VkQueueFamilyProperties>& queueFamiliesProperties)
@@ -209,17 +261,17 @@ namespace PaperRenderer
         //About queue family selection, queues are selected from importance, with graphics being the highest, and present being the lowest.
         for(int i = 0; i < queueFamiliesProperties.size(); i++)
         {
-            if(queueFamiliesProperties.at(i).queueFlags & VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT && !queues.count(QueueType::GRAPHICS))
+            if(queueFamiliesProperties[i].queueFlags & VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT && !queues.count(QueueType::GRAPHICS))
             {
                 queues[QueueType::GRAPHICS].queueFamilyIndex = i;
                 continue;
             }
-            if(queueFamiliesProperties.at(i).queueFlags & VkQueueFlagBits::VK_QUEUE_COMPUTE_BIT && !queues.count(QueueType::COMPUTE))
+            if(queueFamiliesProperties[i].queueFlags & VkQueueFlagBits::VK_QUEUE_COMPUTE_BIT && !queues.count(QueueType::COMPUTE))
             {
                 queues[QueueType::COMPUTE].queueFamilyIndex = i;
                 continue;
             }
-            if(queueFamiliesProperties.at(i).queueFlags & VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT && !queues.count(QueueType::TRANSFER))
+            if(queueFamiliesProperties[i].queueFlags & VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT && !queues.count(QueueType::TRANSFER))
             {
                 queues[QueueType::TRANSFER].queueFamilyIndex = i;
                 continue;
@@ -350,9 +402,6 @@ namespace PaperRenderer
 
     void Device::createDevice()
     {
-        //enable anisotropy
-        gpuFeatures.samplerAnisotropy = VK_TRUE;
-
         //----------QUEUE SETUP----------//
 
         uint32_t queueFamilyCount;
@@ -372,31 +421,18 @@ namespace PaperRenderer
 
         //----------LOGICAL DEVICE CREATION----------//
 
-        std::vector<const char*> extensionNames = {
-            VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-            VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME
-        };
-        if(rtSupport)
+        //insert RT extensions if support is enabled
+        if(featuresAndProperties.rtSupport)
         {
             //record log
             renderer.getLogger().recordLog({
                 .type = INFO,
                 .text = "RT supported"
             });
-
-            //insert extension names
-            extensionNames.insert(extensionNames.end(), {
-                VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-                VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-                VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
-                VK_KHR_RAY_QUERY_EXTENSION_NAME,
-                VK_KHR_RAY_TRACING_MAINTENANCE_1_EXTENSION_NAME,
-                //VK_NV_RAY_TRACING_VALIDATION_EXTENSION_NAME
-            });
         }
 
         //log all extension names
-        for(const char* extension : extensionNames)
+        for(const char* extension : featuresAndProperties.enabledExtensions)
         {
             renderer.getLogger().recordLog({
                 .type = INFO,
@@ -407,7 +443,7 @@ namespace PaperRenderer
         //RT features
         VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationFeatures = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
-            .pNext = NULL,
+            .pNext = devicepNext,
             .accelerationStructure = VK_TRUE
         };
 
@@ -437,7 +473,7 @@ namespace PaperRenderer
         //Core features
         VkPhysicalDeviceExtendedDynamicState3FeaturesEXT dynamicState3Features = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
-            .pNext = rtSupport ? &/*validationFeatures*/rtMaintFeatures : NULL,
+            .pNext = featuresAndProperties.rtSupport ? &rtMaintFeatures : devicepNext,
             .extendedDynamicState3RasterizationSamples = VK_TRUE
         };
 
@@ -481,8 +517,8 @@ namespace PaperRenderer
             .flags = 0,
             .queueCreateInfoCount = (uint32_t)queueCreateInfoVector.size(),
             .pQueueCreateInfos = queueCreateInfoVector.data(),
-            .enabledExtensionCount = (uint32_t)extensionNames.size(),
-            .ppEnabledExtensionNames = extensionNames.data(),
+            .enabledExtensionCount = (uint32_t)featuresAndProperties.enabledExtensions.size(),
+            .ppEnabledExtensionNames = featuresAndProperties.enabledExtensions.data(),
             .pEnabledFeatures = NULL
         };
 
@@ -588,12 +624,11 @@ namespace PaperRenderer
 
     QueueFamiliesIndices Device::getQueueFamiliesIndices() const
     {
-        QueueFamiliesIndices queueFamiliesIndices = {};
-        queueFamiliesIndices.graphicsFamilyIndex = queues.at(QueueType::GRAPHICS).queueFamilyIndex;
-        queueFamiliesIndices.computeFamilyIndex = queues.at(QueueType::COMPUTE).queueFamilyIndex;
-        queueFamiliesIndices.transferFamilyIndex = queues.at(QueueType::TRANSFER).queueFamilyIndex;
-        queueFamiliesIndices.presentationFamilyIndex = queues.at(QueueType::PRESENT).queueFamilyIndex;
-
-        return queueFamiliesIndices;
+        return {
+            .graphicsFamilyIndex = (int)queues.at(QueueType::GRAPHICS).queueFamilyIndex,
+            .computeFamilyIndex = (int)queues.at(QueueType::COMPUTE).queueFamilyIndex,
+            .transferFamilyIndex = (int)queues.at(QueueType::TRANSFER).queueFamilyIndex,
+            .presentationFamilyIndex = (int)queues.at(QueueType::PRESENT).queueFamilyIndex
+        };
     }
 }

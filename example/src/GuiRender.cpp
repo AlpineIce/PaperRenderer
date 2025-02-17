@@ -76,7 +76,7 @@ void renderImGui(PaperRenderer::RenderEngine* renderer, PaperRenderer::Statistic
     guiContext->adjustableMaterial->setParameters(materialParameters);
 
     //render mode
-    if(renderer->getDevice().getRTSupport())
+    if(renderer->getDevice().getGPUFeaturesAndProperties().rtSupport)
     {
         ImGui::SeparatorText("Adjust Render Mode");
 
