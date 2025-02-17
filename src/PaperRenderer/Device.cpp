@@ -359,11 +359,27 @@ namespace PaperRenderer
             {
                 queuesInFamily.queues.push_back(&familyQueues.at(queuesInFamily.queueFamilyIndex).at(i));
             }
+
+            const auto queueTypeToString = [](QueueType type) -> std::string
+            {
+                switch(type)
+                {
+                    case GRAPHICS:
+                        return "Graphics ";
+                    case COMPUTE:
+                        return "Compute ";
+                    case TRANSFER:
+                        return "Transfer ";
+                    case PRESENT:
+                        return "Present ";
+                }
+                return "";
+            };
             
             //record log
             renderer.getLogger().recordLog({
                 .type = INFO,
-                .text = std::string("Using ") + std::to_string(queuesInFamily.queues.size()) + " Queues on queue family index " + std::to_string(queuesInFamily.queueFamilyIndex)
+                .text = queueTypeToString(queueType) + std::string("queue group using ") + std::to_string(queuesInFamily.queues.size()) + " Queues on queue family index " + std::to_string(queuesInFamily.queueFamilyIndex)
             });
         }
     }
@@ -421,15 +437,11 @@ namespace PaperRenderer
 
         //----------LOGICAL DEVICE CREATION----------//
 
-        //insert RT extensions if support is enabled
-        if(featuresAndProperties.rtSupport)
-        {
-            //record log
-            renderer.getLogger().recordLog({
-                .type = INFO,
-                .text = "RT supported"
-            });
-        }
+        //log RT support
+        renderer.getLogger().recordLog({
+            .type = INFO,
+            .text = featuresAndProperties.rtSupport ? "RT supported" : "RT not supported"
+        });
 
         //log all extension names
         for(const char* extension : featuresAndProperties.enabledExtensions)
