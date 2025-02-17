@@ -178,7 +178,7 @@ namespace PaperRenderer
         void setImageData(const Buffer& imageStagingBuffer);
 
         VkImageView getNewImageView(VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format);
-        VkSampler getNewSampler();
+        VkSampler getNewSampler(VkFilter magFilter); //filter is whether the sampler uses linear or nearest sampling
 
         const VkImage& getImage() const { return image; }
         const VkExtent3D getExtent() const { return imageInfo.extent; }

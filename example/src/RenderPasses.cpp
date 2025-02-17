@@ -28,7 +28,7 @@ HDRBuffer getHDRBuffer(PaperRenderer::RenderEngine &renderer, VkImageLayout star
     VkImageView view = hdrBuffer->getNewImageView(VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, format);
 
     //HDR buffer sampler (I've profiled this before and its much more efficient to use a render pass than a computer shader and blit)
-    VkSampler sampler = hdrBuffer->getNewSampler();
+    VkSampler sampler = hdrBuffer->getNewSampler(VK_FILTER_LINEAR);
 
     return { std::move(hdrBuffer), format, view, sampler };
 }
