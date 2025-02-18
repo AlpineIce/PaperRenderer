@@ -124,7 +124,7 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
     rtRenderPass(
         renderer,
         rgenShader,
-        { &rmissShader, &rshadowShader },
+        { rmissShader, rshadowShader },
         {},
         {
             { 0, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::CAMERA_MATRICES) },

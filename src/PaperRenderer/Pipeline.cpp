@@ -250,8 +250,8 @@ namespace PaperRenderer
         sbtRawData.clear();
 
         //shaders
-        const VkDeviceSize shaderGroupCount = creationInfo.missShaders.size() + creationInfo.callableShaders.size() + creationInfo.materials.size() + 1;
-        const VkDeviceSize maxNumShaders = creationInfo.missShaders.size() + creationInfo.callableShaders.size() + creationInfo.materials.size() + 1 + (creationInfo.materials.size() * 3);
+        const VkDeviceSize shaderGroupCount = creationInfo.missShaders->size() + creationInfo.callableShaders->size() + creationInfo.materials.size() + 1;
+        const VkDeviceSize maxNumShaders = creationInfo.missShaders->size() + creationInfo.callableShaders->size() + creationInfo.materials.size() + 1 + (creationInfo.materials.size() * 3);
         std::vector<VkRayTracingShaderGroupCreateInfoKHR> rtShaderGroups;
         rtShaderGroups.reserve(shaderGroupCount);
         std::vector<VkShaderModuleCreateInfo> shaderModuleInfos;
@@ -259,27 +259,23 @@ namespace PaperRenderer
         std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
         shaderStages.reserve(maxNumShaders); //reserve worst case
 
-        //SBT offsets
-        std::unordered_map<std::vector<uint32_t> const*, uint32_t> raygenGroupOffsets = {};
-        std::unordered_map<std::vector<uint32_t> const*, uint32_t> missGroupOffsets = {};
-        std::unordered_map<std::vector<uint32_t> const*, uint32_t> callableGroupOffsets = {};
-
         //enumerate raygen shader groups (there should only be one but whatever)
-        enumerateShaders({ creationInfo.raygenShader }, raygenGroupOffsets, rtShaderGroups, shaderModuleInfos, shaderStages, VK_SHADER_STAGE_RAYGEN_BIT_KHR);
+        const std::vector<std::vector<uint32_t>> rgenShaders = { *creationInfo.raygenShader };
+        enumerateShaders(rgenShaders, rtShaderGroups, shaderModuleInfos, shaderStages, VK_SHADER_STAGE_RAYGEN_BIT_KHR);
         shaderBindingTableData.raygenShaderBindingTable.size = groupBaseAlignment; //edge case
         shaderBindingTableData.raygenShaderBindingTable.stride = groupBaseAlignment; //edge case
 
         //enumerate miss shader groups
-        enumerateShaders(creationInfo.missShaders, missGroupOffsets, rtShaderGroups, shaderModuleInfos, shaderStages, VK_SHADER_STAGE_MISS_BIT_KHR);
-        shaderBindingTableData.missShaderBindingTable.size = Device::getAlignment(creationInfo.missShaders.size() * alignedGroupSize, groupBaseAlignment);
+        enumerateShaders(*creationInfo.missShaders, rtShaderGroups, shaderModuleInfos, shaderStages, VK_SHADER_STAGE_MISS_BIT_KHR);
+        shaderBindingTableData.missShaderBindingTable.size = Device::getAlignment(creationInfo.missShaders->size() * alignedGroupSize, groupBaseAlignment);
         shaderBindingTableData.missShaderBindingTable.stride = handleAlignment;
         const uint32_t missOffset = 1;
         
         //enumerate callable shader groups
-        enumerateShaders(creationInfo.callableShaders, callableGroupOffsets, rtShaderGroups, shaderModuleInfos, shaderStages, VK_SHADER_STAGE_CALLABLE_BIT_KHR);
-        shaderBindingTableData.callableShaderBindingTable.size = Device::getAlignment(creationInfo.callableShaders.size() * alignedGroupSize, groupBaseAlignment);
+        enumerateShaders(*creationInfo.callableShaders, rtShaderGroups, shaderModuleInfos, shaderStages, VK_SHADER_STAGE_CALLABLE_BIT_KHR);
+        shaderBindingTableData.callableShaderBindingTable.size = Device::getAlignment(creationInfo.callableShaders->size() * alignedGroupSize, groupBaseAlignment);
         shaderBindingTableData.callableShaderBindingTable.stride = handleAlignment;
-        const uint32_t callableOffset = missOffset + creationInfo.missShaders.size();
+        const uint32_t callableOffset = missOffset + creationInfo.missShaders->size();
 
         //enumerate hit shader groups
         const uint32_t hitGroupsStartIndex = rtShaderGroups.size();
@@ -420,8 +416,8 @@ namespace PaperRenderer
 
         //get general shader SBT data
         insertGroupSBTData(sbtRawData, 0, 1); //only 1 raygen, offset is always 0
-        if(creationInfo.missShaders.size()) insertGroupSBTData(sbtRawData, missOffset, creationInfo.missShaders.size());
-        if(creationInfo.callableShaders.size()) insertGroupSBTData(sbtRawData, callableOffset, creationInfo.callableShaders.size());
+        if(creationInfo.missShaders->size()) insertGroupSBTData(sbtRawData, missOffset, creationInfo.missShaders->size());
+        if(creationInfo.callableShaders->size()) insertGroupSBTData(sbtRawData, callableOffset, creationInfo.callableShaders->size());
 
         //set material hit groups data
         const uint32_t hitShaderBindingTableLocation = sbtRawData.size();
@@ -440,8 +436,7 @@ namespace PaperRenderer
     }
 
     void RTPipeline::enumerateShaders(
-        const std::vector<std::vector<uint32_t> const*>& shaders,
-        std::unordered_map<std::vector<uint32_t> const*, uint32_t>& offsets,
+        const std::vector<std::vector<uint32_t>>& shaders,
         std::vector<VkRayTracingShaderGroupCreateInfoKHR>& shaderGroups,
         std::vector<VkShaderModuleCreateInfo>& shaderModuleInfos,
         std::vector<VkPipelineShaderStageCreateInfo>& shaderStages,
@@ -452,13 +447,10 @@ namespace PaperRenderer
         for(uint32_t i = 0; i < shaders.size(); i++)
         {
             //continue if shader data is empty
-            if(!shaders[i]->size())
+            if(!shaders[i].size())
             {
                 continue;
             }
-
-            //set offset
-            offsets[shaders[i]] = i;
             
             //setup group (1 to 1 with shader)
             VkRayTracingShaderGroupCreateInfoKHR groupInfo = {
@@ -478,8 +470,8 @@ namespace PaperRenderer
                 .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
                 .pNext = NULL,
                 .flags = 0,
-                .codeSize = shaders[i]->size(),
-                .pCode = shaders[i]->data()
+                .codeSize = shaders[i].size(),
+                .pCode = shaders[i].data()
             });
 
             //setup stage (1 to 1 with group)
@@ -495,15 +487,11 @@ namespace PaperRenderer
         }
     }
 
-    uint32_t RTPipeline::insertGroupSBTData(std::vector<char>& toInsertData, uint32_t groupOffset, uint32_t handleCount) const
+    void RTPipeline::insertGroupSBTData(std::vector<char>& toInsertData, uint32_t groupOffset, uint32_t handleCount) const
     {
         const uint32_t handleSize = renderer.getDevice().getGPUFeaturesAndProperties().rtPipelineProperties.shaderGroupHandleSize;
         const uint32_t handleAlignment = renderer.getDevice().getGPUFeaturesAndProperties().rtPipelineProperties.shaderGroupHandleAlignment;
         const uint32_t groupBaseAlignment = renderer.getDevice().getGPUFeaturesAndProperties().rtPipelineProperties.shaderGroupBaseAlignment;
-        const uint32_t alignedGroupSize = renderer.getDevice().getAlignment(handleSize, handleAlignment);
-
-        //pad toInsertData to the group base alignment
-        toInsertData.resize(Device::getAlignment(sbtRawData.size(), groupBaseAlignment));
 
         //initialize group data
         std::vector<char> groupData(handleAlignment * handleCount); //group data size is equal to the number of handles * the alignment of handles
@@ -517,7 +505,7 @@ namespace PaperRenderer
                 .type = WARNING,
                 .text = "vkGetRayTracingShaderGroupHandlesKHR failed on RT pipeline creation"
             });
-            return 0;
+            return;
         }
 
         //transfer handle data
@@ -529,8 +517,8 @@ namespace PaperRenderer
         //insert data
         toInsertData.insert(toInsertData.end(), groupData.begin(), groupData.end());
 
-        //return total group size
-        return groupData.size();
+        //pad toInsertData to the group base alignment
+        toInsertData.resize(Device::getAlignment(sbtRawData.size(), groupBaseAlignment));
     }
 
     void RTPipeline::rebuildSBTBuffer(RenderEngine& renderer)

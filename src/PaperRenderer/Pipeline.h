@@ -133,8 +133,8 @@ namespace PaperRenderer
     {
         std::vector<class RTMaterial*> materials = {};
         std::vector<uint32_t> const* raygenShader = NULL;
-        std::vector<std::vector<uint32_t> const*> missShaders = {};
-        std::vector<std::vector<uint32_t> const*> callableShaders = {};
+        std::vector<std::vector<uint32_t>> const* missShaders = NULL;
+        std::vector<std::vector<uint32_t>> const* callableShaders = NULL;
         std::unordered_map<uint32_t, VkDescriptorSetLayout> descriptorSets = {};
         std::vector<VkPushConstantRange> pcRanges = {};
         RTPipelineProperties properties = {};
@@ -158,13 +158,12 @@ namespace PaperRenderer
         std::unique_ptr<Buffer> sbtBuffer;
 
         void enumerateShaders(
-            const std::vector<std::vector<uint32_t> const*>& shaders,
-            std::unordered_map<std::vector<uint32_t> const*, uint32_t>& offsets,
+            const std::vector<std::vector<uint32_t>>& shaders,
             std::vector<VkRayTracingShaderGroupCreateInfoKHR>& shaderGroups,
             std::vector<VkShaderModuleCreateInfo>& shaderModuleInfos,
             std::vector<VkPipelineShaderStageCreateInfo>& shaderStages,
             VkShaderStageFlagBits stage);
-        uint32_t insertGroupSBTData(std::vector<char>& toInsertData, uint32_t groupOffset, uint32_t handleCount) const;
+        void insertGroupSBTData(std::vector<char>& toInsertData, uint32_t groupOffset, uint32_t handleCount) const;
         void rebuildSBTBuffer(RenderEngine& renderer);
 
     public:

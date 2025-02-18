@@ -57,8 +57,8 @@ namespace PaperRenderer
 
         //shaders
         std::vector<uint32_t> raygenShader;
-        std::vector<std::vector<uint32_t> const*> missShaders;
-        std::vector<std::vector<uint32_t> const*> callableShaders;
+        std::vector<std::vector<uint32_t>> missShaders;
+        std::vector<std::vector<uint32_t>> callableShaders;
         std::unordered_map<RTMaterial const*, uint32_t> materialReferences; //uint32_t is the number of instances using it
 
         void rebuildPipeline();
@@ -72,8 +72,8 @@ namespace PaperRenderer
         RayTraceRender(
             RenderEngine& renderer,
             const std::vector<uint32_t>& raygenShader,
-            const std::vector<std::vector<uint32_t> const*>& missShaders,
-            const std::vector<std::vector<uint32_t> const*>& callableShaders,
+            const std::vector<std::vector<uint32_t>>& missShaders,
+            const std::vector<std::vector<uint32_t>>& callableShaders,
             const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts,
             const RTPipelineProperties& pipelineProperties,
             const std::vector<VkPushConstantRange>& pcRanges

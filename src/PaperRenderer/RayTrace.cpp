@@ -10,8 +10,8 @@ namespace PaperRenderer
     RayTraceRender::RayTraceRender(
         RenderEngine& renderer,
         const std::vector<uint32_t>& raygenShader,
-        const std::vector<std::vector<uint32_t> const*>& missShaders,
-        const std::vector<std::vector<uint32_t> const*>& callableShaders,
+        const std::vector<std::vector<uint32_t>>& missShaders,
+        const std::vector<std::vector<uint32_t>>& callableShaders,
         const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts,
         const RTPipelineProperties& pipelineProperties,
         const std::vector<VkPushConstantRange>& pcRanges
@@ -134,8 +134,8 @@ namespace PaperRenderer
         const RTPipelineInfo pipelineBuildInfo = {
             .materials = materials,
             .raygenShader = &raygenShader,
-            .missShaders = missShaders,
-            .callableShaders = callableShaders,
+            .missShaders = &missShaders,
+            .callableShaders = &callableShaders,
             .descriptorSets = setLayouts,
             .pcRanges = pcRanges,
             .properties = pipelineProperties
