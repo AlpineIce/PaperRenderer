@@ -9,9 +9,9 @@ namespace PaperRenderer
 {
     RayTraceRender::RayTraceRender(
         RenderEngine& renderer,
-        const Shader& raygenShader,
-        const std::vector<Shader const*>& missShaders,
-        const std::vector<Shader const*>& callableShaders,
+        const std::vector<uint32_t>& raygenShader,
+        const std::vector<std::vector<uint32_t> const*>& missShaders,
+        const std::vector<std::vector<uint32_t> const*>& callableShaders,
         const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts,
         const RTPipelineProperties& pipelineProperties,
         const std::vector<VkPushConstantRange>& pcRanges

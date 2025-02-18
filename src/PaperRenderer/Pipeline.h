@@ -8,27 +8,10 @@
 
 namespace PaperRenderer
 {   
-    //----------SHADER DECLARATIONS----------//
-
-    class Shader
-    {
-    private:
-        VkShaderModule program;
-        
-        class RenderEngine& renderer;
-
-    public:
-        Shader(class RenderEngine& renderer, const std::vector<uint32_t>& data);
-        ~Shader();
-        Shader(const Shader&) = delete;
-        
-        VkShaderModule getModule() const { return program; }
-    };
-
     struct ShaderDescription
     {
         VkShaderStageFlagBits stage = VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM;
-        Shader const* shader = NULL;
+        const std::vector<uint32_t>& shaderData;
     };
 
     //----------PIPELINE BASE CLASS DECLARATIONS----------//
@@ -56,7 +39,7 @@ namespace PaperRenderer
 
     struct ComputePipelineInfo
     {
-        Shader const* shader = NULL;
+        const std::vector<uint32_t>& shaderData;
         std::unordered_map<uint32_t, VkDescriptorSetLayout> descriptorSets = {}; //set, bindings
         std::vector<VkPushConstantRange> pcRanges = {};
     };
@@ -149,20 +132,12 @@ namespace PaperRenderer
     struct RTPipelineInfo
     {
         std::vector<class RTMaterial*> materials = {};
-        Shader const* raygenShader = NULL;
-        std::vector<Shader const*> missShaders = {};
-        std::vector<Shader const*> callableShaders = {};
+        std::vector<uint32_t> const* raygenShader = NULL;
+        std::vector<std::vector<uint32_t> const*> missShaders = {};
+        std::vector<std::vector<uint32_t> const*> callableShaders = {};
         std::unordered_map<uint32_t, VkDescriptorSetLayout> descriptorSets = {};
         std::vector<VkPushConstantRange> pcRanges = {};
         RTPipelineProperties properties = {};
-    };
-    
-    struct RTShaderBindingTableOffsets
-    {
-        std::unordered_map<class RTMaterial const*, uint32_t> materialShaderGroupOffsets; //aka hit group offsets
-        std::unordered_map<Shader const*, uint32_t> raygenGroupOffsets;
-        std::unordered_map<Shader const*, uint32_t> missGroupOffsets;
-        std::unordered_map<Shader const*, uint32_t> callableGroupOffsets;
     };
 
     struct RTShaderBindingTableData
@@ -171,7 +146,7 @@ namespace PaperRenderer
         VkStridedDeviceAddressRegionKHR missShaderBindingTable = {};
         VkStridedDeviceAddressRegionKHR hitShaderBindingTable = {};
         VkStridedDeviceAddressRegionKHR callableShaderBindingTable = {};
-        RTShaderBindingTableOffsets shaderBindingTableOffsets = {};
+        std::unordered_map<class RTMaterial const*, uint32_t> materialShaderGroupOffsets; //aka hit group offsets
     };
 
     class RTPipeline : public Pipeline
@@ -183,9 +158,10 @@ namespace PaperRenderer
         std::unique_ptr<Buffer> sbtBuffer;
 
         void enumerateShaders(
-            const std::vector<Shader const*>& shaders,
-            std::unordered_map<Shader const*, uint32_t>& offsets,
+            const std::vector<std::vector<uint32_t> const*>& shaders,
+            std::unordered_map<std::vector<uint32_t> const*, uint32_t>& offsets,
             std::vector<VkRayTracingShaderGroupCreateInfoKHR>& shaderGroups,
+            std::vector<VkShaderModuleCreateInfo>& shaderModuleInfos,
             std::vector<VkPipelineShaderStageCreateInfo>& shaderStages,
             VkShaderStageFlagBits stage);
         uint32_t insertGroupSBTData(std::vector<char>& toInsertData, uint32_t groupOffset, uint32_t handleCount) const;

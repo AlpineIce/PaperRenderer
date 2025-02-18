@@ -466,16 +466,16 @@ int main()
     //----------EXTRA MATERIALS----------//
 
     //leaf raster material
-    PaperRenderer::Shader leafFragShader(renderer, readFromFile("resources/shaders/leaf_frag.spv")); //use a unique fragment shader for the leaf
+    const std::vector<uint32_t> leafFragShader = readFromFile("resources/shaders/leaf_frag.spv"); //use a unique fragment shader for the leaf
     DefaultMaterial leafMaterial(renderer, {
             .shaders = {
                 {
                     .stage = VK_SHADER_STAGE_VERTEX_BIT,
-                    .shader = &exampleRaster.getDefaultVertShader() //use the same vertex shader as the examples default
+                    .shaderData = exampleRaster.getDefaultVertShader() //use the same vertex shader as the examples default
                 },
                 {
                     .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-                    .shader = &leafFragShader
+                    .shaderData = leafFragShader
                 }
             },
             .descriptorSets = {

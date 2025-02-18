@@ -18,7 +18,6 @@ namespace PaperRenderer
     private:
         DescriptorSetLayout uboSetLayout;
         DescriptorSetLayout ioSetLayout;
-        Shader shader;
         ComputeShader computeShader;
 
         class RenderEngine& renderer;

@@ -513,7 +513,8 @@ namespace PaperRenderer
         VkPhysicalDeviceVulkan14Features vulkan14Features = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
             .pNext = &vulkan13Features,
-            .maintenance5 = VK_TRUE
+            .maintenance5 = VK_TRUE,
+            .maintenance6 = VK_TRUE
         };
 
         VkPhysicalDeviceFeatures2 features2 = {

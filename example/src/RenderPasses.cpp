@@ -112,9 +112,9 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
         }
     }),
     rtDescriptor(renderer, rtDescriptorLayout.getSetLayout()),
-    rgenShader(renderer, readFromFile("resources/shaders/raytrace_rgen.spv")),
-    rmissShader(renderer, readFromFile("resources/shaders/raytrace_rmiss.spv")),
-    rshadowShader(renderer, readFromFile("resources/shaders/raytraceShadow_rmiss.spv")),
+    rgenShader(readFromFile("resources/shaders/raytrace_rgen.spv")),
+    rmissShader(readFromFile("resources/shaders/raytrace_rmiss.spv")),
+    rshadowShader(readFromFile("resources/shaders/raytraceShadow_rmiss.spv")),
     rayRecursionDepth(std::min((uint32_t)2, renderer.getDevice().getGPUFeaturesAndProperties().rtPipelineProperties.maxRayRecursionDepth)),
     rtInfoUBO(renderer, {
         .size = sizeof(RayTraceInfo) * 2,
@@ -332,17 +332,17 @@ ExampleRaster::ExampleRaster(PaperRenderer::RenderEngine &renderer, const PaperR
         }
     }),
     parametersDescriptor(renderer, parametersDescriptorSetLayout.getSetLayout()),
-    defaultVertShader(renderer, readFromFile("resources/shaders/Default_vert.spv")),
-    defaultFragShader(renderer, readFromFile("resources/shaders/Default_frag.spv")),
+    defaultVertShader(readFromFile("resources/shaders/Default_vert.spv")),
+    defaultFragShader(readFromFile("resources/shaders/Default_frag.spv")),
     baseMaterial(renderer, {
             .shaders = {
                 {
                     .stage = VK_SHADER_STAGE_VERTEX_BIT,
-                    .shader = &defaultVertShader
+                    .shaderData = defaultVertShader
                 },
                 {
                     .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-                    .shader = &defaultFragShader
+                    .shaderData = defaultFragShader
                 }
             },
             .descriptorSets = {
@@ -758,20 +758,18 @@ const PaperRenderer::Queue& BufferCopyPass::render(const PaperRenderer::Synchron
 }
 
 BufferCopyPass::BufferCopyMaterial::BufferCopyMaterial(PaperRenderer::RenderEngine &renderer, const HDRBuffer &hdrBuffer, VkDescriptorSetLayout setLayout)
-    :vertShader(renderer, readFromFile("resources/shaders/Quad.spv")),
-    fragShader(renderer, readFromFile("resources/shaders/BufferCopy.spv")),
-    descriptor(renderer, setLayout),
+    :descriptor(renderer, setLayout),
     material(
         renderer, 
         {
             .shaders = {
                 {
                     .stage = VK_SHADER_STAGE_VERTEX_BIT,
-                    .shader = &vertShader
+                    .shaderData = readFromFile("resources/shaders/Quad.spv")
                 },
                 {
                     .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-                    .shader = &fragShader
+                    .shaderData = readFromFile("resources/shaders/BufferCopy.spv")
                 }
             },
             .descriptorSets = {

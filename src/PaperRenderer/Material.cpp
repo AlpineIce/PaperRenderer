@@ -53,20 +53,9 @@ namespace PaperRenderer
     //----------RT MATERIAL DEFINITIONS----------//
 
     PaperRenderer::RTMaterial::RTMaterial(RenderEngine& renderer, const ShaderHitGroup& hitGroup)
-        :renderer(renderer)
+        :shaderHitGroup(hitGroup),
+        renderer(renderer)
     {
-        if(hitGroup.chitShaderData.size())
-        {
-            shaderHitGroup.emplace(std::make_pair(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, std::make_unique<Shader>(renderer, hitGroup.chitShaderData)));
-        }
-        if(hitGroup.ahitShaderData.size())
-        {
-            shaderHitGroup.emplace(std::make_pair(VK_SHADER_STAGE_ANY_HIT_BIT_KHR, std::make_unique<Shader>(renderer, hitGroup.ahitShaderData)));
-        }
-        if(hitGroup.intShaderData.size())
-        {
-            shaderHitGroup.emplace(std::make_pair(VK_SHADER_STAGE_INTERSECTION_BIT_KHR, std::make_unique<Shader>(renderer, hitGroup.intShaderData)));
-        }
     }
 
     PaperRenderer::RTMaterial::~RTMaterial()

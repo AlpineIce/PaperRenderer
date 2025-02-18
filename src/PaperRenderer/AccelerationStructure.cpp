@@ -35,9 +35,8 @@ namespace PaperRenderer
                 .pImmutableSamplers = NULL
             }
         }),
-        shader(renderer, shaderData),
         computeShader(renderer, {
-            .shader = &shader,
+            .shaderData = shaderData,
             .descriptorSets = {
                 { TLAS::TLASDescriptorIndices::UBO, uboSetLayout.getSetLayout() },
                 { TLAS::TLASDescriptorIndices::INSTANCES, renderer.getDefaultDescriptorSetLayout(INSTANCES) },
@@ -677,11 +676,10 @@ namespace PaperRenderer
                 {
                     //get sbt offset
                     uint32_t sbtOffset = 
-                        rtRender.getPipeline().getShaderBindingTableData().shaderBindingTableOffsets.
-                        materialShaderGroupOffsets.at(instance.instancePtr->rtRenderSelfReferences.at(&rtRender).material);
+                        rtRender.getPipeline().getShaderBindingTableData().materialShaderGroupOffsets.at(instance.instancePtr->rtRenderSelfReferences.at(&rtRender).material);
 
                     //queue transfer of instance data
-                    ModelInstance::AccelerationStructureInstance instanceShaderData = {
+                    const ModelInstance::AccelerationStructureInstance instanceShaderData = {
                         .blasReference = blasPtr->getASBufferAddress(),
                         .modelInstanceIndex = instance.instancePtr->rendererSelfIndex,
                         .customIndex = instance.customIndex,
@@ -696,7 +694,7 @@ namespace PaperRenderer
                     );
 
                     //queue transfer of description data
-                    InstanceDescription descriptionShaderData = {
+                    const InstanceDescription descriptionShaderData = {
                         .modelDataOffset = (uint32_t)instance.instancePtr->getParentModel().getShaderDataLocation()
                     };
                     renderer.getStagingBuffer().queueDataTransfers(

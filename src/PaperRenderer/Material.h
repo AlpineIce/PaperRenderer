@@ -56,15 +56,15 @@ namespace PaperRenderer
 
     struct ShaderHitGroup
     {
-        const std::vector<uint32_t>& chitShaderData; //optional if int shader is valid, leave empty and shader will be ignored
-        const std::vector<uint32_t>& ahitShaderData; //optional, leave empty and shader will be ignored
-        const std::vector<uint32_t>& intShaderData; //optional if chit shader is valid, leave empty and shader will be ignored
+        std::vector<uint32_t> chitShaderData = {}; //optional if int shader is valid, leave empty and shader will be ignored
+        std::vector<uint32_t> ahitShaderData = {}; //optional, leave empty and shader will be ignored
+        std::vector<uint32_t> intShaderData = {}; //optional if chit shader is valid, leave empty and shader will be ignored
     };
 
     class RTMaterial
     {
     private:
-        std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>> shaderHitGroup;
+        const ShaderHitGroup shaderHitGroup;
 
         class RenderEngine& renderer;
 
@@ -74,6 +74,6 @@ namespace PaperRenderer
         ~RTMaterial();
         RTMaterial(const RTMaterial&) = delete;
 
-        const std::unordered_map<VkShaderStageFlagBits, std::shared_ptr<Shader>>& getShaderHitGroup() const { return shaderHitGroup; }
+        const ShaderHitGroup& getShaderHitGroup() const { return shaderHitGroup; }
     };
 }

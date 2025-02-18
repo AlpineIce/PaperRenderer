@@ -3,34 +3,6 @@
 
 namespace PaperRenderer
 {
-    //----------SHADER DEFINITIONS----------//
-
-    Shader::Shader(RenderEngine& renderer, const std::vector<uint32_t>& data)
-        :renderer(renderer)
-    {
-        const VkShaderModuleCreateInfo creationInfo = {
-            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .codeSize = data.size(),
-            .pCode = data.data()
-        };
-
-        VkResult result = vkCreateShaderModule(renderer.getDevice().getDevice(), &creationInfo, nullptr, &program);
-        if(result != VK_SUCCESS)
-        {
-            renderer.getLogger().recordLog({
-                .type = CRITICAL_ERROR,
-                .text = "Creation of shader module failed."
-            });
-        }
-    }
-
-    Shader::~Shader()
-    {
-        vkDestroyShaderModule(renderer.getDevice().getDevice(), program, nullptr);
-    }
-
     //----------PIPELINE DEFINITIONS---------//
 
     Pipeline::Pipeline(RenderEngine& renderer, const std::unordered_map<uint32_t, VkDescriptorSetLayout>& setLayouts, const std::vector<VkPushConstantRange>& pcRanges)
@@ -82,16 +54,24 @@ namespace PaperRenderer
     ComputePipeline::ComputePipeline(RenderEngine& renderer, const ComputePipelineInfo& creationInfo)
         :Pipeline(renderer, creationInfo.descriptorSets, creationInfo.pcRanges)
     {
+        const VkShaderModuleCreateInfo shaderModuleInfo = {
+            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .codeSize = creationInfo.shaderData.size(),
+            .pCode = creationInfo.shaderData.data()
+        };
+
         const VkComputePipelineCreateInfo pipelineInfo = {
             .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
             .pNext = NULL,
             .flags = 0,
             .stage = {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                .pNext = NULL,
+                .pNext = &shaderModuleInfo,
                 .flags = 0,
                 .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-                .module = creationInfo.shader->getModule(),
+                .module = VK_NULL_HANDLE,
                 .pName = "main", //use main() function in shaders
                 .pSpecializationInfo = NULL
             },
@@ -182,7 +162,7 @@ namespace PaperRenderer
             VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT,
             VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT,
             VK_DYNAMIC_STATE_RASTERIZATION_SAMPLES_EXT,
-            VK_DYNAMIC_STATE_DEPTH_COMPARE_OP 
+            VK_DYNAMIC_STATE_DEPTH_COMPARE_OP
         };
         
         const VkPipelineDynamicStateCreateInfo dynamicStateInfo = {
@@ -193,16 +173,26 @@ namespace PaperRenderer
             .pDynamicStates = dynamicStates.data()
         };
         
+        std::vector<VkShaderModuleCreateInfo> shaderModuleInfos;
+        shaderModuleInfos.reserve(creationInfo.shaders.size());
         std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
         shaderStages.reserve(creationInfo.shaders.size());
-        for(const auto& [shaderStage, shader] : creationInfo.shaders)
+        for(const auto& [shaderStage, shaderData] : creationInfo.shaders)
         {
-            shaderStages.push_back({
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            shaderModuleInfos.push_back({
+                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
                 .pNext = NULL,
                 .flags = 0,
+                .codeSize = shaderData.size(),
+                .pCode = shaderData.data()
+            });
+
+            shaderStages.push_back({
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .pNext = &(*shaderModuleInfos.rbegin()),
+                .flags = 0,
                 .stage = shaderStage,
-                .module = shader->getModule(),
+                .module = VK_NULL_HANDLE,
                 .pName = "main",
                 .pSpecializationInfo = NULL
             });
@@ -260,31 +250,40 @@ namespace PaperRenderer
         sbtRawData.clear();
 
         //shaders
+        const VkDeviceSize shaderGroupCount = creationInfo.missShaders.size() + creationInfo.callableShaders.size() + creationInfo.materials.size() + 1;
+        const VkDeviceSize maxNumShaders = creationInfo.missShaders.size() + creationInfo.callableShaders.size() + creationInfo.materials.size() + 1 + (creationInfo.materials.size() * 3);
         std::vector<VkRayTracingShaderGroupCreateInfoKHR> rtShaderGroups;
-        rtShaderGroups.reserve(creationInfo.missShaders.size() + creationInfo.callableShaders.size() + creationInfo.materials.size() + 1 /*raygen is 1*/);
+        rtShaderGroups.reserve(shaderGroupCount);
+        std::vector<VkShaderModuleCreateInfo> shaderModuleInfos;
+        shaderModuleInfos.reserve(maxNumShaders); //reserve worst case
         std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-        shaderStages.reserve(creationInfo.missShaders.size() + creationInfo.callableShaders.size() + creationInfo.materials.size() + 1 + (creationInfo.materials.size() * 3));
+        shaderStages.reserve(maxNumShaders); //reserve worst case
+
+        //SBT offsets
+        std::unordered_map<std::vector<uint32_t> const*, uint32_t> raygenGroupOffsets = {};
+        std::unordered_map<std::vector<uint32_t> const*, uint32_t> missGroupOffsets = {};
+        std::unordered_map<std::vector<uint32_t> const*, uint32_t> callableGroupOffsets = {};
 
         //enumerate raygen shader groups (there should only be one but whatever)
-        enumerateShaders({ creationInfo.raygenShader }, shaderBindingTableData.shaderBindingTableOffsets.raygenGroupOffsets, rtShaderGroups, shaderStages, VK_SHADER_STAGE_RAYGEN_BIT_KHR);
+        enumerateShaders({ creationInfo.raygenShader }, raygenGroupOffsets, rtShaderGroups, shaderModuleInfos, shaderStages, VK_SHADER_STAGE_RAYGEN_BIT_KHR);
         shaderBindingTableData.raygenShaderBindingTable.size = groupBaseAlignment; //edge case
         shaderBindingTableData.raygenShaderBindingTable.stride = groupBaseAlignment; //edge case
 
         //enumerate miss shader groups
-        enumerateShaders(creationInfo.missShaders, shaderBindingTableData.shaderBindingTableOffsets.missGroupOffsets, rtShaderGroups, shaderStages, VK_SHADER_STAGE_MISS_BIT_KHR);
+        enumerateShaders(creationInfo.missShaders, missGroupOffsets, rtShaderGroups, shaderModuleInfos, shaderStages, VK_SHADER_STAGE_MISS_BIT_KHR);
         shaderBindingTableData.missShaderBindingTable.size = Device::getAlignment(creationInfo.missShaders.size() * alignedGroupSize, groupBaseAlignment);
         shaderBindingTableData.missShaderBindingTable.stride = handleAlignment;
         const uint32_t missOffset = 1;
         
         //enumerate callable shader groups
-        enumerateShaders(creationInfo.callableShaders, shaderBindingTableData.shaderBindingTableOffsets.callableGroupOffsets, rtShaderGroups, shaderStages, VK_SHADER_STAGE_CALLABLE_BIT_KHR);
+        enumerateShaders(creationInfo.callableShaders, callableGroupOffsets, rtShaderGroups, shaderModuleInfos, shaderStages, VK_SHADER_STAGE_CALLABLE_BIT_KHR);
         shaderBindingTableData.callableShaderBindingTable.size = Device::getAlignment(creationInfo.callableShaders.size() * alignedGroupSize, groupBaseAlignment);
         shaderBindingTableData.callableShaderBindingTable.stride = handleAlignment;
         const uint32_t callableOffset = missOffset + creationInfo.missShaders.size();
 
         //enumerate hit shader groups
-        std::vector<uint32_t> hitGroupCounts(creationInfo.materials.size());
         const uint32_t hitGroupsStartIndex = rtShaderGroups.size();
+        std::vector<uint32_t> hitGroupCounts(creationInfo.materials.size());
         for(uint32_t i = 0; i < creationInfo.materials.size(); i++)
         {
             if(!creationInfo.materials[i])
@@ -293,73 +292,102 @@ namespace PaperRenderer
             }
 
             //set offset
-            shaderBindingTableData.shaderBindingTableOffsets.materialShaderGroupOffsets.emplace(creationInfo.materials[i], i);
-            
-            //shader group
-            VkRayTracingShaderGroupCreateInfoKHR shaderGroupInfo = {
-                .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
-                .pNext = NULL,
-                .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_MAX_ENUM_KHR,
-                .generalShader = VK_SHADER_UNUSED_KHR,
-                .closestHitShader  = VK_SHADER_UNUSED_KHR,
-                .anyHitShader = VK_SHADER_UNUSED_KHR,
-                .intersectionShader = VK_SHADER_UNUSED_KHR,
-                .pShaderGroupCaptureReplayHandle = NULL
+            shaderBindingTableData.materialShaderGroupOffsets.emplace(creationInfo.materials[i], i);
+
+            //helper function
+            struct MaterialShader
+            {
+                std::vector<uint32_t> const* shaderData;
+                VkShaderStageFlagBits stage;
             };
 
-            //individual shaders
-            for(auto& [shaderStage, shader] : creationInfo.materials[i]->getShaderHitGroup())
+            const auto getMaterialShaderGroup = [&](const std::vector<MaterialShader>& materialShaders)
             {
-                //shader "descriptor"
-                const VkPipelineShaderStageCreateInfo shaderStageInfo = {
-                    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                //hit group
+                VkRayTracingShaderGroupCreateInfoKHR shaderGroupInfo = {
+                    .sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
                     .pNext = NULL,
-                    .flags = 0,
-                    .stage = shaderStage,
-                    .module = shader->getModule(),
-                    .pName = "main",
-                    .pSpecializationInfo = NULL
+                    .type = VK_RAY_TRACING_SHADER_GROUP_TYPE_MAX_ENUM_KHR,
+                    .generalShader = VK_SHADER_UNUSED_KHR,
+                    .closestHitShader  = VK_SHADER_UNUSED_KHR,
+                    .anyHitShader = VK_SHADER_UNUSED_KHR,
+                    .intersectionShader = VK_SHADER_UNUSED_KHR,
+                    .pShaderGroupCaptureReplayHandle = NULL
                 };
 
-                //fill shader group with corresponding shader stage
-                switch(shaderStage)
+                //enumerate shaders
+                for(const MaterialShader& shader : materialShaders)
                 {
-                    //case for triangle hit group
-                    case VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR:
-                        shaderGroupInfo.closestHitShader = shaderStages.size();
-                        break;
-                    //case for procedural hit
-                    case VK_SHADER_STAGE_INTERSECTION_BIT_KHR:
-                        shaderGroupInfo.intersectionShader = shaderStages.size();
-                        break;
-                    case VK_SHADER_STAGE_ANY_HIT_BIT_KHR:
-                        shaderGroupInfo.anyHitShader = shaderStages.size();
-                        break;
-                    
-                }
-                hitGroupCounts[i]++;
-                shaderStages.push_back(shaderStageInfo);
-            }
+                    //skip if shader is empty
+                    if(!shader.shaderData->size())
+                    {
+                        continue;
+                    }
 
-            //set group type based on filled shaders
-            if(shaderGroupInfo.intersectionShader != VK_SHADER_UNUSED_KHR)
-            {
-                shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR;
-            }
-            else if(shaderGroupInfo.closestHitShader != VK_SHADER_UNUSED_KHR || shaderGroupInfo.anyHitShader != VK_SHADER_UNUSED_KHR)
-            {
-                shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
-            }
-            else
-            {
-                renderer.getLogger().recordLog({
-                    .type = WARNING,
-                    .text = "Invalid RTMaterial shader group must contain either a closest hit or intersection shader"
-                });
-            }
+                    //fill shader group with corresponding shader stage
+                    switch(shader.stage)
+                    {
+                        //case for triangle hit group
+                        case VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR:
+                            shaderGroupInfo.closestHitShader = shaderStages.size();
+                            break;
+                        //case for procedural hit
+                        case VK_SHADER_STAGE_INTERSECTION_BIT_KHR:
+                            shaderGroupInfo.intersectionShader = shaderStages.size();
+                            break;
+                        case VK_SHADER_STAGE_ANY_HIT_BIT_KHR:
+                            shaderGroupInfo.anyHitShader = shaderStages.size();
+                            break;
+                    }
+                    hitGroupCounts[i]++;
+
+                    //shader module for pNext
+                    shaderModuleInfos.push_back({
+                        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                        .pNext = NULL,
+                        .flags = 0,
+                        .codeSize = shader.shaderData->size(),
+                        .pCode = shader.shaderData->data()
+                    });
+
+                    //shader stage
+                    shaderStages.push_back({
+                        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                        .pNext = &(*shaderModuleInfos.rbegin()),
+                        .flags = 0,
+                        .stage = shader.stage,
+                        .module = VK_NULL_HANDLE,
+                        .pName = "main",
+                        .pSpecializationInfo = NULL
+                    });
+                }
+
+                //set group type based on filled shaders
+                if(shaderGroupInfo.intersectionShader != VK_SHADER_UNUSED_KHR)
+                {
+                    shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR;
+                }
+                else if(shaderGroupInfo.closestHitShader != VK_SHADER_UNUSED_KHR || shaderGroupInfo.anyHitShader != VK_SHADER_UNUSED_KHR)
+                {
+                    shaderGroupInfo.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
+                }
+                else
+                {
+                    renderer.getLogger().recordLog({
+                        .type = WARNING,
+                        .text = "Invalid RTMaterial shader group must contain either a closest hit or intersection shader"
+                    });
+                }
+
+                return shaderGroupInfo;
+            };
 
             //push shader group
-            rtShaderGroups.push_back(shaderGroupInfo);
+            rtShaderGroups.push_back(getMaterialShaderGroup({
+                { &creationInfo.materials[i]->getShaderHitGroup().chitShaderData, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR },
+                { &creationInfo.materials[i]->getShaderHitGroup().ahitShaderData, VK_SHADER_STAGE_ANY_HIT_BIT_KHR },
+                { &creationInfo.materials[i]->getShaderHitGroup().intShaderData, VK_SHADER_STAGE_INTERSECTION_BIT_KHR }
+            }));
         }
         shaderBindingTableData.hitShaderBindingTable.stride = handleAlignment;
 
@@ -412,9 +440,10 @@ namespace PaperRenderer
     }
 
     void RTPipeline::enumerateShaders(
-        const std::vector<Shader const*>& shaders,
-        std::unordered_map<Shader const*, uint32_t>& offsets,
+        const std::vector<std::vector<uint32_t> const*>& shaders,
+        std::unordered_map<std::vector<uint32_t> const*, uint32_t>& offsets,
         std::vector<VkRayTracingShaderGroupCreateInfoKHR>& shaderGroups,
+        std::vector<VkShaderModuleCreateInfo>& shaderModuleInfos,
         std::vector<VkPipelineShaderStageCreateInfo>& shaderStages,
         VkShaderStageFlagBits stage
     )
@@ -422,7 +451,8 @@ namespace PaperRenderer
         //general shader groups (easy because there's 1 shader per group)
         for(uint32_t i = 0; i < shaders.size(); i++)
         {
-            if(!shaders[i])
+            //continue if shader data is empty
+            if(!shaders[i]->size())
             {
                 continue;
             }
@@ -443,13 +473,22 @@ namespace PaperRenderer
             };
             shaderGroups.push_back(groupInfo);
 
+            //shader module for pNext
+            shaderModuleInfos.push_back({
+                .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                .pNext = NULL,
+                .flags = 0,
+                .codeSize = shaders[i]->size(),
+                .pCode = shaders[i]->data()
+            });
+
             //setup stage (1 to 1 with group)
             shaderStages.push_back({
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                .pNext = NULL,
+                .pNext = &(*shaderModuleInfos.rbegin()),
                 .flags = 0,
                 .stage = stage,
-                .module = shaders[i]->getModule(),
+                .module = VK_NULL_HANDLE,
                 .pName = "main", //use main() function in shaders
                 .pSpecializationInfo = NULL
             });
