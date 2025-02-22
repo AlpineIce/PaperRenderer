@@ -49,16 +49,4 @@ namespace PaperRenderer
     {
         bindFunction(cmdBuffer);
     }
-
-    //----------RT MATERIAL DEFINITIONS----------//
-
-    PaperRenderer::RTMaterial::RTMaterial(RenderEngine& renderer, const ShaderHitGroup& hitGroup)
-        :shaderHitGroup(hitGroup),
-        renderer(renderer)
-    {
-    }
-
-    PaperRenderer::RTMaterial::~RTMaterial()
-    {
-    }
 }

@@ -242,11 +242,6 @@ namespace PaperRenderer
 			((RenderPass*)renderPassSelfReferences.begin()->first)->removeInstance(*this);
 		}
 
-		while(rtRenderSelfReferences.size())
-		{
-			((RayTraceRender*)rtRenderSelfReferences.begin()->first)->removeInstance(*this);
-		}
-
 		//destroy unique geometry
 		uniqueGeometryData = {};
     }

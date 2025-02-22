@@ -550,23 +550,21 @@ int main()
     );
 
     //base RT material
-    PaperRenderer::ShaderHitGroup baseMaterialHitGroup = {
+    const PaperRenderer::ShaderHitGroup baseShaderHitGroup = {
         .chitShaderData = readFromFile("resources/shaders/raytrace_chit.spv"),
         .ahitShaderData = {}, //TODO FOR TRANSPARENCY
         .intShaderData = {}
     };
-    PaperRenderer::RTMaterial baseRTMaterial(renderer, baseMaterialHitGroup);
 
     //leaf RT material
-    PaperRenderer::ShaderHitGroup leafMaterialHitGroup=  {
+    const PaperRenderer::ShaderHitGroup leafShaderHitGroup=  {
         .chitShaderData = readFromFile("resources/shaders/leaf_chit.spv"),
         .ahitShaderData = readFromFile("resources/shaders/leaf_ahit.spv"),
         .intShaderData = {}
     };
-    PaperRenderer::RTMaterial leafRTMaterial(renderer, leafMaterialHitGroup);
 
     //RT material definitions
-    std::vector<DefaultRTMaterialDefinition> instanceRTMaterialDefinitions;
+    std::vector<DefaultShaderHitGroupDefinition> instanceShaderHitGroupDefinitions;
     uint32_t adjustableMaterialIndex = 0; //for ImGUI
     uint32_t raindropMaterialIndex = 0; //for raindrops test
 
@@ -589,7 +587,7 @@ int main()
     
     std::unordered_map<std::string, std::vector<std::unique_ptr<PaperRenderer::ModelInstance>>> modelInstances;
 
-    auto addInstanceToRenderPass = [&](PaperRenderer::ModelInstance& instance, const PaperRenderer::RTMaterial& rtMaterial, bool sorted, uint32_t customIndexOverride=UINT32_MAX)
+    auto addInstanceToRenderPass = [&](PaperRenderer::ModelInstance& instance, const PaperRenderer::ShaderHitGroup& shaderHitGroup, bool sorted, uint32_t customIndexOverride=UINT32_MAX)
     {
         //raster
         std::unordered_map<uint32_t, PaperRenderer::MaterialInstance*> materials;
@@ -604,12 +602,12 @@ int main()
         //RT
         const PaperRenderer::AccelerationStructureInstanceData asInstanceData = {
             .instancePtr = &instance,
-            .customIndex = customIndexOverride == UINT32_MAX ? (uint32_t)instanceRTMaterialDefinitions.size() : customIndexOverride, //set custom index to the first material index in the buffer
+            .hitGroup = &shaderHitGroup,
+            .customIndex = customIndexOverride == UINT32_MAX ? (uint32_t)instanceShaderHitGroupDefinitions.size() : customIndexOverride, //set custom index to the first material index in the buffer
             .mask = 0xFF,
-            .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR,
-            .owners = { &exampleRayTrace.getTLAS() }
+            .flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
         };
-        exampleRayTrace.getRTRender().addInstance(asInstanceData, rtMaterial);
+        exampleRayTrace.getRTRender().addInstance({ { &exampleRayTrace.getTLAS(), asInstanceData } });
 
         //RT instance materials
         if(customIndexOverride == UINT32_MAX)
@@ -617,12 +615,12 @@ int main()
             for(const std::string& matName : scene.instanceMaterials[instance.getParentModel().getModelName()])
             {
                 //for raindrop
-                if(instance.getParentModel().getModelName() == "Drop") raindropMaterialIndex = (uint32_t)instanceRTMaterialDefinitions.size();
+                if(instance.getParentModel().getModelName() == "Drop") raindropMaterialIndex = (uint32_t)instanceShaderHitGroupDefinitions.size();
 
                 //for ImGUI
-                if(matName == "MetalBall") adjustableMaterialIndex = (uint32_t)instanceRTMaterialDefinitions.size();
+                if(matName == "MetalBall") adjustableMaterialIndex = (uint32_t)instanceShaderHitGroupDefinitions.size();
 
-                instanceRTMaterialDefinitions.push_back({
+                instanceShaderHitGroupDefinitions.push_back({
                     .albedo = glm::vec3(scene.materialInstancesData[matName].baseColor),
                     .emissive = glm::vec3(scene.materialInstancesData[matName].emission) * scene.materialInstancesData[matName].emission.w,
                     .metallic = scene.materialInstancesData[matName].metallic,
@@ -651,7 +649,7 @@ int main()
             instance->setTransformation(newTransform);
 
             //add to render passes
-            addInstanceToRenderPass(*instance, baseRTMaterial, false);
+            addInstanceToRenderPass(*instance, baseShaderHitGroup, false);
 
             //push to model instances
             modelInstances["Suzanne"].push_back(std::move(instance));
@@ -676,7 +674,7 @@ int main()
             
 
             //add to render passes
-            addInstanceToRenderPass(*instance, leafRTMaterial, false);
+            addInstanceToRenderPass(*instance, leafShaderHitGroup, false);
 
             //push to model instances
             modelInstances["Tree"].push_back(std::move(instance));
@@ -700,7 +698,7 @@ int main()
             instance->setTransformation(newTransform);
 
             //add to render passes
-            addInstanceToRenderPass(*instance, baseRTMaterial, true); //sort because translucency
+            addInstanceToRenderPass(*instance, baseShaderHitGroup, true); //sort because translucency
 
             //push to model instances
             modelInstances["TranslucentObject"].push_back(std::move(instance));
@@ -716,7 +714,7 @@ int main()
         instance->setTransformation(scene.instanceTransforms[scene.models["MetalBall"].get()]);
 
         //add to render passes
-        addInstanceToRenderPass(*instance, baseRTMaterial, true);
+        addInstanceToRenderPass(*instance, baseShaderHitGroup, true);
 
         //push to model instances
         modelInstances["MetalBall"].push_back(std::move(instance));
@@ -733,7 +731,7 @@ int main()
             instance->setTransformation(scene.instanceTransforms[model.get()]);
 
             //add to render passes
-            addInstanceToRenderPass(*instance, baseRTMaterial, false);
+            addInstanceToRenderPass(*instance, baseShaderHitGroup, false);
 
             //push to model instances
             modelInstances[name].push_back(std::move(instance));
@@ -741,18 +739,18 @@ int main()
     }
 
     //custom RT material buffer
-    const PaperRenderer::BufferInfo rtMaterialDefinitionsBufferInfo = {
-        .size = instanceRTMaterialDefinitions.size() * sizeof(DefaultRTMaterialDefinition),
+    const PaperRenderer::BufferInfo ShaderHitGroupDefinitionsBufferInfo = {
+        .size = instanceShaderHitGroupDefinitions.size() * sizeof(DefaultShaderHitGroupDefinition),
         .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT,
         .allocationFlags = 0
     };
-    PaperRenderer::Buffer rtMaterialDefinitionsBuffer(renderer, rtMaterialDefinitionsBufferInfo);
+    PaperRenderer::Buffer ShaderHitGroupDefinitionsBuffer(renderer, ShaderHitGroupDefinitionsBufferInfo);
 
     //queue data transfer for RT material data
-    renderer.getStagingBuffer().queueDataTransfers(rtMaterialDefinitionsBuffer, 0, instanceRTMaterialDefinitions);
+    renderer.getStagingBuffer().queueDataTransfers(ShaderHitGroupDefinitionsBuffer, 0, instanceShaderHitGroupDefinitions);
 
     //update descriptor
-    exampleRayTrace.updateMaterialBuffer(rtMaterialDefinitionsBuffer);
+    exampleRayTrace.updateMaterialBuffer(ShaderHitGroupDefinitionsBuffer);
 
     //----------MISC----------//
 
@@ -810,7 +808,7 @@ int main()
             newInstance->setTransformation({ .position = glm::vec3(xFloatDist(mt), yFloatDist(mt), 10.0f) });
 
             //add to render passes
-            addInstanceToRenderPass(*newInstance, baseRTMaterial, false, raindropMaterialIndex);
+            addInstanceToRenderPass(*newInstance, baseShaderHitGroup, false, raindropMaterialIndex);
 
             //add to deque
             rainDrops.push_back(std::move(newInstance));
@@ -872,7 +870,7 @@ int main()
         if(!guiContext.raster)
         {
             //queue transfer of GUI adjustable material data
-            DefaultRTMaterialDefinition newData = {
+            DefaultShaderHitGroupDefinition newData = {
                 .albedo = glm::vec3(guiContext.adjustableMaterial->getParameters().baseColor),
                 .emissive = glm::vec3(guiContext.adjustableMaterial->getParameters().emission) * guiContext.adjustableMaterial->getParameters().emission.w,
                 .metallic = guiContext.adjustableMaterial->getParameters().metallic,
@@ -880,7 +878,7 @@ int main()
                 .transmission = glm::vec3(0.0f),
                 .ior = 1.45f
             };
-            renderer.getStagingBuffer().queueDataTransfers(rtMaterialDefinitionsBuffer, adjustableMaterialIndex * sizeof(DefaultRTMaterialDefinition), newData);
+            renderer.getStagingBuffer().queueDataTransfers(ShaderHitGroupDefinitionsBuffer, adjustableMaterialIndex * sizeof(DefaultShaderHitGroupDefinition), newData);
 
             //build queued BLAS's (wait on transfer, signal rendering semaphore
             const PaperRenderer::SynchronizationInfo blasSyncInfo = {
@@ -907,7 +905,7 @@ int main()
                 .timelineWaitPairs = { { renderingSemaphore[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValue[renderer.getBufferIndex()] + 3 } },
                 .timelineSignalPairs = { { renderingSemaphore[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValue[renderer.getBufferIndex()] + 4 } }
             };
-            exampleRayTrace.rayTraceRender(rtRenderSync, rtMaterialDefinitionsBuffer);
+            exampleRayTrace.rayTraceRender(rtRenderSync, ShaderHitGroupDefinitionsBuffer);
         }
         else //raster
         {

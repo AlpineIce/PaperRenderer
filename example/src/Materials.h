@@ -83,7 +83,7 @@ public:
 
 //----------RAY TRACE MATERIALS----------//
 
-struct DefaultRTMaterialDefinition
+struct DefaultShaderHitGroupDefinition
 {
     //surface
     glm::vec3 albedo; //normalized vec3

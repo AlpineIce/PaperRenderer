@@ -443,7 +443,7 @@ namespace PaperRenderer
         };
 
         const VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo = {
-            .primitiveCount = (uint32_t)rtRender.tlasData[const_cast<TLAS*>(this)].instances.size(),
+            .primitiveCount = (uint32_t)rtRender.tlasData[const_cast<TLAS*>(this)].instanceDatas.size(),
             .primitiveOffset = 0,
             .firstVertex = 0,
             .transformOffset = 0
@@ -451,7 +451,7 @@ namespace PaperRenderer
 
         returnData->geometries.emplace_back(structureGeometry);
         returnData->buildRangeInfos.emplace_back(buildRangeInfo);
-        returnData->primitiveCounts.push_back(rtRender.tlasData[const_cast<TLAS*>(this)].instances.size());
+        returnData->primitiveCounts.push_back(rtRender.tlasData[const_cast<TLAS*>(this)].instanceDatas.size());
 
         return returnData;
     }
@@ -601,17 +601,17 @@ namespace PaperRenderer
 
     void TLAS::buildStructure(VkCommandBuffer cmdBuffer, AsBuildData& data, const CompactionQuery compactionQuery, const VkDeviceAddress scratchAddress)
     {
-        //only rebuild/update a TLAS if any instances were updated
-        if(rtRender.tlasData[this].instances.size())
+        //only rebuild/update a TLAS if any instances exist
+        if(rtRender.tlasData[this].instanceDatas.size())
         {
             //queue update of preprocess UBO data
             const TLASInstanceBuildPipeline::UBOInputData uboInputData = {
-                .objectCount = (uint32_t)rtRender.tlasData[this].instances.size()
+                .objectCount = (uint32_t)rtRender.tlasData[this].instanceDatas.size()
             };
             renderer.getStagingBuffer().queueDataTransfers(preprocessUniformBuffer, 0, uboInputData);
 
             //submit
-            renderer.tlasInstanceBuildPipeline.submit(cmdBuffer, *this, rtRender.tlasData[this].instances.size());
+            renderer.tlasInstanceBuildPipeline.submit(cmdBuffer, *this, rtRender.tlasData[this].instanceDatas.size());
 
             //TLAS instance data memory barrier
             const VkBufferMemoryBarrier2 tlasInstanceMemBarrier = {
@@ -660,7 +660,7 @@ namespace PaperRenderer
         Timer timer(renderer, "TLAS Build/Update", REGULAR);
 
         //verify buffer sizes before data transfer
-        verifyInstancesBuffer(rtRender.tlasData[this].instances.size());
+        verifyInstancesBuffer(rtRender.tlasData[this].instanceDatas.size());
 
         //queue instance data
         for(const AccelerationStructureInstanceData& instance : rtRender.tlasData[this].toUpdateInstances)
@@ -676,7 +676,7 @@ namespace PaperRenderer
                 {
                     //get sbt offset
                     uint32_t sbtOffset = 
-                        rtRender.getPipeline().getShaderBindingTableData().materialShaderGroupOffsets.at(instance.instancePtr->rtRenderSelfReferences.at(&rtRender).material);
+                        rtRender.getPipeline().getShaderBindingTableData().materialShaderGroupOffsets.at(instance.instancePtr->tlasSelfReferences[this].material);
 
                     //queue transfer of instance data
                     const ModelInstance::AccelerationStructureInstance instanceShaderData = {
@@ -689,7 +689,7 @@ namespace PaperRenderer
                     };
                     renderer.getStagingBuffer().queueDataTransfers(
                         *instancesBuffer,
-                        instancesBufferSizes.instancesOffset + (sizeof(ModelInstance::AccelerationStructureInstance) * instance.instancePtr->rtRenderSelfReferences[&rtRender].selfIndex),
+                        instancesBufferSizes.instancesOffset + (sizeof(ModelInstance::AccelerationStructureInstance) * instance.instancePtr->tlasSelfReferences[this].selfIndex),
                         instanceShaderData
                     );
 
@@ -699,7 +699,7 @@ namespace PaperRenderer
                     };
                     renderer.getStagingBuffer().queueDataTransfers(
                         *instancesBuffer,
-                        instancesBufferSizes.instanceDescriptionsOffset + (sizeof(InstanceDescription) * instance.instancePtr->rtRenderSelfReferences[&rtRender].selfIndex),
+                        instancesBufferSizes.instanceDescriptionsOffset + (sizeof(InstanceDescription) * instance.instancePtr->tlasSelfReferences[this].selfIndex),
                         descriptionShaderData
                     );
                 }

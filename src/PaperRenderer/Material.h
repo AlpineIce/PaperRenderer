@@ -60,20 +60,4 @@ namespace PaperRenderer
         std::vector<uint32_t> ahitShaderData = {}; //optional, leave empty and shader will be ignored
         std::vector<uint32_t> intShaderData = {}; //optional if chit shader is valid, leave empty and shader will be ignored
     };
-
-    class RTMaterial
-    {
-    private:
-        const ShaderHitGroup shaderHitGroup;
-
-        class RenderEngine& renderer;
-
-    public:
-        //closest hit shader is required, but any hit and intersection shaders are optional
-        RTMaterial(class RenderEngine& renderer, const ShaderHitGroup& hitGroup);
-        ~RTMaterial();
-        RTMaterial(const RTMaterial&) = delete;
-
-        const ShaderHitGroup& getShaderHitGroup() const { return shaderHitGroup; }
-    };
 }

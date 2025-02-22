@@ -371,7 +371,7 @@ namespace PaperRenderer
                 {
                     renderer.getLogger().recordLog({
                         .type = WARNING,
-                        .text = "Invalid RTMaterial shader group must contain either a closest hit or intersection shader"
+                        .text = "Invalid ShaderHitGroup shader group must contain either a closest hit or intersection shader"
                     });
                 }
 
@@ -380,9 +380,9 @@ namespace PaperRenderer
 
             //push shader group
             rtShaderGroups.push_back(getMaterialShaderGroup({
-                { &creationInfo.materials[i]->getShaderHitGroup().chitShaderData, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR },
-                { &creationInfo.materials[i]->getShaderHitGroup().ahitShaderData, VK_SHADER_STAGE_ANY_HIT_BIT_KHR },
-                { &creationInfo.materials[i]->getShaderHitGroup().intShaderData, VK_SHADER_STAGE_INTERSECTION_BIT_KHR }
+                { &creationInfo.materials[i]->chitShaderData, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR },
+                { &creationInfo.materials[i]->ahitShaderData, VK_SHADER_STAGE_ANY_HIT_BIT_KHR },
+                { &creationInfo.materials[i]->intShaderData, VK_SHADER_STAGE_INTERSECTION_BIT_KHR }
             }));
         }
         shaderBindingTableData.hitShaderBindingTable.stride = handleAlignment;

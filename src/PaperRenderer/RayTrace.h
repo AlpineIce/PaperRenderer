@@ -19,11 +19,11 @@ namespace PaperRenderer
     struct AccelerationStructureInstanceData
     {
         class ModelInstance* instancePtr = NULL;
+        ShaderHitGroup const* hitGroup = NULL;
         uint32_t customIndex:24 = 0;
-        uint32_t mask:8 = 0xAA;
+        uint32_t mask:8 = 0xFF;
         VkGeometryInstanceFlagsKHR flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-        std::vector<TLAS*> owners = {}; //instance will only be used in the TLAS' specified
-        
+
         bool operator<(const AccelerationStructureInstanceData& other) const
         {
             return instancePtr < other.instancePtr;
@@ -47,19 +47,16 @@ namespace PaperRenderer
         //TLAS instance data
         struct TLASInstanceData
         {
-            std::vector<AccelerationStructureInstanceData> instances = {};
+            std::vector<AccelerationStructureInstanceData> instanceDatas = {};
             std::deque<AccelerationStructureInstanceData> toUpdateInstances = {};
         };
         std::unordered_map<TLAS*, TLASInstanceData> tlasData = {};
-
-        //instances
-        std::vector<AccelerationStructureInstanceData> asInstances;
 
         //shaders
         std::vector<uint32_t> raygenShader;
         std::vector<std::vector<uint32_t>> missShaders;
         std::vector<std::vector<uint32_t>> callableShaders;
-        std::unordered_map<RTMaterial const*, uint32_t> materialReferences; //uint32_t is the number of instances using it
+        std::unordered_map<ShaderHitGroup const*, uint32_t> materialReferences; //uint32_t is the number of instances using it
 
         void rebuildPipeline();
         void assignResourceOwner(const Queue& queue);
@@ -88,11 +85,10 @@ namespace PaperRenderer
 
         //Please keep track of the return value; ownership is transfered to return value
         [[nodiscard]] std::unique_ptr<TLAS> addNewTLAS();
-        void addInstance(AccelerationStructureInstanceData instanceData, const class RTMaterial& material);
-        void removeInstance(class ModelInstance& instance);
+        void addInstance(const std::unordered_map<TLAS*, AccelerationStructureInstanceData>& asDatas);
+        void removeInstance(const std::unordered_map<TLAS*, AccelerationStructureInstanceData>& asDatas);
 
         const RTPipeline& getPipeline() const { return *pipeline; }
-        const std::vector<AccelerationStructureInstanceData>& getInstanceData() const { return asInstances; }
         const std::unordered_map<TLAS*, TLASInstanceData>& getTLASData() const { return tlasData; }
     };
 }

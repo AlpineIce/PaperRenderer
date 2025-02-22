@@ -131,7 +131,7 @@ namespace PaperRenderer
 
     struct RTPipelineInfo
     {
-        std::vector<class RTMaterial*> materials = {};
+        std::vector<struct ShaderHitGroup*> materials = {};
         std::vector<uint32_t> const* raygenShader = NULL;
         std::vector<std::vector<uint32_t>> const* missShaders = NULL;
         std::vector<std::vector<uint32_t>> const* callableShaders = NULL;
@@ -146,7 +146,7 @@ namespace PaperRenderer
         VkStridedDeviceAddressRegionKHR missShaderBindingTable = {};
         VkStridedDeviceAddressRegionKHR hitShaderBindingTable = {};
         VkStridedDeviceAddressRegionKHR callableShaderBindingTable = {};
-        std::unordered_map<class RTMaterial const*, uint32_t> materialShaderGroupOffsets; //aka hit group offsets
+        std::unordered_map<struct ShaderHitGroup const*, uint32_t> materialShaderGroupOffsets; //aka hit group offsets
     };
 
     class RTPipeline : public Pipeline
