@@ -201,6 +201,9 @@ namespace PaperRenderer
 
     void RenderEngine::addModelData(Model* model)
     {
+        //lock mutex
+        std::lock_guard guard(rendererMutex);
+
         //self reference
         model->selfIndex = renderingModels.size();
         renderingModels.push_back(model);
@@ -217,6 +220,9 @@ namespace PaperRenderer
 
     void RenderEngine::removeModelData(Model* model)
     {
+        //lock mutex
+        std::lock_guard guard(rendererMutex);
+
         if(renderingModels.size() > 1)
         {
             //new reference for last element and remove
@@ -239,6 +245,9 @@ namespace PaperRenderer
 
     void RenderEngine::addObject(ModelInstance* object)
     {
+        //lock mutex
+        std::lock_guard guard(rendererMutex);
+
         //self reference
         object->rendererSelfIndex = renderingModelInstances.size();
         renderingModelInstances.push_back(object);
@@ -249,6 +258,9 @@ namespace PaperRenderer
 
     void RenderEngine::removeObject(ModelInstance* object)
     {
+        //lock mutex
+        std::lock_guard guard(rendererMutex);
+        
         if(renderingModelInstances.size() > 1)
         {
             //new reference for last element and remove
@@ -282,6 +294,9 @@ namespace PaperRenderer
     {
         //timer
         Timer timer(*this, "Queue Models and Instances Transfers", REGULAR);
+
+        //lock mutex
+        std::lock_guard guard(rendererMutex);
 
         //check buffer sizes
         if(instancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128)

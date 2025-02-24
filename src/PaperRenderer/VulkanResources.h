@@ -36,6 +36,9 @@ namespace PaperRenderer
         VkDeviceSize size = 0;
         std::set<Queue const*> owners;
         VmaAllocation allocation = VK_NULL_HANDLE;
+        std::mutex resourceMutex;
+
+        friend class FragmentableBuffer;
 
         class RenderEngine& renderer;
 
@@ -44,8 +47,10 @@ namespace PaperRenderer
         virtual ~VulkanResource();
         VulkanResource(const VulkanResource&) = delete;
 
-        void addOwner(const Queue& queue) { owners.insert(&queue); }
-        void removeOwner(const Queue& queue) { owners.erase(&queue); };
+        //thread safe
+        void addOwner(const Queue& queue);
+        //thread safe
+        void removeOwner(const Queue& queue);
         void idleOwners() const;
 
         VkDeviceSize getSize() const { return size; }
@@ -133,8 +138,9 @@ namespace PaperRenderer
             OUT_OF_MEMORY = 2 //allocation has no available memory for a resize
         };
 
-        //Return location is a pointer to a variable where the write location relative to buffer will be returned. Returns UINT64_MAX into that variable if write failed
+        //Return location is a pointer to a variable where the write location relative to buffer will be returned. Returns UINT64_MAX into that variable if write failed. Is thread safe
         WriteResult newWrite(void* data, VkDeviceSize size, VkDeviceSize* returnLocation); 
+        //thread safe
         void removeFromRange(VkDeviceSize offset, VkDeviceSize size);
 
         std::vector<CompactionResult> compact(); //inkoves on demand compaction; useful for when recreating an allocation to get the actual current size requirement. results are sorted

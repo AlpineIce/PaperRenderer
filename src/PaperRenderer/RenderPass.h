@@ -82,6 +82,7 @@ namespace PaperRenderer
         float instancesOverhead = 1.5f;
         std::vector<ModelInstance*> renderPassInstances; //doesn't included sorted
         std::deque<ModelInstance*> toUpdateInstances; //doesn't included sorted
+        std::mutex renderPassMutex;
 
         //buffers
         Buffer preprocessUniformBuffer;
@@ -112,7 +113,6 @@ namespace PaperRenderer
         void rebuildMaterialDataBuffer();
         void queueInstanceTransfers();
         void handleMaterialDataCompaction(const std::vector<CompactionResult>&);
-        void handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances);
         void clearDrawCounts(VkCommandBuffer cmdBuffer);
         void assignResourceOwner(const Queue& queue);
 
@@ -128,7 +128,9 @@ namespace PaperRenderer
 
         const Queue& render(const RenderPassInfo& renderPassInfo, SynchronizationInfo syncInfo);
 
+        //thread safe
         void addInstance(ModelInstance& instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials, bool sorted=false);
+        //thread safe
         void removeInstance(ModelInstance& instance);
     };
 }

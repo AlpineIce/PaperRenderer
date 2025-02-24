@@ -156,25 +156,28 @@ namespace PaperRenderer
 
     std::unique_ptr<Buffer> Model::createDeviceLocalBuffer(VkDeviceSize size, void *data, VkBufferUsageFlags2KHR usageFlags) const
     {
-		//create staging buffer
-		BufferInfo stagingBufferInfo = {};
-		stagingBufferInfo.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-		stagingBufferInfo.size = size;
-		stagingBufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-		Buffer vboStaging(renderer, stagingBufferInfo);
+		//create staging buffer (i should profile the consequences of this)
+		const BufferInfo stagingBufferInfo = {
+			.size = size,
+			.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+		};
+		const Buffer vboStaging(renderer, stagingBufferInfo);
 
 		//fill staging data
-		BufferWrite write = {};
-		write.readData = data;
-		write.size = size;
-		write.offset = 0;
+		const BufferWrite write = {
+			.offset = 0,
+			.size = size,
+			.readData = data
+		};
 		vboStaging.writeToBuffer({ write });
 
 		//create device local buffer
-		BufferInfo bufferInfo = {};
-		bufferInfo.allocationFlags = 0;
-		bufferInfo.size = size;
-		bufferInfo.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | usageFlags;
+		BufferInfo bufferInfo = {
+			.size = size,
+			.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | usageFlags,
+			.allocationFlags = 0
+		};
 		if(renderer.getDevice().getGPUFeaturesAndProperties().rtSupport) bufferInfo.usageFlags = bufferInfo.usageFlags | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
 		std::unique_ptr<Buffer> buffer = std::make_unique<Buffer>(renderer, bufferInfo);
 

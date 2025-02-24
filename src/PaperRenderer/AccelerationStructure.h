@@ -180,6 +180,7 @@ namespace PaperRenderer
         const Queue& updateTLAS(const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo);
 
         const Buffer& getInstancesBuffer() const { return *instancesBuffer; }
+        const InstancesBufferSizes& getInstancesBufferSizes() const { return instancesBufferSizes; }
         const ResourceDescriptor& getInstanceDescriptionsDescriptor() const { return instanceDescriptionsDescriptor; }
     };
 
@@ -195,6 +196,7 @@ namespace PaperRenderer
     {
     private:
         //acceleration structure operation queue
+        std::mutex builderMutex;
         std::deque<BLASBuildOp> blasQueue;
 
         //scratch buffer shared amongst BLAS builds
@@ -211,7 +213,7 @@ namespace PaperRenderer
         ~AccelerationStructureBuilder();
         AccelerationStructureBuilder(const AccelerationStructureBuilder&) = delete;
         
-        void queueBLAS(const BLASBuildOp& op) { blasQueue.emplace_back(op); }
+        void queueBLAS(const BLASBuildOp& op);
 
         const Queue& submitQueuedOps(const SynchronizationInfo& syncInfo); //may block thread if compaction is used
     };

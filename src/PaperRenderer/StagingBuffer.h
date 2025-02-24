@@ -30,8 +30,9 @@ namespace PaperRenderer
         ~RendererStagingBuffer();
         
         void resetBuffer();
-        const Queue& submitQueuedTransfers(SynchronizationInfo syncInfo); //Submits all queued transfers and clears the queue
+        const Queue& submitQueuedTransfers(const SynchronizationInfo& syncInfo); //Submits all queued transfers and clears the queue
 
+        //thread safe
         template<typename T>
         void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<T>& data) //do not submit more than 1 transfer with the same destination! undefined behavior!
         {
@@ -51,6 +52,7 @@ namespace PaperRenderer
             queueSize += data.size() * sizeof(T);
         }
 
+        //thread safe
         template<typename T>
         void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const T& data)
         {

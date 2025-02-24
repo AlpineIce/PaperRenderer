@@ -815,11 +815,20 @@ namespace PaperRenderer
         return returnData;
     }
 
-    const Queue& AccelerationStructureBuilder::submitQueuedOps(const SynchronizationInfo& syncInfo)
+    void AccelerationStructureBuilder::queueBLAS(const BLASBuildOp &op)
+    {
+        std::lock_guard guard(builderMutex);
+        blasQueue.emplace_back(op);
+    }
+
+    const Queue &AccelerationStructureBuilder::submitQueuedOps(const SynchronizationInfo &syncInfo)
     {
         Timer timer(renderer, "Submit Queued BLAS Ops", REGULAR);
 
         //----------AS BUILDS----------//
+
+        //lock builder mutex
+        std::lock_guard guard(builderMutex);
 
         //return queue
         Queue const* returnQueue = NULL;

@@ -92,7 +92,7 @@ namespace PaperRenderer
         return dstBuffers;
     }
 
-    const Queue& RendererStagingBuffer::submitQueuedTransfers(SynchronizationInfo syncInfo)
+    const Queue& RendererStagingBuffer::submitQueuedTransfers(const SynchronizationInfo& syncInfo)
     {
         //start command buffer
         VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(syncInfo.queueType);

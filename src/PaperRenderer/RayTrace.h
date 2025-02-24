@@ -37,12 +37,15 @@ namespace PaperRenderer
     class RayTraceRender
     {
     private:
+        //pipeline stuff
         const std::vector<VkPushConstantRange> pcRanges;
         const std::unordered_map<uint32_t, VkDescriptorSetLayout> setLayouts;
         const RTPipelineProperties pipelineProperties;
         std::unique_ptr<RTPipeline> pipeline;
 
+        //misc
         bool queuePipelineBuild = true;
+        std::mutex rtRenderMutex;
 
         //TLAS instance data
         struct TLASInstanceData

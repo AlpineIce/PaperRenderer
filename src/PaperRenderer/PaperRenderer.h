@@ -64,6 +64,7 @@ namespace PaperRenderer
         std::deque<ModelInstance*> toUpdateModelInstances; //queued instance references that need to have their data in GPU buffers updated
         std::vector<Model*> renderingModels;
         std::deque<Model*> toUpdateModels; //queued model references that need to have their data in GPU buffers updated
+        std::mutex rendererMutex;
         
         //----------BUFFERS----------//
 

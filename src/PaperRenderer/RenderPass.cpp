@@ -285,6 +285,9 @@ namespace PaperRenderer
         //Timer
         Timer timer(renderer, "RenderPass Queue instance Transfers", REGULAR);
 
+        //lock mutex
+        std::lock_guard guard(renderPassMutex);
+
         //verify mesh group buffers
         for(auto& [material, materialInstanceNode] : renderTree) //material
         {
@@ -383,15 +386,6 @@ namespace PaperRenderer
                     materialDataOffset -= compactionResult.shiftSize;
                 }
             }
-        }
-    }
-
-    void RenderPass::handleCommonMeshGroupResize(std::vector<ModelInstance*> invalidInstances)
-    {
-        for(ModelInstance* instance : invalidInstances)
-        {
-            //queue data transfer
-            toUpdateInstances.push_front(instance);
         }
     }
 
@@ -495,7 +489,7 @@ namespace PaperRenderer
         //----------RENDER PASS----------//
 
         //rendering
-        VkRenderingInfo renderInfo = {
+        const VkRenderingInfo renderInfo = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_INFO_KHR,
             .pNext = NULL,
             .flags = 0,
@@ -536,6 +530,9 @@ namespace PaperRenderer
         //sorted instances
         if(renderPassSortedInstances.size())
         {
+            //mutex thats about as useful as my college degree (buffer will be overwritten anyways)
+            std::lock_guard guard(renderPassMutex);
+
             //Timer
             Timer timer(renderer, "RenderPass Render Sorted Instances Recording", REGULAR);
 
@@ -725,6 +722,10 @@ namespace PaperRenderer
 
     void RenderPass::addInstance(ModelInstance& instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials, bool sorted)
     {
+        //lock mutex
+        std::lock_guard guard(renderPassMutex);
+
+        //condition for sorted or not
         if(sorted)
         {
             //add reference
@@ -780,6 +781,9 @@ namespace PaperRenderer
 
     void RenderPass::removeInstance(ModelInstance& instance)
     {
+        //lock mutex
+        std::lock_guard guard(renderPassMutex);
+
         //remove from normal if reference exists
         if(instance.renderPassSelfReferences.count(this))
         {

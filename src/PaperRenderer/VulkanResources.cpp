@@ -16,14 +16,23 @@ namespace PaperRenderer
     {
     }
 
+    void VulkanResource::addOwner(const Queue& queue)
+    {
+        std::lock_guard guard(resourceMutex);
+        owners.insert(&queue);
+    }
+
+    void VulkanResource::removeOwner(const Queue& queue)
+    {
+        std::lock_guard guard(resourceMutex);
+        owners.erase(&queue);
+    }
+
     void VulkanResource::idleOwners() const
     {
         for(Queue const* queue : owners)
         {
-            //thread lock
-            std::lock_guard<std::mutex> lock(const_cast<Queue*>(queue)->threadLock);
-
-            //idle queue
+            std::lock_guard lock(const_cast<Queue*>(queue)->threadLock);
             vkQueueWaitIdle(queue->queue);
         }
     }
@@ -147,19 +156,12 @@ namespace PaperRenderer
 
     VkDeviceAddress Buffer::getBufferDeviceAddress() const
     {
-        if(buffer)
-        {
-            const VkBufferDeviceAddressInfo deviceAddressInfo = {
-                .sType  = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-                .pNext = NULL,
-                .buffer = buffer
-            };
-            return vkGetBufferDeviceAddress(renderer.getDevice().getDevice(), &deviceAddressInfo);
-        }
-        else
-        {
-            return 0;
-        }
+        const VkBufferDeviceAddressInfo deviceAddressInfo = {
+            .sType  = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+            .pNext = NULL,
+            .buffer = buffer
+        };
+        return vkGetBufferDeviceAddress(renderer.getDevice().getDevice(), &deviceAddressInfo);
     }
 
     //----------FRAGMENTABLE BUFFER DEFINITIONS----------//
@@ -177,6 +179,9 @@ namespace PaperRenderer
 
     FragmentableBuffer::WriteResult FragmentableBuffer::newWrite(void* data, VkDeviceSize size, VkDeviceSize* returnLocation)
     {
+        //lock mutex
+        std::lock_guard guard(buffer.resourceMutex);
+
         WriteResult result = SUCCESS;
         VkDeviceSize writeLocation = UINT64_MAX;
 
@@ -247,6 +252,9 @@ namespace PaperRenderer
 
     void FragmentableBuffer::removeFromRange(VkDeviceSize offset, VkDeviceSize size)
     {
+        //lock mutex
+        std::lock_guard guard(buffer.resourceMutex);
+
         //pad size
         size = renderer.getDevice().getAlignment(size, minAlignment);
         

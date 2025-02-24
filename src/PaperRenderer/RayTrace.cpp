@@ -122,6 +122,12 @@ namespace PaperRenderer
 
     void RayTraceRender::rebuildPipeline()
     {
+        //lock mutex
+        std::lock_guard guard(rtRenderMutex);
+
+        //there still may be a condition here if another thread was waiting for the mutex, so early return if no longer needed
+        if(!queuePipelineBuild) return;
+
         //add up materials
         std::vector<ShaderHitGroup*> materials;
         materials.reserve(materialReferences.size());
@@ -148,6 +154,9 @@ namespace PaperRenderer
             data.toUpdateInstances.clear();
             data.toUpdateInstances.insert(data.toUpdateInstances.end(), data.instanceDatas.begin(), data.instanceDatas.end());
         }
+
+        //set pipeline build flag
+        queuePipelineBuild = false;
     }
 
     void RayTraceRender::assignResourceOwner(const Queue &queue)
@@ -157,6 +166,9 @@ namespace PaperRenderer
 
     std::unique_ptr<TLAS> RayTraceRender::addNewTLAS()
     {
+        //lock mutex
+        std::lock_guard guard(rtRenderMutex);
+        
         //create new TLAS and get its reference
         std::unique_ptr<TLAS> newTLAS = std::make_unique<TLAS>(renderer, *this);
         tlasData[newTLAS.get()] = {};
@@ -167,6 +179,9 @@ namespace PaperRenderer
 
     void RayTraceRender::addInstance(const std::unordered_map<TLAS*, AccelerationStructureInstanceData>& asDatas)
     {
+        //lock mutex
+        std::lock_guard guard(rtRenderMutex);
+
         //iterate TLAS'
         for(auto& [tlas, instanceData] : asDatas)
         {
@@ -189,6 +204,9 @@ namespace PaperRenderer
     
     void RayTraceRender::removeInstance(const std::unordered_map<TLAS*, AccelerationStructureInstanceData>& asDatas)
     {
+        //lock mutex
+        std::lock_guard guard(rtRenderMutex);
+
         //iterate TLAS'
         for(auto& [tlas, instanceData] : asDatas)
         {
