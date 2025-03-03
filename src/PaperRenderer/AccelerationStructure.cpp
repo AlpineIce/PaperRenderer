@@ -961,7 +961,7 @@ namespace PaperRenderer
                 compactions.size() * sizeof(VkDeviceSize),
                 compactionResults.data(),
                 sizeof(VkDeviceSize),
-                VK_QUERY_RESULT_WAIT_BIT
+                VK_QUERY_RESULT_WAIT_BIT | VK_QUERY_RESULT_64_BIT
             );
 
             //start new command buffer
