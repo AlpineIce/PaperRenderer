@@ -58,12 +58,14 @@ void main()
         if(dot(N, L) > 0.0)
         {
             //calculate shadows if enabled
-            float visibility = 0.0;
             if(light.castShadow && inputData.shadowSamples > 0)
             {
                 //perform n samples
                 for(uint j = 0; j < inputData.shadowSamples; j++)
                 {
+                    //initialize L to fill in
+                    vec3 sampleL = vec3(0.0);
+
                     //get new light location if radius is greater than 0.0
                     vec3 lightPosition;
                     if(light.radius > 0.0)
@@ -84,7 +86,7 @@ void main()
 
                         lightPosition = vec3(cos(phi) * sq, sin(phi) * sq, sqrt(r2)) * light.radius;
                         lightPosition = (lightPosition.x * Ltangent + lightPosition.y * Lbitangent + lightPosition.z * L) + light.position;
-                        L = normalize(lightPosition - hitInfo.worldPosition);
+                        sampleL = normalize(lightPosition - hitInfo.worldPosition);
                     }
 
                     //cast ray
@@ -98,7 +100,7 @@ void main()
                         1,           // missIndex
                         hitInfo.worldPosition,      // ray origin
                         0.001,        // ray min range
-                        L,      // ray direction
+                        sampleL,      // ray direction
                         length(light.position.xyz - hitInfo.worldPosition),        // ray max range
                         1            // payload (location = 1)
                     );
@@ -106,20 +108,15 @@ void main()
                     //update visibility
                     if(!isShadowed)
                     {
-                        visibility += 1.0;
+                        totalLight += calculatePointLight(N, V, hitInfo.worldPosition, inputValues, light);
                     }
                 }
 
-                visibility = visibility / float(inputData.shadowSamples);
+                totalLight = totalLight / float(inputData.shadowSamples);
             }
             else //no shadows, visiblity should be 1.0
             {
-                visibility = 1.0;
-            }
-
-            if(visibility > 0.0)
-            {
-                totalLight += calculatePointLight(N, V, hitInfo.worldPosition, inputValues, light) * visibility;
+                totalLight = calculatePointLight(N, V, hitInfo.worldPosition, inputValues, light);
             }
         }
     }
