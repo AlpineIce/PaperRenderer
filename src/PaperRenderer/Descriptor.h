@@ -119,6 +119,7 @@ namespace PaperRenderer
         DescriptorSetLayout(class RenderEngine& renderer, const std::vector<VkDescriptorSetLayoutBinding>& bindings);
         ~DescriptorSetLayout();
         DescriptorSetLayout(const DescriptorSetLayout&) = delete;
+        DescriptorSetLayout(DescriptorSetLayout&& other) noexcept;
 
         const VkDescriptorSetLayout& getSetLayout() const { return setLayout; }
     };

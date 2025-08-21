@@ -338,4 +338,11 @@ namespace PaperRenderer
     {
         if(setLayout) vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), setLayout, nullptr);
     }
+
+    DescriptorSetLayout::DescriptorSetLayout(DescriptorSetLayout&& other) noexcept
+        :setLayout(other.setLayout),
+        renderer(other.renderer)
+    {
+        other.setLayout = VK_NULL_HANDLE;
+    }
 }
