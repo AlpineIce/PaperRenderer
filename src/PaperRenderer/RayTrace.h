@@ -89,7 +89,7 @@ namespace PaperRenderer
         //Please keep track of the return value; ownership is transfered to return value
         [[nodiscard]] std::unique_ptr<TLAS> addNewTLAS();
         void addInstance(const std::unordered_map<TLAS*, AccelerationStructureInstanceData>& asDatas);
-        void removeInstance(const std::unordered_map<TLAS*, AccelerationStructureInstanceData>& asDatas);
+        void removeInstance(ModelInstance& instance);
 
         const RTPipeline& getPipeline() const { return *pipeline; }
         const std::unordered_map<TLAS*, TLASInstanceData>& getTLASData() const { return tlasData; }

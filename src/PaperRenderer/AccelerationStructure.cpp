@@ -666,7 +666,7 @@ namespace PaperRenderer
         for(const AccelerationStructureInstanceData& instance : rtRender.tlasData[this].toUpdateInstances)
         {
             //check if instance is valid
-            if(instance.instancePtr && instance.instancePtr->tlasSelfReferences.count(this))
+            if(instance.instancePtr && instance.instancePtr->rtRenderSelfReferences.count(&rtRender) && instance.instancePtr->rtRenderSelfReferences[&rtRender].count(this))
             {
                 //get BLAS pointer
                 BLAS const* blasPtr = instance.instancePtr->getUniqueGeometryData().blas ? instance.instancePtr->getUniqueGeometryData().blas.get() : (BLAS*)instance.instancePtr->getParentModel().getBlasPtr();
@@ -676,7 +676,7 @@ namespace PaperRenderer
                 {
                     //get sbt offset
                     uint32_t sbtOffset = 
-                        rtRender.getPipeline().getShaderBindingTableData().materialShaderGroupOffsets.at(instance.instancePtr->tlasSelfReferences[this].material);
+                        rtRender.getPipeline().getShaderBindingTableData().materialShaderGroupOffsets.at(instance.instancePtr->rtRenderSelfReferences[&rtRender][this].material);
 
                     //queue transfer of instance data
                     const ModelInstance::AccelerationStructureInstance instanceShaderData = {
@@ -689,7 +689,7 @@ namespace PaperRenderer
                     };
                     renderer.getStagingBuffer().queueDataTransfers(
                         *instancesBuffer,
-                        instancesBufferSizes.instancesOffset + (sizeof(ModelInstance::AccelerationStructureInstance) * instance.instancePtr->tlasSelfReferences[this].selfIndex),
+                        instancesBufferSizes.instancesOffset + (sizeof(ModelInstance::AccelerationStructureInstance) * instance.instancePtr->rtRenderSelfReferences[&rtRender][this].selfIndex),
                         instanceShaderData
                     );
 
@@ -699,7 +699,7 @@ namespace PaperRenderer
                     };
                     renderer.getStagingBuffer().queueDataTransfers(
                         *instancesBuffer,
-                        instancesBufferSizes.instanceDescriptionsOffset + (sizeof(InstanceDescription) * instance.instancePtr->tlasSelfReferences[this].selfIndex),
+                        instancesBufferSizes.instanceDescriptionsOffset + (sizeof(InstanceDescription) * instance.instancePtr->rtRenderSelfReferences[&rtRender][this].selfIndex),
                         descriptionShaderData
                     );
                 }

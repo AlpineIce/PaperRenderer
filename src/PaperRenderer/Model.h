@@ -219,13 +219,13 @@ namespace PaperRenderer
         };
         std::unordered_map<class RenderPass const*, RenderPassData> renderPassSelfReferences;
 
-        //TLAS reference data
-        struct TLASData
+        // RT reference data
+        struct RTRenderData
         {
-            struct ShaderHitGroup const* material = NULL;
-            uint32_t selfIndex;
+            class ShaderHitGroup const* material = NULL;
+            uint32_t selfIndex = 0;
         };
-        std::unordered_map<class TLAS const*, TLASData> tlasSelfReferences;
+        std::unordered_map<class RayTraceRender const*, std::unordered_map<class TLAS*, RTRenderData>> rtRenderSelfReferences;
 
         //unique instance acceleration structure and VBO (only used if uniqueGeometry is set to true on instance creation)
         InstanceUniqueGeometry uniqueGeometryData;

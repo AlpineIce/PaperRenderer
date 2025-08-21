@@ -2,6 +2,7 @@
 #include "RenderPass.h"
 #include "Material.h"
 #include "AccelerationStructure.h"
+#include "RayTrace.h"
 #include "IndirectDraw.h"
 #include "PaperRenderer.h"
 
@@ -243,6 +244,11 @@ namespace PaperRenderer
 		while(renderPassSelfReferences.size())
 		{
 			((RenderPass*)renderPassSelfReferences.begin()->first)->removeInstance(*this);
+		}
+
+		while(rtRenderSelfReferences.size())
+		{
+			((RayTraceRender*)rtRenderSelfReferences.begin()->first)->removeInstance(*this);
 		}
 
 		//destroy unique geometry

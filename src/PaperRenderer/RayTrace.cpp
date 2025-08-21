@@ -186,7 +186,7 @@ namespace PaperRenderer
         for(auto& [tlas, instanceData] : asDatas)
         {
             //add TLAS references and queue update
-            instanceData.instancePtr->tlasSelfReferences[tlas] = {
+            instanceData.instancePtr->rtRenderSelfReferences[this][tlas] = {
                 .material = instanceData.hitGroup,
                 .selfIndex = (uint32_t)tlasData[tlas].instanceDatas.size()
             };
@@ -202,27 +202,24 @@ namespace PaperRenderer
         }
     }
     
-    void RayTraceRender::removeInstance(const std::unordered_map<TLAS*, AccelerationStructureInstanceData>& asDatas)
+    void RayTraceRender::removeInstance(ModelInstance& instance)
     {
         //lock mutex
         std::lock_guard guard(rtRenderMutex);
 
         //iterate TLAS'
-        for(auto& [tlas, instanceData] : asDatas)
+        if(instance.rtRenderSelfReferences.count(this))
         {
-            //only continue if self reference exists
-            if(instanceData.instancePtr->tlasSelfReferences.count(tlas))
+            for(auto& [tlas, data] : instance.rtRenderSelfReferences[this])
             {
                 if(tlasData[tlas].instanceDatas.size() > 1)
                 {
-                    const uint32_t selfIndex = instanceData.instancePtr->tlasSelfReferences[tlas].selfIndex;
+                    tlasData[tlas].instanceDatas[data.selfIndex] = tlasData[tlas].instanceDatas.back();
+                    tlasData[tlas].instanceDatas[data.selfIndex].instancePtr->rtRenderSelfReferences[this][tlas] = data;
 
-                    tlasData[tlas].instanceDatas[selfIndex] = tlasData[tlas].instanceDatas.back();
-                    tlasData[tlas].instanceDatas[selfIndex].instancePtr->tlasSelfReferences[tlas].selfIndex = selfIndex;
-                    
+                    tlasData[tlas].toUpdateInstances.push_front(tlasData[tlas].instanceDatas[data.selfIndex]);
+
                     tlasData[tlas].instanceDatas.pop_back();
-
-                    tlasData[tlas].toUpdateInstances.push_front(tlasData[tlas].instanceDatas[selfIndex]);
                 }
                 else
                 {
@@ -232,24 +229,27 @@ namespace PaperRenderer
                 //null out any instances that may be queued
                 for(AccelerationStructureInstanceData& thisInstance : tlasData[tlas].toUpdateInstances)
                 {
-                    if(thisInstance.instancePtr == instanceData.instancePtr)
+                    if(thisInstance.instancePtr == &instance)
                     {
                         thisInstance.instancePtr = NULL;
                     }
                 }
 
                 //remove material reference
-                if(materialReferences.count(instanceData.instancePtr->tlasSelfReferences[tlas].material))
+                if(materialReferences.count(data.material))
                 {
                     //decrement material reference and check size to see if material entry should be deleted
-                    materialReferences[instanceData.instancePtr->tlasSelfReferences[tlas].material]--;
-                    if(!materialReferences[instanceData.instancePtr->tlasSelfReferences[tlas].material])
+                    materialReferences[data.material]--;
+                    if(!materialReferences[data.material])
                     {
-                        materialReferences.erase(instanceData.instancePtr->tlasSelfReferences[tlas].material);
+                        materialReferences.erase(data.material);
                         queuePipelineBuild = true;
                     }
                 }
             }
+
+            // Erase this reference
+            instance.rtRenderSelfReferences.erase(this);
         }
     }
 }
