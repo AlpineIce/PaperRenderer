@@ -43,8 +43,6 @@ GuiContext initImGui(PaperRenderer::RenderEngine& renderer, DefaultMaterialInsta
 
     ImGui_ImplVulkan_Init(&init_info);
 
-    ImGui_ImplVulkan_CreateFontsTexture();
-
     return { imGuiQueue, &io, {}, &adjustableMaterial, true };
 }
 
