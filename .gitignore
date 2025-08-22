@@ -14,4 +14,4 @@ _deps
 /build
 
 #vscode
-/.vscode
+/.vscode/settings.json
