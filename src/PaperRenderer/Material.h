@@ -22,7 +22,7 @@ namespace PaperRenderer
         Material(
             class RenderEngine& renderer,
             const RasterPipelineInfo& pipelineInfo,
-            const std::function<void(VkCommandBuffer, const class Camera&)>& binFdunction
+            const std::function<void(VkCommandBuffer, const class Camera&)>& bindFunction
         );
         ~Material();
         Material(const Material&) = delete;
