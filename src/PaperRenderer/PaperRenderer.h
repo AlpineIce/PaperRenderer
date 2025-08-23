@@ -70,8 +70,8 @@ namespace PaperRenderer
 
         const float instancesDataOverhead = 1.4f;
         const float modelsDataOverhead = 1.2f;
-        std::unique_ptr<Buffer> instancesDataBuffer;
-        std::unique_ptr<FragmentableBuffer> modelDataBuffer;
+        Buffer instancesDataBuffer = Buffer(*this, {});
+        FragmentableBuffer modelDataBuffer;
         
         void rebuildInstancesbuffer();
         void rebuildModelDataBuffer();
@@ -122,7 +122,7 @@ namespace PaperRenderer
         AccelerationStructureBuilder& getAsBuilder() { return asBuilder; }
         const std::vector<Model*>& getModelReferences() const { return renderingModels; }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
-        Buffer& getModelDataBuffer() const { return modelDataBuffer->getBuffer(); }
+        Buffer& getModelDataBuffer() { return modelDataBuffer.getBuffer(); }
         const VkDescriptorSetLayout& getDefaultDescriptorSetLayout(const DefaultDescriptors descriptor) const { return defaultDescriptorLayouts[descriptor].getSetLayout(); }
         const ResourceDescriptor& getInstancesBufferDescriptor() const { return instancesBufferDescriptor; }
     };

@@ -646,7 +646,7 @@ namespace PaperRenderer
     void TLAS::assignResourceOwner(const Queue &queue)
     {
         scratchBuffer->addOwner(queue);
-        renderer.instancesDataBuffer->addOwner(queue);
+        renderer.instancesDataBuffer.addOwner(queue);
         instancesBuffer->addOwner(queue);
 
         AS::assignResourceOwner(queue);

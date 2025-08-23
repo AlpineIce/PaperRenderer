@@ -51,10 +51,14 @@ namespace PaperRenderer
         tlasInstanceBuildPipeline(*this, creationInfo.rtPreprocessSpirv),
         asBuilder(*this),
         stagingBuffer({ std::make_unique<RendererStagingBuffer>(*this), std::make_unique<RendererStagingBuffer>(*this) }),
-        instancesBufferDescriptor(*this, defaultDescriptorLayouts[INSTANCES].getSetLayout())
+        instancesBufferDescriptor(*this, defaultDescriptorLayouts[INSTANCES].getSetLayout()),
+        modelDataBuffer(*this, {
+            .size = 4096,
+            .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
+            .allocationFlags = 0
+        }, 8)
     {
         //initialize buffers
-        rebuildModelDataBuffer();
         rebuildInstancesbuffer();
 
         //finish up
@@ -71,10 +75,6 @@ namespace PaperRenderer
     RenderEngine::~RenderEngine()
     {
         vkDeviceWaitIdle(device.getDevice());
-    
-        //destroy buffers
-        modelDataBuffer.reset();
-        instancesDataBuffer.reset();
 
         //log destructor
         logger.recordLog({
@@ -89,21 +89,17 @@ namespace PaperRenderer
         Timer timer(*this, "Rebuild Model Data Buffer", IRREGULAR);
 
         //new buffer to replace old
-        VkDeviceSize newModelDataSize = 4096;
-        VkDeviceSize newWriteSize = 0;
-        if(modelDataBuffer)
-        {
-            modelDataBuffer->compact();
-            newModelDataSize = modelDataBuffer->getDesiredLocation();
-            newWriteSize = modelDataBuffer->getStackLocation();
-        }
+        modelDataBuffer.compact();
+        const VkDeviceSize newModelDataSize = modelDataBuffer.getDesiredLocation();
+        const VkDeviceSize newWriteSize = modelDataBuffer.getStackLocation();
 
-        BufferInfo modelsBufferInfo = {};
-        modelsBufferInfo.allocationFlags = 0;
-        modelsBufferInfo.size = newModelDataSize * modelsDataOverhead;
-        modelsBufferInfo.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR;
-        std::unique_ptr<FragmentableBuffer> newBuffer = std::make_unique<FragmentableBuffer>(*this, modelsBufferInfo, 8);
-        newBuffer->setCompactionCallback([this](std::vector<CompactionResult> results){ handleModelDataCompaction(results); });
+        const BufferInfo modelsBufferInfo = {
+            .size = (VkDeviceSize)(newModelDataSize * modelsDataOverhead),
+            .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
+            .allocationFlags = 0
+        };
+        FragmentableBuffer newBuffer(*this, modelsBufferInfo, 8);
+        newBuffer.setCompactionCallback([this](std::vector<CompactionResult> results){ handleModelDataCompaction(results); });
 
         //copy old data into new if old buffer existed
         if(newWriteSize)
@@ -116,10 +112,10 @@ namespace PaperRenderer
             const SynchronizationInfo syncInfo = {
                 .queueType = TRANSFER
             };
-            vkQueueWaitIdle(newBuffer->getBuffer().copyFromBufferRanges(*instancesDataBuffer, { copyRegion }, syncInfo).queue);
+            vkQueueWaitIdle(newBuffer.getBuffer().copyFromBufferRanges(instancesDataBuffer, { copyRegion }, syncInfo).queue);
 
             //pseudo write
-            newBuffer->newWrite(NULL, newWriteSize, NULL);
+            newBuffer.newWrite(NULL, newWriteSize, NULL);
         }
 
         //replace old buffer
@@ -159,25 +155,24 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR,
             .allocationFlags = 0
         };
-        std::unique_ptr<Buffer> newBuffer = std::make_unique<Buffer>(*this, bufferInfo);
+        Buffer newBuffer(*this, bufferInfo);
 
-        //copy old data into new if old existed
-        if(instancesDataBuffer)
+        //idle old buffer
+        instancesDataBuffer.idleOwners();
+
+        //copy
+        const VkBufferCopy copyRegion = {
+            .srcOffset = 0,
+            .dstOffset = 0,
+            .size = std::min(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance), (size_t)instancesDataBuffer.getSize())
+        };
+
+        if(copyRegion.size)
         {
-            //idle old buffer
-            instancesDataBuffer->idleOwners();
-
-            //copy
-            const VkBufferCopy copyRegion = {
-                .srcOffset = 0,
-                .dstOffset = 0,
-                .size = std::min(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance), (size_t)instancesDataBuffer->getSize())
-            };
-
             const SynchronizationInfo syncInfo = {
                 .queueType = TRANSFER
             };
-            vkQueueWaitIdle(newBuffer->copyFromBufferRanges(*instancesDataBuffer, { copyRegion }, syncInfo).queue);
+            vkQueueWaitIdle(newBuffer.copyFromBufferRanges(instancesDataBuffer, { copyRegion }, syncInfo).queue);
         }
         
         //replace old buffer
@@ -188,7 +183,7 @@ namespace PaperRenderer
             .bufferWrites = {
                 { //binding 0: UBO input data
                     .infos = { {
-                        .buffer = instancesDataBuffer->getBuffer(),
+                        .buffer = instancesDataBuffer.getBuffer(),
                         .offset = 0,
                         .range = VK_WHOLE_SIZE
                     } },
@@ -209,9 +204,10 @@ namespace PaperRenderer
         renderingModels.push_back(model);
         
         //"write"
-        if(modelDataBuffer->newWrite(NULL, model->getShaderData().size(), &model->shaderDataLocation) == FragmentableBuffer::WriteResult::OUT_OF_MEMORY)
+        if(modelDataBuffer.newWrite(NULL, model->getShaderData().size(), &model->shaderDataLocation) == FragmentableBuffer::WriteResult::OUT_OF_MEMORY)
         {
             rebuildModelDataBuffer();
+            modelDataBuffer.newWrite(NULL, model->getShaderData().size(), &model->shaderDataLocation);
         }
 
         //queue data transfer
@@ -236,7 +232,7 @@ namespace PaperRenderer
         }
 
         //remove from buffer
-        modelDataBuffer->removeFromRange(model->shaderDataLocation, model->getShaderData().size());
+        modelDataBuffer.removeFromRange(model->shaderDataLocation, model->getShaderData().size());
         
         model->selfIndex = UINT64_MAX;
 
@@ -299,7 +295,7 @@ namespace PaperRenderer
         std::lock_guard guard(rendererMutex);
 
         //check buffer sizes
-        if(instancesDataBuffer->getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128)
+        if(instancesDataBuffer.getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128)
         {
             rebuildInstancesbuffer(); //TODO SYNCHRONIZATION
         }
@@ -320,7 +316,7 @@ namespace PaperRenderer
             if(!instance) continue;
             
             //write instance data
-            getStagingBuffer().queueDataTransfers(*instancesDataBuffer, sizeof(ModelInstance::ShaderModelInstance) * instance->rendererSelfIndex, instance->getShaderInstance());
+            getStagingBuffer().queueDataTransfers(instancesDataBuffer, sizeof(ModelInstance::ShaderModelInstance) * instance->rendererSelfIndex, instance->getShaderInstance());
         }
 
         //queue model data
@@ -330,7 +326,7 @@ namespace PaperRenderer
             if(!model) continue;
 
             //write model data
-            getStagingBuffer().queueDataTransfers(modelDataBuffer->getBuffer(), model->shaderDataLocation, model->getShaderData());
+            getStagingBuffer().queueDataTransfers(modelDataBuffer.getBuffer(), model->shaderDataLocation, model->getShaderData());
         }
 
         //clear deques

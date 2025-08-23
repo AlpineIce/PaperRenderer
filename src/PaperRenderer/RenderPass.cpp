@@ -420,7 +420,7 @@ namespace PaperRenderer
         }
 
         //renderer instances
-        renderer.instancesDataBuffer->addOwner(queue);
+        renderer.instancesDataBuffer.addOwner(queue);
     }
 
     const Queue& RenderPass::render(const RenderPassInfo& renderPassInfo, SynchronizationInfo syncInfo)
@@ -456,7 +456,7 @@ namespace PaperRenderer
             //queue update of preprocess UBO data
             const RasterPreprocessPipeline::UBOInputData uboInputData = {
                 .materialDataPtr = instancesDataBuffer->getBuffer().getBufferDeviceAddress(),
-                .modelDataPtr = renderer.modelDataBuffer->getBuffer().getBufferDeviceAddress(),
+                .modelDataPtr = renderer.modelDataBuffer.getBuffer().getBufferDeviceAddress(),
                 .objectCount = (uint32_t)renderPassInstances.size(),
                 .doCulling = true
             };

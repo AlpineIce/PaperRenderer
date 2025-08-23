@@ -8,12 +8,41 @@ namespace PaperRenderer
     //----------RESOURCE BASE CLASS DEFINITIONS----------//
 
     VulkanResource::VulkanResource(RenderEngine& renderer)
-        :renderer(renderer)
+        :renderer(&renderer)
     {
     }
 
     VulkanResource::~VulkanResource()
     {
+    }
+
+    VulkanResource::VulkanResource(VulkanResource&& other) noexcept
+        :size(other.size),
+        owners(std::move(other.owners)),
+        allocation(other.allocation),
+        renderer(other.renderer)
+    {
+        std::lock_guard guard(other.resourceMutex); // Constructor should block old mutex
+        other.size = 0;
+        other.owners = {};
+        other.allocation = VK_NULL_HANDLE;
+    }
+
+    VulkanResource& VulkanResource::operator=(VulkanResource&& other) noexcept
+    {
+        if (this != &other)
+        {
+            size = other.size;
+            owners = std::move(other.owners);
+            allocation = other.allocation;
+
+            std::lock_guard guard(other.resourceMutex);
+            other.size = 0;
+            other.owners.clear();
+            other.allocation = VK_NULL_HANDLE;
+        }
+
+        return *this;
     }
 
     void VulkanResource::addOwner(const Queue& queue)
@@ -42,68 +71,98 @@ namespace PaperRenderer
     Buffer::Buffer(RenderEngine& renderer, const BufferInfo& bufferInfo)
         :VulkanResource(renderer)
     {
-        //get queue family indices
-        const QueueFamiliesIndices& deviceQueueFamilies = renderer.getDevice().getQueueFamiliesIndices();
-        std::vector<uint32_t> queueFamilyIndices = {};
-        if(deviceQueueFamilies.graphicsFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.graphicsFamilyIndex);
-        if(deviceQueueFamilies.computeFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.computeFamilyIndex);
-        if(deviceQueueFamilies.transferFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.transferFamilyIndex);
-        if(deviceQueueFamilies.presentationFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.presentationFamilyIndex);
-
-        std::sort(queueFamilyIndices.begin(), queueFamilyIndices.end());
-        auto uniqueIndices = std::unique(queueFamilyIndices.begin(), queueFamilyIndices.end());
-        queueFamilyIndices.erase(uniqueIndices, queueFamilyIndices.end());
-
-        //log error if detected
-        if(!queueFamilyIndices.size())
+        if(bufferInfo.size)
         {
-            renderer.getLogger().recordLog({
-                .type = CRITICAL_ERROR,
-                .text = "Tried to create buffer with no queue family indices referenced"
-            });
-        }
+            //get queue family indices
+            const QueueFamiliesIndices& deviceQueueFamilies = renderer.getDevice().getQueueFamiliesIndices();
+            std::vector<uint32_t> queueFamilyIndices = {};
+            if(deviceQueueFamilies.graphicsFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.graphicsFamilyIndex);
+            if(deviceQueueFamilies.computeFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.computeFamilyIndex);
+            if(deviceQueueFamilies.transferFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.transferFamilyIndex);
+            if(deviceQueueFamilies.presentationFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.presentationFamilyIndex);
 
-        //creation info
-        const VkBufferUsageFlags2CreateInfo usageFlagsInfo = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_USAGE_FLAGS_2_CREATE_INFO,
-            .pNext = NULL,
-            .usage = bufferInfo.usageFlags
-        };
+            std::sort(queueFamilyIndices.begin(), queueFamilyIndices.end());
+            auto uniqueIndices = std::unique(queueFamilyIndices.begin(), queueFamilyIndices.end());
+            queueFamilyIndices.erase(uniqueIndices, queueFamilyIndices.end());
 
-        const VkBufferCreateInfo bufferCreateInfo = {
-            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            .pNext = &usageFlagsInfo,
-            .flags = 0,
-            .size = bufferInfo.size,
-            .usage = 0, //use usage flags 2
-            .sharingMode = VK_SHARING_MODE_CONCURRENT,
-            .queueFamilyIndexCount = (uint32_t)queueFamilyIndices.size(),
-            .pQueueFamilyIndices = queueFamilyIndices.data()
-        };
+            //log error if detected
+            if(!queueFamilyIndices.size())
+            {
+                renderer.getLogger().recordLog({
+                    .type = CRITICAL_ERROR,
+                    .text = "Tried to create buffer with no queue family indices referenced"
+                });
+            }
 
-        const VmaAllocationCreateInfo allocCreateInfo = {
-            .flags = bufferInfo.allocationFlags,
-            .usage = VMA_MEMORY_USAGE_AUTO
-        };
+            //creation info
+            const VkBufferUsageFlags2CreateInfo usageFlagsInfo = {
+                .sType = VK_STRUCTURE_TYPE_BUFFER_USAGE_FLAGS_2_CREATE_INFO,
+                .pNext = NULL,
+                .usage = bufferInfo.usageFlags
+            };
 
-        VmaAllocationInfo allocInfo = {};
-        VkResult result = vmaCreateBuffer(renderer.getDevice().getAllocator(), &bufferCreateInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
-        if(result != VK_SUCCESS)
-        {
-            throw std::runtime_error("Buffer creation failed");
-        }
+            const VkBufferCreateInfo bufferCreateInfo = {
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .pNext = &usageFlagsInfo,
+                .flags = 0,
+                .size = bufferInfo.size,
+                .usage = 0, //use usage flags 2
+                .sharingMode = VK_SHARING_MODE_CONCURRENT,
+                .queueFamilyIndexCount = (uint32_t)queueFamilyIndices.size(),
+                .pQueueFamilyIndices = queueFamilyIndices.data()
+            };
 
-        VkMemoryPropertyFlags memPropertyFlags;
-        vmaGetAllocationMemoryProperties(renderer.getDevice().getAllocator(), allocation, &memPropertyFlags);
-        if(memPropertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) writable = true;
+            const VmaAllocationCreateInfo allocCreateInfo = {
+                .flags = bufferInfo.allocationFlags,
+                .usage = VMA_MEMORY_USAGE_AUTO
+            };
+
+            VmaAllocationInfo allocInfo = {};
+            VkResult result = vmaCreateBuffer(renderer.getDevice().getAllocator(), &bufferCreateInfo, &allocCreateInfo, &buffer, &allocation, &allocInfo);
+            if(result != VK_SUCCESS)
+            {
+                throw std::runtime_error("Buffer creation failed");
+            }
+
+            VkMemoryPropertyFlags memPropertyFlags;
+            vmaGetAllocationMemoryProperties(renderer.getDevice().getAllocator(), allocation, &memPropertyFlags);
+            if(memPropertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) writable = true;
         
-        size = bufferInfo.size;
+            size = bufferInfo.size;
+        }
     }
 
     Buffer::~Buffer()
     {
         idleOwners();
-        if(allocation && buffer) vmaDestroyBuffer(renderer.getDevice().getAllocator(), buffer, allocation);
+        if(allocation && buffer) vmaDestroyBuffer(renderer->getDevice().getAllocator(), buffer, allocation);
+    }
+
+    Buffer::Buffer(Buffer&& other) noexcept
+        :VulkanResource(std::move(other)),
+        buffer(other.buffer),
+        writable(other.writable)
+    {
+        other.buffer = VK_NULL_HANDLE;
+        other.writable = false;
+    }
+
+    Buffer& Buffer::operator=(Buffer&& other) noexcept
+    {
+        if(this != &other)
+        {
+            idleOwners();
+            if(allocation && buffer) vmaDestroyBuffer(renderer->getDevice().getAllocator(), buffer, allocation);
+
+            VulkanResource::operator=(std::move(other));
+            buffer = other.buffer;
+            writable = other.writable;
+
+            other.buffer = VK_NULL_HANDLE;
+            other.writable = false;
+        }
+
+        return *this;
     }
 
     int Buffer::writeToBuffer(const std::vector<BufferWrite>& writes) const
@@ -113,7 +172,7 @@ namespace PaperRenderer
         {
             if(write.readData && write.size)
             {
-                if(vmaCopyMemoryToAllocation(renderer.getDevice().getAllocator(), write.readData, allocation, write.offset, write.size) != VK_SUCCESS) return 1;
+                if(vmaCopyMemoryToAllocation(renderer->getDevice().getAllocator(), write.readData, allocation, write.offset, write.size) != VK_SUCCESS) return 1;
             }
         }
 
@@ -127,7 +186,7 @@ namespace PaperRenderer
         {
             if(read.writeData && read.size)
             {
-               if(vmaCopyAllocationToMemory(renderer.getDevice().getAllocator(), allocation, read.offset, read.writeData, read.size) != VK_SUCCESS) return 1;
+               if(vmaCopyAllocationToMemory(renderer->getDevice().getAllocator(), allocation, read.offset, read.writeData, read.size) != VK_SUCCESS) return 1;
             }
         }
 
@@ -136,7 +195,7 @@ namespace PaperRenderer
 
     const Queue& Buffer::copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
     {
-        VkCommandBuffer transferBuffer = renderer.getDevice().getCommands().getCommandBuffer(QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
+        VkCommandBuffer transferBuffer = renderer->getDevice().getCommands().getCommandBuffer(QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
 
         const VkCommandBufferBeginInfo beginInfo = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -149,9 +208,9 @@ namespace PaperRenderer
         vkCmdCopyBuffer(transferBuffer, src.getBuffer(), this->buffer, regions.size(), regions.data());
         vkEndCommandBuffer(transferBuffer);
 
-        renderer.getDevice().getCommands().unlockCommandBuffer(transferBuffer);
+        renderer->getDevice().getCommands().unlockCommandBuffer(transferBuffer);
 
-        return renderer.getDevice().getCommands().submitToQueue(synchronizationInfo, { transferBuffer });
+        return renderer->getDevice().getCommands().submitToQueue(synchronizationInfo, { transferBuffer });
     }
 
     VkDeviceAddress Buffer::getBufferDeviceAddress() const
@@ -161,20 +220,64 @@ namespace PaperRenderer
             .pNext = NULL,
             .buffer = buffer
         };
-        return vkGetBufferDeviceAddress(renderer.getDevice().getDevice(), &deviceAddressInfo);
+        return vkGetBufferDeviceAddress(renderer->getDevice().getDevice(), &deviceAddressInfo);
     }
 
     //----------FRAGMENTABLE BUFFER DEFINITIONS----------//
 
-    FragmentableBuffer::FragmentableBuffer(RenderEngine& renderer, const BufferInfo &bufferInfo, VkDeviceSize minAlignment)
+    FragmentableBuffer::FragmentableBuffer(RenderEngine& renderer, const BufferInfo& bufferInfo, VkDeviceSize minAlignment)
         :buffer(renderer, bufferInfo),
         minAlignment(minAlignment),
-        renderer(renderer)
+        renderer(&renderer)
     {
     }
 
     FragmentableBuffer::~FragmentableBuffer()
     {
+    }
+
+    FragmentableBuffer::FragmentableBuffer(FragmentableBuffer&& other) noexcept
+        :buffer(std::move(other.buffer)),
+        desiredLocation(other.desiredLocation),
+        stackLocation(other.stackLocation),
+        totalDataSize(other.totalDataSize),
+        minAlignment(other.minAlignment),
+        memoryFragments(std::move(other.memoryFragments)),
+        compactionCallback(other.compactionCallback),
+        renderer(other.renderer),
+        allocation(other.allocation)
+    {
+        other.desiredLocation = 0;
+        other.stackLocation = 0;
+        other.totalDataSize = 0;
+        other.memoryFragments = {};
+        other.compactionCallback = NULL;
+        other.allocation = VK_NULL_HANDLE;
+    }
+
+    FragmentableBuffer& FragmentableBuffer::operator=(FragmentableBuffer&& other) noexcept
+    {
+        if(this != &other)
+        {
+            buffer = std::move(other.buffer);
+            desiredLocation = other.desiredLocation;
+            stackLocation = other.stackLocation;
+            totalDataSize = other.totalDataSize;
+            minAlignment = other.minAlignment;
+            memoryFragments = std::move(other.memoryFragments);
+            compactionCallback = other.compactionCallback;
+            renderer = other.renderer;
+            allocation = other.allocation;
+
+            other.desiredLocation = 0;
+            other.stackLocation = 0;
+            other.totalDataSize = 0;
+            other.memoryFragments = {};
+            other.compactionCallback = NULL;
+            other.allocation = VK_NULL_HANDLE;
+        }
+
+        return *this;
     }
 
     FragmentableBuffer::WriteResult FragmentableBuffer::newWrite(void* data, VkDeviceSize size, VkDeviceSize* returnLocation)
@@ -186,7 +289,7 @@ namespace PaperRenderer
         VkDeviceSize writeLocation = UINT64_MAX;
 
         //pad size
-        size = renderer.getDevice().getAlignment(size, minAlignment);
+        size = renderer->getDevice().getAlignment(size, minAlignment);
 
         //attempt to find a chunk first
         auto lower = memoryFragments.lower_bound({ 0, size });
@@ -256,7 +359,7 @@ namespace PaperRenderer
         std::lock_guard guard(buffer.resourceMutex);
 
         //pad size
-        size = renderer.getDevice().getAlignment(size, minAlignment);
+        size = renderer->getDevice().getAlignment(size, minAlignment);
         
         //add fragment
         Chunk memoryFragment = {
@@ -276,7 +379,7 @@ namespace PaperRenderer
         //if statement because the compaction callback shouldnt be invoked if no memory fragments exists, which leads to no effective compaction
         if(memoryFragments.size())
         {
-            Timer timer(renderer, "Fragmentable Buffer Compaction", IRREGULAR);
+            Timer timer(*renderer, "Fragmentable Buffer Compaction", IRREGULAR);
             
             //sort memory fragments by their location
             std::vector<Chunk> vectorMemoryFragments;
@@ -284,7 +387,7 @@ namespace PaperRenderer
             std::sort(vectorMemoryFragments.begin(), vectorMemoryFragments.end(), FragmentableBuffer::Chunk::compareByLocation);
 
             //start a command buffer
-            VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(TRANSFER);
+            VkCommandBuffer cmdBuffer = renderer->getDevice().getCommands().getCommandBuffer(TRANSFER);
 
             const VkCommandBufferBeginInfo beginInfo = {
                 .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -376,7 +479,7 @@ namespace PaperRenderer
             //end command buffer
             vkEndCommandBuffer(cmdBuffer);
 
-            renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
+            renderer->getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
             //idle resource owners before submission
             buffer.idleOwners();
@@ -385,7 +488,7 @@ namespace PaperRenderer
             const SynchronizationInfo syncInfo = {
                 .queueType = TRANSFER
             };
-            renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+            renderer->getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
 
             //call callback function
             if(compactionCallback) compactionCallback(compactionLocations);
@@ -400,60 +503,92 @@ namespace PaperRenderer
         :VulkanResource(renderer),
         imageInfo(imageInfo)
     {
-        //calculate mip levels (select the least of minimum mip levels either explicitely, or from whats mathematically doable)
-        mipmapLevels = std::min((uint32_t)(std::floor(std::log2(std::max(imageInfo.extent.width, imageInfo.extent.height))) + 1), std::max(imageInfo.maxMipLevels, (uint32_t)1));
-        
-        //get queue families
-        const QueueFamiliesIndices& deviceQueueFamilies = renderer.getDevice().getQueueFamiliesIndices();
-        std::vector<uint32_t> queueFamilyIndices = {};
-        if(deviceQueueFamilies.graphicsFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.graphicsFamilyIndex);
-        if(deviceQueueFamilies.computeFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.computeFamilyIndex);
-        if(deviceQueueFamilies.transferFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.transferFamilyIndex);
-        if(deviceQueueFamilies.presentationFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.presentationFamilyIndex);
-
-        std::sort(queueFamilyIndices.begin(), queueFamilyIndices.end());
-        auto uniqueIndices = std::unique(queueFamilyIndices.begin(), queueFamilyIndices.end());
-        queueFamilyIndices.erase(uniqueIndices, queueFamilyIndices.end());
-
-        if(!queueFamilyIndices.size()) throw std::runtime_error("Tried to create buffer with no queue family indices referenced");
-
-        //create image
-        const VkImageCreateInfo imageCreateInfo = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-            .pNext = NULL,
-            .flags = 0,
-            .imageType = imageInfo.imageType,
-            .format = imageInfo.format,
-            .extent = imageInfo.extent,
-            .mipLevels = mipmapLevels,
-            .arrayLayers = 1,
-            .samples = imageInfo.samples,
-            .tiling = VK_IMAGE_TILING_OPTIMAL,
-            .usage = imageInfo.usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-            .sharingMode = VK_SHARING_MODE_CONCURRENT,
-            .queueFamilyIndexCount = (uint32_t)queueFamilyIndices.size(),
-            .pQueueFamilyIndices = queueFamilyIndices.data(),
-            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
-        };
-
-        VmaAllocationCreateInfo allocCreateInfo = {
-            .flags = 0,
-            .usage = VMA_MEMORY_USAGE_AUTO
-        };
-
-        VmaAllocationInfo allocInfo = {};
-        if(vmaCreateImage(renderer.getDevice().getAllocator(), &imageCreateInfo, &allocCreateInfo, &image, &allocation, &allocInfo) != VK_SUCCESS)
+        if(imageInfo.extent.width && imageInfo.extent.height && imageInfo.extent.depth)
         {
-            throw std::runtime_error("Buffer creation failed");
-        }
+            //calculate mip levels (select the least of minimum mip levels either explicitely, or from whats mathematically doable)
+            mipmapLevels = std::min((uint32_t)(std::floor(std::log2(std::max(imageInfo.extent.width, imageInfo.extent.height))) + 1), std::max(imageInfo.maxMipLevels, (uint32_t)1));
+            
+            //get queue families
+            const QueueFamiliesIndices& deviceQueueFamilies = renderer.getDevice().getQueueFamiliesIndices();
+            std::vector<uint32_t> queueFamilyIndices = {};
+            if(deviceQueueFamilies.graphicsFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.graphicsFamilyIndex);
+            if(deviceQueueFamilies.computeFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.computeFamilyIndex);
+            if(deviceQueueFamilies.transferFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.transferFamilyIndex);
+            if(deviceQueueFamilies.presentationFamilyIndex != -1) queueFamilyIndices.push_back(deviceQueueFamilies.presentationFamilyIndex);
 
-        size = allocInfo.size;
+            std::sort(queueFamilyIndices.begin(), queueFamilyIndices.end());
+            auto uniqueIndices = std::unique(queueFamilyIndices.begin(), queueFamilyIndices.end());
+            queueFamilyIndices.erase(uniqueIndices, queueFamilyIndices.end());
+
+            if(!queueFamilyIndices.size()) throw std::runtime_error("Tried to create buffer with no queue family indices referenced");
+
+            //create image
+            const VkImageCreateInfo imageCreateInfo = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                .pNext = NULL,
+                .flags = 0,
+                .imageType = imageInfo.imageType,
+                .format = imageInfo.format,
+                .extent = imageInfo.extent,
+                .mipLevels = mipmapLevels,
+                .arrayLayers = 1,
+                .samples = imageInfo.samples,
+                .tiling = VK_IMAGE_TILING_OPTIMAL,
+                .usage = imageInfo.usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                .sharingMode = VK_SHARING_MODE_CONCURRENT,
+                .queueFamilyIndexCount = (uint32_t)queueFamilyIndices.size(),
+                .pQueueFamilyIndices = queueFamilyIndices.data(),
+                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
+            };
+
+            VmaAllocationCreateInfo allocCreateInfo = {
+                .flags = 0,
+                .usage = VMA_MEMORY_USAGE_AUTO
+            };
+
+            VmaAllocationInfo allocInfo = {};
+            if(vmaCreateImage(renderer.getDevice().getAllocator(), &imageCreateInfo, &allocCreateInfo, &image, &allocation, &allocInfo) != VK_SUCCESS)
+            {
+                throw std::runtime_error("Buffer creation failed");
+            }
+
+            size = allocInfo.size;
+        }
     }
 
     Image::~Image()
     {
         idleOwners();
-        vmaDestroyImage(renderer.getDevice().getAllocator(), image, allocation);
+        if(allocation && image) vmaDestroyImage(renderer->getDevice().getAllocator(), image, allocation);
+    }
+
+    Image::Image(Image&& other) noexcept
+        :VulkanResource(std::move(other)),
+        image(other.image),
+        imageInfo(other.imageInfo),
+        mipmapLevels(other.mipmapLevels)
+    {
+        other.image = VK_NULL_HANDLE;
+        other.mipmapLevels = 0;
+    }
+
+    Image& Image::operator=(Image&& other) noexcept
+    {
+        if(this != &other)
+        {
+            idleOwners();
+            if(allocation && image) vmaDestroyImage(renderer->getDevice().getAllocator(), image, allocation);
+
+            VulkanResource::operator=(std::move(other));
+            image = other.image;
+            imageInfo = other.imageInfo;
+            mipmapLevels = other.mipmapLevels;
+
+            other.image = VK_NULL_HANDLE;
+            other.mipmapLevels = 0;
+        }
+
+        return *this;
     }
 
     VkImageView Image::getNewImageView(VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format)
@@ -477,7 +612,7 @@ namespace PaperRenderer
         };
 
         VkImageView view;
-        VkResult result = vkCreateImageView(renderer.getDevice().getDevice(), &viewInfo, nullptr, &view);
+        VkResult result = vkCreateImageView(renderer->getDevice().getDevice(), &viewInfo, nullptr, &view);
 
         return view;
     }
@@ -485,7 +620,7 @@ namespace PaperRenderer
     void Image::setImageData(const Buffer &imageStagingBuffer)
     {
         //command buffer
-        VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(QueueType::GRAPHICS);
+        VkCommandBuffer cmdBuffer = renderer->getDevice().getCommands().getCommandBuffer(QueueType::GRAPHICS);
 
         const VkCommandBufferBeginInfo beginInfo = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -524,12 +659,12 @@ namespace PaperRenderer
 
         vkEndCommandBuffer(cmdBuffer);
 
-        renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
+        renderer->getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
         const SynchronizationInfo syncInfo = {
             .queueType = GRAPHICS
         };
-        vkQueueWaitIdle(renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer }).queue);
+        vkQueueWaitIdle(renderer->getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer }).queue);
     }
 
     VkSampler Image::getNewSampler(VkFilter filter)
@@ -545,8 +680,8 @@ namespace PaperRenderer
             .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
             .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
             .mipLodBias = 0.0f,
-            .anisotropyEnable = renderer.getDevice().getGPUFeaturesAndProperties().gpuFeatures.features.samplerAnisotropy,
-            .maxAnisotropy = renderer.getDevice().getGPUFeaturesAndProperties().gpuProperties.properties.limits.maxSamplerAnisotropy,
+            .anisotropyEnable = renderer->getDevice().getGPUFeaturesAndProperties().gpuFeatures.features.samplerAnisotropy,
+            .maxAnisotropy = renderer->getDevice().getGPUFeaturesAndProperties().gpuProperties.properties.limits.maxSamplerAnisotropy,
             .compareEnable = VK_FALSE,
             .compareOp = VK_COMPARE_OP_ALWAYS,
             .minLod = 0.0f,
@@ -556,7 +691,7 @@ namespace PaperRenderer
         };
 
         VkSampler sampler;
-        VkResult result = vkCreateSampler(renderer.getDevice().getDevice(), &samplerInfo, nullptr, &sampler);
+        VkResult result = vkCreateSampler(renderer->getDevice().getDevice(), &samplerInfo, nullptr, &sampler);
 
         return sampler;
     }

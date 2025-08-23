@@ -40,12 +40,14 @@ namespace PaperRenderer
 
         friend class FragmentableBuffer;
 
-        class RenderEngine& renderer;
+        class RenderEngine* renderer;
 
     public:
         VulkanResource(class RenderEngine& renderer);
         virtual ~VulkanResource();
         VulkanResource(const VulkanResource&) = delete;
+        VulkanResource(VulkanResource&& other) noexcept;
+        VulkanResource& operator=(VulkanResource&& other) noexcept;
 
         //thread safe
         void addOwner(const Queue& queue);
@@ -68,6 +70,8 @@ namespace PaperRenderer
         Buffer(class RenderEngine& renderer, const BufferInfo& bufferInfo);
         ~Buffer() override;
         Buffer(const Buffer&) = delete;
+        Buffer(Buffer&& other) noexcept;
+        Buffer& operator=(Buffer&& other) noexcept;
 
         int writeToBuffer(const std::vector<BufferWrite>& writes) const; //returns 0 if successful, 1 if unsuccessful (probably because not host visible)
         int readFromBuffer(const std::vector<BufferRead>& reads) const;
@@ -99,7 +103,7 @@ namespace PaperRenderer
         VkDeviceSize desiredLocation = 0;
         VkDeviceSize stackLocation = 0;
         VkDeviceSize totalDataSize = 0;
-        const VkDeviceSize minAlignment;
+        VkDeviceSize minAlignment = 0;
 
         struct Chunk
         {
@@ -120,13 +124,15 @@ namespace PaperRenderer
 
         std::function<void(const std::vector<CompactionResult>&)> compactionCallback = NULL;
 
-        class RenderEngine& renderer;
+        class RenderEngine* renderer;
         VmaAllocation allocation;
 
     public:
         FragmentableBuffer(class RenderEngine& renderer, const BufferInfo& bufferInfo, VkDeviceSize minAlignment);
         ~FragmentableBuffer();
         FragmentableBuffer(const FragmentableBuffer&) = delete;
+        FragmentableBuffer(FragmentableBuffer&& other) noexcept;
+        FragmentableBuffer& operator=(FragmentableBuffer&& other) noexcept;
 
         //Callback for when a compaction occurs. Extremely useful for re-referencing, with the function taking in a sorted std::vector<CompactionResult>
         void setCompactionCallback(const std::function<void(std::vector<CompactionResult>)>& compactionCallback) { this->compactionCallback = compactionCallback; }
@@ -157,21 +163,21 @@ namespace PaperRenderer
     struct ImageInfo
     {
         VkImageType imageType = VK_IMAGE_TYPE_2D;
-        VkFormat format;
-        VkExtent3D extent;
+        VkFormat format = VK_FORMAT_UNDEFINED;
+        VkExtent3D extent = { 0, 0, 0 };
         uint32_t maxMipLevels = 1; //maximum number of mip levels to create, including the base level. arbitrarily high number can be used for maximum mip levels, such as UINT32_MAX
         VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
-        VkImageUsageFlags usage;
-        VkImageAspectFlags imageAspect;
+        VkImageUsageFlags usage = 0;
+        VkImageAspectFlags imageAspect = 0;
         VkImageLayout desiredLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     };
 
     class Image : public VulkanResource
     {
     private:
-        VkImage image;
-        const ImageInfo imageInfo;
-        uint32_t mipmapLevels;
+        VkImage image = VK_NULL_HANDLE;
+        ImageInfo imageInfo = {};
+        uint32_t mipmapLevels = 0;
 
         void copyBufferToImage(VkBuffer src, VkImage dst, VkCommandBuffer cmdBuffer);
         void generateMipmaps(VkCommandBuffer cmdBuffer);
@@ -180,6 +186,8 @@ namespace PaperRenderer
         Image(class RenderEngine& renderer, const ImageInfo& imageInfo);
         ~Image() override;
         Image(const Image&) = delete;
+        Image(Image&& other) noexcept;
+        Image& operator=(Image&& other) noexcept;
 
         void setImageData(const Buffer& imageStagingBuffer);
 
