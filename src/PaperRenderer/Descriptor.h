@@ -93,7 +93,7 @@ namespace PaperRenderer
     {
     private:
         const VkDescriptorSetLayout& layout;
-        const VkDescriptorSet set;
+        VkDescriptorSet set;
 
         class RenderEngine& renderer;
 
@@ -101,6 +101,7 @@ namespace PaperRenderer
         ResourceDescriptor(class RenderEngine& renderer, const VkDescriptorSetLayout& layout);
         ~ResourceDescriptor();
         ResourceDescriptor(const ResourceDescriptor&) = delete;
+        ResourceDescriptor(ResourceDescriptor&& other) noexcept;
 
         void updateDescriptorSet(const DescriptorWrites& writes) const;
         void bindDescriptorSet(VkCommandBuffer cmdBuffer, const DescriptorBinding& binding) const;

@@ -291,7 +291,15 @@ namespace PaperRenderer
 
     ResourceDescriptor::~ResourceDescriptor()
     {
-        renderer.getDescriptorAllocator().freeDescriptorSet(set);
+        if(set) renderer.getDescriptorAllocator().freeDescriptorSet(set);
+    }
+
+    ResourceDescriptor::ResourceDescriptor(ResourceDescriptor&& other) noexcept
+        :layout(other.layout),
+        set(other.set),
+        renderer(other.renderer)
+    {
+        other.set = VK_NULL_HANDLE;
     }
 
     void ResourceDescriptor::updateDescriptorSet(const DescriptorWrites& writes) const
