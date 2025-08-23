@@ -128,7 +128,7 @@ ExampleRayTracing::ExampleRayTracing(PaperRenderer::RenderEngine& renderer, cons
         {},
         {
             { 0, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::CAMERA_MATRICES) },
-            { 1, lightingData.lightingDescriptorLayout->getSetLayout() },
+            { 1, lightingData.lightingDescriptorLayout.getSetLayout() },
             { 2, rtDescriptorLayout.getSetLayout() },
             { 3, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::TLAS_INSTANCE_DESCRIPTIONS) }
         },
@@ -222,7 +222,7 @@ const PaperRenderer::Queue& ExampleRayTracing::rayTraceRender(const PaperRendere
             }
         },
         { //set 1 (Lighting Data)
-            .set = *lightingData.lightingDescriptor,
+            .set = lightingData.lightingDescriptor,
             .binding = {
                 .bindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
                 .pipelineLayout = rtRenderPass.getPipeline().getLayout(),
@@ -347,7 +347,7 @@ ExampleRaster::ExampleRaster(PaperRenderer::RenderEngine &renderer, const PaperR
             },
             .descriptorSets = {
                 { 0, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::CAMERA_MATRICES) },
-                { 1, lightingData.lightingDescriptorLayout->getSetLayout() },
+                { 1, lightingData.lightingDescriptorLayout.getSetLayout() },
                 { 2, parametersDescriptorSetLayout.getSetLayout() },
                 { 3, renderer.getDefaultDescriptorSetLayout(PaperRenderer::DefaultDescriptors::INDIRECT_DRAW_MATRICES) }
             },

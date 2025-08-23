@@ -31,7 +31,7 @@ void DefaultMaterial::bind(VkCommandBuffer cmdBuffer, const PaperRenderer::Camer
         .descriptorSetIndex = 1, //set 1
         .dynamicOffsets = {}
     };
-    lightingData.lightingDescriptor->bindDescriptorSet(cmdBuffer, lightingBinding);
+    lightingData.lightingDescriptor.bindDescriptorSet(cmdBuffer, lightingBinding);
 }
 
 DefaultMaterialInstance::DefaultMaterialInstance(PaperRenderer::RenderEngine& renderer, DefaultMaterial& baseMaterial, MaterialParameters parameters, VkDescriptorSetLayout uboDescriptorLayout)
