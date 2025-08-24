@@ -195,7 +195,7 @@ void renderImGui(PaperRenderer::RenderEngine* renderer, PaperRenderer::Statistic
 
     renderer->getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
-    renderer->getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+    renderer->getDevice().getCommands().submitToQueue(PaperRenderer::QueueType::GRAPHICS, syncInfo, { cmdBuffer });
 }
 
 void destroyImGui()

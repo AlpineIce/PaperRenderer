@@ -754,7 +754,7 @@ const PaperRenderer::Queue& BufferCopyPass::render(const PaperRenderer::Synchron
 
     renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
-    return renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+    return renderer.getDevice().getCommands().submitToQueue(PaperRenderer::QueueType::GRAPHICS, syncInfo, { cmdBuffer });
 }
 
 BufferCopyPass::BufferCopyMaterial::BufferCopyMaterial(PaperRenderer::RenderEngine &renderer, const HDRBuffer &hdrBuffer, VkDescriptorSetLayout setLayout)

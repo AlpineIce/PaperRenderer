@@ -45,24 +45,23 @@ namespace PaperRenderer
         return *this;
     }
 
-    void VulkanResource::addOwner(const Queue& queue)
+    void VulkanResource::addOwner(Queue& queue)
     {
         std::lock_guard guard(resourceMutex);
         owners.insert(&queue);
     }
 
-    void VulkanResource::removeOwner(const Queue& queue)
+    void VulkanResource::removeOwner(Queue& queue)
     {
         std::lock_guard guard(resourceMutex);
         owners.erase(&queue);
     }
 
-    void VulkanResource::idleOwners() const
+    void VulkanResource::idleOwners()
     {
-        for(Queue const* queue : owners)
+        for(Queue* queue : owners)
         {
-            std::lock_guard lock(const_cast<Queue*>(queue)->threadLock);
-            vkQueueWaitIdle(queue->queue);
+            queue->idle();
         }
     }
 
@@ -193,7 +192,7 @@ namespace PaperRenderer
         return 0;
     }
 
-    const Queue& Buffer::copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
+    Queue& Buffer::copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
     {
         VkCommandBuffer transferBuffer = renderer->getDevice().getCommands().getCommandBuffer(QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
 
@@ -210,7 +209,7 @@ namespace PaperRenderer
 
         renderer->getDevice().getCommands().unlockCommandBuffer(transferBuffer);
 
-        return renderer->getDevice().getCommands().submitToQueue(synchronizationInfo, { transferBuffer });
+        return renderer->getDevice().getCommands().submitToQueue(TRANSFER, synchronizationInfo, { transferBuffer });
     }
 
     VkDeviceAddress Buffer::getBufferDeviceAddress() const
@@ -485,10 +484,7 @@ namespace PaperRenderer
             buffer.idleOwners();
 
             //submit
-            const SynchronizationInfo syncInfo = {
-                .queueType = TRANSFER
-            };
-            renderer->getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+            renderer->getDevice().getCommands().submitToQueue(TRANSFER, {}, { cmdBuffer });
 
             //call callback function
             if(compactionCallback) compactionCallback(compactionLocations);
@@ -661,10 +657,7 @@ namespace PaperRenderer
 
         renderer->getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
-        const SynchronizationInfo syncInfo = {
-            .queueType = GRAPHICS
-        };
-        vkQueueWaitIdle(renderer->getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer }).queue);
+        renderer->getDevice().getCommands().submitToQueue(GRAPHICS, {}, { cmdBuffer }).idle();
     }
 
     VkSampler Image::getNewSampler(VkFilter filter)

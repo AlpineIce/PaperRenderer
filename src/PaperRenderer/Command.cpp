@@ -35,13 +35,13 @@ namespace PaperRenderer
                 //wait for any remaining queue submissions
                 for(Queue* queue : queuesPtr->at(type).queues)
                 {
-                    std::lock_guard<std::mutex> guard(queue->threadLock);
+                    std::lock_guard guard(queue->threadLock);
                 }
 
                 //wait for and destroy command pools
                 for(CommandPoolData& pool : pools)
                 {
-                    std::lock_guard<std::recursive_mutex> guard(pool.threadLock);
+                    std::lock_guard guard(pool.threadLock);
                     vkDestroyCommandPool(renderer.getDevice().getDevice(), pool.cmdPool, nullptr);
                 }
             }
@@ -106,7 +106,7 @@ namespace PaperRenderer
         }
     }
 
-    const Queue& Commands::submitToQueue(const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers)
+    Queue& Commands::submitToQueue(const QueueType queueType, const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers)
     {
         //command buffers
         std::vector<VkCommandBufferSubmitInfo> cmdBufferSubmitInfos = {};
@@ -192,12 +192,12 @@ namespace PaperRenderer
 
         //find an "unlocked" queue with the specified type (also nested hell I know)
         Queue* lockedQueue = NULL;
-        if(queuesPtr->count(synchronizationInfo.queueType))
+        if(queuesPtr->count(queueType))
         {
             bool threadLocked = false;
             while(!threadLocked)
             {
-                for(Queue* queue : queuesPtr->at(synchronizationInfo.queueType).queues)
+                for(Queue* queue : queuesPtr->at(queueType).queues)
                 {
                     if(queue->threadLock.try_lock())
                     {
@@ -217,7 +217,7 @@ namespace PaperRenderer
         //submit
         if(lockedQueue)
         {
-            vkQueueSubmit2(lockedQueue->queue, 1, &submitInfo, synchronizationInfo.fence);
+            submitToQueue(*lockedQueue, synchronizationInfo, commandBuffers);
         }
         else
         {
@@ -227,6 +227,98 @@ namespace PaperRenderer
         lockedQueue->threadLock.unlock();
 
         return(*lockedQueue);
+    }
+
+    void Commands::submitToQueue(Queue& queue, const SynchronizationInfo& synchronizationInfo, const std::vector<VkCommandBuffer>& commandBuffers)
+    {
+        //command buffers
+        std::vector<VkCommandBufferSubmitInfo> cmdBufferSubmitInfos = {};
+        cmdBufferSubmitInfos.reserve(commandBuffers.size());
+        for(const VkCommandBuffer& cmdBuffer : commandBuffers)
+        {
+            //add to submit info
+            cmdBufferSubmitInfos.push_back({
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+                .pNext = NULL,
+                .commandBuffer = cmdBuffer,
+                .deviceMask = 0
+            });
+
+            //verify command buffer is unlocked, throw error if it isnt
+            if(cmdBuffersLockedPool.count(cmdBuffer)) throw std::runtime_error("Command buffer submitted never had its mutex unlocked. Please call unlockCommandBuffer(cmdBuffer) on same thread recorded on");
+        }
+
+        std::vector<VkSemaphoreSubmitInfo> semaphoreWaitInfos = {};
+        semaphoreWaitInfos.reserve(synchronizationInfo.binaryWaitPairs.size() + synchronizationInfo.timelineWaitPairs.size());
+        std::vector<VkSemaphoreSubmitInfo> semaphoreSignalInfos = {};
+        semaphoreSignalInfos.reserve(synchronizationInfo.binarySignalPairs.size() + synchronizationInfo.timelineSignalPairs.size());
+
+        //binary wait semaphores
+        for(const BinarySemaphorePair& pair : synchronizationInfo.binaryWaitPairs)
+        {
+            semaphoreWaitInfos.push_back({
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .pNext = NULL,
+                .semaphore = pair.semaphore,
+                .stageMask = pair.stage,
+                .deviceIndex = 0
+            });
+        }
+
+        //binary signal semaphores
+        for(const BinarySemaphorePair& pair : synchronizationInfo.binarySignalPairs)
+        {
+            semaphoreSignalInfos.push_back({
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .pNext = NULL,
+                .semaphore = pair.semaphore,
+                .stageMask = pair.stage,
+                .deviceIndex = 0
+            });
+        }
+
+        //timeline wait semaphores
+        for(const TimelineSemaphorePair& pair : synchronizationInfo.timelineWaitPairs)
+        {
+            semaphoreWaitInfos.push_back({
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .pNext = NULL,
+                .semaphore = pair.semaphore,
+                .value = pair.value,
+                .stageMask = pair.stage,
+                .deviceIndex = 0
+            });
+        }
+
+        //timeline signal semaphores
+        for(const TimelineSemaphorePair& pair : synchronizationInfo.timelineSignalPairs)
+        {
+            semaphoreSignalInfos.push_back({
+                .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+                .pNext = NULL,
+                .semaphore = pair.semaphore,
+                .value = pair.value,
+                .stageMask = pair.stage,
+                .deviceIndex = 0
+            });
+        }
+        
+        //fill in the submit info
+        const VkSubmitInfo2 submitInfo = {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .pNext = NULL,
+            .flags = 0,
+            .waitSemaphoreInfoCount = (uint32_t)semaphoreWaitInfos.size(),
+            .pWaitSemaphoreInfos = semaphoreWaitInfos.data(),
+            .commandBufferInfoCount = (uint32_t)cmdBufferSubmitInfos.size(),
+            .pCommandBufferInfos = cmdBufferSubmitInfos.data(),
+            .signalSemaphoreInfoCount = (uint32_t)semaphoreSignalInfos.size(),
+            .pSignalSemaphoreInfos = semaphoreSignalInfos.data()
+        };
+
+        //submit
+        std::lock_guard guard(queue.threadLock);
+        vkQueueSubmit2(queue.queue, 1, &submitInfo, synchronizationInfo.fence);
     }
 
     VkSemaphore Commands::getSemaphore()

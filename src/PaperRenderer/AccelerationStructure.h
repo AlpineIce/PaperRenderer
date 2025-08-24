@@ -74,7 +74,7 @@ namespace PaperRenderer
         std::unique_ptr<Buffer> compactStructure(VkCommandBuffer cmdBuffer, const VkAccelerationStructureTypeKHR type, const VkDeviceSize newSize);
 
         //resource ownership
-        virtual void assignResourceOwner(const Queue& queue);
+        virtual void assignResourceOwner(Queue& queue);
         std::array<std::deque<VkAccelerationStructureKHR>, 2> asDestructionQueue;
 
         class RenderEngine& renderer;
@@ -164,7 +164,7 @@ namespace PaperRenderer
         void buildStructure(VkCommandBuffer cmdBuffer, AsBuildData& data, const CompactionQuery compactionQuery, const VkDeviceAddress scratchAddress) override;
 
         //ownership
-        void assignResourceOwner(const Queue& queue) override;
+        void assignResourceOwner(Queue& queue) override;
 
         class RayTraceRender& rtRender;
 
@@ -177,7 +177,7 @@ namespace PaperRenderer
         TLAS(const TLAS&) = delete;
 
         //Updates the TLAS to the RayTraceRender instances according to the mode (either rebuild or update). Note that compaction is ignored for a TLAS
-        const Queue& updateTLAS(const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo);
+        Queue& updateTLAS(const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo);
 
         const Buffer& getInstancesBuffer() const { return *instancesBuffer; }
         const InstancesBufferSizes& getInstancesBufferSizes() const { return instancesBufferSizes; }
@@ -215,6 +215,6 @@ namespace PaperRenderer
         
         void queueBLAS(const BLASBuildOp& op);
 
-        const Queue& submitQueuedOps(const SynchronizationInfo& syncInfo); //may block thread if compaction is used
+        Queue& submitQueuedOps(const SynchronizationInfo& syncInfo); //may block thread if compaction is used
     };
 }

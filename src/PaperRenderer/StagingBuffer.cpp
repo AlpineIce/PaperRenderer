@@ -3,9 +3,10 @@
 
 namespace PaperRenderer
 {
-    RendererStagingBuffer::RendererStagingBuffer(RenderEngine& renderer)
+    RendererStagingBuffer::RendererStagingBuffer(RenderEngine& renderer, Queue& queue)
         :stagingBuffer(renderer, {}),
-        renderer(&renderer)
+        renderer(&renderer),
+        gpuQueue(&queue)
     {
         //log constructor
         renderer.getLogger().recordLog({
@@ -25,11 +26,11 @@ namespace PaperRenderer
 
     RendererStagingBuffer::RendererStagingBuffer(RendererStagingBuffer&& other) noexcept
         :stagingBuffer(std::move(other.stagingBuffer)),
-        bufferOverhead(other.bufferOverhead),
         transferQueue(other.transferQueue),
         queueSize(other.queueSize),
         stackLocation(other.stackLocation),
-        renderer(other.renderer)
+        renderer(other.renderer),
+        gpuQueue(other.gpuQueue)
     {
         std::lock_guard guard(stagingBufferMutex);
         other.queueSize = 0;
@@ -72,10 +73,10 @@ namespace PaperRenderer
         std::set<Buffer*> dstBuffers;
 
         //copy to dst
-        for(const QueuedTransfer& transfer : transferQueue)
+        for(QueuedTransfer& transfer : transferQueue)
         {
             //make sure dstBuffer is referenced
-            dstBuffers.insert(const_cast<Buffer*>(&transfer.dstBuffer));
+            dstBuffers.insert(transfer.dstBuffer);
 
             //buffer write
             const BufferWrite bufferWrite = {
@@ -93,7 +94,7 @@ namespace PaperRenderer
             };
 
             //record copy command
-            vkCmdCopyBuffer(cmdBuffer, stagingBuffer.getBuffer(), transfer.dstBuffer.getBuffer(), 1, &copy);
+            vkCmdCopyBuffer(cmdBuffer, stagingBuffer.getBuffer(), transfer.dstBuffer->getBuffer(), 1, &copy);
 
             //increment stack
             stackLocation += bufferWrite.size;
@@ -107,10 +108,10 @@ namespace PaperRenderer
         return dstBuffers;
     }
 
-    const Queue& RendererStagingBuffer::submitQueuedTransfers(const SynchronizationInfo& syncInfo)
+    Queue& RendererStagingBuffer::submitQueuedTransfers(const SynchronizationInfo& syncInfo)
     {
         //start command buffer
-        VkCommandBuffer cmdBuffer = renderer->getDevice().getCommands().getCommandBuffer(syncInfo.queueType);
+        VkCommandBuffer cmdBuffer = renderer->getDevice().getCommands().getCommandBuffer(TRANSFER);
 
         const VkCommandBufferBeginInfo beginInfo = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -128,15 +129,15 @@ namespace PaperRenderer
         renderer->getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
         //submit
-        const Queue& queue = renderer->getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+        renderer->getDevice().getCommands().submitToQueue(*gpuQueue, syncInfo, { cmdBuffer });
 
         //add owners
         for(Buffer* buffer : dstBuffers)
         {
-            buffer->addOwner(queue);
+            buffer->addOwner(*gpuQueue);
         }
-        stagingBuffer.addOwner(queue);
-
-        return queue;
+        stagingBuffer.addOwner(*gpuQueue);
+        
+        return *gpuQueue;
     }
 }

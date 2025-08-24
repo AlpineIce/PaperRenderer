@@ -8,13 +8,13 @@ namespace PaperRenderer
     private:
         std::recursive_mutex stagingBufferMutex;
         Buffer stagingBuffer;
-        const float bufferOverhead = 1.5f;
+        static constexpr float bufferOverhead = 1.5f;
 
         struct QueuedTransfer
         {
             VkDeviceSize dstOffset = 0;
             std::vector<uint8_t> data = {};
-            const Buffer& dstBuffer;
+            Buffer* dstBuffer;
         };
 
         std::deque<QueuedTransfer> transferQueue = {};
@@ -24,19 +24,20 @@ namespace PaperRenderer
         std::set<Buffer*> submitQueuedTransfers(VkCommandBuffer cmdBuffer); //records all queued transfers and clears the queue
 
         class RenderEngine* renderer;
+        class Queue* gpuQueue;
 
     public:
-        RendererStagingBuffer(RenderEngine& renderer);
+        RendererStagingBuffer(RenderEngine& renderer, Queue& queue);
         ~RendererStagingBuffer();
         RendererStagingBuffer(const RendererStagingBuffer&) = delete;
         RendererStagingBuffer(RendererStagingBuffer&& other) noexcept;
         
         void resetBuffer();
-        const Queue& submitQueuedTransfers(const SynchronizationInfo& syncInfo); //Submits all queued transfers and clears the queue
+        Queue& submitQueuedTransfers(const SynchronizationInfo& syncInfo); //Submits all queued transfers and clears the queue
 
         //thread safe
         template<typename T>
-        void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<T>& data) //do not submit more than 1 transfer with the same destination! undefined behavior!
+        void queueDataTransfers(Buffer& dstBuffer, VkDeviceSize dstOffset, const std::vector<T>& data) //do not submit more than 1 transfer with the same destination! undefined behavior!
         {
             //lock mutex
             std::lock_guard guard(stagingBufferMutex);
@@ -49,14 +50,14 @@ namespace PaperRenderer
             transferQueue.emplace_front(
                 dstOffset,
                 std::move(transferData),
-                dstBuffer
+                &dstBuffer
             );
             queueSize += data.size() * sizeof(T);
         }
 
         //thread safe
         template<typename T>
-        void queueDataTransfers(const Buffer& dstBuffer, VkDeviceSize dstOffset, const T& data)
+        void queueDataTransfers(Buffer& dstBuffer, VkDeviceSize dstOffset, const T& data)
         {
             //lock mutex
             std::lock_guard guard(stagingBufferMutex);
@@ -69,7 +70,7 @@ namespace PaperRenderer
             transferQueue.emplace_front(
                 dstOffset,
                 std::move(transferData),
-                dstBuffer
+                &dstBuffer
             );
             queueSize += sizeof(T);
         }

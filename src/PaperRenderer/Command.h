@@ -27,8 +27,14 @@ namespace PaperRenderer
     
     struct Queue
     {
-        VkQueue queue;
-        std::mutex threadLock;
+        VkQueue queue = VK_NULL_HANDLE;
+        std::recursive_mutex threadLock;
+
+        void idle()
+        {
+            const std::lock_guard guard(threadLock);
+            vkQueueWaitIdle(queue);
+        }
     };
 
     struct QueuesInFamily
@@ -61,7 +67,6 @@ namespace PaperRenderer
     //generic parameters for synchronization in queues
     struct SynchronizationInfo
     {
-        QueueType queueType;
         std::vector<BinarySemaphorePair> binaryWaitPairs = {};
         std::vector<BinarySemaphorePair> binarySignalPairs = {};
         std::vector<TimelineSemaphorePair> timelineWaitPairs = {};
@@ -96,7 +101,8 @@ namespace PaperRenderer
         Commands(const Commands&) = delete;
 
         void resetCommandPools();
-        const Queue& submitToQueue(const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers);
+        Queue& submitToQueue(const QueueType queueType, const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers);
+        void submitToQueue(Queue& queue, const SynchronizationInfo &synchronizationInfo, const std::vector<VkCommandBuffer> &commandBuffers);
 
         VkSemaphore getSemaphore();
         VkSemaphore getTimelineSemaphore(uint64_t initialValue);

@@ -276,7 +276,7 @@ namespace PaperRenderer
         vkCmdPipelineBarrier2(cmdBuffer, &postDependency);
     }
 
-    void CommonMeshGroup::addOwner(const Queue &queue)
+    void CommonMeshGroup::addOwner(Queue& queue)
     {
         modelMatricesBuffer->addOwner(queue);
         drawCommandsBuffer->addOwner(queue);

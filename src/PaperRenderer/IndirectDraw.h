@@ -87,7 +87,7 @@ namespace PaperRenderer
 
         void draw(const VkCommandBuffer& cmdBuffer) const;
         void clearDrawCommand(const VkCommandBuffer& cmdBuffer) const;
-        void addOwner(const Queue& queue);
+        void addOwner(Queue& queue);
 
         //const Buffer& getModelMatricesBuffer() { return *modelMatricesBuffer; }
         const Buffer& getDrawCommandsBuffer() const { return *drawCommandsBuffer; }

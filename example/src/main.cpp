@@ -858,7 +858,6 @@ int main()
 
         //remember to explicitly submit the staging buffer transfers (do entire submit in this case)
         const PaperRenderer::SynchronizationInfo transferSyncInfo = {
-            .queueType = PaperRenderer::QueueType::TRANSFER,
             .timelineWaitPairs = { { renderingSemaphores[otherBufferIndex], VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValues[otherBufferIndex] } }, //make GPU wait on last frame at this point forward
             .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 1 } }
         };
@@ -883,7 +882,6 @@ int main()
 
             //build queued BLAS's (wait on transfer, signal rendering semaphore
             const PaperRenderer::SynchronizationInfo blasSyncInfo = {
-                .queueType = PaperRenderer::QueueType::COMPUTE,
                 .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 1 } },
                 .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValues[renderer.getBufferIndex()] + 2 } }
             };
@@ -891,7 +889,6 @@ int main()
 
             //update tlas (wait for BLAS build, signal rendering semaphore)
             const PaperRenderer::SynchronizationInfo tlasSyncInfo = {
-                .queueType = PaperRenderer::QueueType::COMPUTE,
                 .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValues[renderer.getBufferIndex()] + 2 } },
                 .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 3 } }
             };
@@ -902,7 +899,6 @@ int main()
 
             //render pass (wait for TLAS build, signal rendering semaphore)
             PaperRenderer::SynchronizationInfo rtRenderSync = {
-                .queueType = PaperRenderer::QueueType::COMPUTE,
                 .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValues[renderer.getBufferIndex()] + 3 } },
                 .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValues[renderer.getBufferIndex()] + 4 } }
             };
@@ -912,7 +908,6 @@ int main()
         {
             //render pass (wait on transfer, signal rendering semaphore)
             const PaperRenderer::SynchronizationInfo rasterSyncInfo = {
-                .queueType = PaperRenderer::QueueType::GRAPHICS,
                 .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 1 } },
                 .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 4 } }
             };
@@ -921,7 +916,6 @@ int main()
 
         //copy HDR buffer to swapchain (wait for render pass and swapchain, signal rendering and presentation semaphores)
         const PaperRenderer::SynchronizationInfo bufferCopySyncInfo = {
-            .queueType = PaperRenderer::QueueType::GRAPHICS,
             .binaryWaitPairs = { { swapchainSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT } },
             .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 4 } },
             .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 5 } }
@@ -930,7 +924,6 @@ int main()
 
         //render GUI
         const PaperRenderer::SynchronizationInfo guiSyncInfo = {
-            .queueType = PaperRenderer::QueueType::GRAPHICS,
             .binarySignalPairs = { { presentationSemaphores[renderer.getSwapchain().getSwapchainImageIndex()], VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT } },
             .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 5 } },
             .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 6 } }

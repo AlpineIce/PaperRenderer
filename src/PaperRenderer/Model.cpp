@@ -188,11 +188,7 @@ namespace PaperRenderer
 			.dstOffset = 0,
 			.size = size
 		};
-
-		const SynchronizationInfo synchronizationInfo = {
-			.queueType = QueueType::TRANSFER
-		};
-		vkQueueWaitIdle(buffer->copyFromBufferRanges(vboStaging, { copyRegion }, synchronizationInfo).queue);
+		buffer->copyFromBufferRanges(vboStaging, { copyRegion }, {}).idle();
 
 		return buffer;
     }
@@ -224,11 +220,7 @@ namespace PaperRenderer
 				.dstOffset = 0,
 				.size = parentModel.vbo->getSize()
 			};
-
-			const SynchronizationInfo synchronizationInfo = {
-				.queueType = QueueType::TRANSFER
-			};
-			vkQueueWaitIdle(uniqueGeometryData.uniqueVBO->copyFromBufferRanges(*parentModel.vbo, { copyRegion }, synchronizationInfo).queue);
+			uniqueGeometryData.uniqueVBO->copyFromBufferRanges(*parentModel.vbo, { copyRegion }, {}).idle();
 
 			//create BLAS
 			uniqueGeometryData.blas = std::make_unique<BLAS>(renderer, parentModel, uniqueGeometryData.uniqueVBO.get());

@@ -114,7 +114,7 @@ namespace PaperRenderer
         void queueInstanceTransfers();
         void handleMaterialDataCompaction(const std::vector<CompactionResult>&);
         void clearDrawCounts(VkCommandBuffer cmdBuffer);
-        void assignResourceOwner(const Queue& queue);
+        void assignResourceOwner(Queue& queue);
 
         RenderEngine& renderer;
         MaterialInstance& defaultMaterialInstance;
@@ -126,7 +126,7 @@ namespace PaperRenderer
         ~RenderPass();
         RenderPass(const RenderPass&) = delete;
 
-        const Queue& render(const RenderPassInfo& renderPassInfo, SynchronizationInfo syncInfo);
+        Queue& render(const RenderPassInfo& renderPassInfo, SynchronizationInfo syncInfo);
 
         //thread safe
         void addInstance(ModelInstance& instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials, bool sorted=false);

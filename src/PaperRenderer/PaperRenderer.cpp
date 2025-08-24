@@ -50,7 +50,14 @@ namespace PaperRenderer
         rasterPreprocessPipeline(*this, creationInfo.rasterPreprocessSpirv),
         tlasInstanceBuildPipeline(*this, creationInfo.rtPreprocessSpirv),
         asBuilder(*this),
-        stagingBuffer({ RendererStagingBuffer(*this), RendererStagingBuffer(*this) }),
+        stagingBuffer([this] (){
+            const uint32_t transferQueueCount = device.getQueues()[TRANSFER].queues.size();
+
+            return std::array<RendererStagingBuffer, 2>({
+                RendererStagingBuffer(*this, *device.getQueues()[TRANSFER].queues[0 % transferQueueCount]),
+                RendererStagingBuffer(*this, *device.getQueues()[TRANSFER].queues[1 % transferQueueCount])
+            });
+        } ()),
         instancesBufferDescriptor(*this, defaultDescriptorLayouts[INSTANCES].getSetLayout()),
         modelDataBuffer(*this, {
             .size = 4096,
@@ -104,15 +111,12 @@ namespace PaperRenderer
         //copy old data into new if old buffer existed
         if(newWriteSize)
         {
-            VkBufferCopy copyRegion = {};
-            copyRegion.srcOffset = 0;
-            copyRegion.dstOffset = 0;
-            copyRegion.size = newWriteSize;
-
-            const SynchronizationInfo syncInfo = {
-                .queueType = TRANSFER
+            const VkBufferCopy copyRegion = {
+                .srcOffset = 0,
+                .dstOffset = 0,
+                .size = newWriteSize
             };
-            vkQueueWaitIdle(newBuffer.getBuffer().copyFromBufferRanges(instancesDataBuffer, { copyRegion }, syncInfo).queue);
+            newBuffer.getBuffer().copyFromBufferRanges(instancesDataBuffer, { copyRegion }, {}).idle();
 
             //pseudo write
             newBuffer.newWrite(NULL, newWriteSize, NULL);
@@ -169,10 +173,7 @@ namespace PaperRenderer
 
         if(copyRegion.size)
         {
-            const SynchronizationInfo syncInfo = {
-                .queueType = TRANSFER
-            };
-            vkQueueWaitIdle(newBuffer.copyFromBufferRanges(instancesDataBuffer, { copyRegion }, syncInfo).queue);
+            newBuffer.copyFromBufferRanges(instancesDataBuffer, { copyRegion }, {}).idle();
         }
         
         //replace old buffer

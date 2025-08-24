@@ -34,7 +34,7 @@ namespace PaperRenderer
     {
     protected:
         VkDeviceSize size = 0;
-        std::set<Queue const*> owners;
+        std::set<Queue*> owners;
         VmaAllocation allocation = VK_NULL_HANDLE;
         std::mutex resourceMutex;
 
@@ -50,10 +50,10 @@ namespace PaperRenderer
         VulkanResource& operator=(VulkanResource&& other) noexcept;
 
         //thread safe
-        void addOwner(const Queue& queue);
+        void addOwner(Queue& queue);
         //thread safe
-        void removeOwner(const Queue& queue);
-        void idleOwners() const;
+        void removeOwner(Queue& queue);
+        void idleOwners();
 
         VkDeviceSize getSize() const { return size; }
     };
@@ -75,7 +75,7 @@ namespace PaperRenderer
 
         int writeToBuffer(const std::vector<BufferWrite>& writes) const; //returns 0 if successful, 1 if unsuccessful (probably because not host visible)
         int readFromBuffer(const std::vector<BufferRead>& reads) const;
-        const Queue& copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const;
+        Queue& copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const;
 
         const VkBuffer& getBuffer() const { return buffer; }
         const bool& isWritable() const { return writable; }
@@ -150,8 +150,8 @@ namespace PaperRenderer
         void removeFromRange(VkDeviceSize offset, VkDeviceSize size);
 
         std::vector<CompactionResult> compact(); //inkoves on demand compaction; useful for when recreating an allocation to get the actual current size requirement. results are sorted
-        void addOwner(const Queue& queue) { buffer.addOwner(queue); }
-        void removeOwner(const Queue& queue) { buffer.removeOwner(queue); };
+        void addOwner(Queue& queue) { buffer.addOwner(queue); }
+        void removeOwner(Queue& queue) { buffer.removeOwner(queue); };
 
         Buffer& getBuffer() { return buffer; }
         const VkDeviceSize& getStackLocation() const { return stackLocation; } //returns the location relative to the start of the buffer (always 0) of where unwritten data is

@@ -62,7 +62,7 @@ namespace PaperRenderer
         std::unordered_map<ShaderHitGroup const*, uint32_t> materialReferences; //uint32_t is the number of instances using it
 
         void rebuildPipeline();
-        void assignResourceOwner(const Queue& queue);
+        void assignResourceOwner(Queue& queue);
         
         class RenderEngine& renderer;
 
@@ -82,9 +82,9 @@ namespace PaperRenderer
         RayTraceRender(const RayTraceRender&) = delete;
 
         //Invokes vkCmdTraceRaysKHR at the listed entryTLAS. All acceleration structures used should be updated with updateTLAS() before rendering
-        const Queue& render(const RayTraceRenderInfo& rtRenderInfo, const SynchronizationInfo& syncInfo);
+        Queue& render(const RayTraceRenderInfo& rtRenderInfo, const SynchronizationInfo& syncInfo);
         //Updates the transformation, addition/removal, and sbt offsets of all instances used
-        const Queue& updateTLAS(TLAS& tlas, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, const SynchronizationInfo& syncInfo);
+        Queue& updateTLAS(TLAS& tlas, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, const SynchronizationInfo& syncInfo);
 
         //Please keep track of the return value; ownership is transfered to return value
         [[nodiscard]] std::unique_ptr<TLAS> addNewTLAS();

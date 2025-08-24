@@ -178,9 +178,9 @@ namespace PaperRenderer
             if(instancesCopyRegion.size)
             {
                 const SynchronizationInfo syncInfo = {
-                    .queueType = TRANSFER
+                    .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } } //wait on self
                 };
-                vkQueueWaitIdle(newInstancesBuffer->copyFromBufferRanges(*instancesBuffer, { instancesCopyRegion }, syncInfo).queue);
+                newInstancesBuffer->copyFromBufferRanges(*instancesBuffer, { instancesCopyRegion }, syncInfo).idle();
             }
         }
 
@@ -265,15 +265,16 @@ namespace PaperRenderer
             //pseudo write for material data
             newInstancesDataBuffer->newWrite(NULL, newMaterialDataWriteSize, NULL);
 
-            VkBufferCopy materialDataCopyRegion = {};
-            materialDataCopyRegion.srcOffset = 0;
-            materialDataCopyRegion.dstOffset = 0;
-            materialDataCopyRegion.size = newMaterialDataWriteSize;
+            const VkBufferCopy materialDataCopyRegion = {
+                .srcOffset = 0,
+                .dstOffset = 0,
+                .size = newMaterialDataWriteSize
+            };
 
             const SynchronizationInfo syncInfo = {
-                .queueType = TRANSFER
+                .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } } //wait on self
             };
-            vkQueueWaitIdle(newInstancesDataBuffer->getBuffer().copyFromBufferRanges(instancesDataBuffer->getBuffer(), { materialDataCopyRegion }, syncInfo).queue);
+            newInstancesDataBuffer->getBuffer().copyFromBufferRanges(instancesDataBuffer->getBuffer(), { materialDataCopyRegion }, syncInfo).idle();
         }
         
         //replace old buffer
@@ -402,7 +403,7 @@ namespace PaperRenderer
         }
     }
 
-    void RenderPass::assignResourceOwner(const Queue &queue)
+    void RenderPass::assignResourceOwner(Queue& queue)
     {
         //this
         instancesBuffer->addOwner(queue);
@@ -423,7 +424,7 @@ namespace PaperRenderer
         renderer.instancesDataBuffer.addOwner(queue);
     }
 
-    const Queue& RenderPass::render(const RenderPassInfo& renderPassInfo, SynchronizationInfo syncInfo)
+    Queue& RenderPass::render(const RenderPassInfo& renderPassInfo, SynchronizationInfo syncInfo)
     {
         //Timer
         Timer timer(renderer, "RenderPass Submission", REGULAR);
@@ -700,7 +701,6 @@ namespace PaperRenderer
 
         //submit transfers
         const SynchronizationInfo transferSyncInfo = {
-            .queueType = TRANSFER,
             .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } }, //wait on self
             .timelineSignalPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue + 1 } }
         };
@@ -712,7 +712,7 @@ namespace PaperRenderer
         transferSemaphoreValue += 2;
 
         //submit
-        const Queue& queue = renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+        Queue& queue = renderer.getDevice().getCommands().submitToQueue(GRAPHICS, syncInfo, { cmdBuffer });
 
         //assign owner to resources in case destruction is required
         assignResourceOwner(queue);

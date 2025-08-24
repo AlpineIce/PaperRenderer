@@ -31,7 +31,7 @@ namespace PaperRenderer
         pipeline.reset();
     }
 
-    const Queue& RayTraceRender::render(const RayTraceRenderInfo& rtRenderInfo, const SynchronizationInfo& syncInfo)
+    Queue& RayTraceRender::render(const RayTraceRenderInfo& rtRenderInfo, const SynchronizationInfo& syncInfo)
     {
         //Timer
         Timer timer(renderer, "RayTraceRender Record", REGULAR);
@@ -44,7 +44,7 @@ namespace PaperRenderer
             .pInheritanceInfo = NULL
         };
 
-        VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(syncInfo.queueType);
+        VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(COMPUTE);
 
         vkBeginCommandBuffer(cmdBuffer, &commandInfo);
 
@@ -87,7 +87,7 @@ namespace PaperRenderer
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
         
         //submit
-        const Queue& queue = renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+        Queue& queue = renderer.getDevice().getCommands().submitToQueue(COMPUTE, syncInfo, { cmdBuffer });
         
         //assign ownership
         assignResourceOwner(queue);
@@ -96,7 +96,7 @@ namespace PaperRenderer
         return  queue;
     }
 
-    const Queue& RayTraceRender::updateTLAS(TLAS& tlas, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, const SynchronizationInfo& syncInfo)
+    Queue& RayTraceRender::updateTLAS(TLAS& tlas, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, const SynchronizationInfo& syncInfo)
     {
         //update RT pipeline if needed (required to access SBT offsets for TLAS)
         if(queuePipelineBuild)
@@ -111,7 +111,7 @@ namespace PaperRenderer
         tlasData[&tlas].toUpdateInstances.erase(sortedInstances, tlasData[&tlas].toUpdateInstances.end());
 
         //update TLAS
-        const Queue& queue = tlas.updateTLAS(mode, flags, syncInfo);
+        Queue& queue = tlas.updateTLAS(mode, flags, syncInfo);
         
         //clear toUpdateInstances
         tlasData[&tlas].toUpdateInstances.clear();
@@ -159,7 +159,7 @@ namespace PaperRenderer
         queuePipelineBuild = false;
     }
 
-    void RayTraceRender::assignResourceOwner(const Queue &queue)
+    void RayTraceRender::assignResourceOwner(Queue &queue)
     {
         pipeline->assignOwner(queue);
     }

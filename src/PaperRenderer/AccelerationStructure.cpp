@@ -312,7 +312,7 @@ namespace PaperRenderer
         return oldBuffer;
     }
 
-    void AS::assignResourceOwner(const Queue &queue)
+    void AS::assignResourceOwner(Queue &queue)
     {
         asBuffer->addOwner(queue);
     }
@@ -548,9 +548,9 @@ namespace PaperRenderer
 
                 //submit
                 const SynchronizationInfo syncInfo = {
-                    .queueType = TRANSFER
+                    .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } }, //wait on self
                 };
-                vkQueueWaitIdle(renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer }).queue);
+                renderer.getDevice().getCommands().submitToQueue(TRANSFER, syncInfo, { cmdBuffer }).idle();
             }
             
             //replace old buffers
@@ -643,7 +643,7 @@ namespace PaperRenderer
         AS::buildStructure(cmdBuffer, data, compactionQuery, scratchAddress);
     }
 
-    void TLAS::assignResourceOwner(const Queue &queue)
+    void TLAS::assignResourceOwner(Queue &queue)
     {
         scratchBuffer->addOwner(queue);
         renderer.instancesDataBuffer.addOwner(queue);
@@ -652,7 +652,7 @@ namespace PaperRenderer
         AS::assignResourceOwner(queue);
     }
 
-    const Queue& TLAS::updateTLAS(const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo)
+    Queue& TLAS::updateTLAS(const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo)
     {
         //----------QUEUE INSTANCE TRANSFERS----------//
 
@@ -746,7 +746,6 @@ namespace PaperRenderer
 
         //submit transfers
         const SynchronizationInfo transferSyncInfo = {
-            .queueType = TRANSFER,
             .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } }, //wait on self
             .timelineSignalPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue + 1 } }
         };
@@ -754,11 +753,11 @@ namespace PaperRenderer
 
         //append transfer semaphore to syncInfo
         syncInfo.timelineWaitPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 1});
-        syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 2});
+        syncInfo.timelineSignalPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 2});
         transferSemaphoreValue += 2;
         
         //submit
-        const Queue& queue = renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+        Queue& queue = renderer.getDevice().getCommands().submitToQueue(COMPUTE, syncInfo, { cmdBuffer });
 
         //assign ownership
         assignResourceOwner(queue);
@@ -821,7 +820,7 @@ namespace PaperRenderer
         blasQueue.emplace_back(op);
     }
 
-    const Queue &AccelerationStructureBuilder::submitQueuedOps(const SynchronizationInfo &syncInfo)
+    Queue& AccelerationStructureBuilder::submitQueuedOps(const SynchronizationInfo& syncInfo)
     {
         Timer timer(renderer, "Submit Queued BLAS Ops", REGULAR);
 
@@ -831,7 +830,7 @@ namespace PaperRenderer
         std::lock_guard guard(builderMutex);
 
         //return queue
-        Queue const* returnQueue = NULL;
+        Queue* returnQueue = NULL;
         
         //get BLAS' that are to be compacted
         std::unordered_map<BLAS*, VkDeviceSize> compactions = getCompactions();
@@ -932,7 +931,6 @@ namespace PaperRenderer
         renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
         SynchronizationInfo buildSyncInfo = {
-            .queueType = COMPUTE,
             .binaryWaitPairs = syncInfo.binaryWaitPairs,
             .timelineWaitPairs = syncInfo.timelineWaitPairs,
             .fence = VK_NULL_HANDLE
@@ -945,7 +943,7 @@ namespace PaperRenderer
             buildSyncInfo.fence = syncInfo.fence;
         }
 
-        returnQueue = &renderer.getDevice().getCommands().submitToQueue(buildSyncInfo, { cmdBuffer });
+        returnQueue = &renderer.getDevice().getCommands().submitToQueue(COMPUTE, buildSyncInfo, { cmdBuffer });
 
         //----------AS COMPACTION----------//
         
@@ -990,12 +988,11 @@ namespace PaperRenderer
 
             //submit
             const SynchronizationInfo compactionSyncInfo = {
-                .queueType = COMPUTE,
                 .binarySignalPairs = syncInfo.binarySignalPairs,
                 .timelineSignalPairs = syncInfo.timelineSignalPairs,
                 .fence = syncInfo.fence
             };
-            returnQueue = &renderer.getDevice().getCommands().submitToQueue(compactionSyncInfo, { cmdBuffer });
+            returnQueue = &renderer.getDevice().getCommands().submitToQueue(COMPUTE, compactionSyncInfo, { cmdBuffer });
 
             //destroy query pool
             vkDestroyQueryPool(renderer.getDevice().getDevice(), queryPool, nullptr);
