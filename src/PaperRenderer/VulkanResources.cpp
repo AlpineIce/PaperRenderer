@@ -32,11 +32,11 @@ namespace PaperRenderer
     {
         if (this != &other)
         {
+            std::lock_guard guard(other.resourceMutex);
             size = other.size;
             owners = std::move(other.owners);
             allocation = other.allocation;
 
-            std::lock_guard guard(other.resourceMutex);
             other.size = 0;
             other.owners.clear();
             other.allocation = VK_NULL_HANDLE;

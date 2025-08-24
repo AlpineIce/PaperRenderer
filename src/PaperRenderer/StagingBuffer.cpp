@@ -4,7 +4,8 @@
 namespace PaperRenderer
 {
     RendererStagingBuffer::RendererStagingBuffer(RenderEngine& renderer)
-        :renderer(renderer)
+        :stagingBuffer(renderer, {}),
+        renderer(&renderer)
     {
         //log constructor
         renderer.getLogger().recordLog({
@@ -15,12 +16,28 @@ namespace PaperRenderer
 
     RendererStagingBuffer::~RendererStagingBuffer()
     {
-        stagingBuffer.reset();
-
         //log destructor
-        renderer.getLogger().recordLog({
+        renderer->getLogger().recordLog({
             .type = INFO,
             .text = "A RendererStagingBuffer was destroyed"
+        });
+    }
+
+    RendererStagingBuffer::RendererStagingBuffer(RendererStagingBuffer&& other) noexcept
+        :stagingBuffer(std::move(other.stagingBuffer)),
+        bufferOverhead(other.bufferOverhead),
+        transferQueue(other.transferQueue),
+        queueSize(other.queueSize),
+        stackLocation(other.stackLocation),
+        renderer(other.renderer)
+    {
+        std::lock_guard guard(stagingBufferMutex);
+        other.queueSize = 0;
+        other.stackLocation = 0;
+
+        renderer->getLogger().recordLog({
+            .type = INFO,
+            .text = "A RendererStagingBuffer was moved"
         });
     }
 
@@ -32,13 +49,13 @@ namespace PaperRenderer
     std::set<Buffer*> RendererStagingBuffer::submitQueuedTransfers(VkCommandBuffer cmdBuffer)
     {
         //timer
-        Timer timer(renderer, "Record Queued Transfers (StagingBuffer)", REGULAR);
+        Timer timer(*renderer, "Record Queued Transfers (StagingBuffer)", REGULAR);
 
         //lock mutex
         std::lock_guard guard(stagingBufferMutex);
 
         //rebuild buffer if needed
-        VkDeviceSize availableSize = stagingBuffer ? stagingBuffer->getSize() : 0;
+        VkDeviceSize availableSize = stagingBuffer.getSize();
         if(stackLocation + queueSize > availableSize)
         {
             const BufferInfo bufferInfo = {
@@ -46,7 +63,7 @@ namespace PaperRenderer
                 .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR,
                 .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
             };
-            stagingBuffer = std::make_unique<Buffer>(renderer, bufferInfo);
+            stagingBuffer = Buffer(*renderer, bufferInfo);
 
             availableSize = bufferInfo.size;
         }
@@ -65,10 +82,8 @@ namespace PaperRenderer
                 .offset = stackLocation,
                 .size = transfer.data.size(),
                 .readData = transfer.data.data()
-            };
-
-            //fill staging buffer           
-            stagingBuffer->writeToBuffer({ bufferWrite });
+            };        
+            stagingBuffer.writeToBuffer({ bufferWrite });
 
             //push VkBufferCopy
             const VkBufferCopy copy = {
@@ -78,7 +93,7 @@ namespace PaperRenderer
             };
 
             //record copy command
-            vkCmdCopyBuffer(cmdBuffer, stagingBuffer->getBuffer(), transfer.dstBuffer.getBuffer(), 1, &copy);
+            vkCmdCopyBuffer(cmdBuffer, stagingBuffer.getBuffer(), transfer.dstBuffer.getBuffer(), 1, &copy);
 
             //increment stack
             stackLocation += bufferWrite.size;
@@ -95,7 +110,7 @@ namespace PaperRenderer
     const Queue& RendererStagingBuffer::submitQueuedTransfers(const SynchronizationInfo& syncInfo)
     {
         //start command buffer
-        VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(syncInfo.queueType);
+        VkCommandBuffer cmdBuffer = renderer->getDevice().getCommands().getCommandBuffer(syncInfo.queueType);
 
         const VkCommandBufferBeginInfo beginInfo = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -110,17 +125,17 @@ namespace PaperRenderer
         //end command buffer
         vkEndCommandBuffer(cmdBuffer);
 
-        renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
+        renderer->getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
         //submit
-        const Queue& queue = renderer.getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
+        const Queue& queue = renderer->getDevice().getCommands().submitToQueue(syncInfo, { cmdBuffer });
 
         //add owners
         for(Buffer* buffer : dstBuffers)
         {
             buffer->addOwner(queue);
         }
-        if(stagingBuffer) stagingBuffer->addOwner(queue);
+        stagingBuffer.addOwner(queue);
 
         return queue;
     }

@@ -13,7 +13,6 @@
 #include "StagingBuffer.h"
 
 #include <string>
-#include <memory>
 #include <vector>
 #include <deque>
 #include <queue>
@@ -54,7 +53,7 @@ namespace PaperRenderer
         RasterPreprocessPipeline rasterPreprocessPipeline;
         TLASInstanceBuildPipeline tlasInstanceBuildPipeline;
         AccelerationStructureBuilder asBuilder;
-        std::array<std::unique_ptr<RendererStagingBuffer>, 2> stagingBuffer; //double buffered
+        std::array<RendererStagingBuffer, 2> stagingBuffer; //double buffered
 
         //renderer descriptors
         ResourceDescriptor instancesBufferDescriptor;
@@ -118,7 +117,7 @@ namespace PaperRenderer
         TLASInstanceBuildPipeline& getTLASPreprocessPipeline() { return tlasInstanceBuildPipeline; }
         DescriptorAllocator& getDescriptorAllocator() { return descriptors; }
         Swapchain& getSwapchain() { return swapchain; }
-        RendererStagingBuffer& getStagingBuffer() { return *stagingBuffer[getBufferIndex()]; }
+        RendererStagingBuffer& getStagingBuffer() { return stagingBuffer[getBufferIndex()]; }
         AccelerationStructureBuilder& getAsBuilder() { return asBuilder; }
         const std::vector<Model*>& getModelReferences() const { return renderingModels; }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }

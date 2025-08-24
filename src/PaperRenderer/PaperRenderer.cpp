@@ -50,7 +50,7 @@ namespace PaperRenderer
         rasterPreprocessPipeline(*this, creationInfo.rasterPreprocessSpirv),
         tlasInstanceBuildPipeline(*this, creationInfo.rtPreprocessSpirv),
         asBuilder(*this),
-        stagingBuffer({ std::make_unique<RendererStagingBuffer>(*this), std::make_unique<RendererStagingBuffer>(*this) }),
+        stagingBuffer({ RendererStagingBuffer(*this), RendererStagingBuffer(*this) }),
         instancesBufferDescriptor(*this, defaultDescriptorLayouts[INSTANCES].getSetLayout()),
         modelDataBuffer(*this, {
             .size = 4096,
@@ -340,7 +340,7 @@ namespace PaperRenderer
         statisticsTracker.clearStatistics();
 
         //idle staging buffer
-        stagingBuffer[getBufferIndex()]->resetBuffer();
+        stagingBuffer[getBufferIndex()].resetBuffer();
 
         //reset command pools
         device.getCommands().resetCommandPools();

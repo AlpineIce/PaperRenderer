@@ -7,27 +7,29 @@ namespace PaperRenderer
     {
     private:
         std::recursive_mutex stagingBufferMutex;
-        std::unique_ptr<Buffer> stagingBuffer;
+        Buffer stagingBuffer;
         const float bufferOverhead = 1.5f;
 
         struct QueuedTransfer
         {
-            VkDeviceSize dstOffset;
-            std::vector<uint8_t> data;
+            VkDeviceSize dstOffset = 0;
+            std::vector<uint8_t> data = {};
             const Buffer& dstBuffer;
         };
 
-        std::deque<QueuedTransfer> transferQueue;
+        std::deque<QueuedTransfer> transferQueue = {};
         VkDeviceSize queueSize = 0;
         VkDeviceSize stackLocation = 0;
 
         std::set<Buffer*> submitQueuedTransfers(VkCommandBuffer cmdBuffer); //records all queued transfers and clears the queue
 
-        class RenderEngine& renderer;
+        class RenderEngine* renderer;
 
     public:
         RendererStagingBuffer(RenderEngine& renderer);
         ~RendererStagingBuffer();
+        RendererStagingBuffer(const RendererStagingBuffer&) = delete;
+        RendererStagingBuffer(RendererStagingBuffer&& other) noexcept;
         
         void resetBuffer();
         const Queue& submitQueuedTransfers(const SynchronizationInfo& syncInfo); //Submits all queued transfers and clears the queue
