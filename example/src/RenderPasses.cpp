@@ -792,7 +792,7 @@ BufferCopyPass::BufferCopyMaterial::BufferCopyMaterial(PaperRenderer::RenderEngi
                     }
                 },
                 .colorAttachmentFormats = { 
-                    { renderer.getSwapchain().getWindowState().surfaceFormat.format }
+                    renderer.getSwapchain().getWindowState().surfaceFormat.format
                 },
                 .rasterInfo = {
                     .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,

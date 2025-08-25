@@ -526,7 +526,7 @@ int main()
                     }
                 },
                 .colorAttachmentFormats = {
-                    { hdrBuffer.format }
+                    hdrBuffer.format
                 },
                 .depthAttachmentFormat = depthBuffer.format,
                 .rasterInfo = {
