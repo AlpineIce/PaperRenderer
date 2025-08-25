@@ -44,7 +44,7 @@ namespace PaperRenderer
             .pInheritanceInfo = NULL
         };
 
-        VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(COMPUTE);
+        CommandBuffer cmdBuffer(renderer.getDevice().getCommands(), COMPUTE);
 
         vkBeginCommandBuffer(cmdBuffer, &commandInfo);
 
@@ -83,8 +83,6 @@ namespace PaperRenderer
         
         //end
         vkEndCommandBuffer(cmdBuffer);
-
-        renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
         
         //submit
         Queue& queue = renderer.getDevice().getCommands().submitToQueue(COMPUTE, syncInfo, { cmdBuffer });

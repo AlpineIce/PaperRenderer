@@ -702,7 +702,7 @@ const PaperRenderer::Queue& BufferCopyPass::render(const PaperRenderer::Synchron
 
     //----------RENDER----------//
 
-    VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(PaperRenderer::QueueType::GRAPHICS);
+    PaperRenderer::CommandBuffer cmdBuffer(renderer.getDevice().getCommands(), PaperRenderer::QueueType::GRAPHICS);
 
     VkCommandBufferBeginInfo cmdBufferBeginInfo = {};
     cmdBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -751,8 +751,6 @@ const PaperRenderer::Queue& BufferCopyPass::render(const PaperRenderer::Synchron
     vkCmdPipelineBarrier2(cmdBuffer, &postRenderBarriers);
 
     vkEndCommandBuffer(cmdBuffer);
-
-    renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
     return renderer.getDevice().getCommands().submitToQueue(PaperRenderer::QueueType::GRAPHICS, syncInfo, { cmdBuffer });
 }

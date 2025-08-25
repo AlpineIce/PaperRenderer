@@ -439,7 +439,7 @@ namespace PaperRenderer
         //Timer
         Timer timer(renderer, "RenderPass Submission", REGULAR);
         
-        VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(GRAPHICS);
+        CommandBuffer cmdBuffer(renderer.getDevice().getCommands(), GRAPHICS);
 
         const VkCommandBufferBeginInfo cmdBufferBeginInfo = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -706,8 +706,6 @@ namespace PaperRenderer
 
         //end cmd buffer
         vkEndCommandBuffer(cmdBuffer);
-
-        renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
         //submit transfers
         const SynchronizationInfo transferSyncInfo = {

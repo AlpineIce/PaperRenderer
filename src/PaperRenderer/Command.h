@@ -74,6 +74,24 @@ namespace PaperRenderer
         VkFence fence = VK_NULL_HANDLE;
     };
 
+    // RAII command buffer wrapper; automatically unlocks command buffer at the end of its scope
+    class CommandBuffer
+    {
+    private:
+        VkCommandBuffer cmdBuffer = VK_NULL_HANDLE;
+
+        class Commands* commands;
+    public:
+        CommandBuffer(Commands& commands, const QueueType type);
+        ~CommandBuffer();
+        CommandBuffer(const CommandBuffer&) = delete;
+        CommandBuffer(CommandBuffer&& other) noexcept;
+        CommandBuffer& operator=(CommandBuffer&& other) noexcept;
+        
+        operator VkCommandBuffer() const { return cmdBuffer; }
+        VkCommandBuffer getCommandBuffer() const { return cmdBuffer; }
+    };
+
     class Commands
     {
     private:
@@ -93,7 +111,12 @@ namespace PaperRenderer
 
         void createCommandPools();
 
+        VkCommandBuffer getCommandBuffer(QueueType type);
+        void unlockCommandBuffer(VkCommandBuffer cmdBuffer);
+
         class RenderEngine& renderer;
+
+        friend CommandBuffer;
         
     public:
         Commands(class RenderEngine& renderer, std::unordered_map<QueueType, QueuesInFamily>* queuesPtr);
@@ -108,11 +131,5 @@ namespace PaperRenderer
         VkSemaphore getTimelineSemaphore(uint64_t initialValue);
         VkFence getSignaledFence();
         VkFence getUnsignaledFence();
-        
-        //MUST CALL unlockCommandBuffer() BEFORE THREAD SUBMISSION, AND ON SAME THREAD
-        VkCommandBuffer getCommandBuffer(QueueType type);
-
-        //MUST BE CALLED ON SAME THREAD getCommandBuffer() WAS CALLED ON
-        void unlockCommandBuffer(VkCommandBuffer cmdBuffer);
     };
 }

@@ -523,7 +523,7 @@ namespace PaperRenderer
 
             if(instancesBuffer.getSize())
             {
-                VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(TRANSFER);
+                CommandBuffer cmdBuffer(renderer.getDevice().getCommands(), TRANSFER);
             
                 const VkCommandBufferBeginInfo cmdBufferInfo = {
                     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -551,8 +551,6 @@ namespace PaperRenderer
 
                 //end command buffer
                 vkEndCommandBuffer(cmdBuffer);
-
-                renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
                 //submit
                 const SynchronizationInfo syncInfo = {
@@ -715,7 +713,7 @@ namespace PaperRenderer
         }
 
         //start command buffer
-        VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(COMPUTE);
+        CommandBuffer cmdBuffer(renderer.getDevice().getCommands(), COMPUTE);
 
         const VkCommandBufferBeginInfo cmdBufferInfo = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -749,8 +747,6 @@ namespace PaperRenderer
 
         //end command buffer and submit
         vkEndCommandBuffer(cmdBuffer);
-
-        renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
         //submit transfers
         const SynchronizationInfo transferSyncInfo = {
@@ -856,7 +852,7 @@ namespace PaperRenderer
         }
 
         //start command buffer
-        VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(COMPUTE);
+        CommandBuffer cmdBuffer(renderer.getDevice().getCommands(), COMPUTE);
 
         VkCommandBufferBeginInfo cmdBufferInfo = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -933,8 +929,6 @@ namespace PaperRenderer
         //end command buffer and submit
         vkEndCommandBuffer(cmdBuffer);
 
-        renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
-
         SynchronizationInfo buildSyncInfo = {
             .binaryWaitPairs = syncInfo.binaryWaitPairs,
             .timelineWaitPairs = syncInfo.timelineWaitPairs,
@@ -968,7 +962,7 @@ namespace PaperRenderer
             );
 
             //start new command buffer
-            VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(COMPUTE);
+            CommandBuffer cmdBuffer(renderer.getDevice().getCommands(), COMPUTE);
 
             VkCommandBufferBeginInfo cmdBufferInfo = {
                 .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -988,8 +982,6 @@ namespace PaperRenderer
 
             //end cmd buffer
             vkEndCommandBuffer(cmdBuffer);
-
-            renderer.getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
             //submit
             const SynchronizationInfo compactionSyncInfo = {

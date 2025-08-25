@@ -194,7 +194,7 @@ namespace PaperRenderer
 
     Queue& Buffer::copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
     {
-        VkCommandBuffer transferBuffer = renderer->getDevice().getCommands().getCommandBuffer(QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
+        CommandBuffer transferBuffer(renderer->getDevice().getCommands(), QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
 
         const VkCommandBufferBeginInfo beginInfo = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -206,8 +206,6 @@ namespace PaperRenderer
         vkBeginCommandBuffer(transferBuffer, &beginInfo);
         vkCmdCopyBuffer(transferBuffer, src.getBuffer(), this->buffer, regions.size(), regions.data());
         vkEndCommandBuffer(transferBuffer);
-
-        renderer->getDevice().getCommands().unlockCommandBuffer(transferBuffer);
 
         return renderer->getDevice().getCommands().submitToQueue(TRANSFER, synchronizationInfo, { transferBuffer });
     }
@@ -390,7 +388,7 @@ namespace PaperRenderer
             std::sort(vectorMemoryFragments.begin(), vectorMemoryFragments.end(), FragmentableBuffer::Chunk::compareByLocation);
 
             //start a command buffer
-            VkCommandBuffer cmdBuffer = renderer->getDevice().getCommands().getCommandBuffer(TRANSFER);
+            CommandBuffer cmdBuffer(renderer->getDevice().getCommands(), TRANSFER);
 
             const VkCommandBufferBeginInfo beginInfo = {
                 .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -481,8 +479,6 @@ namespace PaperRenderer
 
             //end command buffer
             vkEndCommandBuffer(cmdBuffer);
-
-            renderer->getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
             //idle resource owners before submission
             buffer.idleOwners();
@@ -620,7 +616,7 @@ namespace PaperRenderer
     void Image::setImageData(const Buffer &imageStagingBuffer)
     {
         //command buffer
-        VkCommandBuffer cmdBuffer = renderer->getDevice().getCommands().getCommandBuffer(QueueType::GRAPHICS);
+        CommandBuffer cmdBuffer(renderer->getDevice().getCommands(), GRAPHICS);
 
         const VkCommandBufferBeginInfo beginInfo = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -658,8 +654,6 @@ namespace PaperRenderer
         generateMipmaps(cmdBuffer);
 
         vkEndCommandBuffer(cmdBuffer);
-
-        renderer->getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
         renderer->getDevice().getCommands().submitToQueue(GRAPHICS, {}, { cmdBuffer }).idle();
     }

@@ -111,7 +111,7 @@ namespace PaperRenderer
     Queue& RendererStagingBuffer::submitQueuedTransfers(const SynchronizationInfo& syncInfo)
     {
         //start command buffer
-        VkCommandBuffer cmdBuffer = renderer->getDevice().getCommands().getCommandBuffer(TRANSFER);
+        CommandBuffer cmdBuffer(renderer->getDevice().getCommands(), TRANSFER);
 
         const VkCommandBufferBeginInfo beginInfo = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -125,8 +125,6 @@ namespace PaperRenderer
 
         //end command buffer
         vkEndCommandBuffer(cmdBuffer);
-
-        renderer->getDevice().getCommands().unlockCommandBuffer(cmdBuffer);
 
         //submit
         renderer->getDevice().getCommands().submitToQueue(*gpuQueue, syncInfo, { cmdBuffer });
