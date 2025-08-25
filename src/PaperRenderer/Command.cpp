@@ -14,9 +14,6 @@ namespace PaperRenderer
         :renderer(renderer),
         queuesPtr(queuesPtr)
     {
-        VkSurfaceCapabilitiesKHR capabilities;
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &capabilities);
-
         createCommandPools();
 
         //log constructor

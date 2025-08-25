@@ -102,14 +102,17 @@ namespace PaperRenderer
     //----------AS BASE CLASS DEFINITIONS----------//
 
     AS::AS(RenderEngine &renderer)
-        :renderer(renderer)
+        :asBuffer(renderer, {
+            .size = 0,
+            .usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
+            .allocationFlags = 0
+        }),
+        renderer(renderer)
     {
     }
 
     AS::~AS()
     {
-        asBuffer.reset();
-
         if(accelerationStructure)
         {
             vkDestroyAccelerationStructureKHR(renderer.getDevice().getDevice(), accelerationStructure, nullptr);
@@ -183,14 +186,14 @@ namespace PaperRenderer
             &buildSizeInfo);
         
         //update buffer if needed
-        if(!asBuffer || asBuffer->getSize() < buildSizeInfo.accelerationStructureSize)
+        if(asBuffer.getSize() < buildSizeInfo.accelerationStructureSize)
         {
             const BufferInfo bufferInfo = {
                 .size = buildSizeInfo.accelerationStructureSize,
                 .usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
                 .allocationFlags = 0
             };
-            asBuffer = std::make_unique<Buffer>(renderer, bufferInfo);
+            asBuffer = Buffer(renderer, bufferInfo);
         }
 
         //create new acceleration structure
@@ -198,7 +201,7 @@ namespace PaperRenderer
             .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
             .pNext = NULL,
             .createFlags = 0,
-            .buffer = asBuffer->getBuffer(),
+            .buffer = asBuffer.getBuffer(),
             .offset = 0,
             .size = buildSizeInfo.accelerationStructureSize,
             .type = buildGeoInfo.type
@@ -240,7 +243,7 @@ namespace PaperRenderer
                 .dstAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .buffer = asBuffer->getBuffer(),
+                .buffer = asBuffer.getBuffer(),
                 .offset = 0,
                 .size = VK_WHOLE_SIZE
             };
@@ -267,7 +270,7 @@ namespace PaperRenderer
         }
     }
 
-    std::unique_ptr<Buffer> AS::compactStructure(VkCommandBuffer cmdBuffer, const VkAccelerationStructureTypeKHR type, const VkDeviceSize newSize)
+    Buffer AS::compactStructure(VkCommandBuffer cmdBuffer, const VkAccelerationStructureTypeKHR type, const VkDeviceSize newSize)
     {
         //create new buffer
         const BufferInfo bufferInfo = {
@@ -275,7 +278,7 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
             .allocationFlags = 0
         };
-        std::unique_ptr<Buffer> newBuffer = std::make_unique<Buffer>(renderer, bufferInfo);
+        Buffer newBuffer(renderer, bufferInfo);
 
         //store old accelerationStructure handle
         const VkAccelerationStructureKHR oldStructure = accelerationStructure;
@@ -285,7 +288,7 @@ namespace PaperRenderer
             .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
             .pNext = NULL,
             .createFlags = 0,
-            .buffer = newBuffer->getBuffer(),
+            .buffer = newBuffer.getBuffer(),
             .offset = 0,
             .size = newSize,
             .type = type
@@ -306,7 +309,7 @@ namespace PaperRenderer
         asDestructionQueue[renderer.getBufferIndex()].push_front(oldStructure);
 
         //set new buffer
-        std::unique_ptr<Buffer> oldBuffer = std::move(asBuffer);
+        Buffer oldBuffer = std::move(asBuffer);
         asBuffer = std::move(newBuffer);
 
         return oldBuffer;
@@ -314,7 +317,7 @@ namespace PaperRenderer
 
     void AS::assignResourceOwner(Queue &queue)
     {
-        asBuffer->addOwner(queue);
+        asBuffer.addOwner(queue);
     }
 
     //----------BLAS DEFINITIONS----------//
@@ -389,6 +392,17 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT,
             .allocationFlags = 0
         }),
+        scratchBuffer(renderer, {
+            .size = 0,
+            .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
+            .allocationFlags = 0
+        }),
+        instancesBuffer(renderer, {
+            .size = 0,
+            .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT |
+                VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+            .allocationFlags = 0
+        }),
         transferSemaphore(renderer.getDevice().getCommands().getTimelineSemaphore(transferSemaphoreValue)),
         uboDescriptor(renderer, renderer.getTLASPreprocessPipeline().getUboDescriptorLayout()),
         ioDescriptor(renderer, renderer.getTLASPreprocessPipeline().getIODescriptorLayout()),
@@ -413,10 +427,6 @@ namespace PaperRenderer
 
     TLAS::~TLAS()
     {
-        //destroy buffers
-        scratchBuffer.reset();
-        instancesBuffer.reset();
-
         //destroy semaphore
         vkDestroySemaphore(renderer.getDevice().getDevice(), transferSemaphore, nullptr);
 
@@ -437,7 +447,7 @@ namespace PaperRenderer
                 .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR,
                 .pNext = NULL,
                 .arrayOfPointers = VK_FALSE,
-                .data = VkDeviceOrHostAddressConstKHR{ .deviceAddress = instancesBuffer->getBufferDeviceAddress() + instancesBufferSizes.tlInstancesOffset }
+                .data = VkDeviceOrHostAddressConstKHR{ .deviceAddress = instancesBuffer.getBufferDeviceAddress() + instancesBufferSizes.tlInstancesOffset }
             }},
             .flags = VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR
         };
@@ -461,7 +471,7 @@ namespace PaperRenderer
         const VkDeviceSize curInstancesSize = (VkDeviceSize)((instanceCount + 1) * sizeof(ModelInstance::AccelerationStructureInstance));
 
         //rebuild buffer if needed
-        if(!instancesBuffer || instancesBufferSizes.instancesRange < curInstancesSize)
+        if(instancesBufferSizes.instancesRange < curInstancesSize)
         {
             //create timer
             Timer timer(renderer, "TLAS Rebuild Instances Buffer", IRREGULAR);
@@ -487,8 +497,6 @@ namespace PaperRenderer
                 renderer.getDevice().getGPUFeaturesAndProperties().gpuProperties.properties.limits.minStorageBufferOffsetAlignment
             );
 
-            const VkDeviceSize newSize = newInstancesSize + newInstanceDescriptionsSize + newTLInstancesSize;
-
             //create copy of old offsets and ranges for data copy
             InstancesBufferSizes oldInstancesBufferSizes = instancesBufferSizes;
 
@@ -504,16 +512,16 @@ namespace PaperRenderer
 
             //buffer
             const BufferInfo instancesBufferInfo = {
-                .size = newSize,
+                .size = instancesBufferSizes.totalSize(),
                 .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT |
                     VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
                 .allocationFlags = 0
             };
-            std::unique_ptr<Buffer> newInstancesBuffer = std::make_unique<Buffer>(renderer, instancesBufferInfo);
+            Buffer newInstancesBuffer(renderer, instancesBufferInfo);
 
             //----------DATA TRANSFER----------//
 
-            if(instancesBuffer)
+            if(instancesBuffer.getSize())
             {
                 VkCommandBuffer cmdBuffer = renderer.getDevice().getCommands().getCommandBuffer(TRANSFER);
             
@@ -531,7 +539,7 @@ namespace PaperRenderer
                     .dstOffset = instancesBufferSizes.instancesOffset,
                     .size = oldInstancesBufferSizes.instancesRange
                 };
-                vkCmdCopyBuffer(cmdBuffer, instancesBuffer->getBuffer(), newInstancesBuffer->getBuffer(), 1, &instancesCopy);
+                vkCmdCopyBuffer(cmdBuffer, instancesBuffer.getBuffer(), newInstancesBuffer.getBuffer(), 1, &instancesCopy);
 
                 //copy instance descriptions
                 const VkBufferCopy instanceDescriptionsCopy = {
@@ -539,7 +547,7 @@ namespace PaperRenderer
                     .dstOffset = instancesBufferSizes.instanceDescriptionsOffset,
                     .size = oldInstancesBufferSizes.instanceDescriptionsRange
                 };
-                vkCmdCopyBuffer(cmdBuffer, instancesBuffer->getBuffer(), newInstancesBuffer->getBuffer(), 1, &instanceDescriptionsCopy);
+                vkCmdCopyBuffer(cmdBuffer, instancesBuffer.getBuffer(), newInstancesBuffer.getBuffer(), 1, &instanceDescriptionsCopy);
 
                 //end command buffer
                 vkEndCommandBuffer(cmdBuffer);
@@ -552,8 +560,8 @@ namespace PaperRenderer
                 };
                 renderer.getDevice().getCommands().submitToQueue(TRANSFER, syncInfo, { cmdBuffer }).idle();
             }
-            
-            //replace old buffers
+
+            //replace old buffer
             instancesBuffer = std::move(newInstancesBuffer);
 
             //----------UPDATE DESCRIPTOR SETS----------//
@@ -563,7 +571,7 @@ namespace PaperRenderer
                 .bufferWrites = {
                     { //binding 0: input objects
                         .infos = { {
-                            .buffer = instancesBuffer->getBuffer(),
+                            .buffer = instancesBuffer.getBuffer(),
                             .offset = instancesBufferSizes.instancesOffset,
                             .range = instancesBufferSizes.instancesRange
                         } },
@@ -572,7 +580,7 @@ namespace PaperRenderer
                     },
                     { //binding 1: output objects
                         .infos = { {
-                            .buffer = instancesBuffer->getBuffer(),
+                            .buffer = instancesBuffer.getBuffer(),
                             .offset = instancesBufferSizes.tlInstancesOffset,
                             .range = instancesBufferSizes.tlInstancesRange
                         } },
@@ -587,7 +595,7 @@ namespace PaperRenderer
                 .bufferWrites = {
                     { //binding 0: model instances
                         .infos = { {
-                            .buffer = instancesBuffer->getBuffer(),
+                            .buffer = instancesBuffer.getBuffer(),
                             .offset = instancesBufferSizes.instanceDescriptionsOffset,
                             .range = instancesBufferSizes.instanceDescriptionsRange
                         } },
@@ -623,7 +631,7 @@ namespace PaperRenderer
                 .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
                 .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                 .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .buffer = instancesBuffer->getBuffer(),
+                .buffer = instancesBuffer.getBuffer(),
                 .offset = instancesBufferSizes.tlInstancesOffset,
                 .size = instancesBufferSizes.tlInstancesRange
             };
@@ -645,9 +653,9 @@ namespace PaperRenderer
 
     void TLAS::assignResourceOwner(Queue &queue)
     {
-        scratchBuffer->addOwner(queue);
+        scratchBuffer.addOwner(queue);
         renderer.instancesDataBuffer.addOwner(queue);
-        instancesBuffer->addOwner(queue);
+        instancesBuffer.addOwner(queue);
 
         AS::assignResourceOwner(queue);
     }
@@ -688,7 +696,7 @@ namespace PaperRenderer
                         .flags = instance.flags
                     };
                     renderer.getStagingBuffer().queueDataTransfers(
-                        *instancesBuffer,
+                        instancesBuffer,
                         instancesBufferSizes.instancesOffset + (sizeof(ModelInstance::AccelerationStructureInstance) * instance.instancePtr->rtRenderSelfReferences[&rtRender][this].selfIndex),
                         instanceShaderData
                     );
@@ -698,7 +706,7 @@ namespace PaperRenderer
                         .modelDataOffset = (uint32_t)instance.instancePtr->getParentModel().getShaderDataLocation()
                     };
                     renderer.getStagingBuffer().queueDataTransfers(
-                        *instancesBuffer,
+                        instancesBuffer,
                         instancesBufferSizes.instanceDescriptionsOffset + (sizeof(InstanceDescription) * instance.instancePtr->rtRenderSelfReferences[&rtRender][this].selfIndex),
                         descriptionShaderData
                     );
@@ -726,18 +734,18 @@ namespace PaperRenderer
         const VkDeviceSize requiredScratchSize = mode == VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR ? buildData.buildSizeInfo.buildScratchSize : buildData.buildSizeInfo.updateScratchSize;
         
         //rebuild scratch buffer if needed
-        if(!scratchBuffer || scratchBuffer->getSize() < requiredScratchSize)
+        if(scratchBuffer.getSize() < requiredScratchSize)
         {
             const BufferInfo bufferInfo = {
                 .size = requiredScratchSize,
                 .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
                 .allocationFlags = 0
             };
-            scratchBuffer = std::make_unique<Buffer>(renderer, bufferInfo);
+            scratchBuffer = Buffer(renderer, bufferInfo);
         }
 
         //build TLAS; note that compaction is ignored for TLAS
-        buildStructure(cmdBuffer, buildData, {}, scratchBuffer->getBufferDeviceAddress());
+        buildStructure(cmdBuffer, buildData, {}, scratchBuffer.getBufferDeviceAddress());
 
         //end command buffer and submit
         vkEndCommandBuffer(cmdBuffer);
@@ -769,16 +777,13 @@ namespace PaperRenderer
     //----------AS BUILDER DEFINITIONS----------//
 
     AccelerationStructureBuilder::AccelerationStructureBuilder(RenderEngine& renderer)
-        :renderer(renderer)
-    {
-        //create scratch buffer with set size
-        const BufferInfo bufferInfo = {
+        :scratchBuffer(renderer, {
             .size = scratchBufferSize,
             .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
             .allocationFlags = 0
-        };
-        scratchBuffer = std::make_unique<Buffer>(renderer, bufferInfo);
-
+        }),
+        renderer(renderer)
+    {
         //log constructor
         renderer.getLogger().recordLog({
             .type = INFO,
@@ -870,14 +875,14 @@ namespace PaperRenderer
             const VkDeviceSize opRequiredScratchSize = op.mode == VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR ? buildData.buildSizeInfo.buildScratchSize : buildData.buildSizeInfo.updateScratchSize;
 
             //verify scratch offset + required scratch size isn't too large; insert mem barrier and reset offset if it is too large
-            if(scratchOffset + opRequiredScratchSize > scratchBuffer->getSize())
+            if(scratchOffset + opRequiredScratchSize > scratchBuffer.getSize())
             {
-                if(opRequiredScratchSize > scratchBuffer->getSize())
+                if(opRequiredScratchSize > scratchBuffer.getSize())
                 {
                     //error handling for too big of a model
                     renderer.getLogger().recordLog({
                         .type = CRITICAL_ERROR,
-                        .text = "Tried to build a BLAS with a required scratch size of " + std::to_string(opRequiredScratchSize) + " which is larger than " + std::to_string(scratchBuffer->getSize())
+                        .text = "Tried to build a BLAS with a required scratch size of " + std::to_string(opRequiredScratchSize) + " which is larger than " + std::to_string(scratchBuffer.getSize())
                     });
                     continue;
                 }
@@ -892,7 +897,7 @@ namespace PaperRenderer
                     .dstAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
                     .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                     .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                    .buffer = scratchBuffer->getBuffer(),
+                    .buffer = scratchBuffer.getBuffer(),
                     .offset = 0,
                     .size = VK_WHOLE_SIZE
                 };
@@ -918,7 +923,7 @@ namespace PaperRenderer
             };
 
             //build
-            op.accelerationStructure.buildStructure(cmdBuffer, buildData, compactionQuery, scratchBuffer->getBufferDeviceAddress() + scratchOffset);
+            op.accelerationStructure.buildStructure(cmdBuffer, buildData, compactionQuery, scratchBuffer.getBufferDeviceAddress() + scratchOffset);
 
             //set scratch offset
             scratchOffset += buildData.buildSizeInfo.buildScratchSize;
@@ -974,7 +979,7 @@ namespace PaperRenderer
             vkBeginCommandBuffer(cmdBuffer, &cmdBufferInfo);
 
             //perform compactions
-            std::vector<std::unique_ptr<Buffer>> oldBuffers;
+            std::vector<Buffer> oldBuffers;
             oldBuffers.reserve(compactions.size());
             for(auto& [blas, index] : compactions)
             {
@@ -998,9 +1003,9 @@ namespace PaperRenderer
             vkDestroyQueryPool(renderer.getDevice().getDevice(), queryPool, nullptr);
 
             //assign owners to old resources before they go out of scope (this essentially blocks this thread until compaction is completed)
-            for(std::unique_ptr<Buffer>& buffer : oldBuffers)
+            for(Buffer& buffer : oldBuffers)
             {
-                buffer->addOwner(*returnQueue);
+                buffer.addOwner(*returnQueue);
             }
         }
 

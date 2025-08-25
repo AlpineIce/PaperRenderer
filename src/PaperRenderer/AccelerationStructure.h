@@ -37,7 +37,7 @@ namespace PaperRenderer
     class AS
     {
     private:
-        std::unique_ptr<Buffer> asBuffer = NULL;
+        Buffer asBuffer;
         VkAccelerationStructureKHR accelerationStructure = VK_NULL_HANDLE;
 
         friend class AccelerationStructureBuilder;
@@ -71,7 +71,7 @@ namespace PaperRenderer
         virtual void buildStructure(VkCommandBuffer cmdBuffer, AsBuildData& data, const CompactionQuery compactionQuery, const VkDeviceAddress scratchAddress);
 
         //compaction operation; returns old buffer which must stay in scope until completion
-        std::unique_ptr<Buffer> compactStructure(VkCommandBuffer cmdBuffer, const VkAccelerationStructureTypeKHR type, const VkDeviceSize newSize);
+        Buffer compactStructure(VkCommandBuffer cmdBuffer, const VkAccelerationStructureTypeKHR type, const VkDeviceSize newSize);
 
         //resource ownership
         virtual void assignResourceOwner(Queue& queue);
@@ -85,7 +85,7 @@ namespace PaperRenderer
         AS(const AS&) = delete;
 
         VkAccelerationStructureKHR getAccelerationStructure() const { return accelerationStructure; }
-        VkDeviceAddress getASBufferAddress() const { return asBuffer ? asBuffer->getBufferDeviceAddress() : 0; }
+        VkDeviceAddress getASBufferAddress() const { return asBuffer.getBufferDeviceAddress(); }
         VkDeviceAddress getAsDeviceAddress() const;
     };
 
@@ -118,8 +118,8 @@ namespace PaperRenderer
     private:
         //buffers
         Buffer preprocessUniformBuffer;
-        std::unique_ptr<Buffer> scratchBuffer; //TLAS gets its own scratch buffer
-        std::unique_ptr<Buffer> instancesBuffer;
+        Buffer scratchBuffer; //TLAS gets its own scratch buffer
+        Buffer instancesBuffer;
 
         //sync
         uint64_t transferSemaphoreValue = 0;
@@ -152,7 +152,7 @@ namespace PaperRenderer
             }
         } instancesBufferSizes = {};
 
-        const float instancesOverhead = 1.5;
+        static constexpr float instancesOverhead = 1.5;
 
         struct InstanceDescription
         {
@@ -179,7 +179,7 @@ namespace PaperRenderer
         //Updates the TLAS to the RayTraceRender instances according to the mode (either rebuild or update). Note that compaction is ignored for a TLAS
         Queue& updateTLAS(const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo);
 
-        const Buffer& getInstancesBuffer() const { return *instancesBuffer; }
+        const Buffer& getInstancesBuffer() const { return instancesBuffer; }
         const InstancesBufferSizes& getInstancesBufferSizes() const { return instancesBufferSizes; }
         const ResourceDescriptor& getInstanceDescriptionsDescriptor() const { return instanceDescriptionsDescriptor; }
     };
@@ -200,8 +200,8 @@ namespace PaperRenderer
         std::deque<BLASBuildOp> blasQueue;
 
         //scratch buffer shared amongst BLAS builds
-        const VkDeviceSize scratchBufferSize = 268435456; // 2^26 bytes; ~256MiB
-        std::unique_ptr<Buffer> scratchBuffer;
+        static constexpr VkDeviceSize scratchBufferSize = 268435456; // 2^26 bytes; ~256MiB
+        Buffer scratchBuffer;
 
         //BLAS' that request compaction
         std::unordered_map<BLAS*, VkDeviceSize> getCompactions() const;

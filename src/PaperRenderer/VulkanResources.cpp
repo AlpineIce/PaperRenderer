@@ -214,12 +214,16 @@ namespace PaperRenderer
 
     VkDeviceAddress Buffer::getBufferDeviceAddress() const
     {
-        const VkBufferDeviceAddressInfo deviceAddressInfo = {
-            .sType  = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-            .pNext = NULL,
-            .buffer = buffer
-        };
-        return vkGetBufferDeviceAddress(renderer->getDevice().getDevice(), &deviceAddressInfo);
+        if(buffer)
+        {
+            const VkBufferDeviceAddressInfo deviceAddressInfo = {
+                .sType  = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                .pNext = NULL,
+                .buffer = buffer
+            };
+            return vkGetBufferDeviceAddress(renderer->getDevice().getDevice(), &deviceAddressInfo);
+        }
+        return 0;
     }
 
     //----------FRAGMENTABLE BUFFER DEFINITIONS----------//
