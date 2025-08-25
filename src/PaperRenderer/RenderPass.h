@@ -7,8 +7,6 @@
 #include "Material.h"
 #include "Model.h"
 
-#include <variant>
-
 namespace PaperRenderer
 {
     //----------PREPROCESS COMPUTE PIPELINE----------//
@@ -79,16 +77,16 @@ namespace PaperRenderer
         };
         std::vector<SortedInstance> renderPassSortedInstances;
 
-        float instancesOverhead = 1.5f;
+        static constexpr float instancesOverhead = 1.5f;
         std::vector<ModelInstance*> renderPassInstances; //doesn't included sorted
         std::deque<ModelInstance*> toUpdateInstances; //doesn't included sorted
         std::mutex renderPassMutex;
 
         //buffers
         Buffer preprocessUniformBuffer;
-        std::unique_ptr<Buffer> instancesBuffer;
-        std::unique_ptr<Buffer> sortedInstancesOutputBuffer;
-        std::unique_ptr<FragmentableBuffer> instancesDataBuffer;
+        Buffer instancesBuffer;
+        Buffer sortedInstancesOutputBuffer;
+        FragmentableBuffer instancesDataBuffer;
 
         //sync
         uint64_t transferSemaphoreValue = 0;

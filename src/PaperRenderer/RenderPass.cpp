@@ -1,12 +1,6 @@
 #include "RenderPass.h"
 #include "PaperRenderer.h"
 
-#include <iostream>
-#include <algorithm>
-#include <unordered_map>
-#include <future>
-#include <functional>
-
 namespace PaperRenderer
 {
     //----------PREPROCESS PIPELINES DEFINITIONS----------//
@@ -112,6 +106,21 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT,
             .allocationFlags = 0, //doesnt need to be host visible since updated via staging buffer
         }),
+        instancesBuffer(renderer, {
+            .size = sizeof(ModelInstance::RenderPassInstance) * 64,
+            .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR,
+            .allocationFlags = 0
+        }),
+        sortedInstancesOutputBuffer(renderer, {
+            .size = sizeof(ShaderOutputObject) * 64,
+            .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR,
+            .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
+        }),
+        instancesDataBuffer(renderer, {
+            .size = 4096,
+            .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
+            .allocationFlags = 0
+        }, 8),
         transferSemaphore(renderer.getDevice().getCommands().getTimelineSemaphore(transferSemaphoreValue)),
         uboDescriptor(renderer, renderer.getRasterPreprocessPipeline().getUboDescriptorLayout()),
         ioDescriptor(renderer, renderer.getRasterPreprocessPipeline().getIODescriptorLayout()),
@@ -119,7 +128,7 @@ namespace PaperRenderer
         renderer(renderer),
         defaultMaterialInstance(defaultMaterialInstance)
     {
-        //UBO descriptor write
+        // Update descriptors
         uboDescriptor.updateDescriptorSet({
             .bufferWrites = {
                 { //binding 0: UBO input data
@@ -133,14 +142,36 @@ namespace PaperRenderer
                 }
             }
         });
+
+        ioDescriptor.updateDescriptorSet({
+            .bufferWrites = { { //binding 1: input objects
+                .infos = { {
+                    .buffer = instancesBuffer.getBuffer(),
+                    .offset = 0,
+                    .range = VK_WHOLE_SIZE //actual data range controlled by UBO object count
+                } },
+                .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                .binding = 0
+            } }
+        });
+
+        sortedMatricesDescriptor.updateDescriptorSet({
+            .bufferWrites = {
+                { //binding 0: input objects
+                    .infos = { {
+                        .buffer = sortedInstancesOutputBuffer.getBuffer(),
+                        .offset = 0,
+                        .range = VK_WHOLE_SIZE
+                    } },
+                    .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                    .binding = 0
+                }
+            }
+        });
     }
 
     RenderPass::~RenderPass()
     {
-        //destroy buffers
-        instancesBuffer.reset();
-        instancesDataBuffer.reset();
-
         //destroy semaphore
         vkDestroySemaphore(renderer.getDevice().getDevice(), transferSemaphore, nullptr);
 
@@ -157,31 +188,26 @@ namespace PaperRenderer
         Timer timer(renderer, "Rebuild RenderPass Instances Buffer", IRREGULAR);
 
         //create new instance buffer
-        VkDeviceSize newInstancesBufferSize = std::max((VkDeviceSize)(renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance) * instancesOverhead), (VkDeviceSize)(sizeof(ModelInstance::RenderPassInstance) * 64));
-
         const BufferInfo instancesBufferInfo = {
-            .size = newInstancesBufferSize,
+            .size = (VkDeviceSize)(renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance) * instancesOverhead),
             .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR,
             .allocationFlags = 0
         };
-        std::unique_ptr<Buffer> newInstancesBuffer = std::make_unique<Buffer>(renderer, instancesBufferInfo);
+        Buffer newInstancesBuffer(renderer, instancesBufferInfo);
 
-        //copy old data into new if old existed
-        if(instancesBuffer)
+        //copy old data into new
+        const VkBufferCopy instancesCopyRegion = {
+            .srcOffset = 0,
+            .dstOffset = 0,
+            .size = std::min(renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance), instancesBuffer.getSize())
+        };
+
+        if(instancesCopyRegion.size)
         {
-            const VkBufferCopy instancesCopyRegion = {
-                .srcOffset = 0,
-                .dstOffset = 0,
-                .size = std::min(renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance), instancesBuffer->getSize())
+            const SynchronizationInfo syncInfo = {
+                .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } } //wait on self
             };
-
-            if(instancesCopyRegion.size)
-            {
-                const SynchronizationInfo syncInfo = {
-                    .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } } //wait on self
-                };
-                newInstancesBuffer->copyFromBufferRanges(*instancesBuffer, { instancesCopyRegion }, syncInfo).idle();
-            }
+            newInstancesBuffer.copyFromBufferRanges(instancesBuffer, { instancesCopyRegion }, syncInfo).idle();
         }
 
         //replace old buffer
@@ -191,7 +217,7 @@ namespace PaperRenderer
         ioDescriptor.updateDescriptorSet({
             .bufferWrites = { { //binding 1: input objects
                 .infos = { {
-                    .buffer = instancesBuffer->getBuffer(),
+                    .buffer = instancesBuffer.getBuffer(),
                     .offset = 0,
                     .range = VK_WHOLE_SIZE //actual data range controlled by UBO object count
                 } },
@@ -207,15 +233,12 @@ namespace PaperRenderer
         Timer timer(renderer, "Rebuild RenderPass Sorted Instances Buffer", IRREGULAR);
 
         //create new sorted instance buffer
-        VkDeviceSize newSortedInstancesBufferSize = 
-            std::max((VkDeviceSize)(renderPassSortedInstances.size() * sizeof(ShaderOutputObject) * instancesOverhead), (VkDeviceSize)(sizeof(ShaderOutputObject) * 64));
-
-        BufferInfo sortedInstancesBufferInfo = {
-            .size = newSortedInstancesBufferSize,
+        const BufferInfo sortedInstancesBufferInfo = {
+            .size = (VkDeviceSize)(renderPassSortedInstances.size() * sizeof(ShaderOutputObject) * instancesOverhead),
             .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR,
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
         };
-        std::unique_ptr<Buffer> newSortedInstancesBuffer = std::make_unique<Buffer>(renderer, sortedInstancesBufferInfo);
+        Buffer newSortedInstancesBuffer(renderer, sortedInstancesBufferInfo);
 
         //replace old buffer
         sortedInstancesOutputBuffer = std::move(newSortedInstancesBuffer);
@@ -225,7 +248,7 @@ namespace PaperRenderer
             .bufferWrites = {
                 { //binding 0: input objects
                     .infos = { {
-                        .buffer = sortedInstancesOutputBuffer->getBuffer(),
+                        .buffer = sortedInstancesOutputBuffer.getBuffer(),
                         .offset = 0,
                         .range = VK_WHOLE_SIZE
                     } },
@@ -241,41 +264,32 @@ namespace PaperRenderer
         //Timer
         Timer timer(renderer, "Rebuild RenderPass Material Data Buffer", IRREGULAR);
 
-        //create new material data buffer
-        VkDeviceSize newMaterialDataBufferSize = 4096;
-        VkDeviceSize newMaterialDataWriteSize = 0;
-        if(instancesDataBuffer)
-        {
-            instancesDataBuffer->compact();
-            newMaterialDataBufferSize = instancesDataBuffer->getDesiredLocation();
-            newMaterialDataWriteSize = instancesDataBuffer->getStackLocation();
-        }
-
+        // Compact for accurate size info
+        instancesDataBuffer.compact();
+        
+        // Construct new buffer
         const BufferInfo instancesMaterialDataBufferInfo = {
-            .size = (VkDeviceSize)((float)newMaterialDataBufferSize * instancesOverhead),
+            .size = (VkDeviceSize)(instancesDataBuffer.getDesiredLocation() * instancesOverhead),
             .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
             .allocationFlags = 0
         };
-        std::unique_ptr<FragmentableBuffer> newInstancesDataBuffer = std::make_unique<FragmentableBuffer>(renderer, instancesMaterialDataBufferInfo, 8);
-        newInstancesDataBuffer->setCompactionCallback([this](std::vector<CompactionResult> results){ handleMaterialDataCompaction(results); });
+        FragmentableBuffer newInstancesDataBuffer(renderer, instancesMaterialDataBufferInfo, 8);
+        newInstancesDataBuffer.setCompactionCallback([this](std::vector<CompactionResult> results){ handleMaterialDataCompaction(results); });
 
-        //copy old data into new if old existed
-        if(instancesDataBuffer)
-        {
-            //pseudo write for material data
-            newInstancesDataBuffer->newWrite(NULL, newMaterialDataWriteSize, NULL);
+        //copy old data into new
+        const VkDeviceSize newMaterialDataWriteSize = instancesDataBuffer.getStackLocation();
+        newInstancesDataBuffer.newWrite(NULL, newMaterialDataWriteSize, NULL);
 
-            const VkBufferCopy materialDataCopyRegion = {
-                .srcOffset = 0,
-                .dstOffset = 0,
-                .size = newMaterialDataWriteSize
-            };
+        const VkBufferCopy materialDataCopyRegion = {
+            .srcOffset = 0,
+            .dstOffset = 0,
+            .size = newMaterialDataWriteSize
+        };
 
-            const SynchronizationInfo syncInfo = {
-                .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } } //wait on self
-            };
-            newInstancesDataBuffer->getBuffer().copyFromBufferRanges(instancesDataBuffer->getBuffer(), { materialDataCopyRegion }, syncInfo).idle();
-        }
+        const SynchronizationInfo syncInfo = {
+            .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } } //wait on self
+        };
+        newInstancesDataBuffer.getBuffer().copyFromBufferRanges(instancesDataBuffer.getBuffer(), { materialDataCopyRegion }, syncInfo).idle();
         
         //replace old buffer
         instancesDataBuffer = std::move(newInstancesDataBuffer);
@@ -299,18 +313,14 @@ namespace PaperRenderer
             }
         }
 
-        //verify buffers
-        if(!instancesBuffer || instancesBuffer->getSize() / sizeof(ModelInstance::RenderPassInstance) < renderPassInstances.size())
+        //verify buffers (instances data gets checked elsewhere)
+        if(instancesBuffer.getSize() / sizeof(ModelInstance::RenderPassInstance) < renderPassInstances.size())
         {
             rebuildInstancesBuffer();
         }
-        if(!sortedInstancesOutputBuffer || sortedInstancesOutputBuffer->getSize() / sizeof(ShaderOutputObject) < renderPassSortedInstances.size())
+        if(sortedInstancesOutputBuffer.getSize() / sizeof(ShaderOutputObject) < renderPassSortedInstances.size())
         {
             rebuildSortedInstancesBuffer();
-        }
-        if(!instancesDataBuffer)
-        {
-            rebuildMaterialDataBuffer();
         }
 
         //sort instances; remove duplicates
@@ -328,7 +338,7 @@ namespace PaperRenderer
             if(instance->renderPassSelfReferences.count(this) && instance->renderPassSelfReferences[this].LODsMaterialDataOffset != UINT64_MAX)
             {
                 const std::vector<char>& oldMaterialData = instance->getRenderPassInstanceData(this);
-                if(oldMaterialData.size()) instancesDataBuffer->removeFromRange(instance->renderPassSelfReferences[this].LODsMaterialDataOffset, oldMaterialData.size());
+                if(oldMaterialData.size()) instancesDataBuffer.removeFromRange(instance->renderPassSelfReferences[this].LODsMaterialDataOffset, oldMaterialData.size());
             }
 
             //set and get material data
@@ -336,11 +346,11 @@ namespace PaperRenderer
             const std::vector<char>& materialData = instance->getRenderPassInstanceData(this);
 
             //write new
-            FragmentableBuffer::WriteResult writeResult = instancesDataBuffer->newWrite(NULL, materialData.size(), &(instance->renderPassSelfReferences[this].LODsMaterialDataOffset));
+            FragmentableBuffer::WriteResult writeResult = instancesDataBuffer.newWrite(NULL, materialData.size(), &(instance->renderPassSelfReferences[this].LODsMaterialDataOffset));
             if(writeResult == FragmentableBuffer::OUT_OF_MEMORY)
             {
                 rebuildMaterialDataBuffer();
-                instancesDataBuffer->newWrite(NULL, materialData.size(), &(instance->renderPassSelfReferences[this].LODsMaterialDataOffset));
+                instancesDataBuffer.newWrite(NULL, materialData.size(), &(instance->renderPassSelfReferences[this].LODsMaterialDataOffset));
             }
             else if(writeResult == FragmentableBuffer::COMPACTED)
             {
@@ -358,7 +368,7 @@ namespace PaperRenderer
 
             //queue material data write
             const std::vector<char>& materialData = instance->getRenderPassInstanceData(this);
-            renderer.getStagingBuffer().queueDataTransfers(instancesDataBuffer->getBuffer(), instance->renderPassSelfReferences[this].LODsMaterialDataOffset, materialData);
+            renderer.getStagingBuffer().queueDataTransfers(instancesDataBuffer.getBuffer(), instance->renderPassSelfReferences[this].LODsMaterialDataOffset, materialData);
 
             //queue instance data transfer
             const ModelInstance::RenderPassInstance instanceShaderData = {
@@ -366,7 +376,7 @@ namespace PaperRenderer
                 .LODsMaterialDataOffset = (uint32_t)instance->renderPassSelfReferences[this].LODsMaterialDataOffset,
                 .isVisible = true
             };
-            renderer.getStagingBuffer().queueDataTransfers(*instancesBuffer, sizeof(ModelInstance::RenderPassInstance) * instance->renderPassSelfReferences[this].selfIndex, instanceShaderData);
+            renderer.getStagingBuffer().queueDataTransfers(instancesBuffer, sizeof(ModelInstance::RenderPassInstance) * instance->renderPassSelfReferences[this].selfIndex, instanceShaderData);
         }
 
         //clear deques
@@ -406,9 +416,9 @@ namespace PaperRenderer
     void RenderPass::assignResourceOwner(Queue& queue)
     {
         //this
-        instancesBuffer->addOwner(queue);
-        sortedInstancesOutputBuffer->addOwner(queue);
-        instancesDataBuffer->addOwner(queue);
+        instancesBuffer.addOwner(queue);
+        sortedInstancesOutputBuffer.addOwner(queue);
+        instancesDataBuffer.addOwner(queue);
 
         //common mesh groups
         for(auto& [material, materialInstanceNode] : renderTree) //material
@@ -456,7 +466,7 @@ namespace PaperRenderer
         {
             //queue update of preprocess UBO data
             const RasterPreprocessPipeline::UBOInputData uboInputData = {
-                .materialDataPtr = instancesDataBuffer->getBuffer().getBufferDeviceAddress(),
+                .materialDataPtr = instancesDataBuffer.getBuffer().getBufferDeviceAddress(),
                 .modelDataPtr = renderer.modelDataBuffer.getBuffer().getBufferDeviceAddress(),
                 .objectCount = (uint32_t)renderPassInstances.size(),
                 .doCulling = true
@@ -608,7 +618,7 @@ namespace PaperRenderer
                 .size = sortedInstancesMatricesData.size() * sizeof(ShaderOutputObject),
                 .readData = sortedInstancesMatricesData.data()
             };
-            sortedInstancesOutputBuffer->writeToBuffer({ matricesWrite });
+            sortedInstancesOutputBuffer.writeToBuffer({ matricesWrite });
 
             //LOD index function (tbh i should really change this whole function)
             auto getLODIndex = [&](ModelInstance* instance)
@@ -838,9 +848,9 @@ namespace PaperRenderer
             }
 
             //remove data from fragmenable buffer if referenced
-            if(instance.renderPassSelfReferences[this].LODsMaterialDataOffset != UINT64_MAX && instancesDataBuffer)
+            if(instance.renderPassSelfReferences[this].LODsMaterialDataOffset != UINT64_MAX)
             {
-                instancesDataBuffer->removeFromRange(instance.renderPassSelfReferences[this].LODsMaterialDataOffset, instance.getRenderPassInstanceData(this).size());
+                instancesDataBuffer.removeFromRange(instance.renderPassSelfReferences[this].LODsMaterialDataOffset, instance.getRenderPassInstanceData(this).size());
             }
 
             //erase this reference
