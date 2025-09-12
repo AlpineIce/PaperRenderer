@@ -54,6 +54,8 @@ namespace PaperRenderer
         //rebuild buffer if needed
         if(stackLocation + requiredSize > stagingBuffer.getSize())
         {
+            Timer timer(*renderer, "Rebuild staging buffer", IRREGULAR);
+
             const BufferInfo bufferInfo = {
                 .size = (VkDeviceSize)((stackLocation + requiredSize) * bufferOverhead),
                 .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR,
