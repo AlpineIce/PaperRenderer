@@ -607,43 +607,33 @@ namespace PaperRenderer
 
     void TLAS::buildStructure(VkCommandBuffer cmdBuffer, AsBuildData& data, const CompactionQuery compactionQuery, const VkDeviceAddress scratchAddress)
     {
-        //only rebuild/update a TLAS if any instances exist
-        if(rtRender.tlasData[this].instanceDatas.size())
-        {
-            //queue update of preprocess UBO data
-            const TLASInstanceBuildPipeline::UBOInputData uboInputData = {
-                .objectCount = (uint32_t)rtRender.tlasData[this].instanceDatas.size()
-            };
-            renderer.getStagingBuffer().queueDataTransfers(preprocessUniformBuffer, 0, uboInputData);
+        //submit
+        renderer.tlasInstanceBuildPipeline.submit(cmdBuffer, *this, rtRender.tlasData[this].instanceDatas.size());
 
-            //submit
-            renderer.tlasInstanceBuildPipeline.submit(cmdBuffer, *this, rtRender.tlasData[this].instanceDatas.size());
+        //TLAS instance data memory barrier
+        const VkBufferMemoryBarrier2 tlasInstanceMemBarrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+            .pNext = NULL,
+            .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            .srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+            .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = instancesBuffer.getBuffer(),
+            .offset = instancesBufferSizes.tlInstancesOffset,
+            .size = instancesBufferSizes.tlInstancesRange
+        };
 
-            //TLAS instance data memory barrier
-            const VkBufferMemoryBarrier2 tlasInstanceMemBarrier = {
-                .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                .pNext = NULL,
-                .srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-                .srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
-                .dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
-                .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .buffer = instancesBuffer.getBuffer(),
-                .offset = instancesBufferSizes.tlInstancesOffset,
-                .size = instancesBufferSizes.tlInstancesRange
-            };
+        const VkDependencyInfo tlasInstanceDependencyInfo = {
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .pNext = NULL,
+            .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+            .bufferMemoryBarrierCount = 1,
+            .pBufferMemoryBarriers = &tlasInstanceMemBarrier
+        };
 
-            const VkDependencyInfo tlasInstanceDependencyInfo = {
-                .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-                .pNext = NULL,
-                .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
-                .bufferMemoryBarrierCount = 1,
-                .pBufferMemoryBarriers = &tlasInstanceMemBarrier
-            };
-
-            vkCmdPipelineBarrier2(cmdBuffer, &tlasInstanceDependencyInfo);
-        }
+        vkCmdPipelineBarrier2(cmdBuffer, &tlasInstanceDependencyInfo);
 
         //call super function
         AS::buildStructure(cmdBuffer, data, compactionQuery, scratchAddress);
@@ -668,6 +658,10 @@ namespace PaperRenderer
         //verify buffer sizes before data transfer
         verifyInstancesBuffer(rtRender.tlasData[this].instanceDatas.size());
 
+        //staging buffer transfer group
+        std::vector<StagingBufferTransfer> stagingBufferTransfers = {};
+        stagingBufferTransfers.reserve(3); //3 transfers occur as of writing this
+
         //queue instance data
         for(const AccelerationStructureInstanceData& instance : rtRender.tlasData[this].toUpdateInstances)
         {
@@ -680,34 +674,40 @@ namespace PaperRenderer
                 //skip if instance has invalid BLAS
                 if(blasPtr)
                 {
-                    //get sbt offset
-                    uint32_t sbtOffset = 
-                        rtRender.getPipeline().getShaderBindingTableData().materialShaderGroupOffsets.at(instance.instancePtr->rtRenderSelfReferences[&rtRender][this].material);
-
                     //queue transfer of instance data
-                    const ModelInstance::AccelerationStructureInstance instanceShaderData = {
-                        .blasReference = blasPtr->getASBufferAddress(),
-                        .modelInstanceIndex = instance.instancePtr->rendererSelfIndex,
-                        .customIndex = instance.customIndex,
-                        .mask = instance.mask,
-                        .recordOffset = sbtOffset,
-                        .flags = instance.flags
-                    };
-                    renderer.getStagingBuffer().queueDataTransfers(
-                        instancesBuffer,
-                        instancesBufferSizes.instancesOffset + (sizeof(ModelInstance::AccelerationStructureInstance) * instance.instancePtr->rtRenderSelfReferences[&rtRender][this].selfIndex),
-                        instanceShaderData
-                    );
+                    stagingBufferTransfers.push_back({
+                        .dstOffset = instancesBufferSizes.instancesOffset + (sizeof(ModelInstance::AccelerationStructureInstance) * instance.instancePtr->rtRenderSelfReferences[&rtRender][this].selfIndex),
+                        .data = [&] {
+                            const ModelInstance::AccelerationStructureInstance instanceShaderData = {
+                                .blasReference = blasPtr->getASBufferAddress(),
+                                .modelInstanceIndex = instance.instancePtr->rendererSelfIndex,
+                                .customIndex = instance.customIndex,
+                                .mask = instance.mask,
+                                .recordOffset = rtRender.getPipeline().getShaderBindingTableData().materialShaderGroupOffsets.at(instance.instancePtr->rtRenderSelfReferences[&rtRender][this].material),
+                                .flags = instance.flags
+                            };
+                            std::vector<uint8_t> transferData(sizeof(ModelInstance::AccelerationStructureInstance));
+                            memcpy(transferData.data(), &instanceShaderData, sizeof(ModelInstance::AccelerationStructureInstance));
+
+                            return transferData;
+                        } (),
+                        .dstBuffer = &instancesBuffer
+                    });
 
                     //queue transfer of description data
-                    const InstanceDescription descriptionShaderData = {
-                        .modelDataOffset = (uint32_t)instance.instancePtr->getParentModel().getShaderDataLocation()
-                    };
-                    renderer.getStagingBuffer().queueDataTransfers(
-                        instancesBuffer,
-                        instancesBufferSizes.instanceDescriptionsOffset + (sizeof(InstanceDescription) * instance.instancePtr->rtRenderSelfReferences[&rtRender][this].selfIndex),
-                        descriptionShaderData
-                    );
+                    stagingBufferTransfers.push_back({
+                        .dstOffset = instancesBufferSizes.instanceDescriptionsOffset + (sizeof(InstanceDescription) * instance.instancePtr->rtRenderSelfReferences[&rtRender][this].selfIndex),
+                        .data = [&] {
+                            const InstanceDescription descriptionShaderData = {
+                                .modelDataOffset = (uint32_t)instance.instancePtr->getParentModel().getShaderDataLocation()
+                            };
+                            std::vector<uint8_t> transferData(sizeof(InstanceDescription));
+                            memcpy(transferData.data(), &descriptionShaderData, sizeof(InstanceDescription));
+
+                            return transferData;
+                        } (),
+                        .dstBuffer = &instancesBuffer
+                    });
                 }
             }
         }
@@ -743,7 +743,25 @@ namespace PaperRenderer
         }
 
         //build TLAS; note that compaction is ignored for TLAS
-        buildStructure(cmdBuffer, buildData, {}, scratchBuffer.getBufferDeviceAddress());
+        if(rtRender.tlasData[this].instanceDatas.size())
+        {
+            //queue update of preprocess UBO data
+            stagingBufferTransfers.push_back({
+                .dstOffset = 0,
+                .data = [&] {
+                    const TLASInstanceBuildPipeline::UBOInputData uboInputData = {
+                        .objectCount = (uint32_t)rtRender.tlasData[this].instanceDatas.size()
+                    };
+                    std::vector<uint8_t> transferData(sizeof(TLASInstanceBuildPipeline::UBOInputData));
+                    memcpy(transferData.data(), &uboInputData, sizeof(TLASInstanceBuildPipeline::UBOInputData));
+
+                    return transferData;
+                } (),
+                .dstBuffer = &preprocessUniformBuffer
+            });
+            
+            buildStructure(cmdBuffer, buildData, {}, scratchBuffer.getBufferDeviceAddress());
+        }
 
         //end command buffer and submit
         vkEndCommandBuffer(cmdBuffer);
@@ -753,7 +771,7 @@ namespace PaperRenderer
             .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } }, //wait on self
             .timelineSignalPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue + 1 } }
         };
-        renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
+        renderer.getStagingBuffer().submitTransfers(stagingBufferTransfers, transferSyncInfo);
 
         //append transfer semaphore to syncInfo
         syncInfo.timelineWaitPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 1});

@@ -238,7 +238,12 @@ namespace PaperRenderer
 
     RTPipeline::RTPipeline(RenderEngine& renderer, const RTPipelineInfo& creationInfo)
         :Pipeline(renderer, creationInfo.descriptorSets, creationInfo.pcRanges),
-        pipelineProperties(creationInfo.properties)
+        pipelineProperties(creationInfo.properties),
+        sbtBuffer(renderer, {
+            .size = 0,
+            .usageFlags = VK_BUFFER_USAGE_2_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR,
+            .allocationFlags = 0
+        })
     {
         //SBT important alignments and sizes
         const uint32_t handleSize = renderer.getDevice().getGPUFeaturesAndProperties().rtPipelineProperties.shaderGroupHandleSize;
@@ -333,6 +338,8 @@ namespace PaperRenderer
                             break;
                         case VK_SHADER_STAGE_ANY_HIT_BIT_KHR:
                             shaderGroupInfo.anyHitShader = shaderStages.size();
+                            break;
+                        default:
                             break;
                     }
                     hitGroupCounts[i]++;
@@ -487,17 +494,17 @@ namespace PaperRenderer
         }
     }
 
-    void RTPipeline::insertGroupSBTData(std::vector<char>& toInsertData, uint32_t groupOffset, uint32_t handleCount) const
+    void RTPipeline::insertGroupSBTData(std::vector<uint8_t>& toInsertData, uint32_t groupOffset, uint32_t handleCount) const
     {
         const uint32_t handleSize = renderer.getDevice().getGPUFeaturesAndProperties().rtPipelineProperties.shaderGroupHandleSize;
         const uint32_t handleAlignment = renderer.getDevice().getGPUFeaturesAndProperties().rtPipelineProperties.shaderGroupHandleAlignment;
         const uint32_t groupBaseAlignment = renderer.getDevice().getGPUFeaturesAndProperties().rtPipelineProperties.shaderGroupBaseAlignment;
 
         //initialize group data
-        std::vector<char> groupData(handleAlignment * handleCount); //group data size is equal to the number of handles * the alignment of handles
+        std::vector<uint8_t> groupData(handleAlignment * handleCount); //group data size is equal to the number of handles * the alignment of handles
 
         //get shader handles
-        std::vector<char> groupHandles(handleSize * handleCount);
+        std::vector<uint8_t> groupHandles(handleSize * handleCount);
         VkResult result2 = vkGetRayTracingShaderGroupHandlesKHR(renderer.getDevice().getDevice(), pipeline, groupOffset, handleCount, groupHandles.size(), groupHandles.data());
         if(result2 != VK_SUCCESS)
         {
@@ -529,13 +536,18 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR,
             .allocationFlags = 0
         };
-        sbtBuffer = std::make_unique<Buffer>(renderer, sbtBufferInfo);
+        sbtBuffer = Buffer(renderer, sbtBufferInfo);
 
         //queue data transfer
-        renderer.getStagingBuffer().queueDataTransfers(*sbtBuffer, 0, sbtRawData);
+        std::vector<StagingBufferTransfer> transfers = {{
+            .dstOffset = 0,
+            .data = sbtRawData,
+            .dstBuffer = &sbtBuffer
+        }};
+        renderer.getStagingBuffer().submitTransfers(transfers, {}).idle();
 
         //set SBT addresses
-        VkDeviceAddress dynamicOffset = sbtBuffer->getBufferDeviceAddress();
+        VkDeviceAddress dynamicOffset = sbtBuffer.getBufferDeviceAddress();
 
         shaderBindingTableData.raygenShaderBindingTable.deviceAddress = dynamicOffset;
         dynamicOffset += shaderBindingTableData.raygenShaderBindingTable.size;

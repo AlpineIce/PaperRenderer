@@ -6,7 +6,18 @@
 namespace PaperRenderer
 {
     CommonMeshGroup::CommonMeshGroup(RenderEngine& renderer, const RenderPass& renderPass, const Material& material)
-        :descriptorSet(renderer, renderer.getDefaultDescriptorSetLayout(INDIRECT_DRAW_MATRICES)),
+        :modelMatricesBuffer(renderer, {
+            .size = 0,
+            .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
+            .allocationFlags = 0
+        }),
+        drawCommandsBuffer(renderer, {
+            .size = 0,
+            .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | 
+                VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR,
+            .allocationFlags = 0
+        }),
+        descriptorSet(renderer, renderer.getDefaultDescriptorSetLayout(INDIRECT_DRAW_MATRICES)),
         renderer(renderer),
         renderPass(renderPass),
         material(material)
@@ -15,25 +26,22 @@ namespace PaperRenderer
 
     CommonMeshGroup::~CommonMeshGroup()
     {
-        //destroy buffers
-        modelMatricesBuffer.reset();
-        drawCommandsBuffer.reset();
     }
 
-    std::vector<ModelInstance*> CommonMeshGroup::verifyBufferSize()
+    std::vector<ModelInstance*> CommonMeshGroup::verifyBufferSize(std::vector<StagingBufferTransfer>& transferGroup)
     {
         //verify
         std::vector<ModelInstance*> returnInstances;
         if(rebuild)
         {
-            returnInstances = rebuildBuffer();
+            returnInstances = rebuildBuffer(transferGroup);
         }
         
         rebuild = false;
         return returnInstances;
     }
 
-    std::vector<ModelInstance*> CommonMeshGroup::rebuildBuffer()
+    std::vector<ModelInstance*> CommonMeshGroup::rebuildBuffer(std::vector<StagingBufferTransfer>& transferGroup)
     {
         //Timer
         Timer timer(renderer, "Rebuild Common Mesh Group Buffers", IRREGULAR);
@@ -47,7 +55,7 @@ namespace PaperRenderer
             .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR,
             .allocationFlags = 0
         };
-        modelMatricesBuffer = std::make_unique<Buffer>(renderer, matricesBufferInfo);
+        modelMatricesBuffer = Buffer(renderer, matricesBufferInfo);
 
         const BufferInfo drawCommandsBufferInfo = {
             .size = bufferSizeRequirements.drawCommandCount * sizeof(DrawCommand),
@@ -55,17 +63,17 @@ namespace PaperRenderer
                 VK_BUFFER_USAGE_2_INDIRECT_BUFFER_BIT_KHR | VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR,
             .allocationFlags = 0
         };
-        drawCommandsBuffer = std::make_unique<Buffer>(renderer, drawCommandsBufferInfo);
+        drawCommandsBuffer = Buffer(renderer, drawCommandsBufferInfo);
 
         //queue transfer of draw command data
-        setDrawCommandData();
+        setDrawCommandData(transferGroup);
 
         //update descriptors
         descriptorSet.updateDescriptorSet({
             .bufferWrites = {
                 {
                     .infos = { {
-                        .buffer = modelMatricesBuffer->getBuffer(),
+                        .buffer = modelMatricesBuffer.getBuffer(),
                         .offset = 0,
                         .range = VK_WHOLE_SIZE
                     } },
@@ -116,29 +124,32 @@ namespace PaperRenderer
         return sizeRequirements;
     }
 
-    void CommonMeshGroup::setDrawCommandData() const
+    void CommonMeshGroup::setDrawCommandData(std::vector<StagingBufferTransfer>& transferGroup)
     {
         for(auto& [instance, meshesData] : instanceMeshesData)
         {
             for(const auto& [mesh, meshInstancesData] : meshesData)
             {
-                //get command data
-                const DrawCommand command = {
-                    .command = {
-                        .indexCount = mesh->indicesSize / mesh->indexStride,
-                        .instanceCount = 0,
-                        .firstIndex = 0,
-                        .vertexOffset = 0,
-                        .firstInstance = meshInstancesData.matricesStartIndex
-                    }
-                };
+                //stage command data transfer
+                transferGroup.push_back({
+                    .dstOffset = sizeof(DrawCommand) * meshInstancesData.drawCommandIndex,
+                    .data = [&] {
+                        const DrawCommand command = {
+                            .command = {
+                                .indexCount = mesh->indicesSize / mesh->indexStride,
+                                .instanceCount = 0,
+                                .firstIndex = 0,
+                                .vertexOffset = 0,
+                                .firstInstance = meshInstancesData.matricesStartIndex
+                            }
+                        };
+                        std::vector<uint8_t> transferData(sizeof(DrawCommand));
+                        memcpy(transferData.data(), &command, sizeof(DrawCommand));
 
-                //queue data transfer
-                renderer.getStagingBuffer().queueDataTransfers(
-                    *drawCommandsBuffer,
-                    sizeof(DrawCommand) * meshInstancesData.drawCommandIndex,
-                    command
-                );
+                        return transferData;
+                    } (),
+                    .dstBuffer = &drawCommandsBuffer
+                });
             }
         }
     }
@@ -220,7 +231,7 @@ namespace PaperRenderer
                 //draw
                 vkCmdDrawIndexedIndirect(
                     cmdBuffer,
-                    drawCommandsBuffer->getBuffer(),
+                    drawCommandsBuffer.getBuffer(),
                     meshData.drawCommandIndex * sizeof(DrawCommand),
                     1,
                     sizeof(DrawCommand)
@@ -243,7 +254,7 @@ namespace PaperRenderer
                 //zero out instance count
                 vkCmdFillBuffer(
                     cmdBuffer,
-                    drawCommandsBuffer->getBuffer(),
+                    drawCommandsBuffer.getBuffer(),
                     drawCommandLocation + offsetof(VkDrawIndexedIndirectCommand, instanceCount),
                     sizeof(VkDrawIndexedIndirectCommand::instanceCount),
                     drawCountDefaultValue
@@ -261,7 +272,7 @@ namespace PaperRenderer
             .dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .buffer = drawCommandsBuffer->getBuffer(),
+            .buffer = drawCommandsBuffer.getBuffer(),
             .offset = 0,
             .size = VK_WHOLE_SIZE
         };
@@ -278,7 +289,7 @@ namespace PaperRenderer
 
     void CommonMeshGroup::addOwner(Queue& queue)
     {
-        modelMatricesBuffer->addOwner(queue);
-        drawCommandsBuffer->addOwner(queue);
+        modelMatricesBuffer.addOwner(queue);
+        drawCommandsBuffer.addOwner(queue);
     }
 }

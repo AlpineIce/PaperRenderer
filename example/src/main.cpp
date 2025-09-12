@@ -747,7 +747,17 @@ int main()
     PaperRenderer::Buffer ShaderHitGroupDefinitionsBuffer(renderer, ShaderHitGroupDefinitionsBufferInfo);
 
     //queue data transfer for RT material data
-    renderer.getStagingBuffer().queueDataTransfers(ShaderHitGroupDefinitionsBuffer, 0, instanceShaderHitGroupDefinitions);
+    std::vector<PaperRenderer::StagingBufferTransfer> initTransfers = {{
+        .dstOffset = 0,
+        .data = [&] {
+            std::vector<uint8_t> transferData(instanceShaderHitGroupDefinitions.size() * sizeof(DefaultShaderHitGroupDefinition));
+            memcpy(transferData.data(), instanceShaderHitGroupDefinitions.data(), instanceShaderHitGroupDefinitions.size() * sizeof(DefaultShaderHitGroupDefinition));
+
+            return transferData;
+        } (),
+        .dstBuffer = &ShaderHitGroupDefinitionsBuffer
+    }};
+    renderer.getStagingBuffer().submitTransfers(initTransfers, {}).idle();
 
     //update descriptor
     exampleRayTrace.updateMaterialBuffer(ShaderHitGroupDefinitionsBuffer);
@@ -830,7 +840,7 @@ int main()
     };
 
     while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
-    {
+    {        
         //pre-frame events
         frameEvents();
 
@@ -853,15 +863,36 @@ int main()
         //get opposite buffer index (i didnt even know this was legal until i tried it)
         const uint32_t otherBufferIndex = !renderer.getBufferIndex();
 
-        //begin frame
-        VkSemaphore swapchainSemaphore = renderer.beginFrame();
+        //specify extra transfers to be sent on the same queue submission when frame begins
+        std::vector<PaperRenderer::StagingBufferTransfer> beginFrameTransfers = {};
+        if(!guiContext.raster)
+        {
+            beginFrameTransfers.push_back({
+                .dstOffset = adjustableMaterialIndex * sizeof(DefaultShaderHitGroupDefinition),
+                .data = [&] {
+                    const DefaultShaderHitGroupDefinition newData = {
+                        .albedo = glm::vec3(guiContext.adjustableMaterial->getParameters().baseColor),
+                        .emissive = glm::vec3(guiContext.adjustableMaterial->getParameters().emission) * guiContext.adjustableMaterial->getParameters().emission.w,
+                        .metallic = guiContext.adjustableMaterial->getParameters().metallic,
+                        .roughness = guiContext.adjustableMaterial->getParameters().roughness,
+                        .transmission = glm::vec3(0.0f),
+                        .ior = 1.45f
+                    };
+                    std::vector<uint8_t> transferData(sizeof(DefaultShaderHitGroupDefinition));
+                    memcpy(transferData.data(), &newData, sizeof(DefaultShaderHitGroupDefinition));
 
-        //remember to explicitly submit the staging buffer transfers (do entire submit in this case)
+                    return transferData;
+                } (),
+                .dstBuffer = &ShaderHitGroupDefinitionsBuffer
+            });
+        }
+
+        //begin frame
         const PaperRenderer::SynchronizationInfo transferSyncInfo = {
             .timelineWaitPairs = { { renderingSemaphores[otherBufferIndex], VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValues[otherBufferIndex] } }, //make GPU wait on last frame at this point forward
             .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_TRANSFER_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 1 } }
         };
-        renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
+        VkSemaphore swapchainSemaphore = renderer.beginFrame(beginFrameTransfers, transferSyncInfo);
 
         //update uniform buffers
         updateUniformBuffers(renderer, *scene.camera, *guiContext.adjustableMaterial, exampleRayTrace, bufferCopyPass);
@@ -869,17 +900,6 @@ int main()
         //ray tracing
         if(!guiContext.raster)
         {
-            //queue transfer of GUI adjustable material data
-            DefaultShaderHitGroupDefinition newData = {
-                .albedo = glm::vec3(guiContext.adjustableMaterial->getParameters().baseColor),
-                .emissive = glm::vec3(guiContext.adjustableMaterial->getParameters().emission) * guiContext.adjustableMaterial->getParameters().emission.w,
-                .metallic = guiContext.adjustableMaterial->getParameters().metallic,
-                .roughness = guiContext.adjustableMaterial->getParameters().roughness,
-                .transmission = glm::vec3(0.0f),
-                .ior = 1.45f
-            };
-            renderer.getStagingBuffer().queueDataTransfers(ShaderHitGroupDefinitionsBuffer, adjustableMaterialIndex * sizeof(DefaultShaderHitGroupDefinition), newData);
-
             //build queued BLAS's (wait on transfer, signal rendering semaphore
             const PaperRenderer::SynchronizationInfo blasSyncInfo = {
                 .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 1 } },

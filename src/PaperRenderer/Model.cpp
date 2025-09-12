@@ -102,7 +102,7 @@ namespace PaperRenderer
 
 	void Model::setShaderData()
     {
-		std::vector<char> newData;
+		std::vector<uint8_t> newData;
 		uint32_t dynamicOffset = 0;
 
 		//model data
@@ -249,7 +249,7 @@ namespace PaperRenderer
 
 	void ModelInstance::setRenderPassInstanceData(RenderPass const* renderPass)
     {
-		std::vector<char> newData;
+		std::vector<uint8_t> newData;
 		newData.reserve(renderPassSelfReferences.at(renderPass).renderPassInstanceData.size());
 		uint32_t dynamicOffset = 0;
 

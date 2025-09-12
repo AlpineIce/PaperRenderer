@@ -154,8 +154,8 @@ namespace PaperRenderer
     private:
         const RTPipelineProperties pipelineProperties;
         RTShaderBindingTableData shaderBindingTableData = {};
-        std::vector<char> sbtRawData;
-        std::unique_ptr<Buffer> sbtBuffer;
+        std::vector<uint8_t> sbtRawData = {};
+        Buffer sbtBuffer;
 
         void enumerateShaders(
             const std::vector<std::vector<uint32_t>>& shaders,
@@ -163,7 +163,7 @@ namespace PaperRenderer
             std::vector<VkShaderModuleCreateInfo>& shaderModuleInfos,
             std::vector<VkPipelineShaderStageCreateInfo>& shaderStages,
             VkShaderStageFlagBits stage);
-        void insertGroupSBTData(std::vector<char>& toInsertData, uint32_t groupOffset, uint32_t handleCount) const;
+        void insertGroupSBTData(std::vector<uint8_t>& toInsertData, uint32_t groupOffset, uint32_t handleCount) const;
         void rebuildSBTBuffer(RenderEngine& renderer);
 
     public:
@@ -171,7 +171,7 @@ namespace PaperRenderer
         ~RTPipeline() override;
         RTPipeline(const RTPipeline&) = delete;
 
-        void assignOwner(Queue& queue) { sbtBuffer->addOwner(queue); }
+        void assignOwner(Queue& queue) { sbtBuffer.addOwner(queue); }
 
         const RTPipelineProperties& getPipelineProperties() const { return pipelineProperties; }
         const RTShaderBindingTableData& getShaderBindingTableData() const { return shaderBindingTableData; }

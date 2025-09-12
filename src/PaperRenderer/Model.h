@@ -123,7 +123,7 @@ namespace PaperRenderer
 
         uint64_t selfIndex;
         VkDeviceSize shaderDataLocation = UINT64_MAX;
-        std::vector<char> shaderData;
+        std::vector<uint8_t> shaderData;
 
         void setShaderData();
 
@@ -144,7 +144,7 @@ namespace PaperRenderer
         BLAS const* getBlasPtr() const { return defaultBLAS ? defaultBLAS.get() : NULL; }
         const AABB& getAABB() const { return aabb; }
         const std::vector<LOD>& getLODs() const { return LODs; }
-        const std::vector<char>& getShaderData() const { return shaderData; }
+        const std::vector<uint8_t>& getShaderData() const { return shaderData; }
         const VkDeviceSize& getShaderDataLocation() const { return shaderDataLocation; }
         const std::string& getModelName() const { return modelName; }
     };
@@ -203,7 +203,7 @@ namespace PaperRenderer
         };
 
         void setRenderPassInstanceData(class RenderPass const* renderPass);
-        const std::vector<char>& getRenderPassInstanceData(class RenderPass const* renderPass) const { return renderPassSelfReferences.at(renderPass).renderPassInstanceData; };
+        const std::vector<uint8_t>& getRenderPassInstanceData(class RenderPass const* renderPass) const { return renderPassSelfReferences.at(renderPass).renderPassInstanceData; };
 
         //renderer self index
         uint32_t rendererSelfIndex = UINT32_MAX;
@@ -211,7 +211,7 @@ namespace PaperRenderer
         //RenderPass reference data
         struct RenderPassData
         {
-            std::vector<char> renderPassInstanceData;
+            std::vector<uint8_t> renderPassInstanceData;
             VkDeviceSize LODsMaterialDataOffset = UINT64_MAX;
             std::unordered_map<LODMesh const*, class CommonMeshGroup*> meshGroupReferences;
             uint32_t selfIndex;

@@ -82,7 +82,7 @@ namespace PaperRenderer
         void removeModelData(Model* model);
         void addObject(ModelInstance* object);
         void removeObject(ModelInstance* object);
-        void queueModelsAndInstancesTransfers();
+        std::vector<StagingBufferTransfer> queueModelsAndInstancesTransfers();
 
         //----------MISC----------//
 
@@ -104,7 +104,7 @@ namespace PaperRenderer
         RenderEngine(const RenderEngine&) = delete;
 
         //returns the image acquire semaphore from the swapchain
-        const VkSemaphore& beginFrame();
+        const VkSemaphore& beginFrame(std::vector<StagingBufferTransfer>& extraTransfers, const SynchronizationInfo& transferSyncInfo);
         void endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
 
         uint32_t getBufferIndex() const { return frameNumber % 2; }

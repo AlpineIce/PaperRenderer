@@ -26,16 +26,12 @@ namespace PaperRenderer
 
     RendererStagingBuffer::RendererStagingBuffer(RendererStagingBuffer&& other) noexcept
         :stagingBuffer(std::move(other.stagingBuffer)),
-        transferQueue(other.transferQueue),
-        queueSize(other.queueSize),
         stackLocation(other.stackLocation),
         renderer(other.renderer),
         gpuQueue(other.gpuQueue)
     {
         std::lock_guard guard(stagingBufferMutex);
-        other.queueSize = 0;
         other.stackLocation = 0;
-
         renderer->getLogger().recordLog({
             .type = INFO,
             .text = "A RendererStagingBuffer was moved"
@@ -47,33 +43,51 @@ namespace PaperRenderer
         stackLocation = 0;
     }
 
-    std::set<Buffer*> RendererStagingBuffer::submitQueuedTransfers(VkCommandBuffer cmdBuffer)
+    void RendererStagingBuffer::verifyBufferSize(std::vector<StagingBufferTransfer> &transfers)
+    {
+        VkDeviceSize requiredSize = 0;
+        for(const StagingBufferTransfer& transfer : transfers)
+        {
+            requiredSize += transfer.data.size();
+        }
+
+        //rebuild buffer if needed
+        if(stackLocation + requiredSize > stagingBuffer.getSize())
+        {
+            const BufferInfo bufferInfo = {
+                .size = (VkDeviceSize)((stackLocation + requiredSize) * bufferOverhead),
+                .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR,
+                .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
+            };
+            stagingBuffer = Buffer(*renderer, bufferInfo);
+        }
+    }
+
+    Queue& RendererStagingBuffer::submitTransfers(std::vector<StagingBufferTransfer>& transfers, const SynchronizationInfo& syncInfo)
     {
         //timer
-        Timer timer(*renderer, "Record Queued Transfers (StagingBuffer)", REGULAR);
+        Timer timer(*renderer, "Submit unqueued transfers (StagingBuffer)", REGULAR);
+        
+        //start command buffer
+        CommandBuffer cmdBuffer(renderer->getDevice().getCommands(), TRANSFER);
+
+        const VkCommandBufferBeginInfo beginInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .pNext = NULL,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            .pInheritanceInfo = NULL
+        };
+        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
 
         //lock mutex
         std::lock_guard guard(stagingBufferMutex);
 
         //rebuild buffer if needed
-        VkDeviceSize availableSize = stagingBuffer.getSize();
-        if(stackLocation + queueSize > availableSize)
-        {
-            const BufferInfo bufferInfo = {
-                .size = (VkDeviceSize)((stackLocation + queueSize) * bufferOverhead),
-                .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR,
-                .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
-            };
-            stagingBuffer = Buffer(*renderer, bufferInfo);
-
-            availableSize = bufferInfo.size;
-        }
-
-        //keep track of dst buffers
-        std::set<Buffer*> dstBuffers;
+        verifyBufferSize(transfers);
 
         //copy to dst
-        for(QueuedTransfer& transfer : transferQueue)
+        std::set<Buffer*> dstBuffers;
+        for(StagingBufferTransfer& transfer : transfers)
         {
             //make sure dstBuffer is referenced
             dstBuffers.insert(transfer.dstBuffer);
@@ -99,29 +113,6 @@ namespace PaperRenderer
             //increment stack
             stackLocation += bufferWrite.size;
         }
-
-        //clear queue
-        transferQueue.clear();
-        queueSize = 0;
-
-        //return collection of dst buffers
-        return dstBuffers;
-    }
-
-    Queue& RendererStagingBuffer::submitQueuedTransfers(const SynchronizationInfo& syncInfo)
-    {
-        //start command buffer
-        CommandBuffer cmdBuffer(renderer->getDevice().getCommands(), TRANSFER);
-
-        const VkCommandBufferBeginInfo beginInfo = {
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            .pNext = NULL,
-            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-            .pInheritanceInfo = NULL
-        };
-        vkBeginCommandBuffer(cmdBuffer, &beginInfo);
-
-        std::set<Buffer*> dstBuffers = submitQueuedTransfers(cmdBuffer);
 
         //end command buffer
         vkEndCommandBuffer(cmdBuffer);

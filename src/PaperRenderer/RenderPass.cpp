@@ -295,7 +295,7 @@ namespace PaperRenderer
         instancesDataBuffer = std::move(newInstancesDataBuffer);
     }
 
-    void RenderPass::queueInstanceTransfers()
+    void RenderPass::queueInstanceTransfers(std::vector<StagingBufferTransfer>& stagingBufferTransfers)
     {
         //Timer
         Timer timer(renderer, "RenderPass Queue instance Transfers", REGULAR);
@@ -308,7 +308,7 @@ namespace PaperRenderer
         {
             for(auto& [materialInstance, meshGroups] : materialInstanceNode) //material instances
             {
-                const std::vector<ModelInstance*> meshGroupUpdatedInstances = meshGroups.verifyBufferSize();
+                const std::vector<ModelInstance*> meshGroupUpdatedInstances = meshGroups.verifyBufferSize(stagingBufferTransfers);
                 toUpdateInstances.insert(toUpdateInstances.end(), meshGroupUpdatedInstances.begin(), meshGroupUpdatedInstances.end());
             }
         }
@@ -337,13 +337,13 @@ namespace PaperRenderer
             //remove old if exists
             if(instance->renderPassSelfReferences.count(this) && instance->renderPassSelfReferences[this].LODsMaterialDataOffset != UINT64_MAX)
             {
-                const std::vector<char>& oldMaterialData = instance->getRenderPassInstanceData(this);
+                const std::vector<uint8_t>& oldMaterialData = instance->getRenderPassInstanceData(this);
                 if(oldMaterialData.size()) instancesDataBuffer.removeFromRange(instance->renderPassSelfReferences[this].LODsMaterialDataOffset, oldMaterialData.size());
             }
 
             //set and get material data
             instance->setRenderPassInstanceData(this);
-            const std::vector<char>& materialData = instance->getRenderPassInstanceData(this);
+            const std::vector<uint8_t>& materialData = instance->getRenderPassInstanceData(this);
 
             //write new
             FragmentableBuffer::WriteResult writeResult = instancesDataBuffer.newWrite(NULL, materialData.size(), &(instance->renderPassSelfReferences[this].LODsMaterialDataOffset));
@@ -355,7 +355,7 @@ namespace PaperRenderer
             else if(writeResult == FragmentableBuffer::COMPACTED)
             {
                 //recursive redo (handling compaction resets the instances)
-                queueInstanceTransfers();
+                queueInstanceTransfers(stagingBufferTransfers);
                 return;
             }
         }
@@ -367,16 +367,28 @@ namespace PaperRenderer
             if(!instance) continue;
 
             //queue material data write
-            const std::vector<char>& materialData = instance->getRenderPassInstanceData(this);
-            renderer.getStagingBuffer().queueDataTransfers(instancesDataBuffer.getBuffer(), instance->renderPassSelfReferences[this].LODsMaterialDataOffset, materialData);
+            stagingBufferTransfers.push_back({
+                .dstOffset = instance->renderPassSelfReferences[this].LODsMaterialDataOffset,
+                .data = instance->getRenderPassInstanceData(this),
+                .dstBuffer = &instancesDataBuffer.getBuffer()
+            });
 
             //queue instance data transfer
-            const ModelInstance::RenderPassInstance instanceShaderData = {
-                .modelInstanceIndex = instance->rendererSelfIndex,
-                .LODsMaterialDataOffset = (uint32_t)instance->renderPassSelfReferences[this].LODsMaterialDataOffset,
-                .isVisible = true
-            };
-            renderer.getStagingBuffer().queueDataTransfers(instancesBuffer, sizeof(ModelInstance::RenderPassInstance) * instance->renderPassSelfReferences[this].selfIndex, instanceShaderData);
+            stagingBufferTransfers.push_back({
+                .dstOffset = sizeof(ModelInstance::RenderPassInstance) * instance->renderPassSelfReferences[this].selfIndex,
+                .data = [&] {
+                    const ModelInstance::RenderPassInstance instanceShaderData = {
+                        .modelInstanceIndex = instance->rendererSelfIndex,
+                        .LODsMaterialDataOffset = (uint32_t)instance->renderPassSelfReferences[this].LODsMaterialDataOffset,
+                        .isVisible = true
+                    };
+                    std::vector<uint8_t> transferData(sizeof(ModelInstance::RenderPassInstance));
+                    memcpy(transferData.data(), &instanceShaderData, sizeof(ModelInstance::RenderPassInstance));
+
+                    return transferData;
+                } (),
+                .dstBuffer = &instancesBuffer
+            });
         }
 
         //clear deques
@@ -455,8 +467,11 @@ namespace PaperRenderer
             vkCmdPipelineBarrier2(cmdBuffer, renderPassInfo.preRenderBarriers);
         }
 
+        //staging buffer transfer group
+        std::vector<StagingBufferTransfer> stagingBufferTransfers = {};
+
         //instance transfers
-        queueInstanceTransfers();
+        queueInstanceTransfers(stagingBufferTransfers);
 
         //clear draw counts
         clearDrawCounts(cmdBuffer);
@@ -465,13 +480,22 @@ namespace PaperRenderer
         if(renderPassInstances.size())
         {
             //queue update of preprocess UBO data
-            const RasterPreprocessPipeline::UBOInputData uboInputData = {
-                .materialDataPtr = instancesDataBuffer.getBuffer().getBufferDeviceAddress(),
-                .modelDataPtr = renderer.modelDataBuffer.getBuffer().getBufferDeviceAddress(),
-                .objectCount = (uint32_t)renderPassInstances.size(),
-                .doCulling = true
-            };
-            renderer.getStagingBuffer().queueDataTransfers(preprocessUniformBuffer, 0, uboInputData);
+            stagingBufferTransfers.push_back({
+                .dstOffset = 0,
+                .data = [&] {
+                    const RasterPreprocessPipeline::UBOInputData uboInputData = {
+                        .materialDataPtr = instancesDataBuffer.getBuffer().getBufferDeviceAddress(),
+                        .modelDataPtr = renderer.modelDataBuffer.getBuffer().getBufferDeviceAddress(),
+                        .objectCount = (uint32_t)renderPassInstances.size(),
+                        .doCulling = true
+                    };
+                    std::vector<uint8_t> transferData(sizeof(RasterPreprocessPipeline::UBOInputData));
+                    memcpy(transferData.data(), &uboInputData, sizeof(RasterPreprocessPipeline::UBOInputData));
+
+                    return transferData;
+                } (),
+                .dstBuffer = &preprocessUniformBuffer
+            });
 
             //compute shader
             renderer.getRasterPreprocessPipeline().submit(cmdBuffer, *this, renderPassInfo.camera);
@@ -712,7 +736,7 @@ namespace PaperRenderer
             .timelineWaitPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue } }, //wait on self
             .timelineSignalPairs = { { transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT, transferSemaphoreValue + 1 } }
         };
-        renderer.getStagingBuffer().submitQueuedTransfers(transferSyncInfo);
+        renderer.getStagingBuffer().submitTransfers(stagingBufferTransfers, transferSyncInfo);
 
         //append transfer semaphore to renderer submission
         syncInfo.timelineWaitPairs.push_back({ transferSemaphore, VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, transferSemaphoreValue + 1 });

@@ -287,7 +287,7 @@ namespace PaperRenderer
         object->rendererSelfIndex = UINT32_MAX;
     }
 
-    void RenderEngine::queueModelsAndInstancesTransfers()
+    std::vector<StagingBufferTransfer> RenderEngine::queueModelsAndInstancesTransfers()
     {
         //timer
         Timer timer(*this, "Queue Models and Instances Transfers", REGULAR);
@@ -298,7 +298,7 @@ namespace PaperRenderer
         //check buffer sizes
         if(instancesDataBuffer.getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128)
         {
-            rebuildInstancesbuffer(); //TODO SYNCHRONIZATION
+            rebuildInstancesbuffer();
         }
 
         //sort instances and models; remove duplicates
@@ -310,6 +310,8 @@ namespace PaperRenderer
         auto sortedModels = std::unique(toUpdateModels.begin(), toUpdateModels.end());
         toUpdateModels.erase(sortedModels, toUpdateModels.end());
 
+        std::vector<StagingBufferTransfer> transfers = {};
+
         //queue instance data
         for(ModelInstance* instance : toUpdateModelInstances)
         {
@@ -317,7 +319,17 @@ namespace PaperRenderer
             if(!instance) continue;
             
             //write instance data
-            getStagingBuffer().queueDataTransfers(instancesDataBuffer, sizeof(ModelInstance::ShaderModelInstance) * instance->rendererSelfIndex, instance->getShaderInstance());
+            transfers.push_back({
+                .dstOffset = sizeof(ModelInstance::ShaderModelInstance) * instance->rendererSelfIndex,
+                .data = [&] {
+                    std::vector<uint8_t> transferData(sizeof(ModelInstance::ShaderModelInstance));
+                    const ModelInstance::ShaderModelInstance shaderInstance = instance->getShaderInstance();
+                    memcpy(transferData.data(), &shaderInstance, sizeof(ModelInstance::ShaderModelInstance));
+
+                    return transferData;
+                } (),
+                .dstBuffer = &instancesDataBuffer
+            });
         }
 
         //queue model data
@@ -327,15 +339,21 @@ namespace PaperRenderer
             if(!model) continue;
 
             //write model data
-            getStagingBuffer().queueDataTransfers(modelDataBuffer.getBuffer(), model->shaderDataLocation, model->getShaderData());
+            transfers.push_back({
+                .dstOffset = model->shaderDataLocation,
+                .data = model->getShaderData(),
+                .dstBuffer = &modelDataBuffer.getBuffer()
+            });
         }
 
         //clear deques
         toUpdateModelInstances.clear();
         toUpdateModels.clear();
+
+        return transfers;
     }
 
-    const VkSemaphore& RenderEngine::beginFrame()
+    const VkSemaphore& RenderEngine::beginFrame(std::vector<StagingBufferTransfer>& extraTransfers, const SynchronizationInfo& transferSyncInfo)
     {
         //clear previous statistics
         statisticsTracker.clearStatistics();
@@ -350,7 +368,9 @@ namespace PaperRenderer
         const VkSemaphore& imageAcquireSemaphore = swapchain.acquireNextImage();
 
         //queue data transfers
-        queueModelsAndInstancesTransfers();
+        std::vector<StagingBufferTransfer> transfers = queueModelsAndInstancesTransfers();
+        transfers.insert(transfers.end(), extraTransfers.begin(), extraTransfers.end());
+        stagingBuffer[getBufferIndex()].submitTransfers(transfers, transferSyncInfo);
 
         //return image acquire semaphore
         return imageAcquireSemaphore;

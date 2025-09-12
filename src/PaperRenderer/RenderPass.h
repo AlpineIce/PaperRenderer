@@ -109,7 +109,7 @@ namespace PaperRenderer
         void rebuildInstancesBuffer();
         void rebuildSortedInstancesBuffer();
         void rebuildMaterialDataBuffer();
-        void queueInstanceTransfers();
+        void queueInstanceTransfers(std::vector<StagingBufferTransfer>& stagingBufferTransfers);
         void handleMaterialDataCompaction(const std::vector<CompactionResult>&);
         void clearDrawCounts(VkCommandBuffer cmdBuffer);
         void assignResourceOwner(Queue& queue);

@@ -1,6 +1,6 @@
 #pragma once
 #include "Descriptor.h"
-#include "gtc/quaternion.hpp"
+#include "StagingBuffer.h"
 
 #include <unordered_map>
 #include <list>
@@ -41,8 +41,8 @@ namespace PaperRenderer
         };
 
         //buffers and allocation
-        std::unique_ptr<Buffer> modelMatricesBuffer;
-        std::unique_ptr<Buffer> drawCommandsBuffer;
+        Buffer modelMatricesBuffer;
+        Buffer drawCommandsBuffer;
 
         struct BufferSizeRequirements
         {
@@ -57,9 +57,9 @@ namespace PaperRenderer
         };
 
         //buffer helper functions
-        std::vector<class ModelInstance*> rebuildBuffer();
+        std::vector<class ModelInstance*> rebuildBuffer(std::vector<StagingBufferTransfer>& transferGroup);
         BufferSizeRequirements getBuffersRequirements();
-        void setDrawCommandData() const;
+        void setDrawCommandData(std::vector<StagingBufferTransfer>& transferGroup);
 
         //descriptors
         const ResourceDescriptor descriptorSet;
@@ -80,7 +80,7 @@ namespace PaperRenderer
         ~CommonMeshGroup();
         CommonMeshGroup(const CommonMeshGroup&) = delete;
 
-        std::vector<class ModelInstance*> verifyBufferSize();
+        std::vector<class ModelInstance*> verifyBufferSize(std::vector<StagingBufferTransfer>& transferGroup);
 
         void addInstanceMesh(ModelInstance& instance, const LODMesh& instanceMeshData);
         void removeInstanceMeshes(class ModelInstance& instance);
@@ -90,8 +90,8 @@ namespace PaperRenderer
         void addOwner(Queue& queue);
 
         //const Buffer& getModelMatricesBuffer() { return *modelMatricesBuffer; }
-        const Buffer& getDrawCommandsBuffer() const { return *drawCommandsBuffer; }
-        const Buffer& getModelMatricesBuffer() const { return *modelMatricesBuffer; }
+        const Buffer& getDrawCommandsBuffer() const { return drawCommandsBuffer; }
+        const Buffer& getModelMatricesBuffer() const { return modelMatricesBuffer; }
         const std::unordered_map<class ModelInstance const*, std::unordered_map<struct LODMesh const*, MeshInstancesData>>& getInstanceMeshesData() const { return instanceMeshesData; }
         
     };
