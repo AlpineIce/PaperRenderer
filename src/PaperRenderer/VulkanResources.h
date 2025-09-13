@@ -55,6 +55,8 @@ namespace PaperRenderer
         void removeOwner(Queue& queue);
         void idleOwners();
 
+        const VmaAllocation& getAllocation() const { return allocation; }
+        VkMemoryType getMemoryType() const;
         VkDeviceSize getSize() const { return size; }
     };
 

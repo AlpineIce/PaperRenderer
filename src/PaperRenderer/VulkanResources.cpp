@@ -65,6 +65,17 @@ namespace PaperRenderer
         }
     }
 
+    VkMemoryType VulkanResource::getMemoryType() const
+    {
+		VmaAllocationInfo2 allocationInfo = {};
+		vmaGetAllocationInfo2(renderer->getDevice().getAllocator(), allocation, &allocationInfo);
+
+        VkPhysicalDeviceMemoryProperties2 memoryProperties = {};
+        vkGetPhysicalDeviceMemoryProperties2(renderer->getDevice().getGPU(), &memoryProperties);
+
+        return memoryProperties.memoryProperties.memoryTypes[allocationInfo.allocationInfo.memoryType];
+    }
+
     //----------BUFFER DEFINITIONS----------//
 
     Buffer::Buffer(RenderEngine& renderer, const BufferInfo& bufferInfo)
@@ -113,7 +124,7 @@ namespace PaperRenderer
 
             const VmaAllocationCreateInfo allocCreateInfo = {
                 .flags = bufferInfo.allocationFlags,
-                .usage = VMA_MEMORY_USAGE_AUTO
+                .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE
             };
 
             VmaAllocationInfo allocInfo = {};

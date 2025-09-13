@@ -30,6 +30,7 @@ namespace PaperRenderer
         RendererStagingBuffer(const RendererStagingBuffer&) = delete;
         RendererStagingBuffer(RendererStagingBuffer&& other) noexcept;
         
+        void idle();
         void resetBuffer();
         Queue& submitTransfers(std::vector<StagingBufferTransfer>& transfers, const SynchronizationInfo& syncInfo);
     };

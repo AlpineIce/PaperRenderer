@@ -12,6 +12,8 @@ namespace PaperRenderer
 
     Model::Model(RenderEngine& renderer, const ModelCreateInfo& creationInfo)
         :modelName(creationInfo.modelName),
+		vbo(renderer, {}),
+		ibo(renderer, {}),
 		aabb(creationInfo.bounds),
 		renderer(renderer)
     {
@@ -19,8 +21,8 @@ namespace PaperRenderer
         Timer timer(renderer, "Create Model", IRREGULAR);
 
 		//temporary variables for creating the singular vertex and index buffer
-		std::vector<char> creationVertices;
-		std::vector<char> creationIndices;
+		std::vector<uint8_t> creationVertices;
+		std::vector<uint8_t> creationIndices;
 
 		//fill in variables with the input LOD data
 		for(const ModelLODInfo& lod : creationInfo.LODs)
@@ -72,8 +74,8 @@ namespace PaperRenderer
 			LODs.push_back(returnLOD);
 		}
 		
-		vbo = createDeviceLocalBuffer(creationVertices.size(), creationVertices.data(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
-		ibo = createDeviceLocalBuffer(creationIndices.size(), creationIndices.data(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+		vbo = createDeviceLocalBuffer(creationVertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, renderer.getDevice().getGPUFeaturesAndProperties().reBAR);
+		ibo = createDeviceLocalBuffer(creationIndices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, renderer.getDevice().getGPUFeaturesAndProperties().reBAR);
 
 		//set shader data and add to renderer
 		setShaderData();
@@ -82,7 +84,7 @@ namespace PaperRenderer
 		//create BLAS
 		if(creationInfo.createBLAS && renderer.getDevice().getGPUFeaturesAndProperties().rtSupport)
 		{
-			defaultBLAS = std::make_unique<BLAS>(renderer, *this, vbo.get());
+			defaultBLAS = std::make_unique<BLAS>(renderer, *this, &vbo);
 			const BLASBuildOp op = {
 				.accelerationStructure = *defaultBLAS.get(),
 				.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
@@ -95,9 +97,6 @@ namespace PaperRenderer
 	Model::~Model()
 	{
 		renderer.removeModelData(this);
-		
-		vbo.reset();
-		ibo.reset();
 	}
 
 	void Model::setShaderData()
@@ -111,8 +110,8 @@ namespace PaperRenderer
 
 		const ShaderModel shaderModel = {
 			.bounds = aabb,
-			.vertexAddress = vbo->getBufferDeviceAddress(),
-			.indexAddress = ibo->getBufferDeviceAddress(),
+			.vertexAddress = vbo.getBufferDeviceAddress(),
+			.indexAddress = ibo.getBufferDeviceAddress(),
 			.lodCount = (uint32_t)LODs.size(),
 			.lodsOffset = dynamicOffset
 		};
@@ -155,40 +154,38 @@ namespace PaperRenderer
 		shaderData = newData;
     }
 
-    std::unique_ptr<Buffer> Model::createDeviceLocalBuffer(VkDeviceSize size, void *data, VkBufferUsageFlags2KHR usageFlags) const
+    Buffer Model::createDeviceLocalBuffer(std::vector<uint8_t>& data, VkBufferUsageFlags2KHR usageFlags, const bool reBAR) const
     {
-		//create staging buffer (i should profile the consequences of this)
-		const BufferInfo stagingBufferInfo = {
-			.size = size,
-			.usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			.allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-		};
-		const Buffer vboStaging(renderer, stagingBufferInfo);
-
-		//fill staging data
-		const BufferWrite write = {
-			.offset = 0,
-			.size = size,
-			.readData = data
-		};
-		vboStaging.writeToBuffer({ write });
-
-		//create device local buffer
+		//create buffer
 		BufferInfo bufferInfo = {
-			.size = size,
+			.size = data.size(),
 			.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | usageFlags,
-			.allocationFlags = 0
+			.allocationFlags = reBAR ? VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT : (VmaAllocationCreateFlags)0
 		};
 		if(renderer.getDevice().getGPUFeaturesAndProperties().rtSupport) bufferInfo.usageFlags = bufferInfo.usageFlags | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
-		std::unique_ptr<Buffer> buffer = std::make_unique<Buffer>(renderer, bufferInfo);
+		Buffer buffer(renderer, bufferInfo);
 
-		//copy
-		const VkBufferCopy copyRegion = {
-			.srcOffset = 0,
-			.dstOffset = 0,
-			.size = size
-		};
-		buffer->copyFromBufferRanges(vboStaging, { copyRegion }, {}).idle();
+		//stage transfer if buffer can't be written to (ReBAR not enabled)
+		if(!buffer.isWritable())
+		{
+			//transfer to device local buffer
+			std::vector<StagingBufferTransfer> transfers = {{
+				.dstOffset = 0,
+				.data = std::move(data),
+				.dstBuffer = &buffer
+			}};
+			renderer.getStagingBuffer().submitTransfers(transfers, {}).idle();
+			renderer.getStagingBuffer().resetBuffer();
+		}
+		else
+		{
+			const BufferWrite write = {
+				.offset = 0,
+				.size = data.size(),
+				.readData = data.data()
+			};
+			buffer.writeToBuffer({ write });
+		}
 
 		return buffer;
     }
@@ -207,7 +204,7 @@ namespace PaperRenderer
 		{
 			//new vertex buffer
 			const BufferInfo bufferInfo = {
-				.size = parentModel.vbo->getSize(),
+				.size = parentModel.vbo.getSize(),
 				.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_VERTEX_BUFFER_BIT |
 					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
 				.allocationFlags = 0
@@ -218,9 +215,9 @@ namespace PaperRenderer
 			const VkBufferCopy copyRegion = {
 				.srcOffset = 0,
 				.dstOffset = 0,
-				.size = parentModel.vbo->getSize()
+				.size = parentModel.vbo.getSize()
 			};
-			uniqueGeometryData.uniqueVBO->copyFromBufferRanges(*parentModel.vbo, { copyRegion }, {}).idle();
+			uniqueGeometryData.uniqueVBO->copyFromBufferRanges(parentModel.vbo, { copyRegion }, {}).idle();
 
 			//create BLAS
 			uniqueGeometryData.blas = std::make_unique<BLAS>(renderer, parentModel, uniqueGeometryData.uniqueVBO.get());

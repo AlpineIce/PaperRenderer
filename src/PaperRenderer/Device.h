@@ -35,6 +35,7 @@ namespace PaperRenderer
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtPipelineProperties = {};
         std::vector<const char*> enabledExtensions = {};
         bool rtSupport = false;
+        bool reBAR = false;
     };
 
     class Device

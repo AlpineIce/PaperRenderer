@@ -38,6 +38,11 @@ namespace PaperRenderer
         });
     }
 
+    void RendererStagingBuffer::idle()
+    {
+        gpuQueue->idle();
+    }
+
     void RendererStagingBuffer::resetBuffer()
     {
         stackLocation = 0;

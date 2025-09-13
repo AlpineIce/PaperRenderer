@@ -203,6 +203,8 @@ namespace PaperRenderer
                 //set GPU handle
                 GPU = physicalDevice;
 
+                
+
                 //set features and properties struct
                 featuresAndProperties = {
                     .gpuFeatures = features,
@@ -210,7 +212,41 @@ namespace PaperRenderer
                     .asProperties = asProperties,
                     .rtPipelineProperties = rtPipelineProperties,
                     .enabledExtensions = std::vector<const char*>(enabledExtensions.begin(), enabledExtensions.end()),
-                    .rtSupport = hasDeferredOps && hasAccelStructure && hasRTPipeline && hasRayQuery && hasMaintFeatures
+                    .rtSupport = hasDeferredOps && hasAccelStructure && hasRTPipeline && hasRayQuery && hasMaintFeatures,
+                    .reBAR = [physicalDevice] {
+                        VkPhysicalDeviceMemoryProperties2 memoryProperties = {
+                            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2
+                        };
+                        vkGetPhysicalDeviceMemoryProperties2(physicalDevice, &memoryProperties);
+
+                        //get largest DEVICE_LOCAL heap
+                        uint32_t largestHeapIndex = 0xFFFFFFFF;
+                        for(uint32_t i = 0; i < memoryProperties.memoryProperties.memoryHeapCount; i++)
+                        {
+                            if((largestHeapIndex == 0xFFFFFFFF || memoryProperties.memoryProperties.memoryHeaps[i].size > memoryProperties.memoryProperties.memoryHeaps[largestHeapIndex].size) && 
+                                memoryProperties.memoryProperties.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)
+                            {
+                                largestHeapIndex = i;
+                            }
+
+                        }
+                        
+                        //iterate all memory types and see if the largest heap has a type with HOST_VISIBLE
+                        bool reBAR = false;
+                        if(largestHeapIndex != 0xFFFFFFFF)
+                        {
+                            for(uint32_t i = 0; i < memoryProperties.memoryProperties.memoryTypeCount; i++)
+                            {
+                                if( memoryProperties.memoryProperties.memoryTypes[i].heapIndex == largestHeapIndex && 
+                                    memoryProperties.memoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+                                {
+                                    reBAR = true;
+                                }
+                            }
+                        }
+                        
+                        return reBAR;
+                    } ()
                 };
             };
             

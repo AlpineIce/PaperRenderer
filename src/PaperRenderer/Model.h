@@ -88,8 +88,8 @@ namespace PaperRenderer
         const std::string modelName;
 
         std::vector<LOD> LODs;
-        std::unique_ptr<Buffer> vbo;
-        std::unique_ptr<Buffer> ibo;
+        Buffer vbo;
+        Buffer ibo;
         AABB aabb;
 
         //BLAS info
@@ -129,7 +129,7 @@ namespace PaperRenderer
 
         class RenderEngine& renderer;
 
-        std::unique_ptr<Buffer> createDeviceLocalBuffer(VkDeviceSize size, void* data, VkBufferUsageFlags2KHR usageFlags) const;
+        Buffer createDeviceLocalBuffer(std::vector<uint8_t>& data, VkBufferUsageFlags2KHR usageFlags, const bool reBAR) const;
 
         friend class RenderEngine;
         friend class ModelInstance;
@@ -139,8 +139,8 @@ namespace PaperRenderer
         ~Model();
         Model(const Model&) = delete;
 
-        const Buffer& getVBO() const { return *vbo; }
-        const Buffer& getIBO() const { return *ibo; }
+        const Buffer& getVBO() const { return vbo; }
+        const Buffer& getIBO() const { return ibo; }
         BLAS const* getBlasPtr() const { return defaultBLAS ? defaultBLAS.get() : NULL; }
         const AABB& getAABB() const { return aabb; }
         const std::vector<LOD>& getLODs() const { return LODs; }
