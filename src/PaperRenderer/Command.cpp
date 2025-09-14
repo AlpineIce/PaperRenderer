@@ -368,15 +368,121 @@ namespace PaperRenderer
         lockedCmdBufferCount--;
     }
 
+    //----------COMMAND POOL DEFINITIONS----------//
+
+    CommandPool::CommandPool(RenderEngine& renderer, const QueueType type)
+        :rendererPtr(&renderer)
+    {
+        const VkCommandPoolCreateInfo commandPoolInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0,
+            .queueFamilyIndex = renderer.getDevice().getQueues().at(type).queueFamilyIndex
+        };
+
+        if(!vkCreateCommandPool(renderer.getDevice().getDevice(), &commandPoolInfo, nullptr, &cmdPool))
+        {
+            renderer.getLogger().recordLog({
+                .type = CRITICAL_ERROR,
+                .text = "Failed to create command pool"
+            });
+        }
+    }
+
+    CommandPool::CommandPool(CommandPool&& other) noexcept
+        :cmdPool(other.cmdPool),
+        cmdBuffers(std::move(other.cmdBuffers)),
+        cmdBufferStackLocation(other.cmdBufferStackLocation),
+        rendererPtr(other.rendererPtr)
+    {
+        other.cmdPool = VK_NULL_HANDLE;
+        other.cmdBuffers = {};
+        other.cmdBufferStackLocation = 0;
+        other.rendererPtr = NULL;
+    }
+
+    CommandPool& CommandPool::operator=(CommandPool&& other) noexcept
+    {
+        if (this != &other)
+        {
+            cmdPool = other.cmdPool;
+            cmdBuffers = std::move(other.cmdBuffers);
+            cmdBufferStackLocation = other.cmdBufferStackLocation;
+            rendererPtr = other.rendererPtr;
+
+            other.cmdPool = VK_NULL_HANDLE;
+            other.cmdBuffers = {};
+            other.cmdBufferStackLocation = 0;
+            other.rendererPtr = NULL;
+        }
+
+        return *this;
+    }
+
+    CommandPool::~CommandPool()
+    {
+        vkDestroyCommandPool(rendererPtr->getDevice().getDevice(), cmdPool, nullptr);
+    }
+
+    VkCommandBuffer CommandPool::getCommandBuffer()
+    {
+        // Allocate more command buffers if needed
+        if(!(cmdBufferStackLocation < cmdBuffers.size()))
+        {
+            constexpr uint32_t bufferCount = 64;
+
+            const VkCommandBufferAllocateInfo bufferInfo = {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                .pNext = NULL,
+                .commandPool = cmdPool,
+                .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                .commandBufferCount = bufferCount
+            };
+
+            std::vector<VkCommandBuffer> newBuffers(bufferCount);
+            if(!vkAllocateCommandBuffers(rendererPtr->getDevice().getDevice(), &bufferInfo, newBuffers.data()))
+            {
+                rendererPtr->getLogger().recordLog({
+                    .type = CRITICAL_ERROR,
+                    .text = "Failed to allocate command buffers to pool"
+                });
+            }
+
+            cmdBuffers.insert(cmdBuffers.end(), newBuffers.begin(), newBuffers.end());
+        }
+
+        //get command buffer
+        const VkCommandBuffer returnBuffer = cmdBuffers[cmdBufferStackLocation];
+
+        //increment stack
+        cmdBufferStackLocation++;
+        
+        return returnBuffer;
+    }
+
+    void CommandPool::reset()
+    {
+        vkResetCommandPool(rendererPtr->getDevice().getDevice(), cmdPool, VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
+        cmdBufferStackLocation = 0;
+    }
+
+    //----------COMMAND BUFFER DEFINITIONS----------//
+
     CommandBuffer::CommandBuffer(Commands& commands, const QueueType type)
         :cmdBuffer(commands.getCommandBuffer(type)),
         commands(&commands)
     {
     }
 
+    CommandBuffer::CommandBuffer(CommandPool& pool)
+        :cmdBuffer(pool.getCommandBuffer()),
+        commands(NULL)
+    {
+    }
+
     CommandBuffer::~CommandBuffer()
     {
-        if(cmdBuffer)
+        if(cmdBuffer && commands)
         {
             commands->unlockCommandBuffer(cmdBuffer);
         }

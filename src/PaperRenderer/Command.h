@@ -74,6 +74,33 @@ namespace PaperRenderer
         VkFence fence = VK_NULL_HANDLE;
     };
 
+    // Asynchronous command pool which can be used to perform operations that extend beyond the scope of a single frame. As an example, you could use 
+    // this for offline rendering while the main rendering context previews it (be careful with windows auto killing queue submissions that take too long).
+    // To allocate a command buffer, pass the pool as a parameter into CommandBuffer's constructor. 
+    //** NOT THREAD SAFE **
+    class CommandPool
+    {
+    private:
+        VkCommandPool cmdPool = VK_NULL_HANDLE;
+        std::deque<VkCommandBuffer> cmdBuffers = {};
+        uint32_t cmdBufferStackLocation = 0;
+
+        VkCommandBuffer getCommandBuffer();
+
+        class RenderEngine* rendererPtr;
+
+        friend class CommandBuffer;
+
+    public:
+        CommandPool(class RenderEngine& renderer, const QueueType type);
+        CommandPool(const CommandPool&) = delete;
+        CommandPool(CommandPool&& other) noexcept;
+        CommandPool& operator=(CommandPool&& other) noexcept;
+        ~CommandPool();
+
+        void reset();
+    };
+
     // RAII command buffer wrapper; automatically unlocks command buffer at the end of its scope
     class CommandBuffer
     {
@@ -82,7 +109,10 @@ namespace PaperRenderer
 
         class Commands* commands;
     public:
+        // Create command buffer with single frame lifetime (use this most of the time for frame synchronous operations)
         CommandBuffer(Commands& commands, const QueueType type);
+        // Create command buffer with lifetime of custom pool (use this to perform asynchronous to frame rendering operations)
+        CommandBuffer(CommandPool& pool);
         ~CommandBuffer();
         CommandBuffer(const CommandBuffer&) = delete;
         CommandBuffer(CommandBuffer&& other) noexcept;
