@@ -7,7 +7,8 @@ namespace PaperRenderer
     {
         VkDeviceSize dstOffset = 0;
         std::vector<uint8_t> data = {};
-        Buffer* dstBuffer;
+        Buffer* dstBuffer = NULL;
+        std::function<void(const Buffer& srcBuffer, const VkDeviceSize srcOffset)> postWriteOp = NULL;
     };
 
     class RendererStagingBuffer

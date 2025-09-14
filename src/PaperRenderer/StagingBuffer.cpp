@@ -107,15 +107,24 @@ namespace PaperRenderer
             };        
             stagingBuffer.writeToBuffer({ bufferWrite });
 
-            //push VkBufferCopy
-            const VkBufferCopy copy = {
-                .srcOffset = bufferWrite.offset,
-                .dstOffset = transfer.dstOffset,
-                .size = bufferWrite.size
-            };
+            //push VkBufferCopy if dstBuffer is set
+            if(transfer.dstBuffer)
+            {
+                const VkBufferCopy copy = {
+                    .srcOffset = bufferWrite.offset,
+                    .dstOffset = transfer.dstOffset,
+                    .size = bufferWrite.size
+                };
 
-            //record copy command
-            vkCmdCopyBuffer(cmdBuffer, stagingBuffer.getBuffer(), transfer.dstBuffer->getBuffer(), 1, &copy);
+                //record copy command
+                vkCmdCopyBuffer(cmdBuffer, stagingBuffer.getBuffer(), transfer.dstBuffer->getBuffer(), 1, &copy);
+            }
+
+            //call function if set
+            if(transfer.postWriteOp)
+            {
+                transfer.postWriteOp(stagingBuffer, stackLocation);
+            }
 
             //increment stack
             stackLocation += bufferWrite.size;
