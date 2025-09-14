@@ -24,11 +24,11 @@ GuiContext initImGui(PaperRenderer::RenderEngine& renderer, DefaultMaterialInsta
         .Device = renderer.getDevice().getDevice(),
         .QueueFamily = (uint32_t)renderer.getDevice().getQueueFamiliesIndices().graphicsFamilyIndex,
         .Queue = imGuiQueue->queue,
+        .DescriptorPoolSize = 1000,
         .MinImageCount = renderer.getSwapchain().getMinImageCount(),
         .ImageCount = renderer.getSwapchain().getImageCount(),
-        .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
         .PipelineCache = VK_NULL_HANDLE,
-        .DescriptorPoolSize = 1000,
+        .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
         .UseDynamicRendering = true,
         .PipelineRenderingCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
