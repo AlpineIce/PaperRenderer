@@ -20,12 +20,14 @@ namespace PaperRenderer
         :size(other.size),
         owners(std::move(other.owners)),
         allocation(other.allocation),
+        writable(other.writable),
         renderer(other.renderer)
     {
         std::lock_guard guard(other.resourceMutex); // Constructor should block old mutex
         other.size = 0;
         other.owners = {};
         other.allocation = VK_NULL_HANDLE;
+        other.writable = false;
     }
 
     VulkanResource& VulkanResource::operator=(VulkanResource&& other) noexcept
@@ -36,13 +38,22 @@ namespace PaperRenderer
             size = other.size;
             owners = std::move(other.owners);
             allocation = other.allocation;
+            writable = other.writable;
 
             other.size = 0;
             other.owners.clear();
             other.allocation = VK_NULL_HANDLE;
+            other.writable = false;
         }
 
         return *this;
+    }
+
+    bool VulkanResource::checkIfWritable(const VmaAllocationInfo& allocationInfo) const
+    {
+        VkMemoryPropertyFlags memPropertyFlags = 0;
+        vmaGetAllocationMemoryProperties(renderer->getDevice().getAllocator(), allocation, &memPropertyFlags);
+        return memPropertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT ? true : false;
     }
 
     void VulkanResource::addOwner(Queue& queue)
@@ -134,9 +145,7 @@ namespace PaperRenderer
                 throw std::runtime_error("Buffer creation failed");
             }
 
-            VkMemoryPropertyFlags memPropertyFlags;
-            vmaGetAllocationMemoryProperties(renderer.getDevice().getAllocator(), allocation, &memPropertyFlags);
-            if(memPropertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) writable = true;
+            writable = checkIfWritable(allocInfo);
         
             size = bufferInfo.size;
         }
@@ -150,8 +159,7 @@ namespace PaperRenderer
 
     Buffer::Buffer(Buffer&& other) noexcept
         :VulkanResource(std::move(other)),
-        buffer(other.buffer),
-        writable(other.writable)
+        buffer(other.buffer)
     {
         other.buffer = VK_NULL_HANDLE;
         other.writable = false;
@@ -559,6 +567,8 @@ namespace PaperRenderer
                 throw std::runtime_error("Buffer creation failed");
             }
 
+            writable = checkIfWritable(allocInfo);
+
             size = allocInfo.size;
         }
     }
@@ -627,7 +637,7 @@ namespace PaperRenderer
     void Image::setImageData(const VkDeviceSize size, void const* data, const VkOffset3D dstOffset)
     {
         //use host copy if extension enabled
-        if(renderer->getDevice().getGPUFeaturesAndProperties().hostImageCopy)
+        if(renderer->getDevice().getGPUFeaturesAndProperties().hostImageCopy && writable)
         {
             const VkMemoryToImageCopy imageCopy = {
                 .sType = VK_STRUCTURE_TYPE_MEMORY_TO_IMAGE_COPY,

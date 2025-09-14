@@ -37,6 +37,9 @@ namespace PaperRenderer
         std::set<Queue*> owners;
         VmaAllocation allocation = VK_NULL_HANDLE;
         std::mutex resourceMutex;
+        bool writable = false;
+
+        bool checkIfWritable(const VmaAllocationInfo& allocationInfo) const;
 
         friend class FragmentableBuffer;
 
@@ -66,7 +69,6 @@ namespace PaperRenderer
     {
     private:
         VkBuffer buffer = VK_NULL_HANDLE;
-        bool writable = false;
         
     public:
         Buffer(class RenderEngine& renderer, const BufferInfo& bufferInfo);
