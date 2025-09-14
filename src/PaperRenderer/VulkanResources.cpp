@@ -624,7 +624,77 @@ namespace PaperRenderer
         return view;
     }
 
-    void Image::setImageData(const Buffer &imageStagingBuffer)
+    void Image::setImageData(const VkDeviceSize size, void const* data, const VkOffset3D dstOffset)
+    {
+        //use host copy if extension enabled
+        if(renderer->getDevice().getGPUFeaturesAndProperties().hostImageCopy)
+        {
+            const VkMemoryToImageCopy imageCopy = {
+                .sType = VK_STRUCTURE_TYPE_MEMORY_TO_IMAGE_COPY,
+                .pNext = NULL,
+                .pHostPointer = data,
+                .memoryRowLength = 0,
+                .memoryImageHeight = 0,
+                .imageSubresource = {
+                    .aspectMask = imageInfo.imageAspect,
+                    .mipLevel = 0,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1
+                },
+                .imageOffset = {0},
+                .imageExtent = imageInfo.extent
+            };
+
+            const VkCopyMemoryToImageInfo copyInfo = {
+                .sType = VK_STRUCTURE_TYPE_COPY_MEMORY_TO_IMAGE_INFO,
+                .pNext = NULL,
+                .flags = 0,
+                .dstImage = image,
+                .dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                .regionCount = 1,
+                .pRegions = &imageCopy
+            };
+            vkCopyMemoryToImage(renderer->getDevice().getDevice(), &copyInfo);
+
+            //command buffer
+            const CommandBuffer cmdBuffer(renderer->getDevice().getCommands(), GRAPHICS);
+
+            const VkCommandBufferBeginInfo beginInfo = {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                .pNext = NULL,
+                .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+                .pInheritanceInfo = NULL
+            };
+
+            vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+
+            //blit
+            generateMipmaps(cmdBuffer);
+
+            vkEndCommandBuffer(cmdBuffer);
+
+            renderer->getDevice().getCommands().submitToQueue(GRAPHICS, {}, { cmdBuffer }).idle();
+        }
+        else
+        {
+            std::vector<StagingBufferTransfer> transfers = {{
+                .dstOffset = 0,
+                .data = [size, data] {
+                    std::vector<uint8_t> dstData(size);
+                    memcpy(dstData.data(), data, size);
+                    return dstData;
+                } (),
+                .dstBuffer = NULL,
+                .postWriteOp = [&] (const Buffer& srcBuffer, const VkDeviceSize srcOffset) {
+                    setImageData(srcBuffer, srcOffset, dstOffset);
+                }
+            }};
+            renderer->getStagingBuffer().submitTransfers(transfers, {}).idle();
+            renderer->getStagingBuffer().resetBuffer();
+        }
+    }
+
+    void Image::setImageData(const Buffer& imageStagingBuffer, const VkDeviceSize srcOffset, const VkOffset3D dstOffset)
     {
         //command buffer
         CommandBuffer cmdBuffer(renderer->getDevice().getCommands(), GRAPHICS);
@@ -639,7 +709,7 @@ namespace PaperRenderer
         vkBeginCommandBuffer(cmdBuffer, &beginInfo); 
         
         //copy
-        copyBufferToImage(imageStagingBuffer.getBuffer(), image, cmdBuffer);
+        copyBufferToImage(imageStagingBuffer.getBuffer(), image, cmdBuffer, srcOffset, dstOffset);
 
         //memory barrier
         const VkMemoryBarrier2 memBarrier = {
@@ -698,7 +768,7 @@ namespace PaperRenderer
         return sampler;
     }
 
-    void Image::copyBufferToImage(VkBuffer src, VkImage dst, VkCommandBuffer cmdBuffer)
+    void Image::copyBufferToImage(VkBuffer src, VkImage dst, VkCommandBuffer cmdBuffer, const VkDeviceSize srcOffset, const VkOffset3D dstOffset)
     {
         //layout transition memory barrier
         const VkImageMemoryBarrier2 imageBarrier = {
@@ -738,7 +808,7 @@ namespace PaperRenderer
 
         //copy image
         const VkBufferImageCopy copyRegion = {
-            .bufferOffset = 0,
+            .bufferOffset = srcOffset,
             .bufferRowLength = 0,
             .bufferImageHeight = 0,
             .imageSubresource = {
@@ -747,7 +817,7 @@ namespace PaperRenderer
                 .baseArrayLayer = 0,
                 .layerCount = 1
             },
-            .imageOffset = {0},
+            .imageOffset = dstOffset,
             .imageExtent = imageInfo.extent
         };
         vkCmdCopyBufferToImage(cmdBuffer, src, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);

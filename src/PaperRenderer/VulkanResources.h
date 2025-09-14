@@ -181,7 +181,7 @@ namespace PaperRenderer
         ImageInfo imageInfo = {};
         uint32_t mipmapLevels = 0;
 
-        void copyBufferToImage(VkBuffer src, VkImage dst, VkCommandBuffer cmdBuffer);
+        void copyBufferToImage(VkBuffer src, VkImage dst, VkCommandBuffer cmdBuffer, const VkDeviceSize srcOffset, const VkOffset3D dstOffset);
         void generateMipmaps(VkCommandBuffer cmdBuffer);
 
     public:
@@ -191,7 +191,8 @@ namespace PaperRenderer
         Image(Image&& other) noexcept;
         Image& operator=(Image&& other) noexcept;
 
-        void setImageData(const Buffer& imageStagingBuffer);
+        void setImageData(const VkDeviceSize size, void const* data, const VkOffset3D dstOffset);
+        void setImageData(const Buffer& imageStagingBuffer, const VkDeviceSize srcOffset, const VkOffset3D dstOffset);
 
         VkImageView getNewImageView(VkImageAspectFlags aspectMask, VkImageViewType viewType, VkFormat format);
         VkSampler getNewSampler(VkFilter magFilter); //filter is whether the sampler uses linear or nearest sampling

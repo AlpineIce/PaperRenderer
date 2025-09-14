@@ -36,6 +36,7 @@ namespace PaperRenderer
         std::vector<const char*> enabledExtensions = {};
         bool rtSupport = false;
         bool reBAR = false;
+        bool hostImageCopy = false;
     };
 
     class Device

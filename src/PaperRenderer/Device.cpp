@@ -157,18 +157,20 @@ namespace PaperRenderer
                 VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME
             });
 
-            //rt extensions
+            //optional extensions
             bool hasDeferredOps = false;
             bool hasAccelStructure = false;
             bool hasRTPipeline = false;
             bool hasRayQuery = false;
             bool hasMaintFeatures = false;
+            bool hasHostImageCopy = false;
             extensions.insert(extensions.end(), {
                 VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
                 VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
                 VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
                 VK_KHR_RAY_QUERY_EXTENSION_NAME,
-                VK_KHR_RAY_TRACING_MAINTENANCE_1_EXTENSION_NAME
+                VK_KHR_RAY_TRACING_MAINTENANCE_1_EXTENSION_NAME,
+                VK_EXT_HOST_IMAGE_COPY_EXTENSION_NAME
             });
 
             //check extensions
@@ -187,12 +189,13 @@ namespace PaperRenderer
                 hasSwapchain = hasSwapchain || std::string(properties.extensionName).find(VK_KHR_SWAPCHAIN_EXTENSION_NAME) != std::string::npos;
                 hasDynamicState3 = hasDynamicState3 || std::string(properties.extensionName).find(VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME) != std::string::npos;
                 
-                //required extensions for RT
+                //optional extensions
                 hasDeferredOps = hasDeferredOps || std::string(properties.extensionName).find(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) != std::string::npos;
                 hasAccelStructure = hasAccelStructure || std::string(properties.extensionName).find(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) != std::string::npos;
                 hasRTPipeline = hasRTPipeline || std::string(properties.extensionName).find(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) != std::string::npos;
                 hasRayQuery = hasRayQuery || std::string(properties.extensionName).find(VK_KHR_RAY_QUERY_EXTENSION_NAME) != std::string::npos;
                 hasMaintFeatures = hasMaintFeatures || std::string(properties.extensionName).find(VK_KHR_RAY_TRACING_MAINTENANCE_1_EXTENSION_NAME) != std::string::npos;
+                hasHostImageCopy = hasHostImageCopy || std::string(properties.extensionName).find(VK_EXT_HOST_IMAGE_COPY_EXTENSION_NAME) != std::string::npos;
             }
 
             const auto setGPUData = [&]()
@@ -202,8 +205,6 @@ namespace PaperRenderer
 
                 //set GPU handle
                 GPU = physicalDevice;
-
-                
 
                 //set features and properties struct
                 featuresAndProperties = {
@@ -246,7 +247,8 @@ namespace PaperRenderer
                         }
                         
                         return reBAR;
-                    } ()
+                    } (),
+                    .hostImageCopy = hasHostImageCopy
                 };
             };
             
@@ -492,42 +494,43 @@ namespace PaperRenderer
         VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationFeatures = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
             .pNext = devicepNext,
-            .accelerationStructure = VK_TRUE
+            .accelerationStructure = (VkBool32)featuresAndProperties.rtSupport
         };
 
         VkPhysicalDeviceRayTracingPipelineFeaturesKHR  RTfeatures = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
             .pNext = &accelerationFeatures,
-            .rayTracingPipeline = VK_TRUE
+            .rayTracingPipeline = (VkBool32)featuresAndProperties.rtSupport
         };
         
         VkPhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
             .pNext = &RTfeatures,
-            .rayQuery = VK_TRUE
+            .rayQuery = (VkBool32)featuresAndProperties.rtSupport
         };
 
         VkPhysicalDeviceRayTracingMaintenance1FeaturesKHR rtMaintFeatures = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_MAINTENANCE_1_FEATURES_KHR,
             .pNext = &rayQueryFeatures,
-            .rayTracingMaintenance1 = VK_TRUE
+            .rayTracingMaintenance1 = (VkBool32)featuresAndProperties.rtSupport
         };
 
         VkPhysicalDeviceRayTracingValidationFeaturesNV validationFeatures = { //NVIDIA only, for RT validation
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_VALIDATION_FEATURES_NV,
-            .pNext = &rtMaintFeatures
+            .pNext = &rtMaintFeatures,
+            .rayTracingValidation = (VkBool32)featuresAndProperties.rtSupport
         };
 
         //Core features
         VkPhysicalDeviceExtendedDynamicState3FeaturesEXT dynamicState3Features = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT,
-            .pNext = featuresAndProperties.rtSupport ? &rtMaintFeatures : devicepNext,
+            .pNext = &rtMaintFeatures,
             .extendedDynamicState3RasterizationSamples = VK_TRUE
         };
 
         VkPhysicalDeviceVulkan11Features vulkan11Features = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-            .pNext = &dynamicState3Features
+            .pNext = &dynamicState3Features,
         };
 
         VkPhysicalDeviceVulkan12Features vulkan12Features = {
@@ -550,7 +553,8 @@ namespace PaperRenderer
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
             .pNext = &vulkan13Features,
             .maintenance5 = VK_TRUE,
-            .maintenance6 = VK_TRUE
+            .maintenance6 = VK_TRUE,
+            .hostImageCopy = (VkBool32)featuresAndProperties.hostImageCopy
         };
 
         VkPhysicalDeviceFeatures2 features2 = {
