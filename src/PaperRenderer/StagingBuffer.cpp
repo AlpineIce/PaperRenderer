@@ -104,9 +104,13 @@ namespace PaperRenderer
                 .offset = stackLocation,
                 .size = transfer.data.size(),
                 .readData = transfer.data.data()
-            };        
-            stagingBuffer.writeToBuffer({ bufferWrite });
-
+            };
+            
+            if(transfer.data.size())
+            {
+                vmaCopyMemoryToAllocation(renderer->getDevice().getAllocator(), bufferWrite.readData, stagingBuffer.getAllocation(), bufferWrite.offset, bufferWrite.size);
+            }
+            
             //push VkBufferCopy if dstBuffer is set
             if(transfer.dstBuffer)
             {

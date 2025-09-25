@@ -68,7 +68,7 @@ public:
     ~ExampleRayTracing();
 
     const PaperRenderer::Queue& rayTraceRender(const PaperRenderer::SynchronizationInfo& syncInfo, const PaperRenderer::Buffer& materialDefinitionsBuffer);
-    void updateUBO() const;
+    void updateUBO();
     void updateHDRBuffer() const;
     void updateMaterialBuffer(const PaperRenderer::Buffer& materialDataBuffer);
 
@@ -159,7 +159,7 @@ private:
         ~BufferCopyMaterial();
 
         void updateHDRBuffer() const;
-        void updateUBO() const;
+        void updateUBO();
 
         PaperRenderer::Material& getMaterial() { return material; }
     } material;
@@ -173,7 +173,7 @@ public:
     ~BufferCopyPass();
 
     void updateHDRBuffer() const { material.updateHDRBuffer(); }
-    void updateUBO() const { material.updateUBO(); }
+    void updateUBO() { material.updateUBO(); }
 
     //to render function
     const PaperRenderer::Queue& render(const PaperRenderer::SynchronizationInfo &syncInfo, bool fromRaster);

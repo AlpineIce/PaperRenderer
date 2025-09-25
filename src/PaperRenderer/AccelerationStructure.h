@@ -94,7 +94,7 @@ namespace PaperRenderer
     {
     private:
         const class Model& parentModel;
-        Buffer const* vboPtr = NULL;
+        const Buffer& vbo;
 
         std::unique_ptr<AsGeometryBuildData> getGeometryData() const override;
         void buildStructure(VkCommandBuffer cmdBuffer, AsBuildData& data, const CompactionQuery compactionQuery, const VkDeviceAddress scratchAddress) override;
@@ -104,11 +104,11 @@ namespace PaperRenderer
     public:
         //If vbo is null, BLAS will instead use those directly from the model. Model is needed
         //for data describing different geometries
-        BLAS(RenderEngine& renderer, const Model& model, Buffer const* vbo);
+        BLAS(RenderEngine& renderer, const Model& model, const Buffer& vbo);
         ~BLAS() override;
         BLAS(const BLAS&) = delete;
 
-        VkDeviceAddress getVBOAddress() const { return vboPtr->getBufferDeviceAddress(); }
+        VkDeviceAddress getVBOAddress() const { return vbo.getBufferDeviceAddress(); }
         const Model& getParentModel() const { return parentModel; }
     };
 

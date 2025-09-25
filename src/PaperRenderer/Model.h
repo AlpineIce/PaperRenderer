@@ -82,81 +82,70 @@ namespace PaperRenderer
 
     //----------MODEL DECLARATION----------//
 
+    class ModelGeometryData
+    {
+    private:
+        // Generic geometry data
+        const AABB aabb = {};
+        const Buffer vbo;
+        std::unique_ptr<class BLAS> blas = NULL;
+
+        // Buffer and reference data
+        std::vector<uint8_t> shaderData = {};
+        struct ShaderDataReference
+        {
+            uint32_t selfIndex = UINT32_MAX;
+            VkDeviceSize shaderDataLocation = UINT64_MAX;
+        } shaderDataReference = {};
+
+        std::vector<uint8_t> createShaderData(const VkDeviceAddress iboAddress, const VkDeviceAddress vboAddress, const AABB& bounds, const std::vector<LOD>& LODs) const;
+
+        class Model& parentModel;
+
+        friend class RenderEngine;
+
+    public:
+        ModelGeometryData(RenderEngine& renderer, const AABB& aabb, const std::vector<uint8_t>& vertices, Model& parentModel, const bool createBLAS);
+        ModelGeometryData(RenderEngine& renderer, const ModelGeometryData& geometryData, const bool createBLAS);
+        ~ModelGeometryData();
+        ModelGeometryData(const ModelGeometryData&) = delete;
+        
+        void updateShaderData(const VkDeviceAddress iboAddress, const VkDeviceAddress vboAddress, const AABB& bounds, const std::vector<LOD>& LODs);
+
+        const Buffer& getVBO() const { return vbo; }
+        BLAS* getBlasPtr() { return blas ? blas.get() : NULL; }
+        BLAS const* getBlasPtr() const { return blas ? blas.get() : NULL; }
+        const AABB& getAABB() const { return aabb; }
+        const std::vector<uint8_t>& getShaderData() const { return shaderData; }
+        const ShaderDataReference& getShaderDataReference() const { return shaderDataReference; }
+        const Model& getParentModel() const { return parentModel;}
+    };
+
     class Model //Immutable collection of LODs with unique Material-Mesh groups
     {
     private:
         const std::string modelName;
 
-        std::vector<LOD> LODs;
-        Buffer vbo;
-        Buffer ibo;
-        AABB aabb;
-
-        //BLAS info
-        std::unique_ptr<class BLAS> defaultBLAS;
-
-        //shader data
-        struct ShaderModel
-        {
-            AABB bounds = {};
-            uint64_t vertexAddress = 0;
-            uint64_t indexAddress = 0;
-            uint32_t lodCount = 0;
-            uint32_t lodsOffset = 0;
-        };
-
-        struct ShaderModelLOD
-        {
-            uint32_t materialCount = 0;
-            uint32_t meshGroupsOffset = 0;
-        };
-
-        struct ShaderModelLODMeshGroup
-        {
-            uint32_t vboOffset = 0;
-            uint32_t vboSize = 0;
-            uint32_t vboStride = 0;
-            uint32_t iboOffset = 0;
-            uint32_t iboSize = 0;
-            uint32_t iboStride = 0;
-        };
-
-        uint64_t selfIndex;
-        VkDeviceSize shaderDataLocation = UINT64_MAX;
-        std::vector<uint8_t> shaderData;
-
-        void setShaderData();
+        const std::vector<LOD> LODs;
+        const Buffer ibo;
+        ModelGeometryData geometry;
 
         class RenderEngine& renderer;
 
-        Buffer createDeviceLocalBuffer(std::vector<uint8_t>& data, VkBufferUsageFlags2KHR usageFlags, const bool reBAR) const;
-
-        friend class RenderEngine;
-        friend class ModelInstance;
+        friend ModelGeometryData;
 
     public:
         Model(RenderEngine& renderer, const ModelCreateInfo& creationInfo);
         ~Model();
         Model(const Model&) = delete;
 
-        const Buffer& getVBO() const { return vbo; }
         const Buffer& getIBO() const { return ibo; }
-        BLAS const* getBlasPtr() const { return defaultBLAS ? defaultBLAS.get() : NULL; }
-        const AABB& getAABB() const { return aabb; }
+        const ModelGeometryData& getGeometryData() const { return geometry; }
         const std::vector<LOD>& getLODs() const { return LODs; }
-        const std::vector<uint8_t>& getShaderData() const { return shaderData; }
-        const VkDeviceSize& getShaderDataLocation() const { return shaderDataLocation; }
         const std::string& getModelName() const { return modelName; }
     };
 
     //----------MODEL INSTANCE DECLARATIONS----------//
-
-    struct InstanceUniqueGeometry
-    {
-        bool isUsed = false;
-        std::unique_ptr<Buffer> uniqueVBO = NULL;
-        std::unique_ptr<class BLAS> blas = NULL;
-    };
 
     class ModelInstance //Mutable instance of a parent model which always shares its parent's index buffer, but may contain a unique vertex buffer if specified
     {
@@ -228,7 +217,7 @@ namespace PaperRenderer
         std::unordered_map<class RayTraceRender const*, std::unordered_map<class TLAS*, RTRenderData>> rtRenderSelfReferences;
 
         //unique instance acceleration structure and VBO (only used if uniqueGeometry is set to true on instance creation)
-        InstanceUniqueGeometry uniqueGeometryData;
+        std::unique_ptr<ModelGeometryData> uniqueGeometryData = NULL;
 
         void queueBLAS(const VkBuildAccelerationStructureFlagsKHR flags) const;
         
@@ -256,7 +245,7 @@ namespace PaperRenderer
         void invalidateGeometry(const VkBuildAccelerationStructureFlagsKHR flags) const; //call this to queue an update of it's acceleration structure for the next AS builder call
         
         const Model& getParentModel() const { return parentModel; }
-        const InstanceUniqueGeometry& getUniqueGeometryData() const { return uniqueGeometryData; }
+        const ModelGeometryData& getGeometryData() const { return uniqueGeometryData ? *uniqueGeometryData : parentModel.getGeometryData(); }
         const ModelTransformation& getTransformation() const { return transform; };
     };
 }

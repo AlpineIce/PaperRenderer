@@ -131,12 +131,12 @@ namespace PaperRenderer
         //fix model data first
         for(const CompactionResult compactionResult : results)
         {
-            for(Model* model : renderingModels)
+            for(ModelGeometryData* modelData : renderingModels)
             {
-                if(model->shaderDataLocation > compactionResult.location)
+                if(modelData->shaderDataReference.shaderDataLocation > compactionResult.location)
                 {
                     //shift stored location
-                    model->shaderDataLocation -= compactionResult.shiftSize;
+                    modelData->shaderDataReference.shaderDataLocation -= compactionResult.shiftSize;
                 }
             }
         }
@@ -195,27 +195,27 @@ namespace PaperRenderer
         });
     }
 
-    void RenderEngine::addModelData(Model* model)
+    void RenderEngine::addModelData(ModelGeometryData* modelData)
     {
         //lock mutex
         std::lock_guard guard(rendererMutex);
 
         //self reference
-        model->selfIndex = renderingModels.size();
-        renderingModels.push_back(model);
+        modelData->shaderDataReference.selfIndex = renderingModels.size();
+        renderingModels.push_back(modelData);
         
         //"write"
-        if(modelDataBuffer.newWrite(NULL, model->getShaderData().size(), &model->shaderDataLocation) == FragmentableBuffer::WriteResult::OUT_OF_MEMORY)
+        if(modelDataBuffer.newWrite(NULL, modelData->getShaderData().size(), &modelData->shaderDataReference.shaderDataLocation) == FragmentableBuffer::WriteResult::OUT_OF_MEMORY)
         {
             rebuildModelDataBuffer();
-            modelDataBuffer.newWrite(NULL, model->getShaderData().size(), &model->shaderDataLocation);
+            modelDataBuffer.newWrite(NULL, modelData->getShaderData().size(), &modelData->shaderDataReference.shaderDataLocation);
         }
 
         //queue data transfer
-        toUpdateModels.push_front(model);
+        toUpdateModels.push_front(modelData);
     }
 
-    void RenderEngine::removeModelData(Model* model)
+    void RenderEngine::removeModelData(ModelGeometryData* modelData)
     {
         //lock mutex
         std::lock_guard guard(rendererMutex);
@@ -223,8 +223,8 @@ namespace PaperRenderer
         if(renderingModels.size() > 1)
         {
             //new reference for last element and remove
-            renderingModels.at(model->selfIndex) = renderingModels.back();
-            renderingModels.at(model->selfIndex)->selfIndex = model->selfIndex;
+            renderingModels.at(modelData->shaderDataReference.selfIndex) = renderingModels.back();
+            renderingModels.at(modelData->shaderDataReference.selfIndex)->shaderDataReference.selfIndex = modelData->shaderDataReference.selfIndex;
             renderingModels.pop_back();
         }
         else
@@ -233,9 +233,9 @@ namespace PaperRenderer
         }
 
         //remove from buffer
-        modelDataBuffer.removeFromRange(model->shaderDataLocation, model->getShaderData().size());
+        modelDataBuffer.removeFromRange(modelData->shaderDataReference.shaderDataLocation, modelData->getShaderData().size());
         
-        model->selfIndex = UINT64_MAX;
+        modelData->shaderDataReference.selfIndex = UINT32_MAX;
 
         //TODO UPDATE DEPENDENCIES
     }
@@ -333,15 +333,15 @@ namespace PaperRenderer
         }
 
         //queue model data
-        for(Model* model : toUpdateModels)
+        for(ModelGeometryData* modelData : toUpdateModels)
         {
             //skip if model is NULL
-            if(!model) continue;
+            if(!modelData) continue;
 
             //write model data
             transfers.push_back({
-                .dstOffset = model->shaderDataLocation,
-                .data = model->getShaderData(),
+                .dstOffset = modelData->shaderDataReference.shaderDataLocation,
+                .data = modelData->getShaderData(),
                 .dstBuffer = &modelDataBuffer.getBuffer()
             });
         }

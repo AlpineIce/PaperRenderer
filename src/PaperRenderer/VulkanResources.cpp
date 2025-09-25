@@ -183,22 +183,51 @@ namespace PaperRenderer
         return *this;
     }
 
-    int Buffer::writeToBuffer(const std::vector<BufferWrite>& writes) const
+    int Buffer::writeToBuffer(const std::vector<BufferWrite>& writes)
     {
-        //write data
-        for(const BufferWrite& write : writes)
-        {
-            if(write.readData && write.size)
+        // Use GPU to perform transfer if buffer isnt host visible (suboptimal)
+        if(!isWritable())
+		{
+			//transfer to device local buffer
+			std::vector<StagingBufferTransfer> transfers = {};
+            for(const BufferWrite& write : writes)
             {
-                if(vmaCopyMemoryToAllocation(renderer->getDevice().getAllocator(), write.readData, allocation, write.offset, write.size) != VK_SUCCESS) return 1;
+                if(write.readData && write.size)
+                {
+                    transfers.push_back({
+                        .dstOffset = write.offset,
+                        .data = [&write] {
+                            std::vector<uint8_t> data(write.size);
+                            memcpy(data.data(), write.readData, write.size);
+                            return data;
+                        } (),
+                        .dstBuffer = this
+                    });
+                }
             }
-        }
+
+			renderer->getStagingBuffer().submitTransfers(transfers, {}).idle();
+			renderer->getStagingBuffer().resetBuffer();
+		}
+        // Otherwise use CPU transfer (optimal)
+		else
+		{
+            for(const BufferWrite& write : writes)
+            {
+                if(write.readData && write.size)
+                {
+                    if(vmaCopyMemoryToAllocation(renderer->getDevice().getAllocator(), write.readData, allocation, write.offset, write.size) != VK_SUCCESS) return 1;
+                }
+            }
+		}
 
         return 0;
     }
 
-    int Buffer::readFromBuffer(const std::vector<BufferRead> &reads) const
+    int Buffer::readFromBuffer(const std::vector<BufferRead> &reads)
     {
+        assert(isWritable());
+
         //read data
         for(const BufferRead& read : reads)
         {
@@ -211,7 +240,7 @@ namespace PaperRenderer
         return 0;
     }
 
-    Queue& Buffer::copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo) const
+    Queue& Buffer::copyFromBufferRanges(const Buffer &src, const std::vector<VkBufferCopy>& regions, const SynchronizationInfo& synchronizationInfo)
     {
         CommandBuffer transferBuffer(renderer->getDevice().getCommands(), QueueType::TRANSFER); //note theres only 1 transfer cmd buffer
 

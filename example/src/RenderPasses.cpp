@@ -262,7 +262,7 @@ const PaperRenderer::Queue& ExampleRayTracing::rayTraceRender(const PaperRendere
     return rtRenderPass.render(rtRenderInfo, syncInfo);
 }
 
-void ExampleRayTracing::updateUBO() const
+void ExampleRayTracing::updateUBO()
 {
     //update RT UBO
     const RayTraceInfo rtInfo = {
@@ -864,7 +864,7 @@ void BufferCopyPass::BufferCopyMaterial::updateHDRBuffer() const
     });
 }
 
-void BufferCopyPass::BufferCopyMaterial::updateUBO() const
+void BufferCopyPass::BufferCopyMaterial::updateUBO()
 {
     const UBOInputData uboInputData = {
         .colorFilter = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),

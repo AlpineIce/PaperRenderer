@@ -61,8 +61,8 @@ namespace PaperRenderer
         //frame rendering stuff
         std::vector<ModelInstance*> renderingModelInstances;
         std::deque<ModelInstance*> toUpdateModelInstances; //queued instance references that need to have their data in GPU buffers updated
-        std::vector<Model*> renderingModels;
-        std::deque<Model*> toUpdateModels; //queued model references that need to have their data in GPU buffers updated
+        std::vector<ModelGeometryData*> renderingModels;
+        std::deque<ModelGeometryData*> toUpdateModels; //queued model references that need to have their data in GPU buffers updated
         std::mutex rendererMutex;
         
         //----------BUFFERS----------//
@@ -78,15 +78,15 @@ namespace PaperRenderer
 
         //----------MODEL AND INSTANCE FUNCTIONS----------//
 
-        void addModelData(Model* model);
-        void removeModelData(Model* model);
+        void addModelData(ModelGeometryData* modelData);
+        void removeModelData(ModelGeometryData* modelData);
         void addObject(ModelInstance* object);
         void removeObject(ModelInstance* object);
         std::vector<StagingBufferTransfer> queueModelsAndInstancesTransfers();
 
         //----------MISC----------//
 
-        friend Model;
+        friend ModelGeometryData;
         friend ModelInstance;
         friend RenderPass;
         friend RayTraceRender;
@@ -119,7 +119,7 @@ namespace PaperRenderer
         Swapchain& getSwapchain() { return swapchain; }
         RendererStagingBuffer& getStagingBuffer() { return stagingBuffer[getBufferIndex()]; }
         AccelerationStructureBuilder& getAsBuilder() { return asBuilder; }
-        const std::vector<Model*>& getModelReferences() const { return renderingModels; }
+        const std::vector<ModelGeometryData*>& getModelGeometryDataReferences() const { return renderingModels; }
         const std::vector<ModelInstance*>& getModelInstanceReferences() const { return renderingModelInstances; }
         Buffer& getModelDataBuffer() { return modelDataBuffer.getBuffer(); }
         const VkDescriptorSetLayout& getDefaultDescriptorSetLayout(const DefaultDescriptors descriptor) const { return defaultDescriptorLayouts[descriptor].getSetLayout(); }

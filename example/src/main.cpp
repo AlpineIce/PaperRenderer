@@ -638,7 +638,7 @@ int main()
         const uint32_t instanceCount = 8;
         for(uint32_t i = 0; i < instanceCount; i++)
         {
-            std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *scene.models["Suzanne"], false);
+            std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *scene.models["Suzanne"], true);
 
             //set transformation
             PaperRenderer::ModelTransformation newTransform = {

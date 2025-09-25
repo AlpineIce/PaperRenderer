@@ -322,10 +322,10 @@ namespace PaperRenderer
 
     //----------BLAS DEFINITIONS----------//
 
-    BLAS::BLAS(RenderEngine &renderer, const Model &model, Buffer const *vbo)
+    BLAS::BLAS(RenderEngine &renderer, const Model& model, const Buffer& vbo)
         :AS(renderer),
         parentModel(model),
-        vboPtr(vbo)
+        vbo(vbo)
     {
     }
 
@@ -353,7 +353,7 @@ namespace PaperRenderer
                     .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
                     .pNext = NULL,
                     .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
-                    .vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = vboPtr->getBufferDeviceAddress() + materialMesh.vboOffset},
+                    .vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = vbo.getBufferDeviceAddress() + materialMesh.vboOffset},
                     .vertexStride = materialMesh.vertexStride,
                     .maxVertex = vertexCount,
                     .indexType = materialMesh.indexType,
@@ -669,7 +669,7 @@ namespace PaperRenderer
             if(instance.instancePtr && instance.instancePtr->rtRenderSelfReferences.count(&rtRender) && instance.instancePtr->rtRenderSelfReferences[&rtRender].count(this))
             {
                 //get BLAS pointer
-                BLAS const* blasPtr = instance.instancePtr->getUniqueGeometryData().blas ? instance.instancePtr->getUniqueGeometryData().blas.get() : (BLAS*)instance.instancePtr->getParentModel().getBlasPtr();
+                BLAS const* blasPtr = instance.instancePtr->getGeometryData().getBlasPtr();
 
                 //skip if instance has invalid BLAS
                 if(blasPtr)
@@ -699,7 +699,7 @@ namespace PaperRenderer
                         .dstOffset = instancesBufferSizes.instanceDescriptionsOffset + (sizeof(InstanceDescription) * instance.instancePtr->rtRenderSelfReferences[&rtRender][this].selfIndex),
                         .data = [&] {
                             const InstanceDescription descriptionShaderData = {
-                                .modelDataOffset = (uint32_t)instance.instancePtr->getParentModel().getShaderDataLocation()
+                                .modelDataOffset = (uint32_t)instance.instancePtr->getGeometryData().getShaderDataReference().shaderDataLocation
                             };
                             std::vector<uint8_t> transferData(sizeof(InstanceDescription));
                             memcpy(transferData.data(), &descriptionShaderData, sizeof(InstanceDescription));

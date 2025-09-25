@@ -100,7 +100,7 @@ namespace PaperRenderer
 
         //model matrices, draw commands, and offsets/indices
         uint32_t meshIndex = 0;
-        for(auto& [instance, meshesData] : instanceMeshesData)
+        for(auto& [instance, meshesData] : geometryMeshesData)
         {
             for(auto& [mesh, meshInstancesData] : meshesData)
             {
@@ -126,7 +126,7 @@ namespace PaperRenderer
 
     void CommonMeshGroup::setDrawCommandData(std::vector<StagingBufferTransfer>& transferGroup)
     {
-        for(auto& [instance, meshesData] : instanceMeshesData)
+        for(auto& [instance, meshesData] : geometryMeshesData)
         {
             for(const auto& [mesh, meshInstancesData] : meshesData)
             {
@@ -156,18 +156,14 @@ namespace PaperRenderer
 
     void CommonMeshGroup::addInstanceMesh(ModelInstance& instance, const LODMesh& instanceMeshData)
     {
-        //use instance pointer if using unique geometry; otherwise NULL index
-        ModelInstance const* instancePtr = instance.uniqueGeometryData.isUsed ? &instance : NULL;
-
-        if(!instanceMeshesData[instancePtr].count(&instanceMeshData))
+        if(!geometryMeshesData[&instance.getGeometryData()].count(&instanceMeshData))
         {
-            instanceMeshesData[instancePtr][&instanceMeshData].parentModelPtr = &instance.getParentModel();
             rebuild = true;
         }
 
-        instanceMeshesData[instancePtr][&instanceMeshData].instanceCount++;
+        geometryMeshesData[&instance.getGeometryData()][&instanceMeshData].instanceCount++;
 
-        if(instanceMeshesData[instancePtr][&instanceMeshData].instanceCount > instanceMeshesData[instancePtr][&instanceMeshData].lastRebuildInstanceCount) rebuild = true;
+        if(geometryMeshesData[&instance.getGeometryData()][&instanceMeshData].instanceCount > geometryMeshesData[&instance.getGeometryData()][&instanceMeshData].lastRebuildInstanceCount) rebuild = true;
         
         //add instance mesh references
         instanceMeshes[&instance].push_back(&instanceMeshData);
@@ -176,18 +172,18 @@ namespace PaperRenderer
     void CommonMeshGroup::removeInstanceMeshes(ModelInstance& instance)
     {
         //use instance pointer if using unique geometry; otherwise NULL index
-        ModelInstance const* instancePtr = instance.uniqueGeometryData.isUsed ? &instance : NULL;
+        ModelInstance const* instancePtr = instance.uniqueGeometryData ? &instance : NULL;
 
         if(instanceMeshes.count(&instance))
         {
             for(LODMesh const* meshData : instanceMeshes[&instance])
             {
-                instanceMeshesData[instancePtr][meshData].instanceCount--;
+                geometryMeshesData[&instance.getGeometryData()][meshData].instanceCount--;
 
                 //remove if 0 instances
-                if(instanceMeshesData[instancePtr][meshData].instanceCount < 1)
+                if(geometryMeshesData[&instance.getGeometryData()][meshData].instanceCount < 1)
                 {
-                    instanceMeshesData[instancePtr].erase(meshData);
+                    geometryMeshesData[&instance.getGeometryData()].erase(meshData);
                 }
             }
 
@@ -212,21 +208,14 @@ namespace PaperRenderer
         }
 
         //submit draw calls
-        for(const auto& [instance, meshesData] : instanceMeshesData)
+        for(const auto& [geometryPtr, meshesData] : geometryMeshesData)
         {
             for(const auto& [mesh, meshData] : meshesData)
             {
                 //bind vbo and ibo
                 const VkDeviceSize offsets[1] = { mesh->vboOffset };
-                if(instance && instance->getUniqueGeometryData().uniqueVBO)
-                {
-                    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &instance->getUniqueGeometryData().uniqueVBO->getBuffer(), offsets);
-                }
-                else
-                {
-                    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &meshData.parentModelPtr->getVBO().getBuffer(), offsets);
-                }
-                vkCmdBindIndexBuffer(cmdBuffer, meshData.parentModelPtr->getIBO().getBuffer(), mesh->iboOffset, mesh->indexType);
+                vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &geometryPtr->getVBO().getBuffer(), offsets);
+                vkCmdBindIndexBuffer(cmdBuffer, geometryPtr->getParentModel().getIBO().getBuffer(), mesh->iboOffset, mesh->indexType);
 
                 //draw
                 vkCmdDrawIndexedIndirect(
@@ -244,7 +233,7 @@ namespace PaperRenderer
     {
         //clear instance count
         const uint32_t drawCountDefaultValue = 0;
-        for(const auto& [instance, meshesData] : instanceMeshesData)
+        for(const auto& [geometryPtr, meshesData] : geometryMeshesData)
         {
             for(const auto& [mesh, meshData] : meshesData)
             {

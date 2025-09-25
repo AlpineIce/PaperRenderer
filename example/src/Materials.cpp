@@ -84,10 +84,10 @@ void DefaultMaterialInstance::bind(VkCommandBuffer cmdBuffer) const
     uboDescriptor.bindDescriptorSet(cmdBuffer, binding);
 }
 
-void DefaultMaterialInstance::updateUBO() const
+void DefaultMaterialInstance::updateUBO()
 {
     //fill UBO data
-    PaperRenderer::BufferWrite uboWrite = {
+    const PaperRenderer::BufferWrite uboWrite = {
         .offset = sizeof(MaterialParameters) * renderer.getBufferIndex(),
         .size = sizeof(MaterialParameters),
         .readData = &parameters

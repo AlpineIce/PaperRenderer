@@ -648,10 +648,10 @@ namespace PaperRenderer
             auto getLODIndex = [&](ModelInstance* instance)
             {
                 //get largest OBB extent to be used as size
-                AABB bounds = instance->getParentModel().getAABB();
-                float xLength = bounds.posX - bounds.negX;
-                float yLength = bounds.posY - bounds.negY;
-                float zLength = bounds.posZ - bounds.negZ;
+                const AABB bounds = instance->getGeometryData().getAABB();
+                const float xLength = bounds.posX - bounds.negX;
+                const float yLength = bounds.posY - bounds.negY;
+                const float zLength = bounds.posZ - bounds.negZ;
 
                 float worldSize = 0.0;
                 worldSize = std::max(worldSize, xLength);
@@ -687,14 +687,8 @@ namespace PaperRenderer
 
                     //bind vbo and ibo
                     const VkDeviceSize offsets[1] = { meshData.vboOffset };
-                    if(sortedInstances[i]->instance->getUniqueGeometryData().uniqueVBO)
-                    {
-                        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &sortedInstances[i]->instance->getUniqueGeometryData().uniqueVBO->getBuffer(), offsets);
-                    }
-                    else
-                    {
-                        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &sortedInstances[i]->instance->getParentModel().getVBO().getBuffer(), offsets);
-                    }
+
+                    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &sortedInstances[i]->instance->getGeometryData().getVBO().getBuffer(), offsets);
                     vkCmdBindIndexBuffer(cmdBuffer, sortedInstances[i]->instance->getParentModel().getIBO().getBuffer(), meshData.iboOffset, meshData.indexType);
 
                     //bind descriptor

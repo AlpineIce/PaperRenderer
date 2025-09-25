@@ -33,7 +33,6 @@ namespace PaperRenderer
 
         struct MeshInstancesData
         {
-            class Model const* parentModelPtr = NULL;
             uint32_t lastRebuildInstanceCount = 0; //includes extra overhead
             uint32_t instanceCount = 0;
             uint32_t drawCommandIndex = 0;
@@ -67,7 +66,7 @@ namespace PaperRenderer
         //other
         uint32_t drawCommandCount = 0;
         bool rebuild = true;
-        std::unordered_map<class ModelInstance const*, std::unordered_map<struct LODMesh const*, MeshInstancesData>> instanceMeshesData = {};
+        std::unordered_map<class ModelGeometryData const*, std::unordered_map<struct LODMesh const*, MeshInstancesData>> geometryMeshesData = {};
         std::unordered_map<class ModelInstance*, std::vector<struct LODMesh const*>> instanceMeshes;
 
         //references
@@ -92,7 +91,7 @@ namespace PaperRenderer
         //const Buffer& getModelMatricesBuffer() { return *modelMatricesBuffer; }
         const Buffer& getDrawCommandsBuffer() const { return drawCommandsBuffer; }
         const Buffer& getModelMatricesBuffer() const { return modelMatricesBuffer; }
-        const std::unordered_map<class ModelInstance const*, std::unordered_map<struct LODMesh const*, MeshInstancesData>>& getInstanceMeshesData() const { return instanceMeshesData; }
+        const std::unordered_map<class ModelGeometryData const*, std::unordered_map<struct LODMesh const*, MeshInstancesData>>& getInstanceMeshesData() const { return geometryMeshesData; }
         
     };
 }

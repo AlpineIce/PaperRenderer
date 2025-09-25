@@ -74,7 +74,7 @@ public:
     DefaultMaterialInstance(PaperRenderer::RenderEngine& renderer, DefaultMaterial& baseMaterial, MaterialParameters parameters, VkDescriptorSetLayout uboDescriptorLayout);
     ~DefaultMaterialInstance();
     
-    void updateUBO() const;
+    void updateUBO();
     void setParameters(const MaterialParameters& newParameters) { this->parameters = newParameters; }
 
     const MaterialParameters& getParameters() const { return parameters; }

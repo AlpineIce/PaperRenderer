@@ -8,110 +8,132 @@
 
 namespace PaperRenderer
 {
-	//----------MODEL DEFINITIONS----------//
+	//----------MODEL GEOMETRY DATA DEFINITIONS----------//
 
-    Model::Model(RenderEngine& renderer, const ModelCreateInfo& creationInfo)
-        :modelName(creationInfo.modelName),
-		vbo(renderer, {}),
-		ibo(renderer, {}),
-		aabb(creationInfo.bounds),
-		renderer(renderer)
-    {
-		//Timer
-        Timer timer(renderer, "Create Model", IRREGULAR);
-
-		//temporary variables for creating the singular vertex and index buffer
-		std::vector<uint8_t> creationVertices;
-		std::vector<uint8_t> creationIndices;
-
-		//fill in variables with the input LOD data
-		for(const ModelLODInfo& lod : creationInfo.LODs)
-		{
-			LOD returnLOD = {};
-			returnLOD.materialMeshes.reserve(lod.lodData.size());
-
-			//iterate materials in LOD
-			for(const auto& [matIndex, meshGroup] : lod.lodData)
-			{
-				//get IBO stride
-				uint32_t iboStride = 0;
-				switch(meshGroup.indexType)
-				{
-				case VK_INDEX_TYPE_UINT16:
-					iboStride = sizeof(uint16_t);
-					break;
-				case VK_INDEX_TYPE_UINT32:
-					iboStride = sizeof(uint32_t);
-					break;
-				case VK_INDEX_TYPE_UINT8:
-					iboStride = sizeof(uint8_t);
-					break;
-				default:
-					renderer.getLogger().recordLog({
-						.type = CRITICAL_ERROR,
-						.text = "Invalid VkIndexType used for model " + modelName
-					});
-				}
-
-				//process mesh data
-				const LODMesh materialMesh = {
-					.vertexStride = meshGroup.vertexStride,
-					.indexStride = iboStride,
-					.vboOffset = (uint32_t)creationVertices.size(),
-					.verticesSize =  (uint32_t)meshGroup.verticesData.size(),
-					.iboOffset = (uint32_t)creationIndices.size(),
-					.indicesSize =  (uint32_t)meshGroup.indicesData.size(),
-					.invokeAnyHit = !meshGroup.opaque,
-					.indexType = meshGroup.indexType
-				};
-
-				creationVertices.insert(creationVertices.end(), meshGroup.verticesData.begin(), meshGroup.verticesData.end());
-				creationIndices.insert(creationIndices.end(), meshGroup.indicesData.begin(), meshGroup.indicesData.end());
-
-				//push data
-				returnLOD.materialMeshes.push_back(materialMesh);
-			}
-			LODs.push_back(returnLOD);
-		}
-		
-		vbo = createDeviceLocalBuffer(creationVertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, renderer.getDevice().getGPUFeaturesAndProperties().reBAR);
-		ibo = createDeviceLocalBuffer(creationIndices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, renderer.getDevice().getGPUFeaturesAndProperties().reBAR);
-
-		//set shader data and add to renderer
-		setShaderData();
-		renderer.addModelData(this);
-
-		//create BLAS
-		if(creationInfo.createBLAS && renderer.getDevice().getGPUFeaturesAndProperties().rtSupport)
-		{
-			defaultBLAS = std::make_unique<BLAS>(renderer, *this, &vbo);
-			const BLASBuildOp op = {
-				.accelerationStructure = *defaultBLAS.get(),
-				.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
-				.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
-			};
-			renderer.getAsBuilder().queueBLAS(op);
-		}
-	}
-
-	Model::~Model()
+	struct ShaderModel
 	{
-		renderer.removeModelData(this);
+		AABB bounds = {};
+		uint64_t vertexAddress = 0;
+		uint64_t indexAddress = 0;
+		uint32_t lodCount = 0;
+		uint32_t lodsOffset = 0;
+	};
+
+	struct ShaderModelLOD
+	{
+		uint32_t materialCount = 0;
+		uint32_t meshGroupsOffset = 0;
+	};
+
+	struct ShaderModelLODMeshGroup
+	{
+		uint32_t vboOffset = 0;
+		uint32_t vboSize = 0;
+		uint32_t vboStride = 0;
+		uint32_t iboOffset = 0;
+		uint32_t iboSize = 0;
+		uint32_t iboStride = 0;
+	};
+
+	ModelGeometryData::ModelGeometryData(RenderEngine& renderer, const AABB& aabb, const std::vector<uint8_t>& vertices, Model& parentModel, const bool createBLAS)
+		:aabb(aabb),
+		vbo([&] {
+			// Create buffer
+			const BufferInfo bufferInfo = {
+				.size = vertices.size(),
+				.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+					(renderer.getDevice().getGPUFeaturesAndProperties().rtSupport ? VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR : (VkBufferUsageFlagBits2KHR)0),
+				.allocationFlags = renderer.getDevice().getGPUFeaturesAndProperties().reBAR ? VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT : (VmaAllocationCreateFlags)0
+			};
+			Buffer buffer(renderer, bufferInfo);
+
+			buffer.writeToBuffer({{
+				.offset = 0,
+				.size = vertices.size(),
+				.readData = vertices.data()
+			}});
+
+			return buffer;
+		} ()),
+		blas([&] {
+			if(createBLAS && renderer.getDevice().getGPUFeaturesAndProperties().rtSupport)
+			{
+				std::unique_ptr<BLAS> blas = std::make_unique<BLAS>(renderer, parentModel, vbo);
+				const BLASBuildOp op = {
+					.accelerationStructure = *blas,
+					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
+					.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
+				};
+				renderer.getAsBuilder().queueBLAS(op);
+
+				return blas;
+			}
+
+			return std::unique_ptr<BLAS>();
+		} ()),
+		shaderData(createShaderData(parentModel.getIBO().getBufferDeviceAddress(), vbo.getBufferDeviceAddress(), aabb, parentModel.getLODs())),
+		parentModel(parentModel)
+	{
+		renderer.addModelData(this);
 	}
 
-	void Model::setShaderData()
-    {
-		std::vector<uint8_t> newData;
-		uint32_t dynamicOffset = 0;
+	ModelGeometryData::ModelGeometryData(RenderEngine& renderer, const ModelGeometryData& geometryData, const bool createBLAS)
+		:aabb(geometryData.aabb),
+		vbo([&] {
+			const BufferInfo bufferInfo = {
+				.size = geometryData.getVBO().getSize(),
+				.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+					(renderer.getDevice().getGPUFeaturesAndProperties().rtSupport ? VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR : (VkBufferUsageFlagBits2KHR)0),
+				.allocationFlags = renderer.getDevice().getGPUFeaturesAndProperties().reBAR ? VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT : (VmaAllocationCreateFlags)0
+			};
+			Buffer buffer(renderer, bufferInfo);
 
+			const VkBufferCopy copy = {
+				.srcOffset = 0,
+				.dstOffset = 0,
+				.size = geometryData.getVBO().getSize()
+			};
+			buffer.copyFromBufferRanges(geometryData.vbo, { copy }, {}).idle();
+
+			return buffer;
+		} ()),
+		blas([&] {
+			if(createBLAS && renderer.getDevice().getGPUFeaturesAndProperties().rtSupport)
+			{
+				std::unique_ptr<BLAS> blas = std::make_unique<BLAS>(renderer, geometryData.parentModel, vbo);
+				const BLASBuildOp op = {
+					.accelerationStructure = *blas,
+					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
+					.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
+				};
+				renderer.getAsBuilder().queueBLAS(op);
+
+				return blas;
+			}
+
+			return std::unique_ptr<BLAS>();
+		} ()),
+		shaderData(createShaderData(geometryData.parentModel.getIBO().getBufferDeviceAddress(), vbo.getBufferDeviceAddress(), aabb, geometryData.parentModel.getLODs())),
+		parentModel(geometryData.parentModel)
+	{
+		renderer.addModelData(this);
+	}
+
+    ModelGeometryData::~ModelGeometryData()
+    {
+		parentModel.renderer.removeModelData(this);
+    }
+
+    std::vector<uint8_t> ModelGeometryData::createShaderData(const VkDeviceAddress iboAddress, const VkDeviceAddress vboAddress, const AABB& bounds, const std::vector<LOD>& LODs) const
+    {
 		//model data
-		dynamicOffset += sizeof(ShaderModel);
-		newData.resize(dynamicOffset);
+		uint32_t dynamicOffset = sizeof(ShaderModel);
+		std::vector<uint8_t> newData(dynamicOffset);
 
 		const ShaderModel shaderModel = {
-			.bounds = aabb,
-			.vertexAddress = vbo.getBufferDeviceAddress(),
-			.indexAddress = ibo.getBufferDeviceAddress(),
+			.bounds = bounds,
+			.vertexAddress = vboAddress,
+			.indexAddress = iboAddress,
 			.lodCount = (uint32_t)LODs.size(),
 			.lodsOffset = dynamicOffset
 		};
@@ -151,78 +173,134 @@ namespace PaperRenderer
 			}
 		}
         
-		shaderData = newData;
+		return newData;
     }
 
-    Buffer Model::createDeviceLocalBuffer(std::vector<uint8_t>& data, VkBufferUsageFlags2KHR usageFlags, const bool reBAR) const
-    {
-		//create buffer
-		BufferInfo bufferInfo = {
-			.size = data.size(),
-			.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | usageFlags,
-			.allocationFlags = reBAR ? VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT : (VmaAllocationCreateFlags)0
-		};
-		if(renderer.getDevice().getGPUFeaturesAndProperties().rtSupport) bufferInfo.usageFlags = bufferInfo.usageFlags | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
-		Buffer buffer(renderer, bufferInfo);
+	void ModelGeometryData::updateShaderData(const VkDeviceAddress iboAddress, const VkDeviceAddress vboAddress, const AABB& bounds, const std::vector<LOD>& LODs)
+	{
+		shaderData = createShaderData(iboAddress, vboAddress, bounds, LODs);
+	}
 
-		//stage transfer if buffer can't be written to (ReBAR not enabled)
-		if(!buffer.isWritable())
-		{
-			//transfer to device local buffer
-			std::vector<StagingBufferTransfer> transfers = {{
-				.dstOffset = 0,
-				.data = std::move(data),
-				.dstBuffer = &buffer
-			}};
-			renderer.getStagingBuffer().submitTransfers(transfers, {}).idle();
-			renderer.getStagingBuffer().resetBuffer();
-		}
-		else
-		{
-			const BufferWrite write = {
-				.offset = 0,
-				.size = data.size(),
-				.readData = data.data()
+    //----------MODEL DEFINITIONS----------//
+
+    Model::Model(RenderEngine& renderer, const ModelCreateInfo& creationInfo)
+        :modelName(creationInfo.modelName),
+		LODs([&] {
+			// Return data
+			std::vector<LOD> returnData = {};
+
+			//fill in variables with the input LOD data
+			uint32_t vertexIndex = 0;
+			uint32_t indexIndex = 0;
+			for(const ModelLODInfo& lod : creationInfo.LODs)
+			{
+				LOD returnLOD = {};
+				returnLOD.materialMeshes.reserve(lod.lodData.size());
+
+				//iterate materials in LOD
+				for(const auto& [matIndex, meshGroup] : lod.lodData)
+				{
+					//get IBO stride
+					uint32_t iboStride = 0;
+					switch(meshGroup.indexType)
+					{
+					case VK_INDEX_TYPE_UINT16:
+						iboStride = sizeof(uint16_t);
+						break;
+					case VK_INDEX_TYPE_UINT32:
+						iboStride = sizeof(uint32_t);
+						break;
+					case VK_INDEX_TYPE_UINT8:
+						iboStride = sizeof(uint8_t);
+						break;
+					default:
+						renderer.getLogger().recordLog({
+							.type = CRITICAL_ERROR,
+							.text = "Invalid VkIndexType used for model " + modelName
+						});
+					}
+
+					//process mesh data
+					const LODMesh materialMesh = {
+						.vertexStride = meshGroup.vertexStride,
+						.indexStride = iboStride,
+						.vboOffset = vertexIndex,
+						.verticesSize =  (uint32_t)meshGroup.verticesData.size(),
+						.iboOffset = indexIndex,
+						.indicesSize =  (uint32_t)meshGroup.indicesData.size(),
+						.invokeAnyHit = !meshGroup.opaque,
+						.indexType = meshGroup.indexType
+					};
+
+					vertexIndex += meshGroup.verticesData.size();
+					indexIndex += meshGroup.indicesData.size();
+
+					//push data
+					returnLOD.materialMeshes.push_back(materialMesh);
+				}
+				returnData.push_back(returnLOD);
+			}
+
+			return returnData;
+		} ()),
+		ibo([&] {
+			// Get index data
+			std::vector<uint8_t> creationIndicesData = {};
+			for(const ModelLODInfo& lod : creationInfo.LODs)
+			{
+				for(const auto& [matIndex, meshGroup] : lod.lodData)
+				{
+					creationIndicesData.insert(creationIndicesData.end(), meshGroup.indicesData.begin(), meshGroup.indicesData.end());
+				}
+			}
+
+			// Create buffer
+			const BufferInfo bufferInfo = {
+				.size = creationIndicesData.size(),
+				.usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+					(renderer.getDevice().getGPUFeaturesAndProperties().rtSupport ? VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR : (VkBufferUsageFlagBits2KHR)0),
+				.allocationFlags = renderer.getDevice().getGPUFeaturesAndProperties().reBAR ? VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT : (VmaAllocationCreateFlags)0
 			};
-			buffer.writeToBuffer({ write });
-		}
+			Buffer buffer(renderer, bufferInfo);
 
-		return buffer;
-    }
+			buffer.writeToBuffer({{
+				.offset = 0,
+				.size = creationIndicesData.size(),
+				.readData = creationIndicesData.data()
+			}});
+
+			return buffer;
+		} ()),
+		geometry(renderer, creationInfo.bounds, [&] {
+			// Get vertex data
+			std::vector<uint8_t> creationVertices = {};
+			for(const ModelLODInfo& lod : creationInfo.LODs)
+			{
+				for(const auto& [matIndex, meshGroup] : lod.lodData)
+				{
+					creationVertices.insert(creationVertices.end(), meshGroup.verticesData.begin(), meshGroup.verticesData.end());
+				}
+			}
+
+			// Return buffer of vertex data
+			return creationVertices;
+		} (), *this, creationInfo.createBLAS),
+		renderer(renderer)
+    {
+	}
+
+	Model::~Model()
+	{
+	}
 
 	//----------MODEL INSTANCE DEFINITIONS----------//
 
     ModelInstance::ModelInstance(RenderEngine &renderer, const Model &parentModel, bool uniqueGeometry, const VkBuildAccelerationStructureFlagsKHR flags)
-        :uniqueGeometryData({.isUsed = uniqueGeometry}),
+        :uniqueGeometryData(uniqueGeometry ? std::make_unique<ModelGeometryData>(renderer, parentModel.getGeometryData(), true) : NULL),
         renderer(renderer),
         parentModel(parentModel)
     {
 		renderer.addObject(this);
-		
-		//create unique VBO and BLAS if requested
-		if((uniqueGeometry || !parentModel.defaultBLAS) && renderer.getDevice().getGPUFeaturesAndProperties().rtSupport)
-		{
-			//new vertex buffer
-			const BufferInfo bufferInfo = {
-				.size = parentModel.vbo.getSize(),
-				.usageFlags = VK_BUFFER_USAGE_2_TRANSFER_DST_BIT | VK_BUFFER_USAGE_2_VERTEX_BUFFER_BIT |
-					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
-				.allocationFlags = 0
-			};
-			uniqueGeometryData.uniqueVBO  = std::make_unique<Buffer>(renderer, bufferInfo);
-
-			//copy vertex data
-			const VkBufferCopy copyRegion = {
-				.srcOffset = 0,
-				.dstOffset = 0,
-				.size = parentModel.vbo.getSize()
-			};
-			uniqueGeometryData.uniqueVBO->copyFromBufferRanges(parentModel.vbo, { copyRegion }, {}).idle();
-
-			//create BLAS
-			uniqueGeometryData.blas = std::make_unique<BLAS>(renderer, parentModel, uniqueGeometryData.uniqueVBO.get());
-			queueBLAS(flags);
-		}
     }
 
     ModelInstance::~ModelInstance()
@@ -275,16 +353,15 @@ namespace PaperRenderer
 				//pointers
 				LODMesh const* lodMeshPtr = &parentModel.getLODs().at(lodIndex).materialMeshes.at(matIndex);
 				CommonMeshGroup const* meshGroupPtr = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&parentModel.getLODs().at(lodIndex).materialMeshes.at(matIndex));
-				ModelInstance const* instancePtr = uniqueGeometryData.isUsed ? this : NULL;
 
 				//material mesh group data
 				const MaterialMeshGroup materialMeshGroup = {
 					.drawCommandAddress = 
 						meshGroupPtr->getDrawCommandsBuffer().getBufferDeviceAddress() + 
-						(meshGroupPtr->getInstanceMeshesData().at(instancePtr).at(lodMeshPtr).drawCommandIndex * sizeof(DrawCommand)),
+						(meshGroupPtr->getInstanceMeshesData().at(&getGeometryData()).at(lodMeshPtr).drawCommandIndex * sizeof(DrawCommand)),
 					.matricesBufferAddress = 
 						meshGroupPtr->getModelMatricesBuffer().getBufferDeviceAddress() + 
-						(meshGroupPtr->getInstanceMeshesData().at(instancePtr).at(lodMeshPtr).matricesStartIndex * sizeof(ShaderOutputObject))
+						(meshGroupPtr->getInstanceMeshesData().at(&getGeometryData()).at(lodMeshPtr).matricesStartIndex * sizeof(ShaderOutputObject))
 				};
 
 				memcpy(newData.data() + lodMaterialData.meshGroupsOffset + sizeof(MaterialMeshGroup) * matIndex, &materialMeshGroup, sizeof(MaterialMeshGroup));
@@ -303,18 +380,18 @@ namespace PaperRenderer
 			.position = transform.position,
 			.scale = transform.scale,
 			.qRotation = transform.rotation,
-			.modelDataOffset = (uint32_t)parentModel.shaderDataLocation
+			.modelDataOffset = (uint32_t)getGeometryData().getShaderDataReference().shaderDataLocation
 		};
 		return shaderModelInstance;
     }
 
 	void ModelInstance::queueBLAS(const VkBuildAccelerationStructureFlagsKHR flags) const
     {
-		if(renderer.getDevice().getGPUFeaturesAndProperties().rtSupport && uniqueGeometryData.isUsed)
+		if(uniqueGeometryData && renderer.getDevice().getGPUFeaturesAndProperties().rtSupport)
 		{
 			//queue operation
 			const BLASBuildOp op = {
-				.accelerationStructure = *uniqueGeometryData.blas.get(),
+				.accelerationStructure = *uniqueGeometryData->getBlasPtr(),
 				.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 				.flags = flags
 			};
