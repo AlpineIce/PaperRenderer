@@ -187,9 +187,14 @@ namespace PaperRenderer
     //BLAS operation
     struct BLASBuildOp
     {
-        BLAS& accelerationStructure;
+        BLAS* accelerationStructure;
         VkBuildAccelerationStructureModeKHR mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
         VkBuildAccelerationStructureFlagsKHR flags = 0;
+
+        bool operator<(const BLASBuildOp& other) const
+        {
+            return accelerationStructure < other.accelerationStructure;
+        }
     };
 
     class AccelerationStructureBuilder
@@ -197,14 +202,14 @@ namespace PaperRenderer
     private:
         //acceleration structure operation queue
         std::mutex builderMutex;
-        std::deque<BLASBuildOp> blasQueue;
+        std::set<BLASBuildOp> blasQueue;
 
         //scratch buffer shared amongst BLAS builds
         static constexpr VkDeviceSize scratchBufferSize = 268435456; // 2^26 bytes; ~256MiB
         Buffer scratchBuffer;
 
         //BLAS' that request compaction
-        std::unordered_map<BLAS*, VkDeviceSize> getCompactions() const;
+        std::unordered_map<BLAS*, VkDeviceSize> getCompactions();
         
         class RenderEngine& renderer;
 

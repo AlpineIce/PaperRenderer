@@ -64,8 +64,9 @@ struct ModelInstance
 {
     vec3 position;
     vec3 scale;
-    vec4 qRotation; //quaternion
-    uint modelDataOffset;
+    vec4 qRotation;
+    uint selfModelDataOffset;   // Reference to self's model data (0xFFFFFFFF if it doesn't exist)
+    uint parentModelDataOffset; // Reference to parent model's data (should always be exist and be valid)
 };
 
 layout(scalar, set = 1, binding = 0) readonly buffer InputInstances

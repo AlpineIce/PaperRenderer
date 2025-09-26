@@ -1,6 +1,7 @@
 #include "Common.h"
 #include "GuiRender.h"
 #include "RenderPasses.h"
+#include "ComputePipelines.h"
 
 //tinygltf
 #define TINYGLTF_IMPLEMENTATION
@@ -124,7 +125,9 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
 
             const PaperRenderer::ModelCreateInfo modelInfo = {
                 .LODs = { modelLOD },
-                .createBLAS = true,
+                .createBLAS = modelName == "Suzanne" ? false : true, // Suzanne models use unique geometry in this example, so they wont have a default BLAS
+                .blasFlags = modelName == "Suzanne" ? (VkBuildAccelerationStructureFlagsKHR)VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR : // Suzanne models will prefer fast builds
+                    VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR, // Everything else should prefer fast tracing with compact memory
                 .modelName = modelName,
                 .bounds = aabb
             };
@@ -638,7 +641,7 @@ int main()
         const uint32_t instanceCount = 8;
         for(uint32_t i = 0; i < instanceCount; i++)
         {
-            std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *scene.models["Suzanne"], true);
+            std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *scene.models["Suzanne"], true, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR);
 
             //set transformation
             PaperRenderer::ModelTransformation newTransform = {
@@ -766,6 +769,9 @@ int main()
 
     //init GUI
     GuiContext guiContext = initImGui(renderer, *materialInstances.at("MetalBall"));
+
+    //animation pipeline
+    AnimationPipeline animationPipeline(renderer);
 
     //raindrops deque
     std::deque<std::unique_ptr<PaperRenderer::ModelInstance>> rainDrops;
@@ -897,20 +903,36 @@ int main()
         //update uniform buffers
         updateUniformBuffers(renderer, *scene.camera, *guiContext.adjustableMaterial, exampleRayTrace, bufferCopyPass);
 
+        //animate Suzannes
+        const PaperRenderer::SynchronizationInfo animationSyncInfo = {
+            .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 1 } },
+            .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 2 } }
+        };
+        animationPipeline.animateInstances([&] {
+            std::vector<PaperRenderer::ModelInstance*> returnData;
+            returnData.reserve(modelInstances["Suzanne"].size());
+            for(std::unique_ptr<PaperRenderer::ModelInstance>& instance : modelInstances["Suzanne"])
+            {
+                instance->queueBLAS(VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR);
+                returnData.push_back(instance.get());
+            }
+            return returnData;
+        } (), animationSyncInfo);
+
         //ray tracing
         if(!guiContext.raster)
         {
             //build queued BLAS's (wait on transfer, signal rendering semaphore
             const PaperRenderer::SynchronizationInfo blasSyncInfo = {
-                .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 1 } },
-                .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValues[renderer.getBufferIndex()] + 2 } }
+                .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 2 } },
+                .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValues[renderer.getBufferIndex()] + 3 } }
             };
             renderer.getAsBuilder().submitQueuedOps(blasSyncInfo);
 
             //update tlas (wait for BLAS build, signal rendering semaphore)
             const PaperRenderer::SynchronizationInfo tlasSyncInfo = {
-                .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValues[renderer.getBufferIndex()] + 2 } },
-                .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 3 } }
+                .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValues[renderer.getBufferIndex()] + 3 } },
+                .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 4 } }
             };
             exampleRayTrace.getRTRender().updateTLAS(exampleRayTrace.getTLAS(), VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR, tlasSyncInfo);
 
@@ -919,8 +941,8 @@ int main()
 
             //render pass (wait for TLAS build, signal rendering semaphore)
             PaperRenderer::SynchronizationInfo rtRenderSync = {
-                .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValues[renderer.getBufferIndex()] + 3 } },
-                .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValues[renderer.getBufferIndex()] + 4 } }
+                .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValues[renderer.getBufferIndex()] + 4 } },
+                .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR, finalSemaphoreValues[renderer.getBufferIndex()] + 5 } }
             };
             exampleRayTrace.rayTraceRender(rtRenderSync, ShaderHitGroupDefinitionsBuffer);
         }
@@ -928,8 +950,8 @@ int main()
         {
             //render pass (wait on transfer, signal rendering semaphore)
             const PaperRenderer::SynchronizationInfo rasterSyncInfo = {
-                .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 1 } },
-                .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 4 } }
+                .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 2 } },
+                .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 5 } }
             };
             exampleRaster.rasterRender(rasterSyncInfo);
         }
@@ -937,21 +959,21 @@ int main()
         //copy HDR buffer to swapchain (wait for render pass and swapchain, signal rendering and presentation semaphores)
         const PaperRenderer::SynchronizationInfo bufferCopySyncInfo = {
             .binaryWaitPairs = { { swapchainSemaphore, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT } },
-            .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 4 } },
-            .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 5 } }
+            .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 5 } },
+            .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 6 } }
         };
         bufferCopyPass.render(bufferCopySyncInfo, guiContext.raster);
 
         //render GUI
         const PaperRenderer::SynchronizationInfo guiSyncInfo = {
             .binarySignalPairs = { { presentationSemaphores[renderer.getSwapchain().getSwapchainImageIndex()], VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT } },
-            .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 5 } },
-            .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 6 } }
+            .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 6 } },
+            .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 7 } }
         };
         renderImGui(&renderer, &lastFrameStatistics, &guiContext, guiSyncInfo); //TODO THIS IS A MASSIVE HOST SYNC VIOLATION WITH QUEUES SINCE GUI DOESNT TAKE OWNERSHIP OF ITS QUEUE
 
         //increment final semaphore value to wait on
-        finalSemaphoreValues[renderer.getBufferIndex()] += 6;
+        finalSemaphoreValues[renderer.getBufferIndex()] += 7;
 
         //end frame (increments frame counter and therefore buffer index)
         renderer.endFrame({ presentationSemaphores[renderer.getSwapchain().getSwapchainImageIndex()] });

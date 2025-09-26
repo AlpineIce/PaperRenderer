@@ -19,7 +19,7 @@ def compile_shader(src_name, dst_name):
         print(f"Shader validation failed:\n {e.stderr}\n {e.stdout}\n Source path: {src + src_name}\n Destination Path: {dst + dst_name}\n")
 
 #then compile shaders
-pool = concurrent.futures.ThreadPoolExecutor(max_workers=11)
+pool = concurrent.futures.ThreadPoolExecutor(max_workers=12)
 pool.submit(compile_shader, "raytrace.rchit",       "raytrace_chit.spv")
 pool.submit(compile_shader, "raytrace.rgen",        "raytrace_rgen.spv")
 pool.submit(compile_shader, "raytrace.rmiss",       "raytrace_rmiss.spv")
@@ -31,5 +31,6 @@ pool.submit(compile_shader, "Default.frag",         "Default_frag.spv")
 pool.submit(compile_shader, "leaf.frag",            "leaf_frag.spv")
 pool.submit(compile_shader, "Quad.vert",            "Quad.spv")
 pool.submit(compile_shader, "BufferCopy.frag",      "BufferCopy.spv")
+pool.submit(compile_shader, "BasicAnimation.comp", "basic_animation.spv")
 
 pool.shutdown(wait=True)

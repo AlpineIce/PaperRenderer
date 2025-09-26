@@ -98,7 +98,8 @@ void main()
     const RenderPassInstance inputInstance = inputObjects.datas[gID];
     const ModelInstance modelInstance = inputInstances.modelInstances[inputInstance.modelInstanceIndex]; //should be at index 0 with the offset derrived from inputInstance
 
-    const Model model = InputModel(inputData.modelDataPtr + modelInstance.modelDataOffset).model; //should be at index 0 with the offset derrived from modelInstance
+    const uint modelDataOffset = modelInstance.selfModelDataOffset == 0xFFFFFFFF ? modelInstance.parentModelDataOffset : modelInstance.selfModelDataOffset;
+    const Model model = InputModel(inputData.modelDataPtr + modelDataOffset).model; //should be at index 0 with the offset derrived from modelInstance
 
     const mat3x4 modelMatrix = getModelMatrix(modelInstance);
 
@@ -119,7 +120,7 @@ void main()
         //get LOD
         const uint lodLevel = min(getLODLevel(modelInstance, model, camPos), model.lodCount - 1);
 
-        const ModelLOD modelLOD = ModelLODs(inputData.modelDataPtr + uint64_t(modelInstance.modelDataOffset + model.lodsOffset)).LODs[lodLevel];
+        const ModelLOD modelLOD = ModelLODs(inputData.modelDataPtr + uint64_t(modelDataOffset + model.lodsOffset)).LODs[lodLevel];
         const uint meshGroupOffset = MeshGroupOffsets(inputData.materialDataPtr + uint64_t(inputInstance.LODsMaterialDataOffset)).offsets[lodLevel];
 
         //loop through LOD meshes (1 mesh to 1 material)

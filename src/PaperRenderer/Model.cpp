@@ -35,7 +35,7 @@ namespace PaperRenderer
 		uint32_t iboStride = 0;
 	};
 
-	ModelGeometryData::ModelGeometryData(RenderEngine& renderer, const AABB& aabb, const std::vector<uint8_t>& vertices, Model& parentModel, const bool createBLAS)
+	ModelGeometryData::ModelGeometryData(RenderEngine& renderer, const AABB& aabb, const std::vector<uint8_t>& vertices, Model& parentModel, const bool createBLAS, const VkBuildAccelerationStructureFlagsKHR blasFlags)
 		:aabb(aabb),
 		vbo([&] {
 			// Create buffer
@@ -55,14 +55,15 @@ namespace PaperRenderer
 
 			return buffer;
 		} ()),
+		blasFlags(blasFlags),
 		blas([&] {
 			if(createBLAS && renderer.getDevice().getGPUFeaturesAndProperties().rtSupport)
 			{
 				std::unique_ptr<BLAS> blas = std::make_unique<BLAS>(renderer, parentModel, vbo);
 				const BLASBuildOp op = {
-					.accelerationStructure = *blas,
+					.accelerationStructure = blas.get(),
 					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
-					.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
+					.flags = blasFlags
 				};
 				renderer.getAsBuilder().queueBLAS(op);
 
@@ -72,7 +73,8 @@ namespace PaperRenderer
 			return std::unique_ptr<BLAS>();
 		} ()),
 		shaderData(createShaderData(parentModel.getIBO().getBufferDeviceAddress(), vbo.getBufferDeviceAddress(), aabb, parentModel.getLODs())),
-		parentModel(parentModel)
+		parentModel(parentModel),
+		renderer(renderer)
 	{
 		renderer.addModelData(this);
 	}
@@ -97,14 +99,15 @@ namespace PaperRenderer
 
 			return buffer;
 		} ()),
+		blasFlags(geometryData.blasFlags),
 		blas([&] {
 			if(createBLAS && renderer.getDevice().getGPUFeaturesAndProperties().rtSupport)
 			{
 				std::unique_ptr<BLAS> blas = std::make_unique<BLAS>(renderer, geometryData.parentModel, vbo);
 				const BLASBuildOp op = {
-					.accelerationStructure = *blas,
+					.accelerationStructure = blas.get(),
 					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
-					.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
+					.flags = blasFlags
 				};
 				renderer.getAsBuilder().queueBLAS(op);
 
@@ -114,14 +117,15 @@ namespace PaperRenderer
 			return std::unique_ptr<BLAS>();
 		} ()),
 		shaderData(createShaderData(geometryData.parentModel.getIBO().getBufferDeviceAddress(), vbo.getBufferDeviceAddress(), aabb, geometryData.parentModel.getLODs())),
-		parentModel(geometryData.parentModel)
+		parentModel(geometryData.parentModel),
+		renderer(renderer)
 	{
 		renderer.addModelData(this);
 	}
 
     ModelGeometryData::~ModelGeometryData()
     {
-		parentModel.renderer.removeModelData(this);
+		renderer.removeModelData(this);
     }
 
     std::vector<uint8_t> ModelGeometryData::createShaderData(const VkDeviceAddress iboAddress, const VkDeviceAddress vboAddress, const AABB& bounds, const std::vector<LOD>& LODs) const
@@ -284,7 +288,7 @@ namespace PaperRenderer
 
 			// Return buffer of vertex data
 			return creationVertices;
-		} (), *this, creationInfo.createBLAS),
+		} (), *this, creationInfo.createBLAS, creationInfo.blasFlags),
 		renderer(renderer)
     {
 	}
@@ -319,7 +323,7 @@ namespace PaperRenderer
 		}
 
 		//destroy unique geometry
-		uniqueGeometryData = {};
+		uniqueGeometryData.reset();
     }
 
 	void ModelInstance::setRenderPassInstanceData(RenderPass const* renderPass)
@@ -380,7 +384,8 @@ namespace PaperRenderer
 			.position = transform.position,
 			.scale = transform.scale,
 			.qRotation = transform.rotation,
-			.modelDataOffset = (uint32_t)getGeometryData().getShaderDataReference().shaderDataLocation
+			.selfModelDataOffset = uniqueGeometryData ? (uint32_t)uniqueGeometryData->getShaderDataReference().shaderDataLocation : 0xFFFFFFFF,
+			.parentModelDataOffset = (uint32_t)parentModel.getGeometryData().getShaderDataReference().shaderDataLocation
 		};
 		return shaderModelInstance;
     }
@@ -391,7 +396,7 @@ namespace PaperRenderer
 		{
 			//queue operation
 			const BLASBuildOp op = {
-				.accelerationStructure = *uniqueGeometryData->getBlasPtr(),
+				.accelerationStructure = uniqueGeometryData->getBlasPtr(),
 				.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 				.flags = flags
 			};
@@ -403,10 +408,5 @@ namespace PaperRenderer
     {
 		this->transform = newTransformation;
 		renderer.toUpdateModelInstances.push_front(this);
-    }
-
-    void ModelInstance::invalidateGeometry(const VkBuildAccelerationStructureFlagsKHR flags) const
-    {
-		queueBLAS(flags);
     }
 }

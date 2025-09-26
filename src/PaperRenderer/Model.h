@@ -50,6 +50,7 @@ namespace PaperRenderer
     {
         std::vector<ModelLODInfo> LODs = {};
         bool createBLAS = true; //create a default BLAS
+        VkBuildAccelerationStructureFlagsKHR blasFlags = 0;
         std::string modelName = "Untitled";
         AABB bounds = {};
     };
@@ -88,6 +89,7 @@ namespace PaperRenderer
         // Generic geometry data
         const AABB aabb = {};
         const Buffer vbo;
+        const VkBuildAccelerationStructureFlagsKHR blasFlags;
         std::unique_ptr<class BLAS> blas = NULL;
 
         // Buffer and reference data
@@ -101,11 +103,12 @@ namespace PaperRenderer
         std::vector<uint8_t> createShaderData(const VkDeviceAddress iboAddress, const VkDeviceAddress vboAddress, const AABB& bounds, const std::vector<LOD>& LODs) const;
 
         class Model& parentModel;
+        RenderEngine& renderer;
 
         friend class RenderEngine;
 
     public:
-        ModelGeometryData(RenderEngine& renderer, const AABB& aabb, const std::vector<uint8_t>& vertices, Model& parentModel, const bool createBLAS);
+        ModelGeometryData(RenderEngine& renderer, const AABB& aabb, const std::vector<uint8_t>& vertices, Model& parentModel, const bool createBLAS, const VkBuildAccelerationStructureFlagsKHR blasFlags);
         ModelGeometryData(RenderEngine& renderer, const ModelGeometryData& geometryData, const bool createBLAS);
         ~ModelGeometryData();
         ModelGeometryData(const ModelGeometryData&) = delete;
@@ -156,7 +159,8 @@ namespace PaperRenderer
             glm::vec3 position;
             glm::vec3 scale; 
             glm::quat qRotation;
-            uint32_t modelDataOffset;
+            uint32_t selfModelDataOffset = 0xFFFFFFFF;
+            uint32_t parentModelDataOffset = 0xFFFFFFFF;
         };
 
         struct AccelerationStructureInstance
@@ -218,8 +222,6 @@ namespace PaperRenderer
 
         //unique instance acceleration structure and VBO (only used if uniqueGeometry is set to true on instance creation)
         std::unique_ptr<ModelGeometryData> uniqueGeometryData = NULL;
-
-        void queueBLAS(const VkBuildAccelerationStructureFlagsKHR flags) const;
         
         ModelTransformation transform = {};
 
@@ -242,7 +244,7 @@ namespace PaperRenderer
         ModelInstance(const ModelInstance&) = delete;
 
         void setTransformation(const ModelTransformation& newTransformation);
-        void invalidateGeometry(const VkBuildAccelerationStructureFlagsKHR flags) const; //call this to queue an update of it's acceleration structure for the next AS builder call
+        void queueBLAS(const VkBuildAccelerationStructureFlagsKHR flags) const; //call this to queue an update of it's acceleration structure for the next AS builder call
         
         const Model& getParentModel() const { return parentModel; }
         const ModelGeometryData& getGeometryData() const { return uniqueGeometryData ? *uniqueGeometryData : parentModel.getGeometryData(); }

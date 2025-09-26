@@ -814,7 +814,7 @@ namespace PaperRenderer
         });
     }
 
-    std::unordered_map<BLAS*, VkDeviceSize> AccelerationStructureBuilder::getCompactions() const
+    std::unordered_map<BLAS*, VkDeviceSize> AccelerationStructureBuilder::getCompactions()
     {
         std::unordered_map<BLAS*, VkDeviceSize> returnData;
         returnData.reserve(blasQueue.size());
@@ -825,7 +825,7 @@ namespace PaperRenderer
         {
             if(op.flags & VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR)
             {
-                returnData[&op.accelerationStructure] = compactionIndex;
+                returnData[op.accelerationStructure] = compactionIndex;
                 compactionIndex++;
             }
         }
@@ -836,7 +836,7 @@ namespace PaperRenderer
     void AccelerationStructureBuilder::queueBLAS(const BLASBuildOp &op)
     {
         std::lock_guard guard(builderMutex);
-        blasQueue.emplace_back(op);
+        blasQueue.insert(op);
     }
 
     Queue& AccelerationStructureBuilder::submitQueuedOps(const SynchronizationInfo& syncInfo)
@@ -882,10 +882,10 @@ namespace PaperRenderer
 
         //builds and updates (batch them to avoid stupidly large scratch buffer) TODO batch queue submits because microsoft's weird queue submit time limit
         VkDeviceSize scratchOffset = 0;
-        for(BLASBuildOp& op : blasQueue)
+        for(const BLASBuildOp& op : blasQueue)
         {
             //get build data
-            AS::AsBuildData buildData = op.accelerationStructure.getAsData(VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR, op.flags, op.mode);
+            AS::AsBuildData buildData = op.accelerationStructure->getAsData(VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR, op.flags, op.mode);
             const VkDeviceSize opRequiredScratchSize = op.mode == VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR ? buildData.buildSizeInfo.buildScratchSize : buildData.buildSizeInfo.updateScratchSize;
 
             //verify scratch offset + required scratch size isn't too large; insert mem barrier and reset offset if it is too large
@@ -933,11 +933,11 @@ namespace PaperRenderer
             //compaction query if applies
             AS::CompactionQuery compactionQuery = {
                 .pool = queryPool,
-                .compactionIndex = compactions.count(&op.accelerationStructure) ? compactions[&op.accelerationStructure] : 0
+                .compactionIndex = compactions.count(op.accelerationStructure) ? compactions[op.accelerationStructure] : 0
             };
 
             //build
-            op.accelerationStructure.buildStructure(cmdBuffer, buildData, compactionQuery, scratchBuffer.getBufferDeviceAddress() + scratchOffset);
+            op.accelerationStructure->buildStructure(cmdBuffer, buildData, compactionQuery, scratchBuffer.getBufferDeviceAddress() + scratchOffset);
 
             //set scratch offset
             scratchOffset += buildData.buildSizeInfo.buildScratchSize;
@@ -1020,9 +1020,9 @@ namespace PaperRenderer
         }
 
         //assign owners and clear queue
-        for(BLASBuildOp& op : blasQueue)
+        for(const BLASBuildOp& op : blasQueue)
         {
-            op.accelerationStructure.assignResourceOwner(*returnQueue);
+            op.accelerationStructure->assignResourceOwner(*returnQueue);
         }
         blasQueue.clear();
 
