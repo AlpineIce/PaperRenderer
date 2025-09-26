@@ -73,8 +73,8 @@ namespace PaperRenderer
 			return std::unique_ptr<BLAS>();
 		} ()),
 		shaderData(createShaderData(parentModel.getIBO().getBufferDeviceAddress(), vbo.getBufferDeviceAddress(), aabb, parentModel.getLODs())),
-		parentModel(parentModel),
-		renderer(renderer)
+		parentModel(&parentModel),
+		renderer(&renderer)
 	{
 		renderer.addModelData(this);
 	}
@@ -103,7 +103,7 @@ namespace PaperRenderer
 		blas([&] {
 			if(createBLAS && renderer.getDevice().getGPUFeaturesAndProperties().rtSupport)
 			{
-				std::unique_ptr<BLAS> blas = std::make_unique<BLAS>(renderer, geometryData.parentModel, vbo);
+				std::unique_ptr<BLAS> blas = std::make_unique<BLAS>(renderer, *geometryData.parentModel, vbo);
 				const BLASBuildOp op = {
 					.accelerationStructure = blas.get(),
 					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
@@ -116,16 +116,52 @@ namespace PaperRenderer
 
 			return std::unique_ptr<BLAS>();
 		} ()),
-		shaderData(createShaderData(geometryData.parentModel.getIBO().getBufferDeviceAddress(), vbo.getBufferDeviceAddress(), aabb, geometryData.parentModel.getLODs())),
+		shaderData(createShaderData(geometryData.parentModel->getIBO().getBufferDeviceAddress(), vbo.getBufferDeviceAddress(), aabb, geometryData.parentModel->getLODs())),
 		parentModel(geometryData.parentModel),
-		renderer(renderer)
+		renderer(&renderer)
 	{
 		renderer.addModelData(this);
 	}
 
     ModelGeometryData::~ModelGeometryData()
     {
-		renderer.removeModelData(this);
+		renderer->removeModelData(this);
+    }
+
+    ModelGeometryData::ModelGeometryData(ModelGeometryData&& other) noexcept
+		:aabb(other.aabb),
+		vbo(std::move(other.vbo)),
+		blasFlags(other.blasFlags),
+		blas(std::move(other.blas)),
+		shaderData(std::move(other.shaderData)),
+		parentModel(other.parentModel),
+		renderer(other.renderer)
+    {
+		other.aabb = {};
+		other.blasFlags = 0;
+		other.parentModel = NULL;
+		other.renderer = NULL;
+	}
+
+    ModelGeometryData& ModelGeometryData::operator=(ModelGeometryData&& other) noexcept
+    {
+		if(this != &other)
+		{
+			aabb = other.aabb;
+			vbo = std::move(other.vbo);
+			blasFlags = other.blasFlags;
+			blas = std::move(other.blas);
+			shaderData = std::move(other.shaderData);
+			parentModel = other.parentModel;
+			renderer = other.renderer;
+
+			other.aabb = {};
+			other.blasFlags = 0;
+			other.parentModel = NULL;
+			other.renderer = NULL;
+		}
+
+		return *this;
     }
 
     std::vector<uint8_t> ModelGeometryData::createShaderData(const VkDeviceAddress iboAddress, const VkDeviceAddress vboAddress, const AABB& bounds, const std::vector<LOD>& LODs) const
@@ -297,7 +333,16 @@ namespace PaperRenderer
 	{
 	}
 
-	//----------MODEL INSTANCE DEFINITIONS----------//
+    Model::Model(const Model&& other) noexcept
+    {
+    }
+
+    Model& Model::operator=(Model&& other) noexcept
+    {
+        // TODO: insert return statement here
+    }
+
+    //----------MODEL INSTANCE DEFINITIONS----------//
 
     ModelInstance::ModelInstance(RenderEngine &renderer, const Model &parentModel, bool uniqueGeometry, const VkBuildAccelerationStructureFlagsKHR flags)
         :uniqueGeometryData(uniqueGeometry ? std::make_unique<ModelGeometryData>(renderer, parentModel.getGeometryData(), true) : NULL),
@@ -326,7 +371,16 @@ namespace PaperRenderer
 		uniqueGeometryData.reset();
     }
 
-	void ModelInstance::setRenderPassInstanceData(RenderPass const* renderPass)
+    ModelInstance::ModelInstance(const ModelInstance&& other) noexcept
+    {
+    }
+
+    ModelInstance& ModelInstance::operator=(ModelInstance&& other) noexcept
+    {
+        // TODO: insert return statement here
+    }
+
+    void ModelInstance::setRenderPassInstanceData(RenderPass const* renderPass)
     {
 		std::vector<uint8_t> newData;
 		newData.reserve(renderPassSelfReferences.at(renderPass).renderPassInstanceData.size());
@@ -407,6 +461,6 @@ namespace PaperRenderer
     void ModelInstance::setTransformation(const ModelTransformation &newTransformation)
     {
 		this->transform = newTransformation;
-		renderer.toUpdateModelInstances.push_front(this);
+		renderer.toUpdateModelInstances.insert(this);
     }
 }

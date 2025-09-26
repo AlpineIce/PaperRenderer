@@ -83,6 +83,7 @@ namespace PaperRenderer
 
         void addInstanceMesh(ModelInstance& instance, const LODMesh& instanceMeshData);
         void removeInstanceMeshes(class ModelInstance& instance);
+        void rereferenceModelData(class ModelGeometryData const* oldModelData, class ModelGeometryData const* newModelData);
 
         void draw(const VkCommandBuffer& cmdBuffer) const;
         void clearDrawCommand(const VkCommandBuffer& cmdBuffer) const;

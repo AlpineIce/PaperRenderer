@@ -87,9 +87,9 @@ namespace PaperRenderer
     {
     private:
         // Generic geometry data
-        const AABB aabb = {};
-        const Buffer vbo;
-        const VkBuildAccelerationStructureFlagsKHR blasFlags;
+        AABB aabb = {};
+        Buffer vbo;
+        VkBuildAccelerationStructureFlagsKHR blasFlags;
         std::unique_ptr<class BLAS> blas = NULL;
 
         // Buffer and reference data
@@ -102,8 +102,8 @@ namespace PaperRenderer
 
         std::vector<uint8_t> createShaderData(const VkDeviceAddress iboAddress, const VkDeviceAddress vboAddress, const AABB& bounds, const std::vector<LOD>& LODs) const;
 
-        class Model& parentModel;
-        RenderEngine& renderer;
+        class Model* parentModel;
+        RenderEngine* renderer;
 
         friend class RenderEngine;
 
@@ -112,6 +112,8 @@ namespace PaperRenderer
         ModelGeometryData(RenderEngine& renderer, const ModelGeometryData& geometryData, const bool createBLAS);
         ~ModelGeometryData();
         ModelGeometryData(const ModelGeometryData&) = delete;
+        ModelGeometryData(ModelGeometryData&& other) noexcept;
+        ModelGeometryData& operator=(ModelGeometryData&& other) noexcept;
         
         void updateShaderData(const VkDeviceAddress iboAddress, const VkDeviceAddress vboAddress, const AABB& bounds, const std::vector<LOD>& LODs);
 
@@ -121,7 +123,7 @@ namespace PaperRenderer
         const AABB& getAABB() const { return aabb; }
         const std::vector<uint8_t>& getShaderData() const { return shaderData; }
         const ShaderDataReference& getShaderDataReference() const { return shaderDataReference; }
-        const Model& getParentModel() const { return parentModel;}
+        const Model& getParentModel() const { return *parentModel;}
     };
 
     class Model //Immutable collection of LODs with unique Material-Mesh groups
@@ -141,6 +143,8 @@ namespace PaperRenderer
         Model(RenderEngine& renderer, const ModelCreateInfo& creationInfo);
         ~Model();
         Model(const Model&) = delete;
+        Model(const Model&& other) noexcept;
+        Model& operator=(Model&& other) noexcept;
 
         const Buffer& getIBO() const { return ibo; }
         const ModelGeometryData& getGeometryData() const { return geometry; }
@@ -242,6 +246,8 @@ namespace PaperRenderer
         ModelInstance(RenderEngine& renderer, const Model& parentModel, bool uniqueGeometry, const VkBuildAccelerationStructureFlagsKHR flags=0);
         ~ModelInstance();
         ModelInstance(const ModelInstance&) = delete;
+        ModelInstance(const ModelInstance&& other) noexcept;
+        ModelInstance& operator=(ModelInstance&& other) noexcept;
 
         void setTransformation(const ModelTransformation& newTransformation);
         void queueBLAS(const VkBuildAccelerationStructureFlagsKHR flags) const; //call this to queue an update of it's acceleration structure for the next AS builder call

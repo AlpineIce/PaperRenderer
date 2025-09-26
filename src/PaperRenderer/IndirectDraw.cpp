@@ -192,6 +192,12 @@ namespace PaperRenderer
         }
     }
 
+    void CommonMeshGroup::rereferenceModelData(ModelGeometryData const* oldModelData, ModelGeometryData const* newModelData)
+    {
+        geometryMeshesData[newModelData] = std::move(geometryMeshesData[oldModelData]);
+        geometryMeshesData.erase(oldModelData);
+    }
+
     void CommonMeshGroup::draw(const VkCommandBuffer &cmdBuffer) const
     {
         //bind matrices descriptor if used

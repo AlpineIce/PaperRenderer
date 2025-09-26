@@ -144,7 +144,7 @@ namespace PaperRenderer
         //then fix instances data
         for(ModelInstance* instance : renderingModelInstances)
         {
-            toUpdateModelInstances.push_front(instance);
+            toUpdateModelInstances.insert(instance);
         }
     }
 
@@ -212,7 +212,7 @@ namespace PaperRenderer
         }
 
         //queue data transfer
-        toUpdateModels.push_front(modelData);
+        toUpdateModels.insert(modelData);
     }
 
     void RenderEngine::removeModelData(ModelGeometryData* modelData)
@@ -234,10 +234,16 @@ namespace PaperRenderer
 
         //remove from buffer
         modelDataBuffer.removeFromRange(modelData->shaderDataReference.shaderDataLocation, modelData->getShaderData().size());
-        
-        modelData->shaderDataReference.selfIndex = UINT32_MAX;
+        toUpdateModels.erase(modelData);
 
-        //TODO UPDATE DEPENDENCIES
+        modelData->shaderDataReference.selfIndex = UINT32_MAX;
+    }
+
+    void RenderEngine::rereferenceModelData(ModelGeometryData* modelData)
+    {
+        // Clear old reference and insert new one
+        toUpdateModels.erase(renderingModels.at(modelData->shaderDataReference.selfIndex));
+        renderingModels.at(modelData->shaderDataReference.selfIndex) = modelData;
     }
 
     void RenderEngine::addObject(ModelInstance* object)
@@ -250,7 +256,7 @@ namespace PaperRenderer
         renderingModelInstances.push_back(object);
         
         //queue data transfer
-        toUpdateModelInstances.push_front(object);
+        toUpdateModelInstances.insert(object);
     }
 
     void RenderEngine::removeObject(ModelInstance* object)
@@ -265,7 +271,7 @@ namespace PaperRenderer
             renderingModelInstances.at(object->rendererSelfIndex)->rendererSelfIndex = object->rendererSelfIndex;
 
             //queue data transfer
-            toUpdateModelInstances.push_front(renderingModelInstances.at(object->rendererSelfIndex));
+            toUpdateModelInstances.insert(renderingModelInstances.at(object->rendererSelfIndex));
 
             //remove last element from instances vector (the one that was moved in the mirrored buffer)
             renderingModelInstances.pop_back();
@@ -275,15 +281,8 @@ namespace PaperRenderer
             renderingModelInstances.clear();
         }
 
-        //null out any instances that may be queued
-        for(ModelInstance*& instance : toUpdateModelInstances)
-        {
-            if(instance == object)
-            {
-                instance = NULL;
-            }
-        }
-        
+        toUpdateModelInstances.erase(object);
+
         object->rendererSelfIndex = UINT32_MAX;
     }
 
@@ -300,15 +299,6 @@ namespace PaperRenderer
         {
             rebuildInstancesbuffer();
         }
-
-        //sort instances and models; remove duplicates
-        std::sort(toUpdateModelInstances.begin(), toUpdateModelInstances.end());
-        auto sortedInstances = std::unique(toUpdateModelInstances.begin(), toUpdateModelInstances.end());
-        toUpdateModelInstances.erase(sortedInstances, toUpdateModelInstances.end());
-
-        std::sort(toUpdateModels.begin(), toUpdateModels.end());
-        auto sortedModels = std::unique(toUpdateModels.begin(), toUpdateModels.end());
-        toUpdateModels.erase(sortedModels, toUpdateModels.end());
 
         std::vector<StagingBufferTransfer> transfers = {};
 

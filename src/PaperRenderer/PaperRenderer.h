@@ -60,9 +60,9 @@ namespace PaperRenderer
 
         //frame rendering stuff
         std::vector<ModelInstance*> renderingModelInstances;
-        std::deque<ModelInstance*> toUpdateModelInstances; //queued instance references that need to have their data in GPU buffers updated
+        std::set<ModelInstance*> toUpdateModelInstances; //queued instance references that need to have their data in GPU buffers updated
         std::vector<ModelGeometryData*> renderingModels;
-        std::deque<ModelGeometryData*> toUpdateModels; //queued model references that need to have their data in GPU buffers updated
+        std::set<ModelGeometryData*> toUpdateModels; //queued model references that need to have their data in GPU buffers updated
         std::mutex rendererMutex;
         
         //----------BUFFERS----------//
@@ -80,6 +80,7 @@ namespace PaperRenderer
 
         void addModelData(ModelGeometryData* modelData);
         void removeModelData(ModelGeometryData* modelData);
+        void rereferenceModelData(ModelGeometryData* modelData);
         void addObject(ModelInstance* object);
         void removeObject(ModelInstance* object);
         std::vector<StagingBufferTransfer> queueModelsAndInstancesTransfers();
