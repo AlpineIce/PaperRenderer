@@ -285,13 +285,13 @@ namespace PaperRenderer
     ResourceDescriptor::ResourceDescriptor(RenderEngine& renderer, const VkDescriptorSetLayout& layout)
         :layout(layout),
         set(renderer.getDescriptorAllocator().getDescriptorSet(layout)),
-        renderer(renderer)
+        renderer(&renderer)
     {
     }
 
     ResourceDescriptor::~ResourceDescriptor()
     {
-        if(set) renderer.getDescriptorAllocator().freeDescriptorSet(set);
+        if(set) renderer->getDescriptorAllocator().freeDescriptorSet(set);
     }
 
     ResourceDescriptor::ResourceDescriptor(ResourceDescriptor&& other) noexcept
@@ -299,12 +299,28 @@ namespace PaperRenderer
         set(other.set),
         renderer(other.renderer)
     {
+        other.layout = VK_NULL_HANDLE;
         other.set = VK_NULL_HANDLE;
+    }
+
+    ResourceDescriptor &ResourceDescriptor::operator=(ResourceDescriptor &&other) noexcept
+    {
+        if(this != &other);
+        {
+            layout = other.layout;
+            set = other.set;
+            renderer = other.renderer;
+
+            other.layout = VK_NULL_HANDLE;
+            other.set = VK_NULL_HANDLE;
+        }
+
+        return *this;
     }
 
     void ResourceDescriptor::updateDescriptorSet(const DescriptorWrites& writes) const
     {
-        renderer.getDescriptorAllocator().updateDescriptorSet(set, writes);
+        renderer->getDescriptorAllocator().updateDescriptorSet(set, writes);
     }
 
     void ResourceDescriptor::bindDescriptorSet(VkCommandBuffer cmdBuffer, const DescriptorBinding& binding) const
@@ -322,7 +338,7 @@ namespace PaperRenderer
     }
 
     DescriptorSetLayout::DescriptorSetLayout(RenderEngine& renderer, const std::vector<VkDescriptorSetLayoutBinding>& bindings)
-        :renderer(renderer)
+        :renderer(&renderer)
     {
         const VkDescriptorSetLayoutCreateInfo descriptorLayoutInfo = {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -344,7 +360,7 @@ namespace PaperRenderer
 
     DescriptorSetLayout::~DescriptorSetLayout()
     {
-        if(setLayout) vkDestroyDescriptorSetLayout(renderer.getDevice().getDevice(), setLayout, nullptr);
+        if(setLayout) vkDestroyDescriptorSetLayout(renderer->getDevice().getDevice(), setLayout, nullptr);
     }
 
     DescriptorSetLayout::DescriptorSetLayout(DescriptorSetLayout&& other) noexcept
@@ -352,5 +368,18 @@ namespace PaperRenderer
         renderer(other.renderer)
     {
         other.setLayout = VK_NULL_HANDLE;
+    }
+
+    DescriptorSetLayout &DescriptorSetLayout::operator=(DescriptorSetLayout &&other) noexcept
+    {
+        if(this != &other)
+        {
+            setLayout = other.setLayout;
+            renderer = other.renderer;
+
+            other.setLayout = VK_NULL_HANDLE;
+        }
+
+        return *this;
     }
 }

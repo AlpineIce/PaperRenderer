@@ -92,16 +92,17 @@ namespace PaperRenderer
     class ResourceDescriptor
     {
     private:
-        const VkDescriptorSetLayout& layout;
+        VkDescriptorSetLayout layout;
         VkDescriptorSet set;
 
-        class RenderEngine& renderer;
+        class RenderEngine* renderer;
 
     public:
         ResourceDescriptor(class RenderEngine& renderer, const VkDescriptorSetLayout& layout);
         ~ResourceDescriptor();
         ResourceDescriptor(const ResourceDescriptor&) = delete;
         ResourceDescriptor(ResourceDescriptor&& other) noexcept;
+        ResourceDescriptor& operator=(ResourceDescriptor&& other) noexcept;
 
         void updateDescriptorSet(const DescriptorWrites& writes) const;
         void bindDescriptorSet(VkCommandBuffer cmdBuffer, const DescriptorBinding& binding) const;
@@ -115,12 +116,13 @@ namespace PaperRenderer
     private:
         VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
 
-        class RenderEngine& renderer;
+        class RenderEngine* renderer;
     public:
         DescriptorSetLayout(class RenderEngine& renderer, const std::vector<VkDescriptorSetLayoutBinding>& bindings);
         ~DescriptorSetLayout();
         DescriptorSetLayout(const DescriptorSetLayout&) = delete;
         DescriptorSetLayout(DescriptorSetLayout&& other) noexcept;
+        DescriptorSetLayout& operator=(DescriptorSetLayout&& other) noexcept;
 
         const VkDescriptorSetLayout& getSetLayout() const { return setLayout; }
     };
