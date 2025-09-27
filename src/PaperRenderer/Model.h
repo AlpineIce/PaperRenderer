@@ -116,6 +116,7 @@ namespace PaperRenderer
         ModelGeometryData& operator=(ModelGeometryData&& other) noexcept;
         
         void updateShaderData(const VkDeviceAddress iboAddress, const VkDeviceAddress vboAddress, const AABB& bounds, const std::vector<LOD>& LODs);
+        void rereferenceParentModel(class Model* parentModel) { this->parentModel = parentModel; }
 
         const Buffer& getVBO() const { return vbo; }
         BLAS* getBlasPtr() { return blas ? blas.get() : NULL; }
@@ -129,21 +130,21 @@ namespace PaperRenderer
     class Model //Immutable collection of LODs with unique Material-Mesh groups
     {
     private:
-        const std::string modelName;
-
-        const std::vector<LOD> LODs;
-        const Buffer ibo;
+        std::string modelName;
+        std::vector<LOD> LODs;
+        Buffer ibo;
         ModelGeometryData geometry;
 
-        class RenderEngine& renderer;
+        class RenderEngine* renderer;
 
         friend ModelGeometryData;
+        friend class ModelInstance;
 
     public:
         Model(RenderEngine& renderer, const ModelCreateInfo& creationInfo);
         ~Model();
         Model(const Model&) = delete;
-        Model(const Model&& other) noexcept;
+        Model(Model&& other) noexcept;
         Model& operator=(Model&& other) noexcept;
 
         const Buffer& getIBO() const { return ibo; }
@@ -154,58 +155,29 @@ namespace PaperRenderer
 
     //----------MODEL INSTANCE DECLARATIONS----------//
 
+    struct ShaderModelInstance
+    {
+        glm::vec3 position;
+        glm::vec3 scale; 
+        glm::quat qRotation;
+        uint32_t selfModelDataOffset = 0xFFFFFFFF;
+        uint32_t parentModelDataOffset = 0xFFFFFFFF;
+    };
+
+    struct RenderPassInstance
+	{
+		uint32_t modelInstanceIndex;
+		uint32_t LODsMaterialDataOffset;
+		bool isVisible;
+	};
+
     class ModelInstance //Mutable instance of a parent model which always shares its parent's index buffer, but may contain a unique vertex buffer if specified
     {
     private:
-        //per instance data
-        struct ShaderModelInstance
-        {
-            glm::vec3 position;
-            glm::vec3 scale; 
-            glm::quat qRotation;
-            uint32_t selfModelDataOffset = 0xFFFFFFFF;
-            uint32_t parentModelDataOffset = 0xFFFFFFFF;
-        };
-
-        struct AccelerationStructureInstance
-        {
-            uint64_t blasReference;
-            uint32_t modelInstanceIndex;
-            uint32_t customIndex:24;
-            uint32_t mask:8 = (uint8_t)0xFF;
-            uint32_t recordOffset:24 = 0;
-            VkGeometryInstanceFlagsKHR flags:8 = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-            uint32_t padding = 0;
-        };
-
-        ShaderModelInstance getShaderInstance() const;
-        
-        //per render pass data
-        struct RenderPassInstance
-        {
-            uint32_t modelInstanceIndex;
-            uint32_t LODsMaterialDataOffset;
-            bool isVisible;
-        };
-
-        struct LODMaterialData
-        {
-            uint32_t meshGroupsOffset;
-        };
-
-        struct MaterialMeshGroup
-        {
-            uint64_t drawCommandAddress = 0;
-            uint64_t matricesBufferAddress = 0;
-        };
-
-        void setRenderPassInstanceData(class RenderPass const* renderPass);
-        const std::vector<uint8_t>& getRenderPassInstanceData(class RenderPass const* renderPass) const { return renderPassSelfReferences.at(renderPass).renderPassInstanceData; };
-
-        //renderer self index
+        // Renderer self index
         uint32_t rendererSelfIndex = UINT32_MAX;
 
-        //RenderPass reference data
+        // RenderPass reference data
         struct RenderPassData
         {
             std::vector<uint8_t> renderPassInstanceData;
@@ -214,7 +186,7 @@ namespace PaperRenderer
             uint32_t selfIndex;
             bool sorted = false;
         };
-        std::unordered_map<class RenderPass const*, RenderPassData> renderPassSelfReferences;
+        std::unordered_map<class RenderPass*, RenderPassData> renderPassSelfReferences;
 
         // RT reference data
         struct RTRenderData
@@ -222,15 +194,15 @@ namespace PaperRenderer
             class ShaderHitGroup const* material = NULL;
             uint32_t selfIndex = 0;
         };
-        std::unordered_map<class RayTraceRender const*, std::unordered_map<class TLAS*, RTRenderData>> rtRenderSelfReferences;
+        std::unordered_map<class RayTraceRender*, std::unordered_map<class TLAS*, RTRenderData>> rtRenderSelfReferences;
 
-        //unique instance acceleration structure and VBO (only used if uniqueGeometry is set to true on instance creation)
         std::unique_ptr<ModelGeometryData> uniqueGeometryData = NULL;
-        
         ModelTransformation transform = {};
 
-        class RenderEngine& renderer;
-        const Model& parentModel;
+        void setRenderPassInstanceData(class RenderPass* renderPass);
+        const std::vector<uint8_t>& getRenderPassInstanceData(class RenderPass* renderPass) const { return renderPassSelfReferences.at(renderPass).renderPassInstanceData; };
+
+        Model const* parentModel;
 
         friend class RenderEngine;
         friend class RenderPass;
@@ -243,17 +215,18 @@ namespace PaperRenderer
         
     public:
         //uniqueGeometry should only be set to true if the instance is animate
-        ModelInstance(RenderEngine& renderer, const Model& parentModel, bool uniqueGeometry, const VkBuildAccelerationStructureFlagsKHR flags=0);
+        ModelInstance(const Model& parentModel, const bool uniqueGeometry, const VkBuildAccelerationStructureFlagsKHR flags=0);
         ~ModelInstance();
         ModelInstance(const ModelInstance&) = delete;
-        ModelInstance(const ModelInstance&& other) noexcept;
+        ModelInstance(ModelInstance&& other) noexcept;
         ModelInstance& operator=(ModelInstance&& other) noexcept;
 
         void setTransformation(const ModelTransformation& newTransformation);
         void queueBLAS(const VkBuildAccelerationStructureFlagsKHR flags) const; //call this to queue an update of it's acceleration structure for the next AS builder call
         
-        const Model& getParentModel() const { return parentModel; }
-        const ModelGeometryData& getGeometryData() const { return uniqueGeometryData ? *uniqueGeometryData : parentModel.getGeometryData(); }
+        ShaderModelInstance getShaderInstance() const;
+        const Model& getParentModel() const { return *parentModel; }
+        const ModelGeometryData& getGeometryData() const { return uniqueGeometryData ? *uniqueGeometryData : parentModel->getGeometryData(); }
         const ModelTransformation& getTransformation() const { return transform; };
     };
 }

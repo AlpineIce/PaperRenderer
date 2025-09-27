@@ -107,7 +107,7 @@ namespace PaperRenderer
             .allocationFlags = 0, //doesnt need to be host visible since updated via staging buffer
         }),
         instancesBuffer(renderer, {
-            .size = sizeof(ModelInstance::RenderPassInstance) * 64,
+            .size = sizeof(RenderPassInstance) * 64,
             .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR,
             .allocationFlags = 0
         }),
@@ -189,7 +189,7 @@ namespace PaperRenderer
 
         //create new instance buffer
         const BufferInfo instancesBufferInfo = {
-            .size = (VkDeviceSize)(renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance) * instancesOverhead),
+            .size = (VkDeviceSize)(renderPassInstances.size() * sizeof(RenderPassInstance) * instancesOverhead),
             .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR,
             .allocationFlags = 0
         };
@@ -199,7 +199,7 @@ namespace PaperRenderer
         const VkBufferCopy instancesCopyRegion = {
             .srcOffset = 0,
             .dstOffset = 0,
-            .size = std::min(renderPassInstances.size() * sizeof(ModelInstance::RenderPassInstance), instancesBuffer.getSize())
+            .size = std::min(renderPassInstances.size() * sizeof(RenderPassInstance), instancesBuffer.getSize())
         };
 
         if(instancesCopyRegion.size)
@@ -309,12 +309,12 @@ namespace PaperRenderer
             for(auto& [materialInstance, meshGroups] : materialInstanceNode) //material instances
             {
                 const std::vector<ModelInstance*> meshGroupUpdatedInstances = meshGroups.verifyBufferSize(stagingBufferTransfers);
-                toUpdateInstances.insert(toUpdateInstances.end(), meshGroupUpdatedInstances.begin(), meshGroupUpdatedInstances.end());
+                toUpdateInstances.insert(meshGroupUpdatedInstances.begin(), meshGroupUpdatedInstances.end());
             }
         }
 
         //verify buffers (instances data gets checked elsewhere)
-        if(instancesBuffer.getSize() / sizeof(ModelInstance::RenderPassInstance) < renderPassInstances.size())
+        if(instancesBuffer.getSize() / sizeof(RenderPassInstance) < renderPassInstances.size())
         {
             rebuildInstancesBuffer();
         }
@@ -322,11 +322,6 @@ namespace PaperRenderer
         {
             rebuildSortedInstancesBuffer();
         }
-
-        //sort instances; remove duplicates
-        std::sort(toUpdateInstances.begin(), toUpdateInstances.end());
-        auto sortedInstances = std::unique(toUpdateInstances.begin(), toUpdateInstances.end());
-        toUpdateInstances.erase(sortedInstances, toUpdateInstances.end());
 
         //material data pseudo writes (this doesn't actually write anything its just to setup the fragmentable buffer)
         for(ModelInstance* instance : toUpdateInstances)
@@ -375,15 +370,15 @@ namespace PaperRenderer
 
             //queue instance data transfer
             stagingBufferTransfers.push_back({
-                .dstOffset = sizeof(ModelInstance::RenderPassInstance) * instance->renderPassSelfReferences[this].selfIndex,
+                .dstOffset = sizeof(RenderPassInstance) * instance->renderPassSelfReferences[this].selfIndex,
                 .data = [&] {
-                    const ModelInstance::RenderPassInstance instanceShaderData = {
+                    const RenderPassInstance instanceShaderData = {
                         .modelInstanceIndex = instance->rendererSelfIndex,
                         .LODsMaterialDataOffset = (uint32_t)instance->renderPassSelfReferences[this].LODsMaterialDataOffset,
                         .isVisible = true
                     };
-                    std::vector<uint8_t> transferData(sizeof(ModelInstance::RenderPassInstance));
-                    memcpy(transferData.data(), &instanceShaderData, sizeof(ModelInstance::RenderPassInstance));
+                    std::vector<uint8_t> transferData(sizeof(RenderPassInstance));
+                    memcpy(transferData.data(), &instanceShaderData, sizeof(RenderPassInstance));
 
                     return transferData;
                 } (),
@@ -801,7 +796,7 @@ namespace PaperRenderer
             renderPassInstances.push_back(&instance);
 
             //add instance to queue
-            toUpdateInstances.push_front(&instance);
+            toUpdateInstances.insert(&instance);
         }
     }
 
@@ -844,22 +839,14 @@ namespace PaperRenderer
                     renderPassInstances[selfReference]->renderPassSelfReferences[this].selfIndex = selfReference;
 
                     //queue data transfer
-                    toUpdateInstances.push_front(renderPassInstances[selfReference]);
+                    toUpdateInstances.erase(&instance);
+                    toUpdateInstances.insert(renderPassInstances[selfReference]);
                     
                     renderPassInstances.pop_back();
                 }
                 else
                 {
                     renderPassInstances.clear();
-                }
-            }
-
-            //null out any instances that may be queued
-            for(ModelInstance*& thisInstance : toUpdateInstances)
-            {
-                if(thisInstance == &instance)
-                {
-                    thisInstance = NULL;
                 }
             }
 
@@ -871,6 +858,34 @@ namespace PaperRenderer
 
             //erase this reference
             instance.renderPassSelfReferences.erase(this);
+        }
+    }
+
+    void RenderPass::rereferenceInstance(ModelInstance& instance)
+    {
+        if(instance.renderPassSelfReferences.count(this))
+        {
+            // Rereference self
+            if(instance.renderPassSelfReferences[this].sorted)
+            {
+                renderPassSortedInstances.at(instance.renderPassSelfReferences.at(this).selfIndex).instance = &instance;
+            }
+            else
+            {
+                auto it = toUpdateInstances.find(renderPassInstances.at(instance.renderPassSelfReferences.at(this).selfIndex));
+                if(it != toUpdateInstances.end())
+                {
+                    toUpdateInstances.erase(it);
+                    toUpdateInstances.insert(&instance);
+                }
+
+                for(auto& [mesh, meshGroup] : instance.renderPassSelfReferences.at(this).meshGroupReferences)
+                {
+                    meshGroup->rereferenceInstance(renderPassInstances.at(instance.renderPassSelfReferences.at(this).selfIndex), &instance);
+                }
+
+                renderPassInstances.at(instance.renderPassSelfReferences.at(this).selfIndex) = &instance;
+            }
         }
     }
 }

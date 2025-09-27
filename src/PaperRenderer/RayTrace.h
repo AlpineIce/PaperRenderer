@@ -51,7 +51,7 @@ namespace PaperRenderer
         struct TLASInstanceData
         {
             std::vector<AccelerationStructureInstanceData> instanceDatas = {};
-            std::deque<AccelerationStructureInstanceData> toUpdateInstances = {};
+            std::set<AccelerationStructureInstanceData> toUpdateInstances = {};
         };
         std::unordered_map<TLAS*, TLASInstanceData> tlasData = {};
 
@@ -90,6 +90,9 @@ namespace PaperRenderer
         [[nodiscard]] std::unique_ptr<TLAS> addNewTLAS();
         void addInstance(const std::unordered_map<TLAS*, AccelerationStructureInstanceData>& asDatas);
         void removeInstance(ModelInstance& instance);
+
+        // Used in move semantics
+        void rereferenceInstance(ModelInstance& instance);
 
         const RTPipeline& getPipeline() const { return *pipeline; }
         const std::unordered_map<TLAS*, TLASInstanceData>& getTLASData() const { return tlasData; }

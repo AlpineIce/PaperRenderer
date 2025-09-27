@@ -59,7 +59,7 @@ namespace PaperRenderer
 		blas([&] {
 			if(createBLAS && renderer.getDevice().getGPUFeaturesAndProperties().rtSupport)
 			{
-				std::unique_ptr<BLAS> blas = std::make_unique<BLAS>(renderer, parentModel, vbo);
+				std::unique_ptr<BLAS> blas = std::make_unique<BLAS>(renderer, *this);
 				const BLASBuildOp op = {
 					.accelerationStructure = blas.get(),
 					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
@@ -103,7 +103,7 @@ namespace PaperRenderer
 		blas([&] {
 			if(createBLAS && renderer.getDevice().getGPUFeaturesAndProperties().rtSupport)
 			{
-				std::unique_ptr<BLAS> blas = std::make_unique<BLAS>(renderer, *geometryData.parentModel, vbo);
+				std::unique_ptr<BLAS> blas = std::make_unique<BLAS>(renderer,  *this);
 				const BLASBuildOp op = {
 					.accelerationStructure = blas.get(),
 					.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
@@ -125,7 +125,10 @@ namespace PaperRenderer
 
     ModelGeometryData::~ModelGeometryData()
     {
-		renderer->removeModelData(this);
+		if(renderer)
+		{
+			renderer->removeModelData(this);
+		}
     }
 
     ModelGeometryData::ModelGeometryData(ModelGeometryData&& other) noexcept
@@ -134,13 +137,18 @@ namespace PaperRenderer
 		blasFlags(other.blasFlags),
 		blas(std::move(other.blas)),
 		shaderData(std::move(other.shaderData)),
+		shaderDataReference(other.shaderDataReference),
 		parentModel(other.parentModel),
 		renderer(other.renderer)
     {
 		other.aabb = {};
 		other.blasFlags = 0;
+		other.shaderDataReference = {};
 		other.parentModel = NULL;
 		other.renderer = NULL;
+
+		renderer->rereferenceModelData(this);
+		if(blas) blas->rereferenceModelData(this);
 	}
 
     ModelGeometryData& ModelGeometryData::operator=(ModelGeometryData&& other) noexcept
@@ -159,6 +167,9 @@ namespace PaperRenderer
 			other.blasFlags = 0;
 			other.parentModel = NULL;
 			other.renderer = NULL;
+
+			renderer->rereferenceModelData(this);
+			if(blas) blas->rereferenceModelData(this);
 		}
 
 		return *this;
@@ -325,7 +336,7 @@ namespace PaperRenderer
 			// Return buffer of vertex data
 			return creationVertices;
 		} (), *this, creationInfo.createBLAS, creationInfo.blasFlags),
-		renderer(renderer)
+		renderer(&renderer)
     {
 	}
 
@@ -333,28 +344,62 @@ namespace PaperRenderer
 	{
 	}
 
-    Model::Model(const Model&& other) noexcept
+    Model::Model(Model&& other) noexcept
+		:modelName(std::move(other.modelName)),
+		LODs(std::move(other.LODs)),
+		ibo(std::move(other.ibo)),
+		geometry(std::move(other.geometry)),
+		renderer(other.renderer)
     {
+		other.renderer = NULL;
+
+		geometry.rereferenceParentModel(this);
     }
 
     Model& Model::operator=(Model&& other) noexcept
     {
-        // TODO: insert return statement here
+        if(this != &other)
+		{
+			modelName = std::move(other.modelName);
+			LODs = std::move(other.LODs);
+			ibo = std::move(other.ibo);
+			geometry = std::move(other.geometry);
+			renderer = other.renderer;
+			
+			other.renderer = NULL;
+
+			geometry.rereferenceParentModel(this);
+		}
+
+		return *this;
     }
 
     //----------MODEL INSTANCE DEFINITIONS----------//
 
-    ModelInstance::ModelInstance(RenderEngine &renderer, const Model &parentModel, bool uniqueGeometry, const VkBuildAccelerationStructureFlagsKHR flags)
-        :uniqueGeometryData(uniqueGeometry ? std::make_unique<ModelGeometryData>(renderer, parentModel.getGeometryData(), true) : NULL),
-        renderer(renderer),
-        parentModel(parentModel)
+	struct LODMaterialData
+	{
+		uint32_t meshGroupsOffset;
+	};
+
+	struct MaterialMeshGroup
+	{
+		uint64_t drawCommandAddress = 0;
+		uint64_t matricesBufferAddress = 0;
+	};
+
+    ModelInstance::ModelInstance(const Model& parentModel, const bool uniqueGeometry, const VkBuildAccelerationStructureFlagsKHR flags)
+        :uniqueGeometryData(uniqueGeometry ? std::make_unique<ModelGeometryData>(*parentModel.renderer, parentModel.getGeometryData(), true) : NULL),
+        parentModel(&parentModel)
     {
-		renderer.addObject(this);
+		parentModel.renderer->addObject(this);
     }
 
     ModelInstance::~ModelInstance()
     {
-		renderer.removeObject(this);
+		if(parentModel)
+		{
+			parentModel->renderer->removeObject(this);
+		}
 
 		//remove from references
 		while(renderPassSelfReferences.size())
@@ -371,25 +416,72 @@ namespace PaperRenderer
 		uniqueGeometryData.reset();
     }
 
-    ModelInstance::ModelInstance(const ModelInstance&& other) noexcept
+    ModelInstance::ModelInstance(ModelInstance&& other) noexcept
+		:rendererSelfIndex(other.rendererSelfIndex),
+		renderPassSelfReferences(std::move(other.renderPassSelfReferences)),
+		rtRenderSelfReferences(std::move(other.rtRenderSelfReferences)),
+		uniqueGeometryData(std::move(other.uniqueGeometryData)),
+		transform(other.transform),
+		parentModel(other.parentModel)
     {
+		other.rendererSelfIndex = UINT32_MAX;
+		other.parentModel = NULL;
+
+		// Rereference
+		parentModel->renderer->rereferenceObject(this);
+
+		for(auto& [renderPass, renderPassData] : renderPassSelfReferences)
+		{
+			renderPass->rereferenceInstance(*this);
+		}
+
+		for(auto& [rtRender, rtRenderData] : rtRenderSelfReferences)
+		{
+			rtRender->rereferenceInstance(*this);
+		}
     }
 
     ModelInstance& ModelInstance::operator=(ModelInstance&& other) noexcept
     {
-        // TODO: insert return statement here
+        if(this != &other)
+		{
+			rendererSelfIndex = other.rendererSelfIndex;
+			renderPassSelfReferences = std::move(other.renderPassSelfReferences);
+			rtRenderSelfReferences = std::move(other.rtRenderSelfReferences);
+			uniqueGeometryData = std::move(other.uniqueGeometryData);
+			transform = other.transform;
+			parentModel = other.parentModel;
+			
+			other.rendererSelfIndex = UINT32_MAX;
+			other.parentModel = NULL;
+
+			// Rereference
+			parentModel->renderer->rereferenceObject(this);
+
+			for(auto& [renderPass, renderPassData] : renderPassSelfReferences)
+			{
+				renderPass->rereferenceInstance(*this);
+			}
+
+			for(auto& [rtRender, rtRenderData] : rtRenderSelfReferences)
+			{
+				rtRender->rereferenceInstance(*this);
+			}
+		}
+
+		return *this;
     }
 
-    void ModelInstance::setRenderPassInstanceData(RenderPass const* renderPass)
+    void ModelInstance::setRenderPassInstanceData(RenderPass* renderPass)
     {
 		std::vector<uint8_t> newData;
 		newData.reserve(renderPassSelfReferences.at(renderPass).renderPassInstanceData.size());
 		uint32_t dynamicOffset = 0;
 
-		dynamicOffset += sizeof(LODMaterialData) * parentModel.getLODs().size();
+		dynamicOffset += sizeof(LODMaterialData) * parentModel->getLODs().size();
 		newData.resize(dynamicOffset);
 
-		for(uint32_t lodIndex = 0; lodIndex < parentModel.getLODs().size(); lodIndex++)
+		for(uint32_t lodIndex = 0; lodIndex < parentModel->getLODs().size(); lodIndex++)
 		{
 			dynamicOffset = Device::getAlignment(dynamicOffset, 8);
 
@@ -400,17 +492,17 @@ namespace PaperRenderer
 			memcpy(newData.data() + sizeof(LODMaterialData) * lodIndex, &lodMaterialData, sizeof(LODMaterialData));
 			
 			//LOD mesh groups data
-			dynamicOffset += sizeof(MaterialMeshGroup) * parentModel.getLODs().at(lodIndex).materialMeshes.size();
+			dynamicOffset += sizeof(MaterialMeshGroup) * parentModel->getLODs().at(lodIndex).materialMeshes.size();
 			newData.resize(dynamicOffset);
 
-			for(uint32_t matIndex = 0; matIndex < parentModel.getLODs().at(lodIndex).materialMeshes.size(); matIndex++)
+			for(uint32_t matIndex = 0; matIndex < parentModel->getLODs().at(lodIndex).materialMeshes.size(); matIndex++)
 			{
 				dynamicOffset = Device::getAlignment(dynamicOffset, 8);
 				newData.resize(dynamicOffset);
 
 				//pointers
-				LODMesh const* lodMeshPtr = &parentModel.getLODs().at(lodIndex).materialMeshes.at(matIndex);
-				CommonMeshGroup const* meshGroupPtr = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&parentModel.getLODs().at(lodIndex).materialMeshes.at(matIndex));
+				LODMesh const* lodMeshPtr = &parentModel->getLODs().at(lodIndex).materialMeshes.at(matIndex);
+				CommonMeshGroup const* meshGroupPtr = renderPassSelfReferences.at(renderPass).meshGroupReferences.at(&parentModel->getLODs().at(lodIndex).materialMeshes.at(matIndex));
 
 				//material mesh group data
 				const MaterialMeshGroup materialMeshGroup = {
@@ -432,21 +524,9 @@ namespace PaperRenderer
 		renderPassSelfReferences.at(renderPass).renderPassInstanceData = newData;
     }
 
-    ModelInstance::ShaderModelInstance ModelInstance::getShaderInstance() const
-    {
-		const ShaderModelInstance shaderModelInstance = {
-			.position = transform.position,
-			.scale = transform.scale,
-			.qRotation = transform.rotation,
-			.selfModelDataOffset = uniqueGeometryData ? (uint32_t)uniqueGeometryData->getShaderDataReference().shaderDataLocation : 0xFFFFFFFF,
-			.parentModelDataOffset = (uint32_t)parentModel.getGeometryData().getShaderDataReference().shaderDataLocation
-		};
-		return shaderModelInstance;
-    }
-
 	void ModelInstance::queueBLAS(const VkBuildAccelerationStructureFlagsKHR flags) const
     {
-		if(uniqueGeometryData && renderer.getDevice().getGPUFeaturesAndProperties().rtSupport)
+		if(uniqueGeometryData && parentModel->renderer->getDevice().getGPUFeaturesAndProperties().rtSupport)
 		{
 			//queue operation
 			const BLASBuildOp op = {
@@ -454,13 +534,25 @@ namespace PaperRenderer
 				.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
 				.flags = flags
 			};
-			renderer.getAsBuilder().queueBLAS(op);
+			parentModel->renderer->getAsBuilder().queueBLAS(op);
 		}
+    }
+
+	ShaderModelInstance ModelInstance::getShaderInstance() const
+    {
+		const ShaderModelInstance shaderModelInstance = {
+			.position = transform.position,
+			.scale = transform.scale,
+			.qRotation = transform.rotation,
+			.selfModelDataOffset = uniqueGeometryData ? (uint32_t)uniqueGeometryData->getShaderDataReference().shaderDataLocation : 0xFFFFFFFF,
+			.parentModelDataOffset = (uint32_t)parentModel->getGeometryData().getShaderDataReference().shaderDataLocation
+		};
+		return shaderModelInstance;
     }
 
     void ModelInstance::setTransformation(const ModelTransformation &newTransformation)
     {
 		this->transform = newTransformation;
-		renderer.toUpdateModelInstances.insert(this);
+		parentModel->renderer->toUpdateModelInstances.insert(this);
     }
 }

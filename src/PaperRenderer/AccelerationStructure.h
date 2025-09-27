@@ -93,23 +93,20 @@ namespace PaperRenderer
     class BLAS : public AS
     {
     private:
-        const class Model& parentModel;
-        const Buffer& vbo;
-
         std::unique_ptr<AsGeometryBuildData> getGeometryData() const override;
         void buildStructure(VkCommandBuffer cmdBuffer, AsBuildData& data, const CompactionQuery compactionQuery, const VkDeviceAddress scratchAddress) override;
+
+        class ModelGeometryData const* modelData;
 
         friend class AccelerationStructureBuilder;
 
     public:
-        //If vbo is null, BLAS will instead use those directly from the model. Model is needed
-        //for data describing different geometries
-        BLAS(RenderEngine& renderer, const Model& model, const Buffer& vbo);
+        BLAS(RenderEngine& renderer, const ModelGeometryData& modelData);
         ~BLAS() override;
         BLAS(const BLAS&) = delete;
 
-        VkDeviceAddress getVBOAddress() const { return vbo.getBufferDeviceAddress(); }
-        const Model& getParentModel() const { return parentModel; }
+        void rereferenceModelData(ModelGeometryData const* modelData) { this->modelData = modelData; }
+        const ModelGeometryData& getModelGeometryData() const { return *modelData; }
     };
 
     //top level acceleration structure

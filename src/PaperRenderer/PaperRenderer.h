@@ -83,6 +83,7 @@ namespace PaperRenderer
         void rereferenceModelData(ModelGeometryData* modelData);
         void addObject(ModelInstance* object);
         void removeObject(ModelInstance* object);
+        void rereferenceObject(ModelInstance* object);
         std::vector<StagingBufferTransfer> queueModelsAndInstancesTransfers();
 
         //----------MISC----------//

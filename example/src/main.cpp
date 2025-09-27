@@ -17,8 +17,8 @@
 //loaded scene data from glTF
 struct SceneData
 {
-    std::unordered_map<std::string, std::unique_ptr<PaperRenderer::Model>> models = {};
-    std::unordered_map<PaperRenderer::Model const*, PaperRenderer::ModelTransformation> instanceTransforms = {}; //this example does 1 instance per model, so thats why its 1:1
+    std::unordered_map<std::string, PaperRenderer::Model> models = {};
+    std::unordered_map<std::string, PaperRenderer::ModelTransformation> instanceTransforms = {}; //this example does 1 instance per model, so thats why its 1:1
     std::unordered_map<std::string, std::vector<std::string>> instanceMaterials = {};
     std::unordered_map<std::string, MaterialParameters> materialInstancesData = {};
     std::unique_ptr<PaperRenderer::Camera> camera = NULL;
@@ -132,15 +132,15 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
                 .bounds = aabb
             };
 
-            returnData.models[modelName] = std::make_unique<PaperRenderer::Model>(renderer, modelInfo);
+            returnData.models.emplace(modelName, PaperRenderer::Model(renderer, modelInfo));
 
             //model transform
-            PaperRenderer::ModelTransformation transform = {
+            const PaperRenderer::ModelTransformation transform = {
                 .position = node.translation.size() ? glm::vec3(node.translation[0], node.translation[1], node.translation[2]) : glm::vec3(0.0f),
                 .scale = node.scale.size() ? glm::vec3(node.scale[0], node.scale[1], node.scale[2]) : glm::vec3(1.0f),
                 .rotation = node.rotation.size() ? glm::quat(node.rotation[0], node.rotation[1], node.rotation[2], node.rotation[3]) : glm::quat(1.0f, 0.0f, 0.0f, 0.0f)
             };
-            returnData.instanceTransforms[returnData.models[modelName].get()] = transform;
+            returnData.instanceTransforms[modelName] = transform;
         }
         else if(node.camera != -1 && !returnData.camera) //camera
         {
@@ -588,7 +588,7 @@ int main()
 
     //----------MODEL INSTANCES----------//
     
-    std::unordered_map<std::string, std::vector<std::unique_ptr<PaperRenderer::ModelInstance>>> modelInstances;
+    std::unordered_map<std::string, std::vector<PaperRenderer::ModelInstance>> modelInstances;
 
     auto addInstanceToRenderPass = [&](PaperRenderer::ModelInstance& instance, const PaperRenderer::ShaderHitGroup& shaderHitGroup, bool sorted, uint32_t customIndexOverride=UINT32_MAX)
     {
@@ -641,18 +641,18 @@ int main()
         const uint32_t instanceCount = 8;
         for(uint32_t i = 0; i < instanceCount; i++)
         {
-            std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *scene.models["Suzanne"], true, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR);
+            PaperRenderer::ModelInstance instance(scene.models.at("Suzanne"), true, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR);
 
             //set transformation
-            PaperRenderer::ModelTransformation newTransform = {
+            const PaperRenderer::ModelTransformation newTransform = {
                 .position = glm::vec3(sin(glm::radians(360.0f / instanceCount) * i) * 5.0f, cos(glm::radians(360.0f / instanceCount) * i) * 5.0f, 0.0f),
                 .scale = glm::vec3(1.0f),
                 .rotation = glm::quat(sin(-glm::radians(360.0f / instanceCount / 2.0f) * i), cos(glm::radians(360.0f / instanceCount / 2.0f) * i), 0.0f, 0.0f)
             };
-            instance->setTransformation(newTransform);
+            instance.setTransformation(newTransform);
 
             //add to render passes
-            addInstanceToRenderPass(*instance, baseShaderHitGroup, false);
+            addInstanceToRenderPass(instance, baseShaderHitGroup, false);
 
             //push to model instances
             modelInstances["Suzanne"].push_back(std::move(instance));
@@ -665,19 +665,19 @@ int main()
         const uint32_t instanceCount = 4;
         for(uint32_t i = 0; i < instanceCount; i++)
         {
-            std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *scene.models["Tree"], false);
+            PaperRenderer::ModelInstance instance(scene.models.at("Tree"), false);
 
             //set transformation
-            PaperRenderer::ModelTransformation newTransform = {
+            const PaperRenderer::ModelTransformation newTransform = {
                 .position = glm::vec3(sin(glm::radians(360.0f / instanceCount) * i + (3.14f / 4.0f)) * 20.0f, cos(glm::radians(360.0f / instanceCount) * i + (3.14f / 4.0f)) * 20.0f , -3.0f),
                 .scale = glm::vec3(1.0f),
                 .rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f)
             };
-            instance->setTransformation(newTransform);
+            instance.setTransformation(newTransform);
             
 
             //add to render passes
-            addInstanceToRenderPass(*instance, leafShaderHitGroup, false);
+            addInstanceToRenderPass(instance, leafShaderHitGroup, false);
 
             //push to model instances
             modelInstances["Tree"].push_back(std::move(instance));
@@ -690,7 +690,7 @@ int main()
         const uint32_t instanceCount = 4;
         for(uint32_t i = 0; i < instanceCount; i++)
         {
-            std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *scene.models["TranslucentObject"], false);
+            PaperRenderer::ModelInstance instance(scene.models.at("TranslucentObject"), false);
 
             //set transformation
             PaperRenderer::ModelTransformation newTransform = {
@@ -698,10 +698,10 @@ int main()
                 .scale = glm::vec3(1.0f),
                 .rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f)
             };
-            instance->setTransformation(newTransform);
+            instance.setTransformation(newTransform);
 
             //add to render passes
-            addInstanceToRenderPass(*instance, baseShaderHitGroup, true); //sort because translucency
+            addInstanceToRenderPass(instance, baseShaderHitGroup, true); //sort because translucency
 
             //push to model instances
             modelInstances["TranslucentObject"].push_back(std::move(instance));
@@ -711,13 +711,13 @@ int main()
     //sorted metal ball
     if(scene.models.count("MetalBall"))
     {
-        std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *scene.models["MetalBall"], false);
+        PaperRenderer::ModelInstance instance(scene.models.at("MetalBall"), false);
 
         //set transformation
-        instance->setTransformation(scene.instanceTransforms[scene.models["MetalBall"].get()]);
+        instance.setTransformation(scene.instanceTransforms["MetalBall"]);
 
         //add to render passes
-        addInstanceToRenderPass(*instance, baseShaderHitGroup, true);
+        addInstanceToRenderPass(instance, baseShaderHitGroup, true);
 
         //push to model instances
         modelInstances["MetalBall"].push_back(std::move(instance));
@@ -728,13 +728,13 @@ int main()
     {
         if(!modelInstances.count(name))
         {
-            std::unique_ptr<PaperRenderer::ModelInstance> instance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *model, false);
+            PaperRenderer::ModelInstance instance(model, false);
 
             //set transformation
-            instance->setTransformation(scene.instanceTransforms[model.get()]);
+            instance.setTransformation(scene.instanceTransforms[name]);
 
             //add to render passes
-            addInstanceToRenderPass(*instance, baseShaderHitGroup, false);
+            addInstanceToRenderPass(instance, baseShaderHitGroup, false);
 
             //push to model instances
             modelInstances[name].push_back(std::move(instance));
@@ -774,7 +774,7 @@ int main()
     AnimationPipeline animationPipeline(renderer);
 
     //raindrops deque
-    std::deque<std::unique_ptr<PaperRenderer::ModelInstance>> rainDrops;
+    std::deque<PaperRenderer::ModelInstance> rainDrops;
 
     auto frameEvents = [&]()
     {
@@ -783,19 +783,19 @@ int main()
         const float deltaTime = renderer.getDeltaTime();
 
         //make drops fall
-        for(std::unique_ptr<PaperRenderer::ModelInstance>& instance : rainDrops)
+        for(PaperRenderer::ModelInstance& instance : rainDrops)
         {
-            PaperRenderer::ModelTransformation transformation = instance->getTransformation();
+            PaperRenderer::ModelTransformation transformation = instance.getTransformation();
             transformation.position.z -= dropSpeed * deltaTime;
 
-            instance->setTransformation(transformation);
+            instance.setTransformation(transformation);
         }
 
         //remove any fallen past threshold (will all be in front because math)
         auto it = rainDrops.begin();
         while(it != rainDrops.end())
         {
-            if(it->get()->getTransformation().position.z < heightThreshold)
+            if(it->getTransformation().position.z < heightThreshold)
             {
                 it++;
                 rainDrops.pop_front();
@@ -816,15 +816,15 @@ int main()
         if(intDist(mt) == 0)
         {
             //create new instance
-            std::unique_ptr<PaperRenderer::ModelInstance> newInstance = std::make_unique<PaperRenderer::ModelInstance>(renderer, *scene.models["Drop"], false);
+            PaperRenderer::ModelInstance newInstance(scene.models.at("Drop"), false);
 
             //set transformation from RNG
             std::uniform_real_distribution<float> xFloatDist(-20.0f, 20.0f);
             std::uniform_real_distribution<float> yFloatDist(-20.0f, 20.0f);
-            newInstance->setTransformation({ .position = glm::vec3(xFloatDist(mt), yFloatDist(mt), 10.0f) });
+            newInstance.setTransformation({ .position = glm::vec3(xFloatDist(mt), yFloatDist(mt), 10.0f) });
 
             //add to render passes
-            addInstanceToRenderPass(*newInstance, baseShaderHitGroup, false, raindropMaterialIndex);
+            addInstanceToRenderPass(newInstance, baseShaderHitGroup, false, raindropMaterialIndex);
 
             //add to deque
             rainDrops.push_back(std::move(newInstance));
@@ -846,7 +846,7 @@ int main()
     };
 
     while(!glfwWindowShouldClose(renderer.getSwapchain().getGLFWwindow()))
-    {        
+    {
         //pre-frame events
         frameEvents();
 
@@ -911,10 +911,10 @@ int main()
         animationPipeline.animateInstances([&] {
             std::vector<PaperRenderer::ModelInstance*> returnData;
             returnData.reserve(modelInstances["Suzanne"].size());
-            for(std::unique_ptr<PaperRenderer::ModelInstance>& instance : modelInstances["Suzanne"])
+            for(PaperRenderer::ModelInstance& instance : modelInstances["Suzanne"])
             {
-                instance->queueBLAS(VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR);
-                returnData.push_back(instance.get());
+                instance.queueBLAS(VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR);
+                returnData.push_back(&instance);
             }
             return returnData;
         } (), animationSyncInfo);

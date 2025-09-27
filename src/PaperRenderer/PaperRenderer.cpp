@@ -155,7 +155,7 @@ namespace PaperRenderer
 
         //new buffer to replace old
         const BufferInfo bufferInfo = {
-            .size = std::max((VkDeviceSize)(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance) * instancesDataOverhead), (VkDeviceSize)sizeof(ModelInstance::ShaderModelInstance) * 128),
+            .size = std::max((VkDeviceSize)(renderingModelInstances.size() * sizeof(ShaderModelInstance) * instancesDataOverhead), (VkDeviceSize)sizeof(ShaderModelInstance) * 128),
             .usageFlags = VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR | VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR | VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR,
             .allocationFlags = 0
         };
@@ -168,7 +168,7 @@ namespace PaperRenderer
         const VkBufferCopy copyRegion = {
             .srcOffset = 0,
             .dstOffset = 0,
-            .size = std::min(renderingModelInstances.size() * sizeof(ModelInstance::ShaderModelInstance), (size_t)instancesDataBuffer.getSize())
+            .size = std::min(renderingModelInstances.size() * sizeof(ShaderModelInstance), (size_t)instancesDataBuffer.getSize())
         };
 
         if(copyRegion.size)
@@ -242,7 +242,13 @@ namespace PaperRenderer
     void RenderEngine::rereferenceModelData(ModelGeometryData* modelData)
     {
         // Clear old reference and insert new one
-        toUpdateModels.erase(renderingModels.at(modelData->shaderDataReference.selfIndex));
+        auto it = toUpdateModels.find(renderingModels.at(modelData->shaderDataReference.selfIndex));
+        if(it != toUpdateModels.end())
+        {
+            toUpdateModels.erase(it);
+            toUpdateModels.insert(modelData);
+        }
+        
         renderingModels.at(modelData->shaderDataReference.selfIndex) = modelData;
     }
 
@@ -286,6 +292,19 @@ namespace PaperRenderer
         object->rendererSelfIndex = UINT32_MAX;
     }
 
+    void RenderEngine::rereferenceObject(ModelInstance* object)
+    {
+        // Clear old reference and insert new one
+        auto it = toUpdateModelInstances.find(renderingModelInstances.at(object->rendererSelfIndex));
+        if(it != toUpdateModelInstances.end())
+        {
+            toUpdateModelInstances.erase(it);
+            toUpdateModelInstances.insert(object);
+        }
+        
+        renderingModelInstances.at(object->rendererSelfIndex) = object;
+    }
+
     std::vector<StagingBufferTransfer> RenderEngine::queueModelsAndInstancesTransfers()
     {
         //timer
@@ -295,7 +314,7 @@ namespace PaperRenderer
         std::lock_guard guard(rendererMutex);
 
         //check buffer sizes
-        if(instancesDataBuffer.getSize() / sizeof(ModelInstance::ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128)
+        if(instancesDataBuffer.getSize() / sizeof(ShaderModelInstance) < renderingModelInstances.size() && renderingModelInstances.size() > 128)
         {
             rebuildInstancesbuffer();
         }
@@ -310,11 +329,11 @@ namespace PaperRenderer
             
             //write instance data
             transfers.push_back({
-                .dstOffset = sizeof(ModelInstance::ShaderModelInstance) * instance->rendererSelfIndex,
+                .dstOffset = sizeof(ShaderModelInstance) * instance->rendererSelfIndex,
                 .data = [&] {
-                    std::vector<uint8_t> transferData(sizeof(ModelInstance::ShaderModelInstance));
-                    const ModelInstance::ShaderModelInstance shaderInstance = instance->getShaderInstance();
-                    memcpy(transferData.data(), &shaderInstance, sizeof(ModelInstance::ShaderModelInstance));
+                    std::vector<uint8_t> transferData(sizeof(ShaderModelInstance));
+                    const ShaderModelInstance shaderInstance = instance->getShaderInstance();
+                    memcpy(transferData.data(), &shaderInstance, sizeof(ShaderModelInstance));
 
                     return transferData;
                 } (),

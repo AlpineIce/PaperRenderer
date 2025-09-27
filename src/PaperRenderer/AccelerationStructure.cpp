@@ -322,10 +322,9 @@ namespace PaperRenderer
 
     //----------BLAS DEFINITIONS----------//
 
-    BLAS::BLAS(RenderEngine &renderer, const Model& model, const Buffer& vbo)
+    BLAS::BLAS(RenderEngine &renderer, const ModelGeometryData& modelData)
         :AS(renderer),
-        parentModel(model),
-        vbo(vbo)
+        modelData(&modelData)
     {
     }
 
@@ -338,7 +337,7 @@ namespace PaperRenderer
         std::unique_ptr<AsGeometryBuildData> returnData = std::make_unique<AsGeometryBuildData>();
 
         //get per material group geometry data
-        for(const LODMesh& materialMesh : parentModel.getLODs()[0].materialMeshes) //use LOD 0 for BLAS
+        for(const LODMesh& materialMesh : modelData->getParentModel().getLODs()[0].materialMeshes) //use LOD 0 for BLAS
         {
             //mesh data
             const uint32_t vertexCount = materialMesh.verticesSize / materialMesh.vertexStride;
@@ -353,11 +352,11 @@ namespace PaperRenderer
                     .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
                     .pNext = NULL,
                     .vertexFormat = VK_FORMAT_R32G32B32_SFLOAT,
-                    .vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = vbo.getBufferDeviceAddress() + materialMesh.vboOffset},
+                    .vertexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = modelData->getVBO().getBufferDeviceAddress() + materialMesh.vboOffset},
                     .vertexStride = materialMesh.vertexStride,
                     .maxVertex = vertexCount,
                     .indexType = materialMesh.indexType,
-                    .indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = parentModel.getIBO().getBufferDeviceAddress() + materialMesh.iboOffset}
+                    .indexData = VkDeviceOrHostAddressConstKHR{.deviceAddress = modelData->getParentModel().getIBO().getBufferDeviceAddress() + materialMesh.iboOffset}
                 } },
                 .flags = (VkGeometryFlagsKHR)(materialMesh.invokeAnyHit ? VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR : VK_GEOMETRY_OPAQUE_BIT_KHR)
             };
@@ -384,6 +383,17 @@ namespace PaperRenderer
     }
 
     //----------TLAS DEFINITIONS----------//
+
+    struct AccelerationStructureInstance
+    {
+        uint64_t blasReference;
+        uint32_t modelInstanceIndex;
+        uint32_t customIndex:24;
+        uint32_t mask:8 = (uint8_t)0xFF;
+        uint32_t recordOffset:24 = 0;
+        VkGeometryInstanceFlagsKHR flags:8 = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+        uint32_t padding = 0;
+    };
     
     TLAS::TLAS(RenderEngine& renderer, RayTraceRender& rtRender)
         :AS(renderer),
@@ -468,7 +478,7 @@ namespace PaperRenderer
 
     void TLAS::verifyInstancesBuffer(const uint32_t instanceCount)
     {
-        const VkDeviceSize curInstancesSize = (VkDeviceSize)((instanceCount + 1) * sizeof(ModelInstance::AccelerationStructureInstance));
+        const VkDeviceSize curInstancesSize = (VkDeviceSize)((instanceCount + 1) * sizeof(AccelerationStructureInstance));
 
         //rebuild buffer if needed
         if(instancesBufferSizes.instancesRange < curInstancesSize)
@@ -478,8 +488,8 @@ namespace PaperRenderer
 
             //instances
             const VkDeviceSize newInstancesSize = Device::getAlignment(
-                std::max((VkDeviceSize)((instanceCount + 1) * sizeof(ModelInstance::AccelerationStructureInstance) * instancesOverhead),
-                (VkDeviceSize)(sizeof(ModelInstance::AccelerationStructureInstance) * 64)),
+                std::max((VkDeviceSize)((instanceCount + 1) * sizeof(AccelerationStructureInstance) * instancesOverhead),
+                (VkDeviceSize)(sizeof(AccelerationStructureInstance) * 64)),
                 renderer.getDevice().getGPUFeaturesAndProperties().gpuProperties.properties.limits.minStorageBufferOffsetAlignment
             );
 
@@ -676,9 +686,9 @@ namespace PaperRenderer
                 {
                     //queue transfer of instance data
                     stagingBufferTransfers.push_back({
-                        .dstOffset = instancesBufferSizes.instancesOffset + (sizeof(ModelInstance::AccelerationStructureInstance) * instance.instancePtr->rtRenderSelfReferences[&rtRender][this].selfIndex),
+                        .dstOffset = instancesBufferSizes.instancesOffset + (sizeof(AccelerationStructureInstance) * instance.instancePtr->rtRenderSelfReferences[&rtRender][this].selfIndex),
                         .data = [&] {
-                            const ModelInstance::AccelerationStructureInstance instanceShaderData = {
+                            const AccelerationStructureInstance instanceShaderData = {
                                 .blasReference = blasPtr->getASBufferAddress(),
                                 .modelInstanceIndex = instance.instancePtr->rendererSelfIndex,
                                 .customIndex = instance.customIndex,
@@ -686,8 +696,8 @@ namespace PaperRenderer
                                 .recordOffset = rtRender.getPipeline().getShaderBindingTableData().materialShaderGroupOffsets.at(instance.instancePtr->rtRenderSelfReferences[&rtRender][this].material),
                                 .flags = instance.flags
                             };
-                            std::vector<uint8_t> transferData(sizeof(ModelInstance::AccelerationStructureInstance));
-                            memcpy(transferData.data(), &instanceShaderData, sizeof(ModelInstance::AccelerationStructureInstance));
+                            std::vector<uint8_t> transferData(sizeof(AccelerationStructureInstance));
+                            memcpy(transferData.data(), &instanceShaderData, sizeof(AccelerationStructureInstance));
 
                             return transferData;
                         } (),

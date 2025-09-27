@@ -79,7 +79,7 @@ namespace PaperRenderer
 
         static constexpr float instancesOverhead = 1.5f;
         std::vector<ModelInstance*> renderPassInstances; //doesn't included sorted
-        std::deque<ModelInstance*> toUpdateInstances; //doesn't included sorted
+        std::set<ModelInstance*> toUpdateInstances; //doesn't included sorted
         std::mutex renderPassMutex;
 
         //buffers
@@ -126,9 +126,10 @@ namespace PaperRenderer
 
         Queue& render(const RenderPassInfo& renderPassInfo, SynchronizationInfo syncInfo);
 
-        //thread safe
         void addInstance(ModelInstance& instance, std::vector<std::unordered_map<uint32_t, MaterialInstance*>> materials, bool sorted=false);
-        //thread safe
         void removeInstance(ModelInstance& instance);
+
+        // Used in move semantics
+        void rereferenceInstance(ModelInstance& instance);
     };
 }

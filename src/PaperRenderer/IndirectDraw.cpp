@@ -192,6 +192,12 @@ namespace PaperRenderer
         }
     }
 
+    void CommonMeshGroup::rereferenceInstance(ModelInstance* oldInstance, ModelInstance* newInstance)
+    {
+        instanceMeshes[newInstance] = std::move(instanceMeshes.at(oldInstance));
+        instanceMeshes.erase(oldInstance);
+    }
+
     void CommonMeshGroup::rereferenceModelData(ModelGeometryData const* oldModelData, ModelGeometryData const* newModelData)
     {
         geometryMeshesData[newModelData] = std::move(geometryMeshesData[oldModelData]);
