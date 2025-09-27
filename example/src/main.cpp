@@ -21,7 +21,7 @@ struct SceneData
     std::unordered_map<std::string, PaperRenderer::ModelTransformation> instanceTransforms = {}; //this example does 1 instance per model, so thats why its 1:1
     std::unordered_map<std::string, std::vector<std::string>> instanceMaterials = {};
     std::unordered_map<std::string, MaterialParameters> materialInstancesData = {};
-    std::unique_ptr<PaperRenderer::Camera> camera = NULL;
+    PaperRenderer::Camera camera;
 };
 
 //example function for loading a glTF and integrating with Model, Material, and Camera creation
@@ -39,7 +39,7 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
     gltfContext.LoadBinaryFromFile(&gltfModel, &error, &warning, gltfPath);
 
     //initialize scene data variable
-    SceneData returnData;
+    SceneData returnData { .camera = PaperRenderer::Camera(renderer, {}) };
     returnData.models.reserve(gltfModel.meshes.size());
     returnData.materialInstancesData.reserve(gltfModel.materials.size());
 
@@ -142,7 +142,7 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
             };
             returnData.instanceTransforms[modelName] = transform;
         }
-        else if(node.camera != -1 && !returnData.camera) //camera
+        else if(node.camera != -1) //camera
         {
             const tinygltf::Camera& camera = gltfModel.cameras[node.camera];
 
@@ -160,7 +160,7 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
                 .clipFar = (float)camera.perspective.zfar
             };
 
-            returnData.camera = std::make_unique<PaperRenderer::Camera>(renderer, cameraInfo);
+            returnData.camera = PaperRenderer::Camera(renderer, cameraInfo);
         }
     }
 
@@ -191,9 +191,9 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
     }
 
     //verify loading worked
-    if(!(returnData.models.size() && returnData.materialInstancesData.size() && returnData.camera))
+    if(!(returnData.models.size() && returnData.materialInstancesData.size()))
     {
-        throw std::runtime_error("glTF loading falied because either no models or materials were loaded, or no camera existed in the glTF");
+        throw std::runtime_error("glTF loading falied because either no models or materials were loaded");
     }
     
     return returnData;
@@ -211,7 +211,7 @@ struct PointLight
     bool castShadow;
 };
 
-std::unique_ptr<PaperRenderer::Buffer> createPointLightsBuffer(PaperRenderer::RenderEngine& renderer)
+PaperRenderer::Buffer createPointLightsBuffer(PaperRenderer::RenderEngine& renderer)
 {
     std::vector<PointLight> pointLightsData = {
         { glm::vec3(10.0f, 10.0, 5.0f),   glm::vec3(100.0f, 100.0f, 100.0f), 0.1f, 100.0f, true},
@@ -225,14 +225,14 @@ std::unique_ptr<PaperRenderer::Buffer> createPointLightsBuffer(PaperRenderer::Re
         .usageFlags = VK_BUFFER_USAGE_2_STORAGE_BUFFER_BIT_KHR,
         .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
     };
-    std::unique_ptr<PaperRenderer::Buffer> pointLightBuffer(std::make_unique<PaperRenderer::Buffer>(renderer, pointLightBufferInfo));
+    PaperRenderer::Buffer pointLightBuffer(renderer, pointLightBufferInfo);
 
     PaperRenderer::BufferWrite pointLightsWrite = {
         .offset = 0,
         .size = sizeof(PointLight) * pointLightsData.size(),
         .readData = pointLightsData.data()
     };
-    pointLightBuffer->writeToBuffer({ pointLightsWrite });
+    pointLightBuffer.writeToBuffer({ pointLightsWrite });
 
     return pointLightBuffer;
 }
@@ -245,7 +245,7 @@ struct LightInfo
     float padding[11];
 };
 
-std::unique_ptr<PaperRenderer::Buffer> createLightInfoUniformBuffer(PaperRenderer::RenderEngine& renderer)
+PaperRenderer::Buffer createLightInfoUniformBuffer(PaperRenderer::RenderEngine& renderer)
 {
     LightInfo uniformBufferData = {
         .ambientLight = glm::vec4(0.2f, 0.2f, 0.2f, 1.0f),
@@ -257,14 +257,14 @@ std::unique_ptr<PaperRenderer::Buffer> createLightInfoUniformBuffer(PaperRendere
         .usageFlags = VK_BUFFER_USAGE_2_UNIFORM_BUFFER_BIT_KHR,
         .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
     };
-    std::unique_ptr<PaperRenderer::Buffer> uniformBuffer(std::make_unique<PaperRenderer::Buffer>(renderer, uniformBufferInfo));
+    PaperRenderer::Buffer uniformBuffer(renderer, uniformBufferInfo);
 
     PaperRenderer::BufferWrite pointLightsWrite = {
         .offset = 0,
         .size = sizeof(LightInfo),
         .readData = &uniformBufferData
     };
-    uniformBuffer->writeToBuffer({ pointLightsWrite });
+    uniformBuffer.writeToBuffer({ pointLightsWrite });
 
     return uniformBuffer;
 }
@@ -272,8 +272,8 @@ std::unique_ptr<PaperRenderer::Buffer> createLightInfoUniformBuffer(PaperRendere
 LightingData createLightingData(PaperRenderer::RenderEngine& renderer)
 {
     //lighting buffers
-    std::unique_ptr<PaperRenderer::Buffer> pointLightsBuffer = createPointLightsBuffer(renderer);
-    std::unique_ptr<PaperRenderer::Buffer> lightingUniformBuffer = createLightInfoUniformBuffer(renderer);
+    PaperRenderer::Buffer pointLightsBuffer = createPointLightsBuffer(renderer);
+    PaperRenderer::Buffer lightingUniformBuffer = createLightInfoUniformBuffer(renderer);
 
     //descriptor layout
     PaperRenderer::DescriptorSetLayout lightingDescriptorLayout(renderer, std::vector<VkDescriptorSetLayoutBinding>({
@@ -301,7 +301,7 @@ LightingData createLightingData(PaperRenderer::RenderEngine& renderer)
         .bufferWrites = {
             {
                 .infos = { {
-                    .buffer = lightingUniformBuffer->getBuffer(),
+                    .buffer = lightingUniformBuffer.getBuffer(),
                     .offset = 0,
                     .range = VK_WHOLE_SIZE
                 } },
@@ -310,7 +310,7 @@ LightingData createLightingData(PaperRenderer::RenderEngine& renderer)
             },
             {
                 .infos = { {
-                    .buffer = pointLightsBuffer->getBuffer(),
+                    .buffer = pointLightsBuffer.getBuffer(),
                     .offset = 0,
                     .range = VK_WHOLE_SIZE
                 } },
@@ -355,9 +355,9 @@ void updateUniformBuffers(PaperRenderer::RenderEngine& renderer, PaperRenderer::
 int main()
 {
     //pre-declare rendering buffers and glTF scene for callback function lambda recordings
-    HDRBuffer hdrBuffer = {};
-    DepthBuffer depthBuffer = {};
-    SceneData scene = {};
+    SceneData* scenePtr = NULL;
+    HDRBuffer* hdrBufferPtr = NULL;
+    DepthBuffer* depthBufferPtr = NULL;
     ExampleRayTracing const* exampleRtPtr = NULL;
     BufferCopyPass const* bufferCopyPassPtr = NULL;
 
@@ -386,12 +386,11 @@ int main()
     //swapchain resize callback
     const auto swapchainResizeFunction = [&](PaperRenderer::RenderEngine& renderer, VkExtent2D newExtent) {
         //destroy old HDR buffer
-        vkDestroySampler(renderer.getDevice().getDevice(), hdrBuffer.sampler, nullptr);
-        vkDestroyImageView(renderer.getDevice().getDevice(), hdrBuffer.view, nullptr);
-        hdrBuffer.image.reset();
+        vkDestroySampler(renderer.getDevice().getDevice(), hdrBufferPtr->sampler, nullptr);
+        vkDestroyImageView(renderer.getDevice().getDevice(), hdrBufferPtr->view, nullptr);
 
         //create new HDR buffer
-        hdrBuffer = getHDRBuffer(renderer, VK_IMAGE_LAYOUT_GENERAL);
+        *hdrBufferPtr = getHDRBuffer(renderer, VK_IMAGE_LAYOUT_GENERAL);
 
         //update RT descriptor
         exampleRtPtr->updateHDRBuffer();
@@ -400,18 +399,17 @@ int main()
         bufferCopyPassPtr->updateHDRBuffer();
 
         //destroy old depth buffer
-        vkDestroyImageView(renderer.getDevice().getDevice(), depthBuffer.view, nullptr);
-        depthBuffer.image.reset();
+        vkDestroyImageView(renderer.getDevice().getDevice(), depthBufferPtr->view, nullptr);
 
         //create new depth buffer
-        depthBuffer = getDepthBuffer(renderer);
+        *depthBufferPtr = getDepthBuffer(renderer);
 
         //update camera
         const PaperRenderer::PerspectiveCamera newProjection = {
             //.xyScale = glm::vec2(30.0f, 30.0f)
-            .yFov = std::get<PaperRenderer::PerspectiveCamera>(scene.camera->getCameraInfo().projection).yFov
+            .yFov = std::get<PaperRenderer::PerspectiveCamera>(scenePtr->camera.getCameraInfo().projection).yFov
         };
-        scene.camera->updateProjection(newProjection);
+        scenePtr->camera.updateProjection(newProjection);
     };
 
     //initialize renderer
@@ -439,7 +437,8 @@ int main()
     //----------GLTF SCENE LOADING----------//
 
     //load glTF scene
-    scene = loadSceneData(renderer);
+    SceneData scene = loadSceneData(renderer);
+    scenePtr = &scene;
 
     //----------LIGHTING DATA----------//
 
@@ -448,22 +447,24 @@ int main()
     //----------HDR & DEPTH RENDERING BUFFER----------//
 
     //get HDR buffer
-    hdrBuffer = getHDRBuffer(renderer, VK_IMAGE_LAYOUT_GENERAL);
+    HDRBuffer hdrBuffer = getHDRBuffer(renderer, VK_IMAGE_LAYOUT_GENERAL);
+    hdrBufferPtr = &hdrBuffer;
 
     //get depth buffer
-    depthBuffer = getDepthBuffer(renderer);
+    DepthBuffer depthBuffer = getDepthBuffer(renderer);
+    depthBufferPtr = &depthBuffer;
     
     //----------RENDER PASSES----------//
 
     //ray tracing
-    ExampleRayTracing exampleRayTrace(renderer, *scene.camera, hdrBuffer, lightingData);
+    ExampleRayTracing exampleRayTrace(renderer, scene.camera, hdrBuffer, lightingData);
     exampleRtPtr = &exampleRayTrace;
     
     //raster
-    ExampleRaster exampleRaster(renderer, *scene.camera, hdrBuffer, depthBuffer, lightingData);
+    ExampleRaster exampleRaster(renderer, scene.camera, hdrBuffer, depthBuffer, lightingData);
     
     //HDR buffer copy render pass
-    BufferCopyPass bufferCopyPass(renderer, *scene.camera, hdrBuffer);
+    BufferCopyPass bufferCopyPass(renderer, scene.camera, hdrBuffer);
     bufferCopyPassPtr = &bufferCopyPass;
 
     //----------EXTRA MATERIALS----------//
@@ -901,7 +902,7 @@ int main()
         VkSemaphore swapchainSemaphore = renderer.beginFrame(beginFrameTransfers, transferSyncInfo);
 
         //update uniform buffers
-        updateUniformBuffers(renderer, *scene.camera, *guiContext.adjustableMaterial, exampleRayTrace, bufferCopyPass);
+        updateUniformBuffers(renderer, scene.camera, *guiContext.adjustableMaterial, exampleRayTrace, bufferCopyPass);
 
         //animate Suzannes
         const PaperRenderer::SynchronizationInfo animationSyncInfo = {
@@ -985,20 +986,9 @@ int main()
     //destroy ImGui
     destroyImGui();
 
-    //destroy hdr and depth buffers
-    hdrBuffer.image.reset();
-    depthBuffer.image.reset();
-
     //destroy all instances
     modelInstances.clear();
     rainDrops.clear();
-
-    //destroy scene info
-    scene = {};
-
-    //destroy light buffers
-    lightingData.lightingUBO.reset();
-    lightingData.pointLightsBuffer.reset();
 
     //destroy some stuff
     for(VkSemaphore semaphore : renderingSemaphores)

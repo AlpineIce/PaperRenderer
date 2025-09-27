@@ -22,13 +22,13 @@ HDRBuffer getHDRBuffer(PaperRenderer::RenderEngine &renderer, VkImageLayout star
         .desiredLayout = startingLayout
     };
 
-    std::unique_ptr<PaperRenderer::Image> hdrBuffer = std::make_unique<PaperRenderer::Image>(renderer, hdrBufferInfo);
+    PaperRenderer::Image hdrBuffer(renderer, hdrBufferInfo);
 
     //HDR buffer view
-    VkImageView view = hdrBuffer->getNewImageView(VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, format);
+    VkImageView view = hdrBuffer.getNewImageView(VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, format);
 
     //HDR buffer sampler (I've profiled this before and its much more efficient to use a render pass than a computer shader and blit)
-    VkSampler sampler = hdrBuffer->getNewSampler(VK_FILTER_LINEAR);
+    VkSampler sampler = hdrBuffer.getNewSampler(VK_FILTER_LINEAR);
 
     return { std::move(hdrBuffer), format, view, sampler };
 }
@@ -77,10 +77,10 @@ DepthBuffer getDepthBuffer(PaperRenderer::RenderEngine &renderer)
         .desiredLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
     };
 
-    std::unique_ptr<PaperRenderer::Image> depthBuffer = std::make_unique<PaperRenderer::Image>(renderer, depthBufferInfo);
+    PaperRenderer::Image depthBuffer(renderer, depthBufferInfo);
 
     //depth buffer view
-    VkImageView view = depthBuffer->getNewImageView(VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_VIEW_TYPE_2D, depthBufferFormat);
+    VkImageView view = depthBuffer.getNewImageView(VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_VIEW_TYPE_2D, depthBufferFormat);
 
     return { std::move(depthBuffer), depthBufferFormat, view };
 }
@@ -187,7 +187,7 @@ const PaperRenderer::Queue& ExampleRayTracing::rayTraceRender(const PaperRendere
             .newLayout = VK_IMAGE_LAYOUT_GENERAL,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = hdrBuffer.image->getImage(),
+            .image = hdrBuffer.image.getImage(),
             .subresourceRange = {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .baseMipLevel = 0,
@@ -252,7 +252,7 @@ const PaperRenderer::Queue& ExampleRayTracing::rayTraceRender(const PaperRendere
 
     //rt render info
     const PaperRenderer::RayTraceRenderInfo rtRenderInfo = {
-        .image = *hdrBuffer.image,
+        .image = hdrBuffer.image,
         .camera = camera,
         .descriptorBindings = bindings,
         .preRenderBarriers = &preRenderDependency,
@@ -451,7 +451,7 @@ const PaperRenderer::Queue& ExampleRaster::rasterRender(PaperRenderer::Synchroni
         .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = hdrBuffer.image->getImage(),
+        .image = hdrBuffer.image.getImage(),
         .subresourceRange = {
             .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
             .baseMipLevel = 0,
@@ -608,7 +608,7 @@ const PaperRenderer::Queue& BufferCopyPass::render(const PaperRenderer::Synchron
             .newLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = hdrBuffer.image->getImage(),
+            .image = hdrBuffer.image.getImage(),
             .subresourceRange =  {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .baseMipLevel = 0,

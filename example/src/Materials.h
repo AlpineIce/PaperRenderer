@@ -23,8 +23,8 @@ struct MaterialParameters
 struct LightingData
 {
     //note that you can use a constructor initializer list to initialize all this without "bad" memory layout from unique ptr
-    std::unique_ptr<PaperRenderer::Buffer> lightingUBO;
-    std::unique_ptr<PaperRenderer::Buffer> pointLightsBuffer;
+    PaperRenderer::Buffer lightingUBO;
+    PaperRenderer::Buffer pointLightsBuffer;
     PaperRenderer::DescriptorSetLayout lightingDescriptorLayout;
     PaperRenderer::ResourceDescriptor lightingDescriptor;
 };

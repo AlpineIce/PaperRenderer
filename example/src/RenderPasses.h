@@ -7,7 +7,7 @@
 //HDR buffer creation
 struct HDRBuffer
 {
-    std::unique_ptr<PaperRenderer::Image> image = NULL;
+    PaperRenderer::Image image;
     VkFormat format = VK_FORMAT_R32G32B32A32_SFLOAT;
     VkImageView view = VK_NULL_HANDLE;
     VkSampler sampler = VK_NULL_HANDLE;
@@ -17,7 +17,7 @@ HDRBuffer getHDRBuffer(PaperRenderer::RenderEngine& renderer, VkImageLayout star
 
 struct DepthBuffer
 {
-    std::unique_ptr<PaperRenderer::Image> image = NULL;
+    PaperRenderer::Image image;
     VkFormat format = VK_FORMAT_UNDEFINED;
     VkImageView view = VK_NULL_HANDLE;
 };
