@@ -11,7 +11,7 @@ namespace PaperRenderer
             .allocationFlags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
         }),
         uboDescriptor(renderer, renderer.getDefaultDescriptorSetLayout(CAMERA_MATRICES)),
-        renderer(renderer)
+        renderer(&renderer)
     {
         //update matrices to initial values
         updateProjection(cameraInfo.projection);
@@ -35,6 +35,41 @@ namespace PaperRenderer
     {
     }
 
+    Camera::Camera(Camera&& other) noexcept
+        :cameraInfo(other.cameraInfo),
+        view(other.view),
+        projection(other.projection),
+        ubo(std::move(other.ubo)),
+        uboDescriptor(std::move(other.uboDescriptor)),
+        renderer(other.renderer)
+    {
+        other.cameraInfo = {};
+        other.view = glm::mat4(1.0f);
+        other.projection = glm::mat4(1.0f);
+        other.renderer = NULL;
+    }
+
+    Camera& Camera::operator=(Camera&& other) noexcept
+    {
+        if(this != &other)
+        {
+            cameraInfo = other.cameraInfo;
+            view = other.view;
+            projection = other.projection;
+            ubo = std::move(other.ubo);
+            uboDescriptor = std::move(other.uboDescriptor);
+            renderer = other.renderer;
+            
+
+            other.cameraInfo = {};
+            other.view = glm::mat4(1.0f);
+            other.projection = glm::mat4(1.0f);
+            other.renderer = NULL;
+        }
+
+        return *this;
+    }
+
     void Camera::updateClipSpace(float near, float far)
     {
         cameraInfo.clipFar = near;
@@ -55,7 +90,7 @@ namespace PaperRenderer
         }
 
         //get screen ratio
-        const VkExtent2D extent = renderer.getSwapchain().getExtent();
+        const VkExtent2D extent = renderer->getSwapchain().getExtent();
         const float screenRatio = (float)extent.width / (float)extent.height;
         
         //set projection based on projectionType
@@ -119,7 +154,7 @@ namespace PaperRenderer
         };
 
         BufferWrite write = {
-            .offset = sizeof(CameraUBOData) * renderer.getBufferIndex(),
+            .offset = sizeof(CameraUBOData) * renderer->getBufferIndex(),
             .size = sizeof(CameraUBOData),
             .readData = &uboData
         };
@@ -135,6 +170,6 @@ namespace PaperRenderer
     
     const uint32_t Camera::getUBODynamicOffset() const
     {
-        return sizeof(CameraUBOData) * renderer.getBufferIndex(); 
+        return sizeof(CameraUBOData) * renderer->getBufferIndex(); 
     }
 }

@@ -63,12 +63,14 @@ namespace PaperRenderer
         Buffer ubo;
         ResourceDescriptor uboDescriptor;
 
-        class RenderEngine& renderer;
+        class RenderEngine* renderer;
         
     public:
         Camera(class RenderEngine& renderer, const CameraInfo& cameraInfo);
         ~Camera();
         Camera(const Camera&) = delete;
+        Camera(Camera&& other) noexcept;
+        Camera& operator=(Camera&& other) noexcept;
 
         void updateClipSpace(float near, float far); //implicitly updates projection after
         void updateProjection(const std::variant<PerspectiveCamera, OrthographicCamera, glm::mat4>& newProjection); //updates projection to match window extent (doesn't apply to orthographic)
