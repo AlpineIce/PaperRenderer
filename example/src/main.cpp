@@ -724,7 +724,7 @@ int main()
     }
 
     //everything else (including one drop lol)
-    for(const auto& [name, model] : scene.models)
+    for(auto& [name, model] : scene.models)
     {
         if(!modelInstances.count(name))
         {
@@ -988,6 +988,10 @@ int main()
     //destroy hdr and depth buffers
     hdrBuffer.image.reset();
     depthBuffer.image.reset();
+
+    //destroy all instances
+    modelInstances.clear();
+    rainDrops.clear();
 
     //destroy scene info
     scene = {};

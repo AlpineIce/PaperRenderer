@@ -354,6 +354,10 @@ namespace PaperRenderer
 		other.renderer = NULL;
 
 		geometry.rereferenceParentModel(this);
+		for(ModelInstance* instance : childInstances)
+		{
+			instance->parentModel = this;
+		}
     }
 
     Model& Model::operator=(Model&& other) noexcept
@@ -369,6 +373,10 @@ namespace PaperRenderer
 			other.renderer = NULL;
 
 			geometry.rereferenceParentModel(this);
+			for(ModelInstance* instance : childInstances)
+			{
+				instance->parentModel = this;
+			}
 		}
 
 		return *this;
@@ -387,11 +395,12 @@ namespace PaperRenderer
 		uint64_t matricesBufferAddress = 0;
 	};
 
-    ModelInstance::ModelInstance(const Model& parentModel, const bool uniqueGeometry, const VkBuildAccelerationStructureFlagsKHR flags)
+    ModelInstance::ModelInstance(Model& parentModel, const bool uniqueGeometry, const VkBuildAccelerationStructureFlagsKHR flags)
         :uniqueGeometryData(uniqueGeometry ? std::make_unique<ModelGeometryData>(*parentModel.renderer, parentModel.getGeometryData(), true) : NULL),
         parentModel(&parentModel)
     {
 		parentModel.renderer->addObject(this);
+		parentModel.childInstances.insert(this);
     }
 
     ModelInstance::~ModelInstance()
@@ -399,6 +408,7 @@ namespace PaperRenderer
 		if(parentModel)
 		{
 			parentModel->renderer->removeObject(this);
+			parentModel->childInstances.erase(this);
 		}
 
 		//remove from references
@@ -429,6 +439,8 @@ namespace PaperRenderer
 
 		// Rereference
 		parentModel->renderer->rereferenceObject(this);
+		parentModel->childInstances.erase(&other);
+		parentModel->childInstances.insert(this);
 
 		for(auto& [renderPass, renderPassData] : renderPassSelfReferences)
 		{
@@ -457,6 +469,8 @@ namespace PaperRenderer
 
 			// Rereference
 			parentModel->renderer->rereferenceObject(this);
+			parentModel->childInstances.erase(&other);
+			parentModel->childInstances.insert(this);
 
 			for(auto& [renderPass, renderPassData] : renderPassSelfReferences)
 			{

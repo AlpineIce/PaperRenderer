@@ -135,6 +135,9 @@ namespace PaperRenderer
         Buffer ibo;
         ModelGeometryData geometry;
 
+        // For move semantics
+        std::set<class ModelInstance*> childInstances = {};
+
         class RenderEngine* renderer;
 
         friend ModelGeometryData;
@@ -202,8 +205,9 @@ namespace PaperRenderer
         void setRenderPassInstanceData(class RenderPass* renderPass);
         const std::vector<uint8_t>& getRenderPassInstanceData(class RenderPass* renderPass) const { return renderPassSelfReferences.at(renderPass).renderPassInstanceData; };
 
-        Model const* parentModel;
+        Model* parentModel;
 
+        friend Model;
         friend class RenderEngine;
         friend class RenderPass;
         friend class RayTraceRender;
@@ -215,7 +219,7 @@ namespace PaperRenderer
         
     public:
         //uniqueGeometry should only be set to true if the instance is animate
-        ModelInstance(const Model& parentModel, const bool uniqueGeometry, const VkBuildAccelerationStructureFlagsKHR flags=0);
+        ModelInstance(Model& parentModel, const bool uniqueGeometry, const VkBuildAccelerationStructureFlagsKHR flags=0);
         ~ModelInstance();
         ModelInstance(const ModelInstance&) = delete;
         ModelInstance(ModelInstance&& other) noexcept;
