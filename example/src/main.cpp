@@ -931,11 +931,18 @@ int main()
             renderer.getAsBuilder().submitQueuedOps(blasSyncInfo);
 
             //update tlas (wait for BLAS build, signal rendering semaphore)
+            const PaperRenderer::TLASUpdateInfo tlasUpdateInfo = {
+                .tlas = exampleRayTrace.getTLAS(),
+                .mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR,
+                .flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR,
+                .cmdPool = NULL
+            };
+
             const PaperRenderer::SynchronizationInfo tlasSyncInfo = {
                 .timelineWaitPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR, finalSemaphoreValues[renderer.getBufferIndex()] + 3 } },
                 .timelineSignalPairs = { { renderingSemaphores[renderer.getBufferIndex()], VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, finalSemaphoreValues[renderer.getBufferIndex()] + 4 } }
             };
-            exampleRayTrace.getRTRender().updateTLAS(exampleRayTrace.getTLAS(), VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR, VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR, tlasSyncInfo);
+            exampleRayTrace.getRTRender().updateTLAS(tlasUpdateInfo, tlasSyncInfo);
 
             //update UBO after TLAS is built
             exampleRayTrace.updateUBO();

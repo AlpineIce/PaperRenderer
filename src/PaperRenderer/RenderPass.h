@@ -63,6 +63,7 @@ namespace PaperRenderer
         VkDependencyInfo const* postRenderBarriers = NULL; //applied after render pass
         VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS;
         RenderPassSortMode sortMode = BACK_FIRST; //rendering order for instances that were added with the sort set to true
+        CommandPool* cmdPool = NULL; //set this if you want to use an async command pool instead of the per-frame pools
     };
 
     class RenderPass

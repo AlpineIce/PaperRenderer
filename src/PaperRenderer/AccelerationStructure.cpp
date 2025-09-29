@@ -658,7 +658,7 @@ namespace PaperRenderer
         AS::assignResourceOwner(queue);
     }
 
-    Queue& TLAS::updateTLAS(const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo)
+    Queue& TLAS::updateTLAS(const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo, CommandPool* pool)
     {
         //----------QUEUE INSTANCE TRANSFERS----------//
 
@@ -723,7 +723,9 @@ namespace PaperRenderer
         }
 
         //start command buffer
-        CommandBuffer cmdBuffer(renderer.getDevice().getCommands(), COMPUTE);
+        CommandBuffer cmdBuffer = [this, pool] {
+            return pool ? CommandBuffer(*pool) : CommandBuffer(renderer.getDevice().getCommands(), COMPUTE);
+        } ();
 
         const VkCommandBufferBeginInfo cmdBufferInfo = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,

@@ -174,7 +174,7 @@ namespace PaperRenderer
         TLAS(const TLAS&) = delete;
 
         //Updates the TLAS to the RayTraceRender instances according to the mode (either rebuild or update). Note that compaction is ignored for a TLAS
-        Queue& updateTLAS(const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo);
+        Queue& updateTLAS(const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, SynchronizationInfo syncInfo, CommandPool* pool);
 
         const Buffer& getInstancesBuffer() const { return instancesBuffer; }
         const InstancesBufferSizes& getInstancesBufferSizes() const { return instancesBufferSizes; }

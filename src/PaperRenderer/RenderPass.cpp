@@ -446,7 +446,9 @@ namespace PaperRenderer
         //Timer
         Timer timer(renderer, "RenderPass Submission", REGULAR);
         
-        CommandBuffer cmdBuffer(renderer.getDevice().getCommands(), GRAPHICS);
+        CommandBuffer cmdBuffer = [this, renderPassInfo] {
+            return renderPassInfo.cmdPool ? CommandBuffer(*renderPassInfo.cmdPool) : CommandBuffer(renderer.getDevice().getCommands(), GRAPHICS);
+        } ();
 
         const VkCommandBufferBeginInfo cmdBufferBeginInfo = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,

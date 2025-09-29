@@ -305,7 +305,7 @@ namespace PaperRenderer
 
     ResourceDescriptor &ResourceDescriptor::operator=(ResourceDescriptor &&other) noexcept
     {
-        if(this != &other);
+        if(this != &other)
         {
             layout = other.layout;
             set = other.set;

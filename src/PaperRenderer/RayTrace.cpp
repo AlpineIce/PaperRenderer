@@ -44,7 +44,9 @@ namespace PaperRenderer
             .pInheritanceInfo = NULL
         };
 
-        CommandBuffer cmdBuffer(renderer.getDevice().getCommands(), COMPUTE);
+        CommandBuffer cmdBuffer = [this, rtRenderInfo] {
+            return rtRenderInfo.cmdPool ? CommandBuffer(*rtRenderInfo.cmdPool) : CommandBuffer(renderer.getDevice().getCommands(), COMPUTE);
+        } ();
 
         vkBeginCommandBuffer(cmdBuffer, &commandInfo);
 
@@ -94,7 +96,7 @@ namespace PaperRenderer
         return  queue;
     }
 
-    Queue& RayTraceRender::updateTLAS(TLAS& tlas, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, const SynchronizationInfo& syncInfo)
+    Queue& RayTraceRender::updateTLAS(const TLASUpdateInfo& tlasUpdateInfo, const SynchronizationInfo& syncInfo)
     {
         //update RT pipeline if needed (required to access SBT offsets for TLAS)
         if(queuePipelineBuild)
@@ -104,10 +106,10 @@ namespace PaperRenderer
         }
 
         //update TLAS
-        Queue& queue = tlas.updateTLAS(mode, flags, syncInfo);
+        Queue& queue = tlasUpdateInfo.tlas.updateTLAS(tlasUpdateInfo.mode, tlasUpdateInfo.flags, syncInfo, tlasUpdateInfo.cmdPool);
         
         //clear toUpdateInstances
-        tlasData[&tlas].toUpdateInstances.clear();
+        tlasData[&tlasUpdateInfo.tlas].toUpdateInstances.clear();
 
         //return queue used
         return queue;

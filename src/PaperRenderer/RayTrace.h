@@ -7,13 +7,20 @@ namespace PaperRenderer
 {
     struct RayTraceRenderInfo
     {
-        VkBuildAccelerationStructureModeKHR tlasBuildMode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
-        VkBuildAccelerationStructureFlagsKHR tlasBuildFlags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
         const Image& image;
         const class Camera& camera;
         const std::vector<SetBinding>& descriptorBindings = {};
         VkDependencyInfo const* preRenderBarriers = NULL;
         VkDependencyInfo const* postRenderBarriers = NULL;
+        CommandPool* cmdPool = NULL; //set this if you want to use an async command pool instead of the per-frame pools
+    };
+
+    struct TLASUpdateInfo
+    {
+        TLAS& tlas;
+        const VkBuildAccelerationStructureModeKHR mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+        const VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        CommandPool* cmdPool = NULL; //set this if you want to use an async command pool instead of the per-frame pools
     };
 
     struct AccelerationStructureInstanceData
@@ -84,7 +91,7 @@ namespace PaperRenderer
         //Invokes vkCmdTraceRaysKHR at the listed entryTLAS. All acceleration structures used should be updated with updateTLAS() before rendering
         Queue& render(const RayTraceRenderInfo& rtRenderInfo, const SynchronizationInfo& syncInfo);
         //Updates the transformation, addition/removal, and sbt offsets of all instances used
-        Queue& updateTLAS(TLAS& tlas, const VkBuildAccelerationStructureModeKHR mode, const VkBuildAccelerationStructureFlagsKHR flags, const SynchronizationInfo& syncInfo);
+        Queue& updateTLAS(const TLASUpdateInfo& tlasUpdateInfo, const SynchronizationInfo& syncInfo);
 
         //Please keep track of the return value; ownership is transfered to return value
         [[nodiscard]] std::unique_ptr<TLAS> addNewTLAS();
