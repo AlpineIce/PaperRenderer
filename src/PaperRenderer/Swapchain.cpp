@@ -208,114 +208,111 @@ namespace PaperRenderer
 
     void Swapchain::setWindowState(const WindowState& newState)
     {
-        if(swapchain)
+        //set window state to new state
+        windowState = newState;
+
+        //----------PRESENT MODE----------//
+
+        //get valid present modes
+        uint32_t presentModeCount;
+        vkGetPhysicalDeviceSurfacePresentModesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &presentModeCount, nullptr);
+        std::vector<VkPresentModeKHR> presentModes(presentModeCount);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &presentModeCount, presentModes.data());
+
+        //check if any match selected present mode
+        bool presentModeFound = false;
+        for(const VkPresentModeKHR presentMode : presentModes)
         {
-            //set window state to new state
-            windowState = newState;
-
-            //----------PRESENT MODE----------//
-
-            //get valid present modes
-            uint32_t presentModeCount;
-            vkGetPhysicalDeviceSurfacePresentModesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &presentModeCount, nullptr);
-            std::vector<VkPresentModeKHR> presentModes(presentModeCount);
-            vkGetPhysicalDeviceSurfacePresentModesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &presentModeCount, presentModes.data());
-
-            //check if any match selected present mode
-            bool presentModeFound = false;
-            for(const VkPresentModeKHR presentMode : presentModes)
+            if(presentMode == windowState.presentMode)
             {
-                if(presentMode == windowState.presentMode)
-                {
-                    presentModeFound = true;
-                    break;
-                }
+                presentModeFound = true;
+                break;
             }
+        }
 
-            //verify present mode selected
-            if(!presentModeFound)
+        //verify present mode selected
+        if(!presentModeFound)
+        {
+            if(!presentModes.size())
             {
-                if(!presentModes.size())
-                {
-                    throw std::runtime_error("No valid GPU surface present modes");
-                }
-                else
-                {
-                    //use first
-                    renderer.getLogger().recordLog({
-                        .type = WARNING,
-                        .text=  "Selected VkPresentModeKHR for swapchain was not found. Using first found mode"
-                    });
-                    windowState.presentMode = presentModes[0];
-                }
+                throw std::runtime_error("No valid GPU surface present modes");
             }
-
-            //----------COLOR SPACE SELECTION----------//
-
-            uint32_t formatCount;
-            vkGetPhysicalDeviceSurfaceFormatsKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &formatCount, nullptr);
-            std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
-            vkGetPhysicalDeviceSurfaceFormatsKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &formatCount, surfaceFormats.data());
-            
-            //helper lambda function
-            const auto formatEqual = [](const VkSurfaceFormatKHR& a, const VkSurfaceFormatKHR& b)
+            else
             {
-                bool equal = true;
-                equal = equal && a.format == b.format;
-                equal = equal && a.colorSpace == b.colorSpace;
-
-                return equal;
-            };
-
-            //see if already selected format exists
-            bool formatFound = false;
-            for(const VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
-            {
-                if(formatEqual(surfaceFormat, windowState.surfaceFormat))
-                {
-                    formatFound = true;
-                    break;
-                }
-            }
-
-            //handle specified format not being available
-            if(!formatFound)
-            {
-                //log warning
+                //use first
                 renderer.getLogger().recordLog({
                     .type = WARNING,
-                    .text = "Selected surface format was not found. Auto selecting format instead"
+                    .text=  "Selected VkPresentModeKHR for swapchain was not found. Using first found mode"
                 });
-                
-                //use sRGB if no HDR format is available; use UNORM if sRGB isnt avaliable
-                for(const VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
+                windowState.presentMode = presentModes[0];
+            }
+        }
+
+        //----------COLOR SPACE SELECTION----------//
+
+        uint32_t formatCount;
+        vkGetPhysicalDeviceSurfaceFormatsKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &formatCount, nullptr);
+        std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &formatCount, surfaceFormats.data());
+        
+        //helper lambda function
+        const auto formatEqual = [](const VkSurfaceFormatKHR& a, const VkSurfaceFormatKHR& b)
+        {
+            bool equal = true;
+            equal = equal && a.format == b.format;
+            equal = equal && a.colorSpace == b.colorSpace;
+
+            return equal;
+        };
+
+        //see if already selected format exists
+        bool formatFound = false;
+        for(const VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
+        {
+            if(formatEqual(surfaceFormat, windowState.surfaceFormat))
+            {
+                formatFound = true;
+                break;
+            }
+        }
+
+        //handle specified format not being available
+        if(!formatFound)
+        {
+            //log warning
+            renderer.getLogger().recordLog({
+                .type = WARNING,
+                .text = "Selected surface format was not found. Auto selecting format instead"
+            });
+            
+            //use sRGB if no HDR format is available; use UNORM if sRGB isnt avaliable
+            for(const VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
+            {
+                if(surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) //SRGB color space
                 {
-                    if(surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) //SRGB color space
+                    if(surfaceFormat.format == VK_FORMAT_R8G8B8A8_SRGB)
                     {
-                        if(surfaceFormat.format == VK_FORMAT_R8G8B8A8_SRGB)
-                        {
-                            windowState.surfaceFormat = surfaceFormat;
-                            formatFound = true;
-                            break;
-                        }
-                        else if(surfaceFormat.format == VK_FORMAT_R8G8B8A8_UNORM)
-                        {
-                            windowState.surfaceFormat = surfaceFormat;
-                            formatFound = true;
-                        }
+                        windowState.surfaceFormat = surfaceFormat;
+                        formatFound = true;
+                        break;
+                    }
+                    else if(surfaceFormat.format == VK_FORMAT_R8G8B8A8_UNORM)
+                    {
+                        windowState.surfaceFormat = surfaceFormat;
+                        formatFound = true;
                     }
                 }
-
-                //very bad, just use the first one found
-                if(!formatFound && surfaceFormats.size())
-                {
-                    windowState.surfaceFormat = surfaceFormats[0];
-                    formatFound = true;
-                }
-
-                //throw error if format not found
-                if(!formatFound) throw std::runtime_error("No good surface format found");
             }
+
+            //very bad, just use the first one found
+            if(!formatFound && surfaceFormats.size())
+            {
+                windowState.surfaceFormat = surfaceFormats[0];
+                formatFound = true;
+            }
+
+            //throw error if format not found
+            if(!formatFound) throw std::runtime_error("No good surface format found");
         }
     }
 

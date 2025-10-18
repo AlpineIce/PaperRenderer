@@ -362,7 +362,7 @@ namespace PaperRenderer
         return transfers;
     }
 
-    const VkSemaphore& RenderEngine::beginFrame(std::vector<StagingBufferTransfer>& extraTransfers, const SynchronizationInfo& transferSyncInfo)
+    VkSemaphore RenderEngine::beginFrame(std::vector<StagingBufferTransfer>& extraTransfers, const SynchronizationInfo& transferSyncInfo)
     {
         //clear previous statistics
         statisticsTracker.clearStatistics();
@@ -374,7 +374,7 @@ namespace PaperRenderer
         device.getCommands().resetCommandPools();
 
         //acquire next image
-        const VkSemaphore& imageAcquireSemaphore = swapchain.acquireNextImage();
+        const VkSemaphore imageAcquireSemaphore = swapchain.acquireNextImage();
 
         //queue data transfers
         std::vector<StagingBufferTransfer> transfers = queueModelsAndInstancesTransfers();

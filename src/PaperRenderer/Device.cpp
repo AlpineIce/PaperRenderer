@@ -53,6 +53,8 @@ namespace PaperRenderer
         //glfw extensions
         if(instanceData.useSwapchain)
         {
+            glfwInit();
+            
             uint32_t glfwExtensionCount = 0;
             glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
             std::vector<const char*> glfwExtensions(glfwExtensionCount);

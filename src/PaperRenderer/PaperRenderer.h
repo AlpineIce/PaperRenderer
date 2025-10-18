@@ -106,7 +106,7 @@ namespace PaperRenderer
         RenderEngine(const RenderEngine&) = delete;
 
         //returns the image acquire semaphore from the swapchain
-        const VkSemaphore& beginFrame(std::vector<StagingBufferTransfer>& extraTransfers, const SynchronizationInfo& transferSyncInfo);
+        VkSemaphore beginFrame(std::vector<StagingBufferTransfer>& extraTransfers, const SynchronizationInfo& transferSyncInfo);
         void endFrame(const std::vector<VkSemaphore>& waitSemaphores); 
 
         uint32_t getBufferIndex() const { return frameNumber % 2; }
