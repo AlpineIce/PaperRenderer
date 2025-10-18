@@ -9,6 +9,7 @@ namespace PaperRenderer
     Swapchain::Swapchain(RenderEngine& renderer)
         :renderer(renderer)
     {
+        renderer.getDevice().createDevice();
     }
 
     Swapchain::Swapchain(RenderEngine& renderer, const std::function<void(RenderEngine&, VkExtent2D newExtent)>& swapchainRebuildCallbackFunction, const WindowState& startingWindowState)

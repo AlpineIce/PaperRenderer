@@ -8,6 +8,7 @@ namespace PaperRenderer
 {
     Device::Device(RenderEngine& renderer, const DeviceInstanceInfo& instanceInfo)
         :devicepNext(instanceInfo.devicepNext),
+        useSwapchain(instanceInfo.useSwapchain),
         renderer(renderer)
     {
         if(volkInitialize() != VK_SUCCESS)
@@ -322,12 +323,15 @@ namespace PaperRenderer
                 continue;
             }
 
-            VkBool32 presentSupport;
-            vkGetPhysicalDeviceSurfaceSupportKHR(GPU, i, surface, &presentSupport);
-            if(presentSupport && !queues.count(QueueType::PRESENT))
+            if(useSwapchain)
             {
-                queues[QueueType::PRESENT].queueFamilyIndex = i;
-                continue;
+                VkBool32 presentSupport = false;
+                vkGetPhysicalDeviceSurfaceSupportKHR(GPU, i, surface, &presentSupport);
+                if(presentSupport && !queues.count(QueueType::PRESENT))
+                {
+                    queues[QueueType::PRESENT].queueFamilyIndex = i;
+                    continue;
+                }
             }
         }
 
@@ -348,7 +352,8 @@ namespace PaperRenderer
         {
             queues[QueueType::TRANSFER].queueFamilyIndex = queues.at(QueueType::COMPUTE).queueFamilyIndex; //shared compute/transfer queue family
         }
-        if(!queues.count(QueueType::PRESENT))
+
+        if(!queues.count(QueueType::PRESENT) && useSwapchain)
         {
             //loop back through until a present queue is found
             for(int i = 0; i < queueFamiliesProperties.size(); i++)
@@ -362,6 +367,10 @@ namespace PaperRenderer
                 }
             }
         }
+        else
+        {
+            queues[QueueType::PRESENT] = {};
+        }
     }
 
     void Device::createQueues(std::unordered_map<uint32_t, VkDeviceQueueCreateInfo>& queuesCreationInfo,
@@ -371,7 +380,7 @@ namespace PaperRenderer
         //Set queues creation info based on queue families which are used. Queues will be created, then distributed amongst any "queue types" sharing the same family
         for(const auto& [queueType, queuesInFamily] : queues)
         {
-            if(!queuesCreationInfo.count(queuesInFamily.queueFamilyIndex))
+            if(!queuesCreationInfo.count(queuesInFamily.queueFamilyIndex) && queuesInFamily.queueFamilyIndex != 0xFFFFFFFF)
             {
                 queuesCreationInfo[queuesInFamily.queueFamilyIndex] = {
                     .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -400,32 +409,35 @@ namespace PaperRenderer
         //fill in queues. This just gives pointers to a queue created earlier, which can be shared between different QueueType
         for(auto& [queueType, queuesInFamily] : queues)
         {
-            for(uint32_t i = 0; i < familyQueues.at(queuesInFamily.queueFamilyIndex).size(); i++)
+            if(queuesInFamily.queueFamilyIndex != 0xFFFFFFFF)
             {
-                queuesInFamily.queues.push_back(&familyQueues.at(queuesInFamily.queueFamilyIndex).at(i));
-            }
-
-            const auto queueTypeToString = [](QueueType type) -> std::string
-            {
-                switch(type)
+                for(uint32_t i = 0; i < familyQueues.at(queuesInFamily.queueFamilyIndex).size(); i++)
                 {
-                    case GRAPHICS:
-                        return "Graphics ";
-                    case COMPUTE:
-                        return "Compute ";
-                    case TRANSFER:
-                        return "Transfer ";
-                    case PRESENT:
-                        return "Present ";
+                    queuesInFamily.queues.push_back(&familyQueues.at(queuesInFamily.queueFamilyIndex).at(i));
                 }
-                return "";
-            };
-            
-            //record log
-            renderer.getLogger().recordLog({
-                .type = INFO,
-                .text = queueTypeToString(queueType) + std::string("queue group using ") + std::to_string(queuesInFamily.queues.size()) + " Queues on queue family index " + std::to_string(queuesInFamily.queueFamilyIndex)
-            });
+
+                const auto queueTypeToString = [](QueueType type) -> std::string
+                {
+                    switch(type)
+                    {
+                        case GRAPHICS:
+                            return "Graphics ";
+                        case COMPUTE:
+                            return "Compute ";
+                        case TRANSFER:
+                            return "Transfer ";
+                        case PRESENT:
+                            return "Present ";
+                    }
+                    return "";
+                };
+                
+                //record log
+                renderer.getLogger().recordLog({
+                    .type = INFO,
+                    .text = queueTypeToString(queueType) + std::string("queue group using ") + std::to_string(queuesInFamily.queues.size()) + " Queues on queue family index " + std::to_string(queuesInFamily.queueFamilyIndex)
+                });
+            }
         }
     }
 

@@ -88,21 +88,20 @@ namespace PaperRenderer
             projection = std::get<glm::mat4>(newProjection);
             return;
         }
-
-        //get screen ratio
-        const VkExtent2D extent = renderer->getSwapchain().getExtent();
-        const float screenRatio = (float)extent.width / (float)extent.height;
         
         //set projection based on projectionType
         switch(cameraInfo.projection.index())
         {
-        case 0: //perspective
-            projection = glm::perspective(glm::radians(std::get<PerspectiveCamera>(cameraInfo.projection).yFov), screenRatio, cameraInfo.clipNear, cameraInfo.clipFar);
-            break;
-        case 1: //orthographic
-            const glm::vec2 xyScale = std::get<OrthographicCamera>(cameraInfo.projection).xyScale;
-            projection = glm::ortho(-xyScale.x, xyScale.x, -xyScale.y, xyScale.y, cameraInfo.clipNear, cameraInfo.clipFar);
-            break;
+            case 0: { //perspective
+                const PerspectiveCamera perspectiveCamera = std::get<PerspectiveCamera>(cameraInfo.projection);
+                projection = glm::perspective(glm::radians(perspectiveCamera.yFov), perspectiveCamera.ratio, cameraInfo.clipNear, cameraInfo.clipFar);
+                break;
+            }
+            case 1: { //orthographic
+                const glm::vec2 xyScale = std::get<OrthographicCamera>(cameraInfo.projection).xyScale;
+                projection = glm::ortho(-xyScale.x, xyScale.x, -xyScale.y, xyScale.y, cameraInfo.clipNear, cameraInfo.clipFar);
+                break;
+            }
         }
     }
 

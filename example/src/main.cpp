@@ -153,8 +153,20 @@ SceneData loadSceneData(PaperRenderer::RenderEngine& renderer)
                 .position = newCameraPosition
             };
 
+            const float screenRatio = [&] {
+                const VkExtent2D screenExtent = renderer.getSwapchain().getExtent();
+                if(screenExtent.width && screenExtent.height)
+                {
+                    return (float)screenExtent.width / (float)screenExtent.height;
+                }
+                else
+                {
+                    return 16.0f / 9.0f;
+                }
+            } ();
+            
             const PaperRenderer::CameraInfo cameraInfo = {
-                .projection = PaperRenderer::PerspectiveCamera((float)camera.perspective.yfov * 100.0f),
+                .projection = PaperRenderer::PerspectiveCamera((float)camera.perspective.yfov * 100.0f, screenRatio),
                 .transformation = newTransform,
                 .clipNear = (float)camera.perspective.znear,
                 .clipFar = (float)camera.perspective.zfar
@@ -407,7 +419,18 @@ int main()
         //update camera
         const PaperRenderer::PerspectiveCamera newProjection = {
             //.xyScale = glm::vec2(30.0f, 30.0f)
-            .yFov = std::get<PaperRenderer::PerspectiveCamera>(scenePtr->camera.getCameraInfo().projection).yFov
+            .yFov = std::get<PaperRenderer::PerspectiveCamera>(scenePtr->camera.getCameraInfo().projection).yFov,
+            .ratio = [&] {
+                const VkExtent2D screenExtent = renderer.getSwapchain().getExtent();
+                if(screenExtent.width && screenExtent.height)
+                {
+                    return (float)screenExtent.width / (float)screenExtent.height;
+                }
+                else
+                {
+                    return 16.0f / 9.0f;
+                }
+            } ()
         };
         scenePtr->camera.updateProjection(newProjection);
     };
@@ -420,7 +443,8 @@ int main()
         .rtPreprocessSpirv = readFromFile("../resources/shaders/TLASInstBuild.spv"),
         .deviceInstanceInfo = {
             .appName = "PaperRenderer Example",
-            .engineName = "PaperRenderer"
+            .engineName = "PaperRenderer",
+            .useSwapchain = true
         },
         .windowState = {
             .windowName = "PaperRenderer Example",

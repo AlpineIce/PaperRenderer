@@ -29,6 +29,7 @@ namespace PaperRenderer
     struct PerspectiveCamera //WILL update to uneven image screen size
     {
         float yFov = 75.0f;
+        float ratio = 1.0f;
     };
 
     struct OrthographicCamera //does NOT adjust to uneven image screen size

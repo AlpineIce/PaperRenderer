@@ -44,6 +44,7 @@ namespace PaperRenderer
     {
     private:
         void* devicepNext;
+        const bool useSwapchain;
         VkInstance instance = VK_NULL_HANDLE;
         VkPhysicalDevice GPU = VK_NULL_HANDLE;
         VkDevice device = VK_NULL_HANDLE;
