@@ -37,7 +37,7 @@ namespace PaperRenderer
         std::vector<uint32_t> rasterPreprocessSpirv {}; //takes in compiled IndirectDrawBuild.comp spirv data
         std::vector<uint32_t> rtPreprocessSpirv {}; //takes in compiled TLASInstBuild.comp spirv data
         DeviceInstanceInfo deviceInstanceInfo = {};
-        WindowState windowState = {};
+        WindowState windowState = {}; // Use this if deviceInstanceInfo.useSwapchain is enabled
     };
     
     //main renderer class

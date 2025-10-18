@@ -29,7 +29,7 @@ namespace PaperRenderer
     {
     private:
         VkExtent2D swapchainExtent = { 0, 0 };
-        WindowState windowState;
+        WindowState windowState = {};
         VkSwapchainKHR swapchain = VK_NULL_HANDLE;
         uint32_t minImageCount = 0;
         uint32_t imageCount = 0;
@@ -41,7 +41,7 @@ namespace PaperRenderer
         GLFWwindow* window = NULL;
 
         static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
-        const std::function<void(RenderEngine&, VkExtent2D newExtent)> swapchainRebuildCallback = NULL;
+        std::function<void(RenderEngine&, VkExtent2D newExtent)> swapchainRebuildCallback = NULL;
 
         class RenderEngine& renderer;
         
@@ -49,12 +49,14 @@ namespace PaperRenderer
         void createImageViews();
 
     public:
+        Swapchain(RenderEngine& renderer);
         Swapchain(class RenderEngine& renderer, const std::function<void(RenderEngine&, VkExtent2D newExtent)>& swapchainRebuildCallbackFunction, const WindowState& startingWindowState);
         ~Swapchain();
         Swapchain(const Swapchain&) = delete;
+        Swapchain(Swapchain&& other) noexcept;
 
         //returns the image acquire semaphore
-        const VkSemaphore& acquireNextImage();
+        VkSemaphore acquireNextImage();
         void presentImage(const std::vector<VkSemaphore>& waitSemaphores);
         void setWindowState(const WindowState& newState);
         void recreate();

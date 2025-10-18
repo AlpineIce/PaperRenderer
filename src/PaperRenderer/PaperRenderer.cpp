@@ -15,7 +15,7 @@ namespace PaperRenderer
     RenderEngine::RenderEngine(const PaperRendererInfo& creationInfo)
         :logger(*this, creationInfo.logEventCallbackFunction),
         device(*this, creationInfo.deviceInstanceInfo),
-        swapchain(*this, creationInfo.swapchainRebuildCallbackFunction, creationInfo.windowState),
+        swapchain(creationInfo.deviceInstanceInfo.useSwapchain ? Swapchain(*this, creationInfo.swapchainRebuildCallbackFunction, creationInfo.windowState) : Swapchain(*this)),
         descriptors(*this),
         defaultDescriptorLayouts({
             DescriptorSetLayout(*this, {{ //INDIRECT_DRAW_MATRICES

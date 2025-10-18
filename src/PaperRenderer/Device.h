@@ -25,6 +25,7 @@ namespace PaperRenderer
         std::vector<const char*> extraInstanceExtensions = {};
         std::vector<const char*> extraDeviceExtensions = {};
         void* devicepNext = NULL;
+        bool useSwapchain = true; // Use this to setup a window and swapchain
     };
 
     struct DeviceFeaturesAndProperties

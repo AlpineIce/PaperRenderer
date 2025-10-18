@@ -17,7 +17,7 @@ namespace PaperRenderer
                 .text = "Failed to initialize Volk (vulkan function loader)"
             });
         }
-        glfwInit();
+        
         createContext(instanceInfo);
         findGPU(instanceInfo.extraDeviceExtensions);
     }
@@ -47,18 +47,23 @@ namespace PaperRenderer
             VK_EXT_DEBUG_UTILS_EXTENSION_NAME
         };
 
-        //glfw extensions
-        unsigned int glfwExtensionCount = 0;
-        glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-        std::vector<const char*> glfwExtensions(glfwExtensionCount);
-        for(int i = 0; i < glfwExtensionCount; i++)
-        {
-            glfwExtensions[i] = glfwGetRequiredInstanceExtensions(&glfwExtensionCount)[i];
-        }
-
-        //insert glfw and extra extensions
-        extensionNames.insert(extensionNames.end(), glfwExtensions.begin(), glfwExtensions.end());
+        //insert extra extensions
         extensionNames.insert(extensionNames.end(), instanceData.extraInstanceExtensions.begin(), instanceData.extraInstanceExtensions.end());
+
+        //glfw extensions
+        if(instanceData.useSwapchain)
+        {
+            uint32_t glfwExtensionCount = 0;
+            glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+            std::vector<const char*> glfwExtensions(glfwExtensionCount);
+            for(int i = 0; i < glfwExtensionCount; i++)
+            {
+                glfwExtensions[i] = glfwGetRequiredInstanceExtensions(&glfwExtensionCount)[i];
+            }
+
+            //insert glfw extensions
+            extensionNames.insert(extensionNames.end(), glfwExtensions.begin(), glfwExtensions.end());
+        }
 
         //log all extension names
         for(const char* extension : extensionNames)

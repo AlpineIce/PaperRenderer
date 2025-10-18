@@ -6,6 +6,11 @@
 
 namespace PaperRenderer
 {
+    Swapchain::Swapchain(RenderEngine& renderer)
+        :renderer(renderer)
+    {
+    }
+
     Swapchain::Swapchain(RenderEngine& renderer, const std::function<void(RenderEngine&, VkExtent2D newExtent)>& swapchainRebuildCallbackFunction, const WindowState& startingWindowState)
         :windowState(startingWindowState),
         swapchainRebuildCallback(swapchainRebuildCallbackFunction),
@@ -82,190 +87,235 @@ namespace PaperRenderer
 
     Swapchain::~Swapchain()
     {
-        //images
-        for(VkImageView image : imageViews)
+        if(window)
         {
-            vkDestroyImageView(renderer.getDevice().getDevice(), image, nullptr);
+            //images
+            for(VkImageView image : imageViews)
+            {
+                vkDestroyImageView(renderer.getDevice().getDevice(), image, nullptr);
+            }
+
+            //semaphores
+            vkDestroySwapchainKHR(renderer.getDevice().getDevice(), swapchain, nullptr);
+            for(VkSemaphore semaphore : imageSemaphores)
+            {
+                vkDestroySemaphore(renderer.getDevice().getDevice(), semaphore, nullptr);
+            }
+
+            //glfw window and surface
+            vkDestroySurfaceKHR(renderer.getDevice().getInstance(), renderer.getDevice().getSurface(), nullptr);
+            glfwDestroyWindow(window);
+
+            //log destructor
+            renderer.getLogger().recordLog({
+                .type = INFO,
+                .text = "Swapchain destructor finished"
+            });
         }
-
-        //semaphores
-        vkDestroySwapchainKHR(renderer.getDevice().getDevice(), swapchain, nullptr);
-        for(VkSemaphore semaphore : imageSemaphores)
-        {
-            vkDestroySemaphore(renderer.getDevice().getDevice(), semaphore, nullptr);
-        }
-
-        //glfw window and surface
-        vkDestroySurfaceKHR(renderer.getDevice().getInstance(), renderer.getDevice().getSurface(), nullptr);
-        glfwDestroyWindow(window);
-
-        //log destructor
-        renderer.getLogger().recordLog({
-            .type = INFO,
-            .text = "Swapchain destructor finished"
-        });
     }
 
-    const VkSemaphore& Swapchain::acquireNextImage()
+    Swapchain::Swapchain(Swapchain&& other) noexcept
+        :swapchainExtent(other.swapchainExtent),
+        windowState(other.windowState),
+        swapchain(other.swapchain),
+        minImageCount(other.minImageCount),
+        imageCount(other.imageCount),
+        swapchainImages(std::move(other.swapchainImages)),
+        imageViews(std::move(other.imageViews)),
+        imageSemaphores(std::move(other.imageSemaphores)),
+        frameIndex(other.frameIndex),
+        semaphoreIndex(other.semaphoreIndex),
+        window(other.window),
+        swapchainRebuildCallback(other.swapchainRebuildCallback),
+        renderer(other.renderer)
     {
-        //increment semaphore index
-        if(semaphoreIndex >= imageSemaphores.size() - 1)
+        glfwSetWindowUserPointer(window, this);
+
+        other.swapchainExtent = { 0, 0 };
+        other.windowState = {};
+        other.swapchain = VK_NULL_HANDLE;
+        other.minImageCount = 0;
+        other.imageCount = 0;
+        other.swapchainImages = {};
+        other.imageViews = {};
+        other.imageSemaphores = {};
+        other.frameIndex = 0;
+        other.semaphoreIndex = 0;
+        other.swapchainRebuildCallback = NULL;
+        other.window = NULL;
+    }
+
+    VkSemaphore Swapchain::acquireNextImage()
+    {
+        if(swapchain)
         {
-            semaphoreIndex = 0;
-        }
-        else
-        {
-            semaphoreIndex++;
+            //increment semaphore index
+            if(semaphoreIndex >= imageSemaphores.size() - 1)
+            {
+                semaphoreIndex = 0;
+            }
+            else
+            {
+                semaphoreIndex++;
+            }
+            
+            //get available image
+            VkResult imageAcquireResult = vkAcquireNextImageKHR(
+                renderer.getDevice().getDevice(),
+                swapchain,
+                UINT64_MAX,
+                imageSemaphores.at(semaphoreIndex),
+                VK_NULL_HANDLE,
+                &frameIndex);
+
+            if(imageAcquireResult == VK_ERROR_OUT_OF_DATE_KHR || imageAcquireResult == VK_SUBOPTIMAL_KHR)
+            {
+                recreate();
+                acquireNextImage();
+            }
+
+            return imageSemaphores.at(semaphoreIndex);
         }
         
-        //get available image
-        VkResult imageAcquireResult = vkAcquireNextImageKHR(
-            renderer.getDevice().getDevice(),
-            swapchain,
-            UINT64_MAX,
-            imageSemaphores.at(semaphoreIndex),
-            VK_NULL_HANDLE,
-            &frameIndex);
-
-        if(imageAcquireResult == VK_ERROR_OUT_OF_DATE_KHR || imageAcquireResult == VK_SUBOPTIMAL_KHR)
-        {
-            recreate();
-            acquireNextImage();
-        }
-
-        return imageSemaphores.at(semaphoreIndex);
+        return VK_NULL_HANDLE;
     }
 
     void Swapchain::presentImage(const std::vector<VkSemaphore>& waitSemaphores)
     {
-        const VkPresentInfoKHR presentSubmitInfo = {
-            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-            .pNext = NULL,
-            .waitSemaphoreCount = (uint32_t)waitSemaphores.size(),
-            .pWaitSemaphores = waitSemaphores.data(),
-            .swapchainCount = 1,
-            .pSwapchains = &swapchain,
-            .pImageIndices = &frameIndex,
-            .pResults = NULL
-        };
-
-        //lock queue and present
-        std::lock_guard guard(renderer.getDevice().getQueues().at(PRESENT).queues.at(0)->threadLock);
-        VkResult presentResult = vkQueuePresentKHR(renderer.getDevice().getQueues().at(QueueType::PRESENT).queues.at(0)->queue, &presentSubmitInfo);
-
-        if(presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) 
+        if(swapchain)
         {
-            recreate();
+            const VkPresentInfoKHR presentSubmitInfo = {
+                .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+                .pNext = NULL,
+                .waitSemaphoreCount = (uint32_t)waitSemaphores.size(),
+                .pWaitSemaphores = waitSemaphores.data(),
+                .swapchainCount = 1,
+                .pSwapchains = &swapchain,
+                .pImageIndices = &frameIndex,
+                .pResults = NULL
+            };
+
+            //lock queue and present
+            std::lock_guard guard(renderer.getDevice().getQueues().at(PRESENT).queues.at(0)->threadLock);
+            VkResult presentResult = vkQueuePresentKHR(renderer.getDevice().getQueues().at(QueueType::PRESENT).queues.at(0)->queue, &presentSubmitInfo);
+
+            if(presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) 
+            {
+                recreate();
+            }
         }
     }
 
     void Swapchain::setWindowState(const WindowState& newState)
     {
-        //set window state to new state
-        windowState = newState;
-
-        //----------PRESENT MODE----------//
-
-        //get valid present modes
-        uint32_t presentModeCount;
-        vkGetPhysicalDeviceSurfacePresentModesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &presentModeCount, nullptr);
-        std::vector<VkPresentModeKHR> presentModes(presentModeCount);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &presentModeCount, presentModes.data());
-
-        //check if any match selected present mode
-        bool presentModeFound = false;
-        for(const VkPresentModeKHR presentMode : presentModes)
+        if(swapchain)
         {
-            if(presentMode == windowState.presentMode)
+            //set window state to new state
+            windowState = newState;
+
+            //----------PRESENT MODE----------//
+
+            //get valid present modes
+            uint32_t presentModeCount;
+            vkGetPhysicalDeviceSurfacePresentModesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &presentModeCount, nullptr);
+            std::vector<VkPresentModeKHR> presentModes(presentModeCount);
+            vkGetPhysicalDeviceSurfacePresentModesKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &presentModeCount, presentModes.data());
+
+            //check if any match selected present mode
+            bool presentModeFound = false;
+            for(const VkPresentModeKHR presentMode : presentModes)
             {
-                presentModeFound = true;
-                break;
-            }
-        }
-
-        //verify present mode selected
-        if(!presentModeFound)
-        {
-            if(!presentModes.size())
-            {
-                throw std::runtime_error("No valid GPU surface present modes");
-            }
-            else
-            {
-                //use first
-                renderer.getLogger().recordLog({
-                    .type = WARNING,
-                    .text=  "Selected VkPresentModeKHR for swapchain was not found. Using first found mode"
-                });
-                windowState.presentMode = presentModes[0];
-            }
-        }
-
-        //----------COLOR SPACE SELECTION----------//
-
-        uint32_t formatCount;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &formatCount, nullptr);
-        std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &formatCount, surfaceFormats.data());
-        
-        //helper lambda function
-        const auto formatEqual = [](const VkSurfaceFormatKHR& a, const VkSurfaceFormatKHR& b)
-        {
-            bool equal = true;
-            equal = equal && a.format == b.format;
-            equal = equal && a.colorSpace == b.colorSpace;
-
-            return equal;
-        };
-
-        //see if already selected format exists
-        bool formatFound = false;
-        for(const VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
-        {
-            if(formatEqual(surfaceFormat, windowState.surfaceFormat))
-            {
-                formatFound = true;
-                break;
-            }
-        }
-
-        //handle specified format not being available
-        if(!formatFound)
-        {
-            //log warning
-            renderer.getLogger().recordLog({
-                .type = WARNING,
-                .text = "Selected surface format was not found. Auto selecting format instead"
-            });
-            
-            //use sRGB if no HDR format is available; use UNORM if sRGB isnt avaliable
-            for(const VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
-            {
-                if(surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) //SRGB color space
+                if(presentMode == windowState.presentMode)
                 {
-                    if(surfaceFormat.format == VK_FORMAT_R8G8B8A8_SRGB)
-                    {
-                        windowState.surfaceFormat = surfaceFormat;
-                        formatFound = true;
-                        break;
-                    }
-                    else if(surfaceFormat.format == VK_FORMAT_R8G8B8A8_UNORM)
-                    {
-                        windowState.surfaceFormat = surfaceFormat;
-                        formatFound = true;
-                    }
+                    presentModeFound = true;
+                    break;
                 }
             }
 
-            //very bad, just use the first one found
-            if(!formatFound && surfaceFormats.size())
+            //verify present mode selected
+            if(!presentModeFound)
             {
-                windowState.surfaceFormat = surfaceFormats[0];
-                formatFound = true;
+                if(!presentModes.size())
+                {
+                    throw std::runtime_error("No valid GPU surface present modes");
+                }
+                else
+                {
+                    //use first
+                    renderer.getLogger().recordLog({
+                        .type = WARNING,
+                        .text=  "Selected VkPresentModeKHR for swapchain was not found. Using first found mode"
+                    });
+                    windowState.presentMode = presentModes[0];
+                }
             }
 
-            //throw error if format not found
-            if(!formatFound) throw std::runtime_error("No good surface format found");
+            //----------COLOR SPACE SELECTION----------//
+
+            uint32_t formatCount;
+            vkGetPhysicalDeviceSurfaceFormatsKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &formatCount, nullptr);
+            std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
+            vkGetPhysicalDeviceSurfaceFormatsKHR(renderer.getDevice().getGPU(), renderer.getDevice().getSurface(), &formatCount, surfaceFormats.data());
+            
+            //helper lambda function
+            const auto formatEqual = [](const VkSurfaceFormatKHR& a, const VkSurfaceFormatKHR& b)
+            {
+                bool equal = true;
+                equal = equal && a.format == b.format;
+                equal = equal && a.colorSpace == b.colorSpace;
+
+                return equal;
+            };
+
+            //see if already selected format exists
+            bool formatFound = false;
+            for(const VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
+            {
+                if(formatEqual(surfaceFormat, windowState.surfaceFormat))
+                {
+                    formatFound = true;
+                    break;
+                }
+            }
+
+            //handle specified format not being available
+            if(!formatFound)
+            {
+                //log warning
+                renderer.getLogger().recordLog({
+                    .type = WARNING,
+                    .text = "Selected surface format was not found. Auto selecting format instead"
+                });
+                
+                //use sRGB if no HDR format is available; use UNORM if sRGB isnt avaliable
+                for(const VkSurfaceFormatKHR surfaceFormat : surfaceFormats)
+                {
+                    if(surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) //SRGB color space
+                    {
+                        if(surfaceFormat.format == VK_FORMAT_R8G8B8A8_SRGB)
+                        {
+                            windowState.surfaceFormat = surfaceFormat;
+                            formatFound = true;
+                            break;
+                        }
+                        else if(surfaceFormat.format == VK_FORMAT_R8G8B8A8_UNORM)
+                        {
+                            windowState.surfaceFormat = surfaceFormat;
+                            formatFound = true;
+                        }
+                    }
+                }
+
+                //very bad, just use the first one found
+                if(!formatFound && surfaceFormats.size())
+                {
+                    windowState.surfaceFormat = surfaceFormats[0];
+                    formatFound = true;
+                }
+
+                //throw error if format not found
+                if(!formatFound) throw std::runtime_error("No good surface format found");
+            }
         }
     }
 
@@ -377,27 +427,30 @@ namespace PaperRenderer
 
     void Swapchain::recreate()
     {
-        int width = 0, height = 0;
-        glfwGetFramebufferSize(window, &width, &height);
-        while (width == 0 || height == 0) {
-            glfwWaitEvents();
-            glfwGetFramebufferSize(window, &width, &height);
-        }
-
-        vkDeviceWaitIdle(renderer.getDevice().getDevice());
-        
-        //destruction
-        for(VkImageView image : imageViews)
+        if(swapchain)
         {
-            vkDestroyImageView(renderer.getDevice().getDevice(), image, nullptr);
+            int width = 0, height = 0;
+            glfwGetFramebufferSize(window, &width, &height);
+            while (width == 0 || height == 0) {
+                glfwWaitEvents();
+                glfwGetFramebufferSize(window, &width, &height);
+            }
+
+            vkDeviceWaitIdle(renderer.getDevice().getDevice());
+            
+            //destruction
+            for(VkImageView image : imageViews)
+            {
+                vkDestroyImageView(renderer.getDevice().getDevice(), image, nullptr);
+            }
+            imageViews.clear();
+
+            //rebuild
+            VkSwapchainKHR oldSwapchain = swapchain;
+            buildSwapchain();
+            vkDestroySwapchainKHR(renderer.getDevice().getDevice(), oldSwapchain, nullptr);
+
+            if(swapchainRebuildCallback) swapchainRebuildCallback(renderer, swapchainExtent);
         }
-        imageViews.clear();
-
-        //rebuild
-        VkSwapchainKHR oldSwapchain = swapchain;
-        buildSwapchain();
-        vkDestroySwapchainKHR(renderer.getDevice().getDevice(), oldSwapchain, nullptr);
-
-        if(swapchainRebuildCallback) swapchainRebuildCallback(renderer, swapchainExtent);
     }
 }
