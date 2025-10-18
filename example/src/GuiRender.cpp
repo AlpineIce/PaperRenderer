@@ -28,17 +28,19 @@ GuiContext initImGui(PaperRenderer::RenderEngine& renderer, DefaultMaterialInsta
         .MinImageCount = renderer.getSwapchain().getMinImageCount(),
         .ImageCount = renderer.getSwapchain().getImageCount(),
         .PipelineCache = VK_NULL_HANDLE,
-        .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
-        .UseDynamicRendering = true,
-        .PipelineRenderingCreateInfo = {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-            .pNext = NULL,
-            .viewMask = 0,
-            .colorAttachmentCount = 1,
-            .pColorAttachmentFormats = &renderer.getSwapchain().getWindowState().surfaceFormat.format,
-            .depthAttachmentFormat = VK_FORMAT_UNDEFINED,
-            .stencilAttachmentFormat = VK_FORMAT_UNDEFINED
-        }
+        .PipelineInfoMain = {
+            .MSAASamples = VK_SAMPLE_COUNT_1_BIT,
+            .PipelineRenderingCreateInfo = {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+                .pNext = NULL,
+                .viewMask = 0,
+                .colorAttachmentCount = 1,
+                .pColorAttachmentFormats = &renderer.getSwapchain().getWindowState().surfaceFormat.format,
+                .depthAttachmentFormat = VK_FORMAT_UNDEFINED,
+                .stencilAttachmentFormat = VK_FORMAT_UNDEFINED
+            }
+        },
+        .UseDynamicRendering = true
     };
 
     ImGui_ImplVulkan_Init(&init_info);
@@ -93,7 +95,7 @@ void renderImGui(PaperRenderer::RenderEngine* renderer, PaperRenderer::Statistic
         if(time.interval == PaperRenderer::TimeStatisticInterval::REGULAR)
         {
             std::string ms = std::format(": {:.3f}ms", time.getTime() * 1000.0);
-            ImGui::Text((time.name + ms).c_str());
+            ImGui::Text("%s", (time.name + ms).c_str());
         }
         else
         {
@@ -114,7 +116,7 @@ void renderImGui(PaperRenderer::RenderEngine* renderer, PaperRenderer::Statistic
         else
         {
             std::string ms = std::format(": {:.3f}ms", time.statistic.getTime() * 1000.0);
-            ImGui::Text((time.statistic.name + ms).c_str());
+            ImGui::Text("%s", (time.statistic.name + ms).c_str());
         }
     }
 
