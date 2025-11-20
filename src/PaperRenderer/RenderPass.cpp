@@ -326,11 +326,8 @@ namespace PaperRenderer
         //material data pseudo writes (this doesn't actually write anything its just to setup the fragmentable buffer)
         for(ModelInstance* instance : toUpdateInstances)
         {
-            //skip if instance is NULL
-            if(!instance) continue;
-
             //remove old if exists
-            if(instance->renderPassSelfReferences.count(this) && instance->renderPassSelfReferences[this].LODsMaterialDataOffset != UINT64_MAX)
+            if(instance && instance->renderPassSelfReferences.count(this) && instance->renderPassSelfReferences[this].LODsMaterialDataOffset != UINT64_MAX)
             {
                 const std::vector<uint8_t>& oldMaterialData = instance->getRenderPassInstanceData(this);
                 if(oldMaterialData.size()) instancesDataBuffer.removeFromRange(instance->renderPassSelfReferences[this].LODsMaterialDataOffset, oldMaterialData.size());
@@ -825,6 +822,10 @@ namespace PaperRenderer
                 {
                     renderPassSortedInstances[selfReference] = renderPassSortedInstances.back();
                     renderPassSortedInstances[selfReference].instance->renderPassSelfReferences[this].selfIndex = selfReference;
+
+                    //queue data transfer
+                    toUpdateInstances.erase(&instance);
+                    toUpdateInstances.insert(renderPassInstances[selfReference]);
 
                     renderPassSortedInstances.pop_back();
                 }
